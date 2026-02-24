@@ -23,7 +23,6 @@ export function OnboardingClient({
 
   if (prefillName) {
     prefill.name = prefillName;
-    readOnlyFields.push("name");
   }
   if (prefillEmail) {
     prefill.notificationEmails = prefillEmail;
