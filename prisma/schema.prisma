@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  vertical  String?
+  apiToken  String?
+  status    String   @default("onboarding") // onboarding | pending_emailbison | active
+
+  // Notification config
+  slackChannelId     String?
+  notificationEmails String? // JSON array of email addresses
+
+  // Section 1 - LinkedIn Access
+  linkedinUsername     String?
+  linkedinPasswordNote String?
+
+  // Section 2 - Sender Details
+  senderFullName String?
+  senderJobTitle String?
+  senderPhone    String?
+  senderAddress  String?
+
+  // Section 3 - ICP
+  icpCountries           String?
+  icpIndustries          String?
+  icpCompanySize         String?
+  icpDecisionMakerTitles String?
+  icpKeywords            String?
+  icpExclusionCriteria   String?
+
+  // Section 4-12 - Campaign brief
+  coreOffers        String?
+  pricingSalesCycle  String?
+  differentiators    String?
+  painPoints         String?
+  caseStudies        String?
+  leadMagnets        String?
+  existingMessaging  String?
+  supportingMaterials String?
+  exclusionList      String?
+
+  // Additional
+  website            String?
+  senderEmailDomains String? // JSON array of selected domains
+  targetVolume       String?
+  onboardingNotes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  email          String
+  firstName      String?
+  lastName       String?
+  company        String?
+  companyDomain  String?
+  jobTitle       String?
+  phone          String?
+  linkedinUrl    String?
+  location       String?
+  source         String // "clay" | "emailbison" | "manual"
+  sourceId       String?
+  workspace      String?
+  vertical       String?
+  status         String   @default("new") // new | contacted | replied | interested | bounced | unsubscribed
+  enrichmentData String?
+  tags           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([email, workspace])
+  @@index([workspace])
+  @@index([source])
+  @@index([status])
+  @@index([vertical])
+}
+
+model Company {
+  id             String   @id @default(cuid())
+  name           String
+  domain         String   @unique
+  industry       String?
+  headcount      Int?
+  location       String?
+  techStack      String?
+  enrichmentData String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  workspace   String
+  eventType   String
+  campaignId  String?
+  leadEmail   String?
+  senderEmail String?
+  payload     String
+  receivedAt  DateTime @default(now())
+
+  @@index([workspace, eventType])
+  @@index([leadEmail])
+  @@index([senderEmail, eventType])
+}
+
+model CachedMetrics {
+  id         String   @id @default(cuid())
+  workspace  String
+  metricType String
+  data       String
+  computedAt DateTime @default(now())
+
+  @@unique([workspace, metricType])
+}
+
+model Proposal {
+  id     String @id @default(cuid())
+  token  String @unique
+  status String @default("draft") // draft | sent | accepted | paid | onboarding_complete
+
+  // Client info (entered by admin)
+  clientName      String
+  clientEmail     String?
+  companyOverview String
+
+  // Package: "email" | "linkedin" | "email_linkedin"
+  packageType String
+
+  // Pricing in pence (defaults per package, admin can override)
+  setupFee     Int     @default(0)
+  platformCost Int
+  retainerCost Int
+
+  // E-signature
+  signedAt      DateTime?
+  signatureName String?
+  signatureData String?
+
+  // Payment
+  stripeSessionId   String?
+  stripePaymentLink String?
+  paidAt            DateTime?
+  paidManually      Boolean @default(false)
+
+  // Link to workspace (created after onboarding)
+  workspaceSlug String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OnboardingInvite {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  status        String   @default("draft") // draft | sent | viewed | completed
+
+  clientName    String
+  clientEmail   String?
+
+  // Optional link to an existing proposal
+  proposalId    String?
+
+  // Whether to create a workspace when onboarding completes
+  createWorkspace Boolean @default(true)
+
+  // Link to workspace (created after onboarding)
+  workspaceSlug String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
