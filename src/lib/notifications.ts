@@ -22,7 +22,7 @@ export async function notifyReply(params: {
     : "(no body)";
 
   const label = params.interested ? "Interested Reply" : "New Reply";
-  const emailBisonUrl = "https://app.outsignal.ai";
+  const outsignalInboxUrl = "https://app.outsignal.ai/inbox";
 
   // Slack notification
   if (workspace.slackChannelId) {
@@ -83,7 +83,7 @@ export async function notifyReply(params: {
                   type: "plain_text",
                   text: "Reply in Outsignal",
                 },
-                url: emailBisonUrl,
+                url: outsignalInboxUrl,
               },
             ],
           },
@@ -112,7 +112,7 @@ ${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
   <tr>
     <td style="background-color:#F0FF7A;border-radius:6px;padding:0;">
-      <a href="${emailBisonUrl}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#18181b;text-decoration:none;border-radius:6px;"><span style="color:#18181b;text-decoration:none;">Reply in Outsignal</span></a>
+      <a href="${outsignalInboxUrl}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#18181b;text-decoration:none;border-radius:6px;"><span style="color:#18181b;text-decoration:none;">Reply in Outsignal</span></a>
     </td>
   </tr>
 </table>
