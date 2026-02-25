@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAllWorkspaces, getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import { normalizeCompanyName } from "@/lib/normalize";
 
 export async function POST() {
   const allWorkspaces = await getAllWorkspaces();
@@ -31,7 +32,7 @@ export async function POST() {
               firstName: lead.first_name ?? null,
               lastName: lead.last_name ?? null,
               jobTitle: lead.title ?? null,
-              company: lead.company ?? null,
+              company: lead.company ? normalizeCompanyName(lead.company) : null,
               phone: lead.phone ?? null,
               enrichmentData: lead.custom_variables
                 ? JSON.stringify(lead.custom_variables)
@@ -46,7 +47,7 @@ export async function POST() {
               firstName: lead.first_name ?? undefined,
               lastName: lead.last_name ?? undefined,
               jobTitle: lead.title ?? undefined,
-              company: lead.company ?? undefined,
+              company: lead.company ? normalizeCompanyName(lead.company) : undefined,
               phone: lead.phone ?? undefined,
               enrichmentData: lead.custom_variables
                 ? JSON.stringify(lead.custom_variables)
