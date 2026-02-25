@@ -20,7 +20,6 @@ export async function notifyReply(params: {
     : "(no body)";
 
   // Slack notification
-  console.log("notifyReply: slackChannelId =", workspace.slackChannelId, "SLACK_BOT_TOKEN set =", !!process.env.SLACK_BOT_TOKEN);
   if (workspace.slackChannelId) {
     try {
       await postMessage(
@@ -44,7 +43,6 @@ export async function notifyReply(params: {
           },
         ],
       );
-      console.log("notifyReply: Slack message sent successfully");
     } catch (err) {
       console.error("Slack notification failed:", err);
     }
