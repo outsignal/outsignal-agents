@@ -4,6 +4,7 @@ import { sendNotificationEmail } from "./resend";
 
 export async function notifyReply(params: {
   workspaceSlug: string;
+  leadName?: string | null;
   leadEmail: string;
   senderEmail: string;
   subject: string | null;
@@ -27,7 +28,7 @@ export async function notifyReply(params: {
     try {
       await postMessage(
         workspace.slackChannelId,
-        `${label} from ${params.leadEmail}`,
+        `${label} from ${params.leadName ?? params.leadEmail}`,
         [
           {
             type: "header",
@@ -36,6 +37,17 @@ export async function notifyReply(params: {
               text: `${label} Received`,
             },
           },
+          ...(params.leadName
+            ? [
+                {
+                  type: "section" as const,
+                  text: {
+                    type: "mrkdwn" as const,
+                    text: `*Name:* ${params.leadName}`,
+                  },
+                },
+              ]
+            : []),
           {
             type: "section",
             text: {
@@ -75,9 +87,10 @@ export async function notifyReply(params: {
       if (recipients.length > 0) {
         await sendNotificationEmail({
           to: recipients,
-          subject: `[${workspace.name}] ${label} from ${params.leadEmail}`,
+          subject: `[${workspace.name}] ${label} from ${params.leadName ?? params.leadEmail}`,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
 <h2 style="margin-bottom:16px;">${label} Received</h2>
+${params.leadName ? `<p><strong>Name:</strong> ${params.leadName}</p>` : ""}
 <p><strong>From:</strong> ${params.leadEmail}</p>
 ${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />

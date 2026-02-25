@@ -41,6 +41,9 @@ export async function POST(request: NextRequest) {
     const automatedReply = data.reply?.automated_reply ?? false;
     const campaignId = data.campaign?.id?.toString() ?? null;
     const interested = data.reply?.interested ?? false;
+    const leadName = [data.lead?.first_name, data.lead?.last_name]
+      .filter(Boolean)
+      .join(" ") || null;
 
     // Store the raw webhook event
     await prisma.webhookEvent.create({
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
       try {
         await notifyReply({
           workspaceSlug,
+          leadName,
           leadEmail: leadEmail ?? "unknown",
           senderEmail: senderEmail ?? "unknown",
           subject,
