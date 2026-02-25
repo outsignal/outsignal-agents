@@ -40,13 +40,17 @@ export async function POST(request: NextRequest) {
 
     // Send notifications for real replies (non-automated)
     if (event === "REPLY_RECEIVED" && data.automated_reply !== true) {
-      notifyReply({
-        workspaceSlug: data.workspace_slug ?? "unknown",
-        leadEmail: leadEmail ?? "unknown",
-        senderEmail: data.sender_email ?? "unknown",
-        subject: data.subject ?? null,
-        bodyPreview: data.text_body ?? null,
-      }).catch((err) => console.error("Notification error:", err));
+      try {
+        await notifyReply({
+          workspaceSlug: data.workspace_slug ?? "unknown",
+          leadEmail: leadEmail ?? "unknown",
+          senderEmail: data.sender_email ?? "unknown",
+          subject: data.subject ?? null,
+          bodyPreview: data.text_body ?? null,
+        });
+      } catch (err) {
+        console.error("Notification error:", err);
+      }
     }
 
     return NextResponse.json({ received: true });
