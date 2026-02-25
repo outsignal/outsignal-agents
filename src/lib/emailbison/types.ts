@@ -52,9 +52,27 @@ export interface Lead {
   email: string;
   first_name?: string;
   last_name?: string;
+  title?: string;
   company?: string;
   phone?: string;
-  custom_fields?: Record<string, string>;
+  custom_variables?: { name: string; value: string }[];
+  status?: string;
+  notes?: string | null;
+  lead_campaign_data?: {
+    campaign_id: number;
+    status: string;
+    emails_sent: number;
+    replies: number;
+    opens: number;
+    interested: boolean;
+  }[];
+  overall_stats?: {
+    emails_sent: number;
+    opens: number;
+    replies: number;
+    unique_replies: number;
+    unique_opens: number;
+  };
   tags?: Tag[];
   created_at: string;
 }

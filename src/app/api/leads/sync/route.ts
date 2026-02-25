@@ -30,8 +30,12 @@ export async function POST() {
               email: lead.email,
               firstName: lead.first_name ?? null,
               lastName: lead.last_name ?? null,
+              jobTitle: lead.title ?? null,
               company: lead.company ?? null,
               phone: lead.phone ?? null,
+              enrichmentData: lead.custom_variables
+                ? JSON.stringify(lead.custom_variables)
+                : null,
               source: "emailbison",
               sourceId: lead.id.toString(),
               workspace: ws.slug,
@@ -41,8 +45,12 @@ export async function POST() {
             update: {
               firstName: lead.first_name ?? undefined,
               lastName: lead.last_name ?? undefined,
+              jobTitle: lead.title ?? undefined,
               company: lead.company ?? undefined,
               phone: lead.phone ?? undefined,
+              enrichmentData: lead.custom_variables
+                ? JSON.stringify(lead.custom_variables)
+                : undefined,
               tags: lead.tags?.map((t) => t.name).join(",") ?? undefined,
             },
           });
