@@ -30,18 +30,35 @@ export async function notifyReply(params: {
         `${label} from ${params.leadEmail}`,
         [
           {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: `${label} Received`,
+            },
+          },
+          {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: [
-                `*${label}* in workspace _${workspace.name}_`,
-                `*From:* ${params.leadEmail}`,
-                `*Sent via:* ${params.senderEmail}`,
-                params.subject ? `*Subject:* ${params.subject}` : "",
-                `*Preview:* ${preview}`,
+              text: `*From:* ${params.leadEmail}`,
+            },
+          },
+          ...(params.subject
+            ? [
+                {
+                  type: "section" as const,
+                  text: {
+                    type: "mrkdwn" as const,
+                    text: `*Subject:* ${params.subject}`,
+                  },
+                },
               ]
-                .filter(Boolean)
-                .join("\n"),
+            : []),
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: preview,
             },
           },
         ],
@@ -58,16 +75,14 @@ export async function notifyReply(params: {
       if (recipients.length > 0) {
         await sendNotificationEmail({
           to: recipients,
-          subject: `[Outsignal] ${label} from ${params.leadEmail} - ${workspace.name}`,
-          html: `
-            <h2>${label} Received</h2>
-            <p><strong>Workspace:</strong> ${workspace.name}</p>
-            <p><strong>From:</strong> ${params.leadEmail}</p>
-            <p><strong>Sent via:</strong> ${params.senderEmail}</p>
-            ${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
-            <hr/>
-            <p>${preview}</p>
-          `,
+          subject: `[${workspace.name}] ${label} from ${params.leadEmail}`,
+          html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
+<h2 style="margin-bottom:16px;">${label} Received</h2>
+<p><strong>From:</strong> ${params.leadEmail}</p>
+${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+<p style="white-space:pre-wrap;">${preview}</p>
+</div>`,
         });
       }
     } catch (err) {
