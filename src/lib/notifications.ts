@@ -22,6 +22,8 @@ export async function notifyReply(params: {
     : "(no body)";
 
   const label = params.interested ? "Interested Reply" : "New Reply";
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://cold-outbound-dashboard.vercel.app").replace(/\/+$/, "");
+  const workspaceUrl = `${appUrl}/workspace/${params.workspaceSlug}`;
 
   // Slack notification
   if (workspace.slackChannelId) {
@@ -73,6 +75,19 @@ export async function notifyReply(params: {
               text: preview,
             },
           },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "View in Dashboard",
+                },
+                url: workspaceUrl,
+              },
+            ],
+          },
         ],
       );
     } catch (err) {
@@ -95,6 +110,13 @@ ${params.leadName ? `<p><strong>Name:</strong> ${params.leadName}</p>` : ""}
 ${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
 <p style="white-space:pre-wrap;">${preview}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+  <tr>
+    <td style="background-color:#F0FF7A;border-radius:6px;padding:0;">
+      <a href="${workspaceUrl}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#18181b;text-decoration:none;border-radius:6px;"><span style="color:#18181b;text-decoration:none;">View in Dashboard</span></a>
+    </td>
+  </tr>
+</table>
 </div>`,
         });
       }
