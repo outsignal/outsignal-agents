@@ -8,6 +8,7 @@ export async function notifyReply(params: {
   senderEmail: string;
   subject: string | null;
   bodyPreview: string | null;
+  interested?: boolean;
 }): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { slug: params.workspaceSlug },
@@ -19,21 +20,23 @@ export async function notifyReply(params: {
     ? params.bodyPreview.slice(0, 300)
     : "(no body)";
 
+  const label = params.interested ? "Interested Reply" : "New Reply";
+
   // Slack notification
   if (workspace.slackChannelId) {
     try {
       await postMessage(
         workspace.slackChannelId,
-        `New reply from ${params.leadEmail}`,
+        `${label} from ${params.leadEmail}`,
         [
           {
             type: "section",
             text: {
               type: "mrkdwn",
               text: [
-                `*New Reply* in workspace _${workspace.name}_`,
+                `*${label}* in workspace _${workspace.name}_`,
                 `*From:* ${params.leadEmail}`,
-                `*To:* ${params.senderEmail}`,
+                `*Sent via:* ${params.senderEmail}`,
                 params.subject ? `*Subject:* ${params.subject}` : "",
                 `*Preview:* ${preview}`,
               ]
@@ -55,12 +58,12 @@ export async function notifyReply(params: {
       if (recipients.length > 0) {
         await sendNotificationEmail({
           to: recipients,
-          subject: `[Outsignal] Reply from ${params.leadEmail} - ${workspace.name}`,
+          subject: `[Outsignal] ${label} from ${params.leadEmail} - ${workspace.name}`,
           html: `
-            <h2>New Reply Received</h2>
+            <h2>${label} Received</h2>
             <p><strong>Workspace:</strong> ${workspace.name}</p>
             <p><strong>From:</strong> ${params.leadEmail}</p>
-            <p><strong>To:</strong> ${params.senderEmail}</p>
+            <p><strong>Sent via:</strong> ${params.senderEmail}</p>
             ${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
             <hr/>
             <p>${preview}</p>
