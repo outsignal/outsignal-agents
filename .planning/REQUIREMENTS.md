@@ -1,0 +1,100 @@
+# Requirements: Outsignal Lead Engine
+
+**Defined:** 2026-02-26
+**Core Value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
+
+## v1 Requirements
+
+Requirements for initial release. Each maps to roadmap phases.
+
+### Enrichment Pipeline
+
+- [ ] **ENRICH-01**: System checks local DB for existing person/company data before calling any paid API (dedup-first)
+- [ ] **ENRICH-02**: System enriches person data via waterfall strategy — Prospeo → AI Ark → LeadMagic → FindyMail, cheapest source first
+- [ ] **ENRICH-03**: System enriches company data via waterfall strategy — AI Ark → Firecrawl, with local cache check
+- [ ] **ENRICH-04**: System finds email addresses via waterfall — Prospeo → LeadMagic → FindyMail
+- [ ] **ENRICH-05**: System verifies email addresses via LeadMagic before export (hard gate — no unverified emails exported)
+- [ ] **ENRICH-06**: System tracks enrichment provenance — which source provided which data, timestamp, cost per record
+- [ ] **ENRICH-07**: System handles batch enrichment asynchronously (not blocked by Vercel 30s timeout)
+
+### AI Normalization & Qualification
+
+- [ ] **AI-01**: System normalizes industry/vertical classification via Claude (replace Clay AI)
+- [ ] **AI-02**: System normalizes company names via Claude (extend existing normalize.ts)
+- [ ] **AI-03**: System extracts structured fields from unstructured data via Claude (job title standardization, seniority level)
+- [ ] **AI-04**: System qualifies leads against ICP using Firecrawl + Haiku — crawl prospect's website and classify fit
+- [ ] **AI-05**: System supports custom AI enrichment prompts per workspace/project (different clients need different personalization and normalization rules)
+
+### Lead Search & Filter
+
+- [ ] **SEARCH-01**: User can search people by name, email, company, or job title
+- [ ] **SEARCH-02**: User can filter people by vertical, enrichment status, workspace, and company
+- [ ] **SEARCH-03**: User can search companies by name, domain, or vertical
+- [ ] **SEARCH-04**: User can view enrichment status indicators (enriched/partial/missing) on each record
+- [ ] **SEARCH-05**: User can paginate through large result sets (14k+ people, 17k+ companies)
+
+### List Building
+
+- [ ] **LIST-01**: User can create named target lists scoped to a workspace
+- [ ] **LIST-02**: User can add people to lists from search results (individually or in bulk)
+- [ ] **LIST-03**: User can filter and segment leads by ICP criteria to build lists
+- [ ] **LIST-04**: User can view list contents with enrichment completeness summary
+
+### Export & Integration
+
+- [ ] **EXPORT-01**: User can export a list to an EmailBison campaign (direct API push)
+- [ ] **EXPORT-02**: System enforces email verification gate before export (no unverified emails)
+- [ ] **EXPORT-03**: User can export a list as CSV for use in other tools
+
+### Provider Integrations
+
+- [ ] **PROV-01**: Prospeo API integration — email finding from LinkedIn URL or name+company
+- [ ] **PROV-02**: AI Ark API integration — person and company data enrichment
+- [ ] **PROV-03**: LeadMagic API integration — email finding and verification
+- [ ] **PROV-04**: FindyMail API integration — fallback email finding
+- [ ] **PROV-05**: Firecrawl integration extended — ICP qualification crawling (reuse existing client)
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Scoring & Signals
+
+- **SCORE-01**: Lead scoring 1-10 based on signal overlap (cold email framework tiers)
+- **SCORE-02**: Signal-based segmentation — filter by signal stacking (hiring + funding + CEO tenure)
+- **SCORE-03**: Configurable scoring weights per workspace
+
+### Advanced Features
+
+- **ADV-01**: Enrichment cost transparency — show per-lead API cost, total spend per batch
+- **ADV-02**: Provider abstraction layer — pluggable interface for adding new enrichment providers
+- **ADV-03**: Integrated copy agent — Writer Agent generates sequences from enriched lead data
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Real-time intent signals (RB2B, Warmly, Vector) | High complexity, future milestone |
+| LinkedIn automation (HeyReach) | Separate tool, compliance risk |
+| Campaign auto-creation and launch | Future milestone — writer agent exists but auto-launch too risky |
+| Domain infrastructure management | Handled externally (PlusVibe) |
+| CRM integration (HubSpot) | EmailBison is the system of record |
+| AI hallucination of facts | AI normalizes real data, never invents contact info |
+| Real-time enrichment streaming | Batch is sufficient for cold outbound workflows |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| (populated by roadmapper) | | |
+
+**Coverage:**
+- v1 requirements: 26 total
+- Mapped to phases: 0
+- Unmapped: 26
+
+---
+*Requirements defined: 2026-02-26*
+*Last updated: 2026-02-26 after initial definition*
