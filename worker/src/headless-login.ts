@@ -125,6 +125,10 @@ export async function headlessLogin(options: {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-infobars",
+      // Anti-detection
+      "--disable-blink-features=AutomationControlled",
+      "--disable-features=TranslateUI",
+      "--lang=en-US,en",
       `--user-data-dir=/tmp/headless-login-${cdpPort}`,
       "about:blank",
     ];
@@ -196,12 +200,32 @@ export async function headlessLogin(options: {
     await cdpSend(ws, "Network.enable", {}, nextId());
     await cdpSend(ws, "Runtime.enable", {}, nextId());
 
+    // Remove automation indicators before navigating
+    await cdpSend(ws, "Page.addScriptToEvaluateOnNewDocument", {
+      source: `
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        window.chrome = { runtime: {} };
+      `,
+    }, nextId());
+
+    // Set a realistic user agent
+    await cdpSend(ws, "Network.setUserAgentOverride", {
+      userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }, nextId());
+
     // --- 5. Navigate to LinkedIn login ---
     log("Navigating to LinkedIn login page...");
     await cdpSend(ws, "Page.navigate", { url: "https://www.linkedin.com/login" }, nextId());
 
     // --- 6. Wait for page to load ---
     await wait(3000);
+
+    // Log page title to verify we got the login page
+    const titleResult = await cdpSend(ws, "Runtime.evaluate", { expression: "document.title" }, nextId());
+    const pageTitle = String((titleResult.result as Record<string, unknown>)?.value ?? "");
+    log(`Page loaded — title: "${pageTitle}"`);
 
     // --- 7–8. Fill email and password ---
     log("Filling login credentials...");
@@ -375,6 +399,7 @@ export async function headlessLogin(options: {
     const pollStart = Date.now();
     const pollTimeout = 60_000;
 
+    let lastLoggedUrl = "";
     while (Date.now() - pollStart < pollTimeout) {
       const result = await cdpSend(
         ws,
@@ -384,6 +409,12 @@ export async function headlessLogin(options: {
       );
       const url = String((result.result as Record<string, unknown>)?.value ?? "");
 
+      // Log URL changes for debugging
+      if (url !== lastLoggedUrl) {
+        log(`Page URL: ${url}`);
+        lastLoggedUrl = url;
+      }
+
       if (loginIndicators.some((indicator) => url.includes(indicator))) {
         log(`Login successful — redirected to: ${url}`);
         loggedIn = true;
@@ -392,7 +423,6 @@ export async function headlessLogin(options: {
 
       // Check for known error states
       if (url.includes("/login") && Date.now() - pollStart > 10_000) {
-        // Still on login page after 10 seconds — might have bad credentials
         const errorCheck = await cdpSend(
           ws,
           "Runtime.evaluate",
@@ -416,7 +446,13 @@ export async function headlessLogin(options: {
     }
 
     if (!loggedIn) {
-      throw new Error("Login timed out — did not reach a post-login page within 60 seconds");
+      // Capture final page state for debugging
+      const finalUrl = await cdpSend(ws, "Runtime.evaluate", { expression: "window.location.href" }, nextId());
+      const finalTitle = await cdpSend(ws, "Runtime.evaluate", { expression: "document.title" }, nextId());
+      const finalUrlVal = String((finalUrl.result as Record<string, unknown>)?.value ?? "");
+      const finalTitleVal = String((finalTitle.result as Record<string, unknown>)?.value ?? "");
+      log(`Timeout — final URL: ${finalUrlVal}, title: ${finalTitleVal}`);
+      throw new Error(`Login timed out. Final page: "${finalTitleVal}" at ${finalUrlVal}`);
     }
 
     // --- 13. Wait for cookies to settle ---
