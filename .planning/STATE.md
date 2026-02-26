@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-26T18:14:00Z"
+last_updated: "2026-02-26T18:18:34Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 6
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 2 of 5 (Provider Adapters + Waterfall)
-Plan: 1 of 5 in current phase (02-01 complete)
+Plan: 3 of 5 in current phase (02-03 complete)
 Status: In progress
-Last activity: 2026-02-26 — Completed 02-01 (schema, types, cost tracking, merge logic)
+Last activity: 2026-02-26 — Completed 02-03 (AI Ark, Firecrawl company adapters)
 
-Progress: [███░░░░░░░] ~20%
+Progress: [████░░░░░░] ~30%
 
 ## Performance Metrics
 
@@ -41,10 +41,10 @@ Progress: [███░░░░░░░] ~20%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
-| 02-provider-adapters-waterfall | 1 | ~2 min | ~2 min |
+| 02-provider-adapters-waterfall | 2 | ~4 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (schema), 01-02 (normalizers), 01-03 (async queue), 02-01 (schema+types+costs+merge)
+- Last 5 plans: 01-01 (schema), 01-02 (normalizers), 01-03 (async queue), 02-01 (schema+types+costs+merge), 02-02 (email adapters)
 - Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
@@ -74,6 +74,10 @@ Recent decisions affecting current work:
 - [02-01]: incrementDailySpend check+increment not atomic — accepts tiny overspend risk (one chunk) rather than transaction overhead
 - [02-01]: Merge functions use read-then-write with null guard — existing data wins, never overwrite provider data over existing values
 - [02-01]: EmailAdapter/CompanyAdapter defined as function types (not interfaces) — simpler, works with any async function matching the signature
+- [02-02]: Fixed PROVIDER_COSTS used for costUsd (not dynamic credits_consumed) — consistent cost model across all adapters
+- [02-02]: FindyMail uses .passthrough() Zod + fallback extraction paths (3 alternative response paths) — API shape MEDIUM confidence
+- [02-02]: FindyMail logs rawResponse on every call — needed for schema discovery during initial integration
+- [02-02]: Prospeo /enrich-person used exclusively — /social-url-finder removed March 2026
 
 ### Pending Todos
 
@@ -82,11 +86,11 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 2]: AI Ark API shape is LOW confidence from research — verify exact endpoint/response schema at aiark.com docs before implementing adapter
-- [Phase 2]: FindyMail API shape is LOW confidence — verify before implementation
+- [Phase 2]: FindyMail API shape is MEDIUM confidence — implemented defensively with .passthrough() and fallback extraction; monitor rawResponse logs in production
 - [Phase 5]: EmailBison campaign lead push endpoint not yet confirmed — research before Phase 5 planning
 
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-01-PLAN.md — schema migration, adapter types, cost tracking, merge logic
+Stopped at: Completed 02-02-PLAN.md — Prospeo, LeadMagic, FindyMail email adapters
 Resume file: None

@@ -48,10 +48,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Provider Integrations
 
-- [ ] **PROV-01**: Prospeo API integration — email finding from LinkedIn URL or name+company
+- [x] **PROV-01**: Prospeo API integration — email finding from LinkedIn URL or name+company
 - [ ] **PROV-02**: AI Ark API integration — person and company data enrichment
-- [ ] **PROV-03**: LeadMagic API integration — email finding and verification
-- [ ] **PROV-04**: FindyMail API integration — fallback email finding
+- [x] **PROV-03**: LeadMagic API integration — email finding and verification
+- [x] **PROV-04**: FindyMail API integration — fallback email finding
 - [ ] **PROV-05**: Firecrawl integration extended — ICP qualification crawling (reuse existing client)
 
 ## v2 Requirements
@@ -92,10 +92,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | AI-01 | Phase 1 | Complete |
 | AI-02 | Phase 1 | Complete |
 | AI-03 | Phase 1 | Complete |
-| PROV-01 | Phase 2 | Pending |
+| PROV-01 | Phase 2 | Complete |
 | PROV-02 | Phase 2 | Pending |
-| PROV-03 | Phase 2 | Pending |
-| PROV-04 | Phase 2 | Pending |
+| PROV-03 | Phase 2 | Complete |
+| PROV-04 | Phase 2 | Complete |
 | PROV-05 | Phase 2 | Pending |
 | ENRICH-02 | Phase 2 | Complete |
 | ENRICH-03 | Phase 2 | Complete |
