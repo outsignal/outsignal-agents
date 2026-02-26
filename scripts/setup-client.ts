@@ -32,6 +32,20 @@ const clients: ClientInput[] = [
     websiteUrl: "https://riseheadwear.com",
     vertical: "Branded Merchandise",
   },
+  {
+    slug: "myacq",
+    name: "MyAcq",
+    apiToken: "16|dgLdXU9AfMr2Ee7bfZSjIcGRxaGMUvTcxtULBd6Q6ccdbe7b",
+    contactEmail: "will@myacq.co",
+    websiteUrl: "https://myacq.co/",
+  },
+  {
+    slug: "1210-solutions",
+    name: "1210 Solutions",
+    apiToken: "17|WZWCUJLeIkevxMjvmF544FyUah7nQvZdVmVy6uKe4cedace1",
+    contactEmail: "daniel@1210solutions.co.uk",
+    websiteUrl: "https://www.1210solutions.co.uk/",
+  },
 ];
 
 async function fetchWebsiteText(url: string): Promise<string> {
