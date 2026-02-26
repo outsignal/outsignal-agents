@@ -70,7 +70,16 @@ export async function connectLinkedIn(
       }),
     });
 
-    const result = await response.json();
+    const responseText = await response.text();
+    let result: { success: boolean; error?: string };
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      return {
+        success: false,
+        error: `Worker returned unexpected response (HTTP ${response.status})`,
+      };
+    }
 
     if (result.success) {
       // Store encrypted credentials for future re-login

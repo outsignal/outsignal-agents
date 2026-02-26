@@ -77,6 +77,25 @@ function evalValue(response: CdpResponse): unknown {
   return inner?.value;
 }
 
+/**
+ * Parse a proxy URL like http://user:pass@host:port into components.
+ */
+function parseProxyUrl(url: string): { host: string; port: string; username?: string; password?: string } {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parsed.port,
+      username: parsed.username || undefined,
+      password: parsed.password || undefined,
+    };
+  } catch {
+    // Fallback: treat as host:port
+    const [host, port] = url.split(":");
+    return { host, port };
+  }
+}
+
 function killProcess(proc: ChildProcess): void {
   try {
     if (!proc.killed) {
@@ -143,9 +162,14 @@ export async function headlessLogin(options: {
       "about:blank",
     ];
 
+    let proxyAuth: { username: string; password: string } | null = null;
     if (proxyUrl) {
-      chromiumArgs.push(`--proxy-server=${proxyUrl}`);
-      log(`Using proxy: ${proxyUrl}`);
+      const proxy = parseProxyUrl(proxyUrl);
+      chromiumArgs.push(`--proxy-server=${proxy.host}:${proxy.port}`);
+      if (proxy.username && proxy.password) {
+        proxyAuth = { username: proxy.username, password: proxy.password };
+      }
+      log(`Using proxy: ${proxy.host}:${proxy.port} (auth: ${!!proxyAuth})`);
     }
 
     chromium = spawn(chromiumPath, chromiumArgs, { stdio: "pipe" });
@@ -209,6 +233,37 @@ export async function headlessLogin(options: {
     await cdpSend(ws, "Page.enable", {}, nextId());
     await cdpSend(ws, "Network.enable", {}, nextId());
     await cdpSend(ws, "Runtime.enable", {}, nextId());
+
+    // Handle proxy authentication via CDP Fetch domain
+    if (proxyAuth) {
+      await cdpSend(ws, "Fetch.enable", { handleAuthRequests: true }, nextId());
+      ws.addEventListener("message", (event: MessageEvent) => {
+        const msg = JSON.parse(String(event.data));
+        if (msg.method === "Fetch.authRequired") {
+          const requestId = msg.params.requestId;
+          ws.send(JSON.stringify({
+            id: nextId(),
+            method: "Fetch.continueWithAuth",
+            params: {
+              requestId,
+              authChallengeResponse: {
+                response: "ProvideCredentials",
+                username: proxyAuth!.username,
+                password: proxyAuth!.password,
+              },
+            },
+          }));
+        } else if (msg.method === "Fetch.requestPaused") {
+          // Continue any paused requests
+          ws.send(JSON.stringify({
+            id: nextId(),
+            method: "Fetch.continueRequest",
+            params: { requestId: msg.params.requestId },
+          }));
+        }
+      });
+      log("Proxy auth handler registered");
+    }
 
     // Remove automation indicators before navigating
     await cdpSend(ws, "Page.addScriptToEvaluateOnNewDocument", {
