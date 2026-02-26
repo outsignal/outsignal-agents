@@ -22,8 +22,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
+import { validateCronSecret } from "@/lib/cron-auth";
 
 export async function POST(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    console.log(`[${new Date().toISOString()}] Unauthorized: POST /api/enrichment/run`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { entityType, workspaceSlug, limit = 100 } = body as {

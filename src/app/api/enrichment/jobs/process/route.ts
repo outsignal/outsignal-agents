@@ -14,8 +14,14 @@ import { NextResponse } from "next/server";
 import { processNextChunk } from "@/lib/enrichment/queue";
 import { enrichEmail, enrichCompany, createCircuitBreaker } from "@/lib/enrichment/waterfall";
 import { prisma } from "@/lib/db";
+import { validateCronSecret } from "@/lib/cron-auth";
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!validateCronSecret(request)) {
+    console.log(`[${new Date().toISOString()}] Unauthorized: POST /api/enrichment/jobs/process`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     // Fresh circuit breaker per invocation — resets between batch runs
     const breaker = createCircuitBreaker();
