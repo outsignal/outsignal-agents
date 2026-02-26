@@ -272,3 +272,37 @@ model EmailDraft {
   @@index([workspaceSlug, campaignName])
   @@index([status])
 }
+
+model EnrichmentLog {
+  id           String   @id @default(cuid())
+  entityId     String
+  entityType   String   // "person" | "company"
+  provider     String   // "prospeo" | "aiark" | "leadmagic" | "findymail" | "firecrawl" | "clay" | "ai-normalizer"
+  status       String   @default("success") // "success" | "error" | "skipped"
+  fieldsWritten String? // JSON array of field names written, e.g. ["email", "linkedinUrl"]
+  costUsd      Float?   // provider cost in USD (null for free/AI calls)
+  rawResponse  String?  // JSON — debug only, not indexed
+  errorMessage String?  // populated when status = "error"
+  runAt        DateTime @default(now())
+
+  @@index([entityId, entityType])
+  @@index([provider, status])
+  @@index([runAt])
+}
+
+model EnrichmentJob {
+  id             String   @id @default(cuid())
+  entityType     String   // "person" | "company"
+  provider       String   // provider to run
+  status         String   @default("pending") // "pending" | "running" | "complete" | "failed"
+  totalCount     Int
+  processedCount Int      @default(0)
+  chunkSize      Int      @default(50)
+  entityIds      String   // JSON array of entity IDs to process
+  errorLog       String?  // JSON array of { entityId, error } for failures
+  workspaceSlug  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+}
