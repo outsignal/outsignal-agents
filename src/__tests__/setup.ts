@@ -48,6 +48,10 @@ vi.mock("@/lib/db", () => ({
       update: vi.fn(),
       findMany: vi.fn(),
     },
+    dailyCostTotal: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+    },
     person: {
       findUnique: vi.fn(),
       findMany: vi.fn(),

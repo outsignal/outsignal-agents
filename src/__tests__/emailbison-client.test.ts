@@ -73,7 +73,7 @@ describe("EmailBisonClient", () => {
 
   beforeEach(() => {
     fetchMock = vi.fn();
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
     client = new EmailBisonClient(TEST_TOKEN);
   });
 
