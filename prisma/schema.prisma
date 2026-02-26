@@ -57,6 +57,11 @@ model Workspace {
   // Client portal access
   clientEmails String? // JSON array of authorized client email addresses
 
+  // AI prompt overrides (managed via MCP tools)
+  icpCriteriaPrompt    String?  // e.g. "Our ICP is SaaS companies, 50-200 employees in UK"
+  normalizationPrompt  String?  // e.g. "Classify 'promo products' as 'Branded Merchandise'"
+  outreachTonePrompt   String?  // e.g. "Professional but friendly"
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -98,6 +103,10 @@ model PersonWorkspace {
   status    String   @default("new")
   vertical  String?
   tags      String?
+  icpScore       Int?       // 0-100 ICP fit score (workspace-specific)
+  icpReasoning   String?    // 1-3 sentence explanation of score
+  icpConfidence  String?    // "high" | "medium" | "low" — data completeness indicator
+  icpScoredAt    DateTime?  // When ICP was last scored
   createdAt DateTime @default(now())
 
   person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -123,6 +132,8 @@ model Company {
   companyType    String?  // "private" | "public" | "nonprofit" | "government"
   techStack      String?  // JSON array
   enrichmentData String?  // JSON — extra fields from Clay
+  crawlMarkdown  String?   // Raw homepage markdown from Firecrawl scrape (ICP scoring cache)
+  crawledAt      DateTime? // When the homepage was last crawled (null = not yet crawled)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -8,6 +8,7 @@ export type Provider =
   | "prospeo"
   | "aiark"
   | "leadmagic"
+  | "leadmagic-verify"
   | "findymail"
   | "firecrawl"
   | "clay"

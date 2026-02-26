@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 export const PROVIDER_COSTS: Record<string, number> = {
   prospeo: 0.002,
   leadmagic: 0.005,
+  "leadmagic-verify": 0.05,  // Email verification — $0.05 per valid/invalid/valid_catch_all result
   findymail: 0.001,
   aiark: 0.003,
   firecrawl: 0.001,
