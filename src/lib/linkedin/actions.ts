@@ -48,6 +48,12 @@ export async function connectLinkedIn(
   }
 
   try {
+    // Look up sender's proxy URL for geo-matching
+    const sender = await prisma.sender.findUnique({
+      where: { id: senderId },
+      select: { proxyUrl: true },
+    });
+
     const response = await fetch(`${WORKER_URL}/sessions/login`, {
       method: "POST",
       headers: {
@@ -60,6 +66,7 @@ export async function connectLinkedIn(
         password: data.password,
         totpSecret: method === "infinite" ? data.totpSecret : undefined,
         verificationCode: data.verificationCode,
+        proxyUrl: sender?.proxyUrl ?? undefined,
       }),
     });
 

@@ -350,7 +350,7 @@ export class SessionServer {
     }
 
     const body = await this.readBody(req);
-    const { senderId, email, password, totpSecret, verificationCode } = body;
+    const { senderId, email, password, totpSecret, verificationCode, proxyUrl } = body;
 
     if (!senderId || !email || !password) {
       this.jsonResponse(res, 400, { error: "senderId, email, and password are required" });
@@ -364,6 +364,7 @@ export class SessionServer {
         email,
         password,
         totpSecret: totpSecret || undefined,
+        proxyUrl: proxyUrl || undefined,
       });
 
       // Save cookies via API
