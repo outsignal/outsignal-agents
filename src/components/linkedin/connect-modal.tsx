@@ -28,7 +28,7 @@ import { connectLinkedIn } from "@/lib/linkedin/actions";
 
 type ConnectionMethod = "infinite" | "credentials" | "extension";
 
-type Step = "choose" | "form" | "loading" | "result" | "2fa";
+type Step = "choose" | "form" | "loading" | "result";
 
 interface ConnectModalProps {
   open: boolean;
@@ -103,7 +103,6 @@ export function ConnectModal({
     totpSecret: "",
   });
   const [result, setResult] = useState<ResultState | null>(null);
-  const [verificationCode, setVerificationCode] = useState("");
 
   // ---- helpers ----
 
@@ -112,7 +111,6 @@ export function ConnectModal({
     setMethod("infinite");
     setForm({ email: "", password: "", totpSecret: "" });
     setResult(null);
-    setVerificationCode("");
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -139,33 +137,24 @@ export function ConnectModal({
         totpSecret: method === "infinite" ? form.totpSecret : undefined,
       });
 
-      if (!res.success && res.error === "2fa_required") {
-        setStep("2fa");
+      // 2FA detected — guide user to Infinite Login
+      if (!res.success && String(res.error ?? "").includes("2fa")) {
+        if (method === "infinite") {
+          // Already using infinite login but TOTP failed
+          setResult({
+            success: false,
+            error: "Your 2FA secret key appears to be invalid. Please check it and try again.",
+          });
+        } else {
+          // Using credentials login — needs TOTP secret
+          setResult({
+            success: false,
+            error: "This LinkedIn account has two-factor authentication enabled. Please go back and use \"Infinite Login\" with your 2FA secret key to stay always connected.",
+          });
+        }
+        setStep("result");
         return;
       }
-
-      setResult(res);
-      setStep("result");
-    } catch (err) {
-      setResult({
-        success: false,
-        error: err instanceof Error ? err.message : "An unexpected error occurred",
-      });
-      setStep("result");
-    }
-  }
-
-  async function handleVerify(e: React.FormEvent) {
-    e.preventDefault();
-    setStep("loading");
-
-    try {
-      const loginMethod = method as "credentials" | "infinite";
-      const res = await connectLinkedIn(senderId, loginMethod, {
-        email: form.email,
-        password: form.password,
-        verificationCode,
-      });
 
       setResult(res);
       setStep("result");
@@ -211,13 +200,6 @@ export function ConnectModal({
               onOpenChange(false);
             }}
             onRetry={() => setStep("form")}
-          />
-        )}
-        {step === "2fa" && (
-          <TwoFactorStep
-            verificationCode={verificationCode}
-            setVerificationCode={setVerificationCode}
-            onSubmit={handleVerify}
           />
         )}
       </DialogContent>
@@ -458,53 +440,3 @@ function ResultStep({
   );
 }
 
-// ---------------------------------------------------------------------------
-// 2FA Step
-// ---------------------------------------------------------------------------
-
-function TwoFactorStep({
-  verificationCode,
-  setVerificationCode,
-  onSubmit,
-}: {
-  verificationCode: string;
-  setVerificationCode: (v: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
-}) {
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Two-Factor Verification</DialogTitle>
-        <DialogDescription>
-          Enter the 6-digit code from your authenticator app
-        </DialogDescription>
-      </DialogHeader>
-
-      <form onSubmit={onSubmit} className="flex flex-col gap-4 pt-2">
-        <div className="space-y-2">
-          <Label htmlFor="li-2fa-code">Verification Code</Label>
-          <Input
-            id="li-2fa-code"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]{6}"
-            maxLength={6}
-            required
-            autoFocus
-            placeholder="000000"
-            value={verificationCode}
-            onChange={(e) => setVerificationCode(e.target.value)}
-            className="text-center text-lg tracking-widest"
-          />
-        </div>
-
-        <Button
-          type="submit"
-          className="mt-2 w-full bg-[#F0FF7A] text-black hover:bg-[#d9e66e]"
-        >
-          Verify
-        </Button>
-      </form>
-    </>
-  );
-}
