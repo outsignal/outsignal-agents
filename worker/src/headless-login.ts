@@ -431,6 +431,54 @@ export async function headlessLogin(options: {
         break;
       }
 
+      // Check for 2FA/security challenge during polling
+      if (url.includes("/checkpoint") || url.includes("/challenge")) {
+        if (totpSecret) {
+          // We have a TOTP secret — try to handle the 2FA challenge
+          log("2FA challenge detected during polling — attempting TOTP...");
+          await wait(2000);
+
+          const totp = new TOTP({ secret: totpSecret, digits: 6, period: 30, algorithm: "SHA1" });
+          const code = totp.generate();
+          log(`TOTP code generated: ${code}`);
+
+          const safeCode = code.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+          await cdpSend(ws, "Runtime.evaluate", {
+            expression: `
+              (() => {
+                const selectors = ['input[name="pin"]', 'input#input__phone_verification_pin', 'input#input__email_verification_pin', 'input[type="text"]', 'input[type="number"]'];
+                let el = null;
+                for (const sel of selectors) { el = document.querySelector(sel); if (el) break; }
+                if (!el) throw new Error('2FA input field not found');
+                el.value = '${safeCode}';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              })();
+            `,
+          }, nextId());
+
+          await cdpSend(ws, "Runtime.evaluate", {
+            expression: `
+              (() => {
+                const selectors = ['button[type="submit"]', '#two-step-submit-button', 'button.btn__primary--large', 'form button'];
+                let btn = null;
+                for (const sel of selectors) { btn = document.querySelector(sel); if (btn) break; }
+                if (!btn) throw new Error('2FA submit button not found');
+                btn.click();
+              })();
+            `,
+          }, nextId());
+
+          log("2FA code submitted — continuing to poll...");
+          await wait(5000);
+          continue;
+        } else {
+          throw new Error(
+            "LinkedIn requires two-factor authentication. Use Infinite Login with your 2FA secret key.",
+          );
+        }
+      }
+
       // Check for known error states
       if (url.includes("/login") && Date.now() - pollStart > 10_000) {
         const errorCheck = await cdpSend(
