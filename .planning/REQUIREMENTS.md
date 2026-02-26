@@ -15,7 +15,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENRICH-04**: System finds email addresses via waterfall — Prospeo → LeadMagic → FindyMail
 - [ ] **ENRICH-05**: System verifies email addresses via LeadMagic before export (hard gate — no unverified emails exported)
 - [x] **ENRICH-06**: System tracks enrichment provenance — which source provided which data, timestamp, cost per record
-- [ ] **ENRICH-07**: System handles batch enrichment asynchronously (not blocked by Vercel 30s timeout)
+- [x] **ENRICH-07**: System handles batch enrichment asynchronously (not blocked by Vercel 30s timeout)
 
 ### AI Normalization & Qualification
 
@@ -88,7 +88,7 @@ Deferred to future release. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | ENRICH-01 | Phase 1 | Complete |
 | ENRICH-06 | Phase 1 | Complete |
-| ENRICH-07 | Phase 1 | Pending |
+| ENRICH-07 | Phase 1 | Complete |
 | AI-01 | Phase 1 | Complete |
 | AI-02 | Phase 1 | Complete |
 | AI-03 | Phase 1 | Complete |

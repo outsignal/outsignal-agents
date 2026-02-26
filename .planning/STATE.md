@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 1 of 5 (Enrichment Foundation)
-Plan: 2 of TBD in current phase
+Plan: 3 of TBD in current phase
 Status: In progress
-Last activity: 2026-02-26 — Completed 01-02 (AI normalizer classifiers)
+Last activity: 2026-02-26 — Completed 01-03 (async job queue)
 
 Progress: [██░░░░░░░░] ~10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: ~3 min
-- Total execution time: ~6 min
+- Total execution time: ~8 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-enrichment-foundation | 2 | ~6 min | ~3 min |
+| 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (schema), 01-02 (normalizers)
-- Trend: Fast (both < 5 min)
+- Last 5 plans: 01-01 (schema), 01-02 (normalizers), 01-03 (async queue)
+- Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
 
@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 - [01-02]: Low-confidence AI responses treated as null/fallback — prevents propagating uncertain data downstream
 - [01-02]: classifyCompanyName falls back to rule-based result (not null) on AI error — preserves partial normalization quality
 - [01-02]: All-uppercase titles (e.g., "CEO") bypass rule-based fast path via isCleanTitle heuristic, get AI treatment
+- [01-03]: onProcess callback defaults to no-op in Phase 1 — separates queue mechanics from provider logic, enables isolated testing
+- [01-03]: Job returns to pending (not running) between chunks — natural FIFO pickup by cron without special resume logic
+- [01-03]: Individual entity errors accumulated in errorLog without failing the job — allows partial success on large batches
 
 ### Pending Todos
 
@@ -67,5 +70,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 01-02-PLAN.md — AI normalizer classifiers built and tested
+Stopped at: Completed 01-03-PLAN.md — async job queue built and tested
 Resume file: None
