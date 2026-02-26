@@ -29,7 +29,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Enrichment provenance is recorded on every run — which provider, which fields, timestamp, and cost — queryable from the database
   3. Batch enrichment jobs are queued asynchronously and execute in chunks that never exceed Vercel's timeout, with DB-tracked progress
   4. Industry classification, company name, and job title submitted to the normalizer come back with canonical values validated against a controlled vocabulary
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 01-01-PLAN.md — Schema migration (EnrichmentLog + EnrichmentJob), types, dedup gate, provenance logger
+- [ ] 01-02-PLAN.md — AI normalization (industry, company name, job title classifiers with controlled vocabulary)
+- [ ] 01-03-PLAN.md — Async job queue (enqueueJob, processNextChunk, process API route)
 
 ### Phase 2: Provider Adapters + Waterfall
 **Goal**: All four enrichment providers are wired into a tested waterfall that finds emails and enriches people/companies at the lowest possible cost per record
@@ -82,7 +85,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Enrichment Foundation | 0/TBD | Not started | - |
+| 1. Enrichment Foundation | 0/3 | Planning complete | - |
 | 2. Provider Adapters + Waterfall | 0/TBD | Not started | - |
 | 3. ICP Qualification + Leads Agent | 0/TBD | Not started | - |
 | 4. Search, Filter + List Building | 0/TBD | Not started | - |
