@@ -4,7 +4,10 @@
       "command": "npx",
       "args": ["tsx", "src/mcp/leads-agent/index.ts"],
       "env": {
-        "DATABASE_URL": "${DATABASE_URL}"
+        "DATABASE_URL": "${DATABASE_URL}",
+        "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
+        "LEADMAGIC_API_KEY": "${LEADMAGIC_API_KEY}"
       }
     }
   }
