@@ -56,6 +56,8 @@ model Workspace {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  senders Sender[]
 }
 
 model Person {
@@ -281,13 +283,15 @@ model EnrichmentLog {
   status       String   @default("success") // "success" | "error" | "skipped"
   fieldsWritten String? // JSON array of field names written, e.g. ["email", "linkedinUrl"]
   costUsd      Float?   // provider cost in USD (null for free/AI calls)
-  rawResponse  String?  // JSON — debug only, not indexed
-  errorMessage String?  // populated when status = "error"
-  runAt        DateTime @default(now())
+  rawResponse   String?  // JSON — debug only, not indexed
+  errorMessage  String?  // populated when status = "error"
+  workspaceSlug String?
+  runAt         DateTime @default(now())
 
   @@index([entityId, entityType])
   @@index([provider, status])
   @@index([runAt])
+  @@index([workspaceSlug, provider])
 }
 
 model EnrichmentJob {
@@ -301,8 +305,172 @@ model EnrichmentJob {
   entityIds      String   // JSON array of entity IDs to process
   errorLog       String?  // JSON array of { entityId, error } for failures
   workspaceSlug  String?
+  resumeAt       DateTime? // non-null when paused by daily cap; queue skips until this time
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([status])
+}
+
+model DailyCostTotal {
+  id        String   @id @default(cuid())
+  date      String   @unique // "YYYY-MM-DD" UTC
+  totalUsd  Float    @default(0)
+  breakdown String?  // JSON — per-provider breakdown { prospeo: 1.23, leadmagic: 0.45 }
+  updatedAt DateTime @updatedAt
+}
+
+// --- LinkedIn Sequencer ---
+
+model Sender {
+  id            String  @id @default(cuid())
+  workspaceSlug String
+  name          String
+
+  // Email identity (from EmailBison)
+  emailAddress    String?
+  emailSenderName String?
+
+  // LinkedIn identity
+  linkedinProfileUrl String?
+
+  // Session management (encrypted cookies)
+  sessionData    String? // AES-256-GCM encrypted JSON
+  sessionStatus  String  @default("not_setup") // not_setup | active | expired
+  proxyUrl       String? // Dedicated residential proxy URL
+
+  // Account tier
+  linkedinTier String @default("free") // "free" | "premium"
+
+  // Health metrics
+  ssiScore       Int?
+  acceptanceRate Float?
+  healthStatus   String @default("healthy") // healthy | warning | paused | blocked | session_expired
+
+  // Warm-up tracking
+  warmupDay       Int       @default(0) // 0 = not started, 1-28 = warmup day
+  warmupStartedAt DateTime?
+  lastActiveAt    DateTime?
+
+  // Rate limits (account-level, adjusted by warm-up)
+  dailyConnectionLimit  Int @default(5)
+  dailyMessageLimit     Int @default(10)
+  dailyProfileViewLimit Int @default(15)
+
+  status    String   @default("setup") // setup | active | paused | disabled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace   Workspace            @relation(fields: [workspaceSlug], references: [slug])
+  actions     LinkedInAction[]
+  dailyUsage  LinkedInDailyUsage[]
+  connections LinkedInConnection[]
+
+  @@index([workspaceSlug])
+  @@index([status])
+  @@index([healthStatus])
+}
+
+model LinkedInAction {
+  id            String @id @default(cuid())
+  senderId      String
+  personId      String
+  workspaceSlug String
+
+  // Action details
+  actionType  String  // "connect" | "message" | "profile_view" | "check_connection"
+  messageBody String? // For message actions (template-substituted at enqueue time)
+
+  // Scheduling & priority
+  priority     Int      @default(5) // 1 = highest (warm lead), 5 = normal
+  scheduledFor DateTime
+
+  // Execution tracking
+  status        String    @default("pending") // pending | running | complete | failed | cancelled | expired
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3)
+  lastAttemptAt DateTime?
+  nextRetryAt   DateTime?
+
+  // Result
+  result      String? // JSON — success details or error info
+  completedAt DateTime?
+
+  // Linkage back to campaign context
+  campaignName     String? // EmailBison campaign name
+  emailBisonLeadId String? // EmailBison lead ID for sender resolution
+  sequenceStepRef  String? // Which sequence step triggered this
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sender Sender @relation(fields: [senderId], references: [id])
+
+  @@index([status, scheduledFor])
+  @@index([senderId, status])
+  @@index([personId])
+  @@index([priority, scheduledFor])
+  @@index([workspaceSlug])
+}
+
+model LinkedInDailyUsage {
+  id       String   @id @default(cuid())
+  senderId String
+  date     DateTime @db.Date
+
+  connectionsSent     Int @default(0)
+  messagesSent        Int @default(0)
+  profileViews        Int @default(0)
+  connectionsAccepted Int @default(0)
+
+  // Health signals captured during the day
+  captchaDetected   Boolean @default(false)
+  restrictionNotice Boolean @default(false)
+
+  sender Sender @relation(fields: [senderId], references: [id])
+
+  @@unique([senderId, date])
+  @@index([date])
+}
+
+model LinkedInConnection {
+  id       String @id @default(cuid())
+  senderId String
+  personId String
+
+  status        String    @default("none") // none | pending | connected | failed | expired
+  requestSentAt DateTime?
+  connectedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sender Sender @relation(fields: [senderId], references: [id])
+
+  @@unique([senderId, personId])
+  @@index([status])
+  @@index([senderId, status])
+}
+
+model CampaignSequenceRule {
+  id            String @id @default(cuid())
+  workspaceSlug String
+  campaignName  String
+
+  // Trigger: what event starts this rule
+  triggerEvent   String  // "email_sent" | "connection_accepted" | "delay_after_previous"
+  triggerStepRef String? // Reference to the email step that triggers this (e.g. "email_1")
+
+  // Action to perform
+  actionType      String  // "connect" | "message" | "profile_view"
+  messageTemplate String? // Template with {{firstName}}, {{company}}, etc.
+  delayMinutes    Int     @default(0) // Delay after trigger before executing
+
+  // Conditions
+  requireConnected Boolean @default(false) // Only fire if already connected
+
+  position  Int // Order in the sequence
+  createdAt DateTime @default(now())
+
+  @@index([workspaceSlug, campaignName])
 }
