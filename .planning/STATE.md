@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-26T21:59:23.865Z"
+last_updated: "2026-02-26T22:04:42.434Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 3 of 5 (ICP Qualification + Leads Agent) — IN PROGRESS
-Plan: 1 of 3 in current phase (03-01 complete — schema + MCP foundation)
-Status: Phase 3 plan 01 complete — schema pushed, MCP server skeleton running, ready for 03-02
-Last activity: 2026-02-26 — Completed 03-01 (schema migration, MCP server skeleton, leadmagic-verify type)
+Plan: 2 of 3 in current phase (03-02 complete — ICP scoring engine + email verification adapter)
+Status: Phase 3 plan 02 complete — crawl-cache.ts, scorer.ts, leadmagic.ts built and compiling; ready for 03-03
+Last activity: 2026-02-26 — Completed 03-02 (ICP scoring engine + LeadMagic email verification adapter)
 
-Progress: [█████████░] ~70%
+Progress: [██████████] ~80%
 
 ## Performance Metrics
 
@@ -42,7 +42,7 @@ Progress: [█████████░] ~70%
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
 | 02-provider-adapters-waterfall | 5 | ~11 min | ~2.2 min |
-| 03-icp-qualification-leads-agent | 1 so far | ~6 min | ~6 min |
+| 03-icp-qualification-leads-agent | 2 so far | ~8 min | ~4 min |
 
 **Recent Trend:**
 - Last 5 plans: 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters), 02-04 (waterfall+queue integration), 02-05 (cost dashboard)
@@ -50,6 +50,7 @@ Progress: [█████████░] ~70%
 
 *Updated after each plan completion*
 | Phase 03-icp-qualification-leads-agent P01 | 6 | 2 tasks | 6 files |
+| Phase 03-icp-qualification-leads-agent P02 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,10 @@ Recent decisions affecting current work:
 - [Phase 03-01]: Used async main() wrapper in MCP server instead of top-level await — tsx/esbuild CJS mode rejects top-level await; async function is identical behavior
 - [Phase 03-01]: db push (not migrate dev) for Phase 3 schema changes — consistent with [01-01] decision, avoids migration history requirement
 - [Phase 03-01]: leadmagic-verify cost at $0.05/call — only valid/invalid/valid_catch_all statuses are charged; catch_all and unknown are free
+- [Phase 03-02]: ICP score stored on PersonWorkspace not Person — workspace-specific fit metric
+- [Phase 03-02]: Crawl cache is permanent (no TTL) — forceRecrawl=true parameter available for manual refresh
+- [Phase 03-02]: Strict export gate: isExportable=true ONLY for 'valid' — valid_catch_all blocked despite name
+- [Phase 03-02]: personId optional in verifyEmail — enables standalone calls without DB; MCP export tool passes it
 
 ### Pending Todos
 
@@ -109,5 +114,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 03-01-PLAN.md — schema migration + MCP server foundation (Phase 3 plan 01 complete)
+Stopped at: Completed 03-02-PLAN.md — ICP scoring engine (crawl-cache.ts, scorer.ts) + LeadMagic email verification adapter (Phase 3 plan 02 complete)
 Resume file: None
