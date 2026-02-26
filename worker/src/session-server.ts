@@ -19,6 +19,7 @@ import { createConnection, Socket } from "net";
 import { VncManager } from "./vnc-manager.js";
 import { SessionCapture } from "./session-capture.js";
 import { ApiClient } from "./api-client.js";
+import { headlessLogin } from "./headless-login.js";
 
 // WebSocket handling via 'ws' package
 import { WebSocketServer, WebSocket } from "ws";
@@ -227,6 +228,11 @@ export class SessionServer {
         return;
       }
 
+      if (path === "/sessions/login" && req.method === "POST") {
+        await this.handleHeadlessLogin(req, res);
+        return;
+      }
+
       if (path === "/sessions/stop" && req.method === "POST") {
         await this.handleStopSession(req, res);
         return;
@@ -330,6 +336,53 @@ export class SessionServer {
     this.sessionState = null;
 
     this.jsonResponse(res, 200, { ok: true });
+  }
+
+  /**
+   * POST /sessions/login — Headless login with credentials (no VNC).
+   * Launches headless Chromium, fills email + password, handles 2FA,
+   * extracts cookies and saves them via the API.
+   */
+  private async handleHeadlessLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.verifyAuth(req)) {
+      this.jsonResponse(res, 401, { error: "Unauthorized" });
+      return;
+    }
+
+    const body = await this.readBody(req);
+    const { senderId, email, password, totpSecret, verificationCode } = body;
+
+    if (!senderId || !email || !password) {
+      this.jsonResponse(res, 400, { error: "senderId, email, and password are required" });
+      return;
+    }
+
+    try {
+      console.log(`[SessionServer] Starting headless login for sender ${senderId}`);
+
+      const cookies = await headlessLogin({
+        email,
+        password,
+        totpSecret: totpSecret || undefined,
+      });
+
+      // Save cookies via API
+      await this.api.updateSession(senderId, cookies);
+
+      console.log(`[SessionServer] Headless login successful — ${cookies.length} cookies saved`);
+      this.jsonResponse(res, 200, { success: true, cookieCount: cookies.length });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[SessionServer] Headless login failed:", message);
+
+      // Check if it's a 2FA error — let the client know
+      if (message.includes("2FA") || message.includes("totpSecret")) {
+        this.jsonResponse(res, 200, { success: false, error: "2fa_required" });
+        return;
+      }
+
+      this.jsonResponse(res, 500, { success: false, error: message });
+    }
   }
 
   /**

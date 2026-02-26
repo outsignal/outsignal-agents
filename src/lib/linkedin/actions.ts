@@ -27,71 +27,76 @@ export async function addLinkedInAccount(
 }
 
 /**
- * Start a VNC login session for a sender.
- * Calls the worker's session server to start Xvfb + Chromium + x11vnc.
- * Returns the login URL (noVNC viewer with auth token).
+ * Connect a LinkedIn account using headless login.
+ * Calls the Railway worker to log in with credentials and capture cookies.
  */
-export async function startLoginSession(
+export async function connectLinkedIn(
   senderId: string,
-): Promise<{ loginUrl: string }> {
+  method: "credentials" | "infinite",
+  data: {
+    email: string;
+    password: string;
+    totpSecret?: string;
+    verificationCode?: string;
+  },
+): Promise<{ success: boolean; error?: string }> {
   if (!WORKER_URL || !WORKER_SECRET) {
-    throw new Error("LinkedIn worker is not configured (missing LINKEDIN_WORKER_URL or WORKER_API_SECRET)");
+    return {
+      success: false,
+      error: "LinkedIn worker is not configured",
+    };
   }
 
-  const sender = await prisma.sender.findUnique({
-    where: { id: senderId },
-    select: { id: true, proxyUrl: true },
-  });
+  try {
+    const response = await fetch(`${WORKER_URL}/sessions/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${WORKER_SECRET}`,
+      },
+      body: JSON.stringify({
+        senderId,
+        email: data.email,
+        password: data.password,
+        totpSecret: method === "infinite" ? data.totpSecret : undefined,
+        verificationCode: data.verificationCode,
+      }),
+    });
 
-  if (!sender) {
-    throw new Error("Sender not found");
+    const result = await response.json();
+
+    if (result.success) {
+      // Store encrypted credentials for future re-login
+      const { encrypt } = await import("@/lib/crypto");
+      const updateData: Record<string, string> = {
+        linkedinEmail: data.email,
+        linkedinPassword: encrypt(data.password),
+        loginMethod: method,
+      };
+
+      if (data.totpSecret) {
+        updateData.totpSecret = encrypt(data.totpSecret);
+      }
+
+      await prisma.sender.update({
+        where: { id: senderId },
+        data: updateData,
+      });
+
+      revalidatePath("/portal/linkedin");
+    }
+
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Connection failed",
+    };
   }
-
-  const response = await fetch(`${WORKER_URL}/sessions/start`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${WORKER_SECRET}`,
-    },
-    body: JSON.stringify({
-      senderId: sender.id,
-      proxyUrl: sender.proxyUrl,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Failed to start login session: ${body}`);
-  }
-
-  const data = await response.json();
-
-  return {
-    loginUrl: `${WORKER_URL}/login?token=${data.token}`,
-  };
-}
-
-/**
- * Stop the active VNC login session.
- */
-export async function stopLoginSession(senderId: string): Promise<void> {
-  if (!WORKER_URL || !WORKER_SECRET) return;
-
-  await fetch(`${WORKER_URL}/sessions/stop`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${WORKER_SECRET}`,
-    },
-    body: JSON.stringify({ senderId }),
-  }).catch(() => {
-    // Best effort — don't fail the UI
-  });
 }
 
 /**
  * Get the current session status for a sender.
- * Used for polling after initiating a login.
  */
 export async function getSessionStatus(
   senderId: string,

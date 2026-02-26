@@ -1,6 +1,5 @@
 // Re-export from shared location
 export {
-  startLoginSession,
-  stopLoginSession,
+  connectLinkedIn,
   getSessionStatus,
 } from "@/lib/linkedin/actions";

@@ -348,6 +348,12 @@ model Sender {
   // LinkedIn identity
   linkedinProfileUrl String?
 
+  // LinkedIn credentials (encrypted at rest)
+  linkedinEmail    String? // plaintext — not sensitive
+  linkedinPassword String? // AES-256-GCM encrypted
+  totpSecret       String? // AES-256-GCM encrypted
+  loginMethod      String  @default("none") // "credentials" | "infinite" | "extension" | "none"
+
   // Session management (encrypted cookies)
   sessionData    String? // AES-256-GCM encrypted JSON
   sessionStatus  String  @default("not_setup") // not_setup | active | expired

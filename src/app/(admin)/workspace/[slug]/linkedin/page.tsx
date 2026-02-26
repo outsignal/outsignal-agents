@@ -110,6 +110,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
                     <TableCell>
                       <ConnectButton
                         senderId={sender.id}
+                        senderName={sender.name}
                         sessionStatus={sender.sessionStatus}
                       />
                     </TableCell>

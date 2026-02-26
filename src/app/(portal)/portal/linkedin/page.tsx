@@ -105,6 +105,7 @@ export default async function PortalLinkedInPage() {
                     <TableCell>
                       <ConnectButton
                         senderId={sender.id}
+                        senderName={sender.name}
                         sessionStatus={sender.sessionStatus}
                       />
                     </TableCell>

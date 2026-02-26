@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { startLoginSession, getSessionStatus } from "@/lib/linkedin/actions";
+import { useState, useCallback } from "react";
+import { getSessionStatus } from "@/lib/linkedin/actions";
+import { ConnectModal } from "@/components/linkedin/connect-modal";
 
 interface ConnectButtonProps {
   senderId: string;
+  senderName: string;
   sessionStatus: string;
 }
 
@@ -14,74 +16,47 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   not_setup: { label: "Not Set Up", className: "bg-gray-100 text-gray-800" },
 };
 
-export function ConnectButton({ senderId, sessionStatus }: ConnectButtonProps) {
+export function ConnectButton({ senderId, senderName, sessionStatus }: ConnectButtonProps) {
   const [status, setStatus] = useState(sessionStatus);
-  const [loading, setLoading] = useState(false);
-  const [polling, setPolling] = useState(false);
-  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
-  // Poll for status changes when a login session is active
-  const poll = useCallback(async () => {
-    const result = await getSessionStatus(senderId);
-    if (result?.status === "active" && status !== "active") {
-      setStatus("active");
-      setLoading(false);
-      setPolling(false);
-      setLoginUrl(null);
-    }
-  }, [senderId, status]);
-
-  useEffect(() => {
-    if (!polling) return;
-
-    const interval = setInterval(poll, 5000);
-    return () => clearInterval(interval);
-  }, [polling, poll]);
-
-  const handleConnect = async () => {
-    setLoading(true);
-    try {
-      const { loginUrl: url } = await startLoginSession(senderId);
-      setLoginUrl(url);
-      setPolling(true);
-    } catch (err) {
-      setLoading(false);
-      alert(err instanceof Error ? err.message : "Failed to start login session");
-    }
-  };
+  const handleModalChange = useCallback(
+    (open: boolean) => {
+      setModalOpen(open);
+      if (!open) {
+        getSessionStatus(senderId).then((result) => {
+          if (result) setStatus(result.status);
+        });
+      }
+    },
+    [senderId],
+  );
 
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_setup;
 
   return (
-    <div className="flex items-center gap-3">
-      <span
-        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config.className}`}
-      >
-        {config.label}
-      </span>
+    <>
+      <div className="flex items-center gap-3">
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config.className}`}
+        >
+          {config.label}
+        </span>
 
-      {loginUrl ? (
-        <a
-          href={loginUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-white bg-[#F0FF7A] text-black hover:bg-[#d9e66e] transition-colors"
-        >
-          Open Login Window
-        </a>
-      ) : (
         <button
-          onClick={handleConnect}
-          disabled={loading}
-          className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+          onClick={() => setModalOpen(true)}
+          className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
-          {loading
-            ? "Starting session..."
-            : status === "active"
-              ? "Reconnect"
-              : "Connect LinkedIn"}
+          {status === "active" ? "Reconnect" : "Connect LinkedIn"}
         </button>
-      )}
-    </div>
+      </div>
+
+      <ConnectModal
+        open={modalOpen}
+        onOpenChange={handleModalChange}
+        senderId={senderId}
+        senderName={senderName}
+      />
+    </>
   );
 }
