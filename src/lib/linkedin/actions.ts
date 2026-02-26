@@ -1,9 +1,30 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { revalidatePath } from "next/cache";
 
 const WORKER_URL = process.env.LINKEDIN_WORKER_URL;
 const WORKER_SECRET = process.env.WORKER_API_SECRET;
+
+/**
+ * Create a new LinkedIn sender for a workspace.
+ * Used from the client portal to let clients add their own accounts.
+ */
+export async function addLinkedInAccount(
+  workspaceSlug: string,
+  name: string,
+): Promise<{ id: string }> {
+  const sender = await prisma.sender.create({
+    data: {
+      workspaceSlug,
+      name,
+      status: "setup",
+    },
+  });
+
+  revalidatePath("/portal/linkedin");
+  return { id: sender.id };
+}
 
 /**
  * Start a VNC login session for a sender.

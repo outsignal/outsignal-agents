@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { ConnectButton } from "@/components/linkedin/connect-button";
+import { AddAccountButton } from "@/components/linkedin/add-account-button";
 
 export default async function PortalLinkedInPage() {
   const { workspaceSlug } = await getPortalSession();
@@ -51,8 +52,9 @@ export default async function PortalLinkedInPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="font-heading">Senders</CardTitle>
+          <AddAccountButton workspaceSlug={workspaceSlug} />
         </CardHeader>
         <CardContent>
           <Table>
