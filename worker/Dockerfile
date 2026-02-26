@@ -30,12 +30,13 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --production
+COPY package.json package-lock.json ./
+RUN npm install
 
 COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc
+RUN npm prune --production
 
 # Expose the session server port (Railway assigns PORT dynamically)
 EXPOSE 8080

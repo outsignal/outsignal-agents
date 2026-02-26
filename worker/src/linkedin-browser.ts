@@ -87,8 +87,17 @@ export class LinkedInBrowser {
    */
   async launch(): Promise<void> {
     // Dynamic import — agent-browser may not be available in all environments
-    const { BrowserManager: BM } = await import("@anthropic-ai/agent-browser");
-    const manager = new BM() as unknown as BrowserManager;
+    let BM: new () => BrowserManager;
+    try {
+      const mod = await import("@anthropic-ai/agent-browser");
+      BM = mod.BrowserManager as unknown as new () => BrowserManager;
+    } catch {
+      throw new Error(
+        "agent-browser not available — LinkedIn action execution is disabled. " +
+        "Session login via VNC still works.",
+      );
+    }
+    const manager = new BM();
 
     this.session = await manager.launch({
       proxy: this.proxyUrl,
