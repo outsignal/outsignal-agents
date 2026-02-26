@@ -66,6 +66,12 @@ export class VncManager {
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
+      // Clean UI — suppress warnings, hide bookmarks, skip first-run
+      "--test-type",              // suppresses "--no-sandbox" infobar
+      "--no-default-browser-check",
+      "--no-first-run",
+      "--disable-infobars",
+      "--user-data-dir=/tmp/chromium-session",
     ];
 
     if (proxyUrl) {
