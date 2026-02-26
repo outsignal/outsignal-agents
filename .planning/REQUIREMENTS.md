@@ -84,17 +84,43 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| ENRICH-01 | Phase 1 | Pending |
+| ENRICH-06 | Phase 1 | Pending |
+| ENRICH-07 | Phase 1 | Pending |
+| AI-01 | Phase 1 | Pending |
+| AI-02 | Phase 1 | Pending |
+| AI-03 | Phase 1 | Pending |
+| PROV-01 | Phase 2 | Pending |
+| PROV-02 | Phase 2 | Pending |
+| PROV-03 | Phase 2 | Pending |
+| PROV-04 | Phase 2 | Pending |
+| PROV-05 | Phase 2 | Pending |
+| ENRICH-02 | Phase 2 | Pending |
+| ENRICH-03 | Phase 2 | Pending |
+| ENRICH-04 | Phase 2 | Pending |
+| AI-04 | Phase 3 | Pending |
+| AI-05 | Phase 3 | Pending |
+| ENRICH-05 | Phase 3 | Pending |
+| SEARCH-01 | Phase 4 | Pending |
+| SEARCH-02 | Phase 4 | Pending |
+| SEARCH-03 | Phase 4 | Pending |
+| SEARCH-04 | Phase 4 | Pending |
+| SEARCH-05 | Phase 4 | Pending |
+| LIST-01 | Phase 4 | Pending |
+| LIST-02 | Phase 4 | Pending |
+| LIST-03 | Phase 4 | Pending |
+| LIST-04 | Phase 4 | Pending |
+| EXPORT-01 | Phase 5 | Pending |
+| EXPORT-02 | Phase 5 | Pending |
+| EXPORT-03 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26
+- v1 requirements: 29 total
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-26 after initial definition*
+*Last updated: 2026-02-26 after roadmap creation (traceability populated)*
