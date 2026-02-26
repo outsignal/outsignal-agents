@@ -69,8 +69,8 @@ const LOGIN_PAGE_HTML = `<!DOCTYPE html>
     #vnc-container {
       width: 100%; height: calc(100vh - 49px);
       display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
     }
-    #vnc-container canvas { max-width: 100%; max-height: 100%; }
     #success-overlay {
       display: none; position: fixed; inset: 0;
       background: rgba(0,0,0,0.8); z-index: 100;
@@ -116,9 +116,10 @@ const LOGIN_PAGE_HTML = `<!DOCTYPE html>
     const rfb = new RFB(container, wsUrl, { wsProtocols: ['binary'] });
     rfb.viewOnly = false;
     rfb.scaleViewport = true;
+    rfb.clipViewport = true;
     rfb.resizeSession = false;
-    rfb.qualityLevel = 6;
-    rfb.compressionLevel = 2;
+    rfb.qualityLevel = 9;
+    rfb.compressionLevel = 0;
 
     rfb.addEventListener('connect', () => {
       statusEl.textContent = 'Connected — Please log into LinkedIn';

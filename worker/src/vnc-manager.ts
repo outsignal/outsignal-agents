@@ -41,7 +41,7 @@ export class VncManager {
     // 1. Start Xvfb (virtual framebuffer)
     const xvfb = spawn("Xvfb", [
       this.display,
-      "-screen", "0", "1280x720x24",
+      "-screen", "0", "1920x1080x24",
       "-ac",
     ], { stdio: "pipe" });
 
@@ -60,7 +60,7 @@ export class VncManager {
       "--no-sandbox",
       "--disable-gpu",
       "--disable-dev-shm-usage",
-      "--window-size=1280,720",
+      "--window-size=1920,1080",
       "--start-maximized",
       `--remote-debugging-port=${this.cdpPort}`,
       "--disable-background-timer-throttling",
