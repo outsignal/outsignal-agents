@@ -37,6 +37,7 @@ const FIELD_ALIASES: Record<string, string> = {
   last_name: "lastName",
   linkedin_url: "linkedinUrl",
   linkedin_profile: "linkedinUrl",
+  personal_linkedin: "linkedinUrl",
   linkedinurl: "linkedinUrl",
   company_domain: "companyDomain",
   companydomain: "companyDomain",
@@ -70,6 +71,21 @@ async function enrichPerson(
   const companyName = payload.company
     ? normalizeCompanyName(payload.company)
     : undefined;
+
+  // Auto-derive companyDomain from email if not provided
+  const FREE_EMAIL_DOMAINS = new Set([
+    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "hotmail.com",
+    "hotmail.co.uk", "outlook.com", "live.com", "live.co.uk", "aol.com",
+    "icloud.com", "me.com", "mac.com", "mail.com", "mail.ru", "msn.com",
+    "protonmail.com", "proton.me", "ymail.com", "zoho.com", "gmx.com",
+    "fastmail.com", "hey.com", "tutanota.com", "pm.me",
+  ]);
+  if (!payload.companyDomain) {
+    const emailDomain = normalizedEmail.split("@")[1];
+    if (emailDomain && !FREE_EMAIL_DOMAINS.has(emailDomain)) {
+      payload.companyDomain = emailDomain;
+    }
+  }
 
   // Collect extra fields into enrichmentData
   const extraFields: Record<string, unknown> = {};
