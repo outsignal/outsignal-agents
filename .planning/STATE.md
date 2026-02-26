@@ -41,10 +41,10 @@ Progress: [████░░░░░░] ~30%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
-| 02-provider-adapters-waterfall | 2 | ~4 min | ~2 min |
+| 02-provider-adapters-waterfall | 3 | ~6 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (schema), 01-02 (normalizers), 01-03 (async queue), 02-01 (schema+types+costs+merge), 02-02 (email adapters)
+- Last 5 plans: 01-02 (normalizers), 01-03 (async queue), 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters)
 - Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - [02-02]: FindyMail uses .passthrough() Zod + fallback extraction paths (3 alternative response paths) — API shape MEDIUM confidence
 - [02-02]: FindyMail logs rawResponse on every call — needed for schema discovery during initial integration
 - [02-02]: Prospeo /enrich-person used exclusively — /social-url-finder removed March 2026
+- [02-03]: AI Ark auth header X-TOKEN is LOW confidence — adapter warns on 401/403 with fix instructions pointing to AUTH_HEADER_NAME constant
+- [02-03]: Firecrawl default export is v2 FirecrawlClient (not v1 FirecrawlApp) — extract() takes single bundled-arg object, not (urls, params)
+- [02-03]: Zod schema cast to `any` to bridge zod v3 (project) and zod v4 (Firecrawl SDK bundled) type incompatibility — safe at runtime
 
 ### Pending Todos
 
@@ -85,12 +88,12 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 2]: AI Ark API shape is LOW confidence from research — verify exact endpoint/response schema at aiark.com docs before implementing adapter
+- [Phase 2]: AI Ark API shape implemented defensively (LOW confidence) — X-TOKEN auth header may be wrong; monitor 401/403 in logs
 - [Phase 2]: FindyMail API shape is MEDIUM confidence — implemented defensively with .passthrough() and fallback extraction; monitor rawResponse logs in production
 - [Phase 5]: EmailBison campaign lead push endpoint not yet confirmed — research before Phase 5 planning
 
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-02-PLAN.md — Prospeo, LeadMagic, FindyMail email adapters
+Stopped at: Completed 02-03-PLAN.md — AI Ark and Firecrawl company data adapters
 Resume file: None
