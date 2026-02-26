@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-26T22:16:16.500Z"
+last_updated: "2026-02-26T23:00:55.193Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 14
+  completed_plans: 14
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 3 complete — ready for Phase 4
+**Current focus:** Phase 03.1 API Security Hardening — Plan 01 complete
 
 ## Current Position
 
-Phase: 3 of 5 (ICP Qualification + Leads Agent) — COMPLETE
-Plan: 3 of 3 complete (03-03 — MCP tools for search/enrich/score/lists/export/status/workspace)
-Status: Phase 3 complete — all 9 MCP tools registered in outsignal-leads server; ready for Phase 4
-Last activity: 2026-02-26 — Completed 03-03 (MCP tools — all 6 leads agent capabilities)
+Phase: 03.1 (API Security Hardening) — COMPLETE
+Plan: 2 of 2 complete (03.1-02 — test infrastructure gap closure: dailyCostTotal mock, DAILY_CAP_HIT tests, TS fix)
+Status: Phase 03.1 complete — all plans done; test coverage and TS hygiene closed
+Last activity: 2026-02-26 — Completed 03.1-02 (test infra: dailyCostTotal mock, DAILY_CAP_HIT tests, TS2322 fix)
 
-Progress: [██████████] ~100%
+Progress: [██████████] Phase 03.1 complete (2/2 plans)
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [██████████] ~100%
 | Phase 03-icp-qualification-leads-agent P01 | 6 | 2 tasks | 6 files |
 | Phase 03-icp-qualification-leads-agent P02 | 2 | 2 tasks | 3 files |
 | Phase 03-icp-qualification-leads-agent P03 | 3 | 2 tasks | 8 files |
+| Phase 03.1-api-security-hardening P01 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,13 @@ Recent decisions affecting current work:
 - [Phase 03-03]: Spread operator for Prisma WHERE clauses avoids TS2339 type inference error on typed where variable
 - [Phase 03-03]: Double-check tag membership with client-side includes() after Prisma contains query to prevent substring false positives
 - [Phase 03-03]: Export hard gate: ANY non-valid email blocks entire export — strict deliverability policy consistent with Phase 03-02
+- [Phase 03.1-api-security-hardening]: global.fetch cast as unknown as typeof fetch — idiomatic Vitest double-cast for global mock type compatibility
+- [Phase 03.1-api-security-hardening]: DAILY_CAP_HIT tests mock onProcess directly (not waterfall) — queue mechanics testable independently; dailyCostTotal mock enables future waterfall tests
+- [03.1-01]: validateCronSecret accepts Request (not NextRequest) — minimal interface decoupled from Next.js, only needs .headers.get()
+- [03.1-01]: crypto.timingSafeEqual for constant-time comparison — prevents timing-based token enumeration attacks
+- [03.1-01]: Fail closed when CRON_SECRET not configured — rejects all requests, logs warning to console
+- [03.1-01]: Buffer length check before timingSafeEqual — prevents ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH throw
+- [03.1-01]: Generic 401 {"error":"Unauthorized"} response — no auth mechanism details exposed to callers
 
 ### Pending Todos
 
@@ -118,5 +126,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 03-03-PLAN.md — MCP tools for outsignal-leads server (search/enrich/score/lists/export/status/workspace) — Phase 3 complete
+Stopped at: Completed 03.1-02-PLAN.md — test infrastructure gap closure (dailyCostTotal mock, DAILY_CAP_HIT tests, TS2322 fix) — Phase 03.1 complete
 Resume file: None
