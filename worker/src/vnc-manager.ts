@@ -66,8 +66,9 @@ export class VncManager {
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
-      // Clean UI — suppress warnings, hide bookmarks, skip first-run
-      "--test-type",              // suppresses "--no-sandbox" infobar
+      // App mode — shows only the page content, no browser chrome
+      "--app=https://www.linkedin.com/login",
+      "--test-type",
       "--no-default-browser-check",
       "--no-first-run",
       "--disable-infobars",
@@ -77,9 +78,6 @@ export class VncManager {
     if (proxyUrl) {
       chromiumArgs.push(`--proxy-server=${proxyUrl}`);
     }
-
-    // Open LinkedIn login page
-    chromiumArgs.push("https://www.linkedin.com/login");
 
     const chromium = spawn(chromiumPath, chromiumArgs, {
       stdio: "pipe",
