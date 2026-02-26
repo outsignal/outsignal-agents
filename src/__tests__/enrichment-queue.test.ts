@@ -218,4 +218,123 @@ describe("processNextChunk", () => {
     expect(onProcess).toHaveBeenCalledWith("p4", expect.anything());
     expect(result!.done).toBe(true);
   });
+
+  it("pauses job when onProcess throws DAILY_CAP_HIT", async () => {
+    const mockJob = {
+      id: "job-cap",
+      entityType: "person",
+      provider: "prospeo",
+      status: "pending",
+      totalCount: 3,
+      processedCount: 0,
+      chunkSize: 50,
+      entityIds: JSON.stringify(["p1", "p2", "p3"]),
+      errorLog: null,
+      workspaceSlug: null,
+      resumeAt: null,
+    };
+    (prisma.enrichmentJob.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(mockJob);
+    (prisma.enrichmentJob.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    const onProcess = vi.fn()
+      .mockResolvedValueOnce(undefined)    // p1 succeeds
+      .mockRejectedValueOnce(new Error("DAILY_CAP_HIT"));  // p2 hits cap
+
+    const result = await processNextChunk(onProcess);
+
+    expect(result).toMatchObject({
+      jobId: "job-cap",
+      processed: 1,
+      total: 3,
+      done: false,
+      status: "paused",
+    });
+
+    // Should have called update with paused status and processedCount = 1
+    // (first update is status -> running, second is the pause)
+    const pauseCall = (prisma.enrichmentJob.update as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call: unknown[]) => (call[0] as Record<string, unknown>).data && ((call[0] as Record<string, Record<string, unknown>>).data.status === "paused")
+    );
+    expect(pauseCall).toBeDefined();
+    expect(pauseCall![0]).toMatchObject({
+      where: { id: "job-cap" },
+      data: expect.objectContaining({
+        status: "paused",
+        processedCount: 1,
+      }),
+    });
+    // resumeAt should be set to a future date
+    expect(pauseCall![0].data.resumeAt).toBeInstanceOf(Date);
+    expect(pauseCall![0].data.resumeAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("pauses immediately when first entity hits DAILY_CAP_HIT (0 processed)", async () => {
+    const mockJob = {
+      id: "job-cap-zero",
+      entityType: "person",
+      provider: "prospeo",
+      status: "pending",
+      totalCount: 2,
+      processedCount: 0,
+      chunkSize: 50,
+      entityIds: JSON.stringify(["p1", "p2"]),
+      errorLog: null,
+      workspaceSlug: null,
+      resumeAt: null,
+    };
+    (prisma.enrichmentJob.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(mockJob);
+    (prisma.enrichmentJob.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    const onProcess = vi.fn().mockRejectedValue(new Error("DAILY_CAP_HIT"));
+
+    const result = await processNextChunk(onProcess);
+
+    expect(result).toMatchObject({
+      jobId: "job-cap-zero",
+      processed: 0,
+      total: 2,
+      done: false,
+      status: "paused",
+    });
+    // onProcess called once (first entity), then threw DAILY_CAP_HIT
+    expect(onProcess).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses mid-chunk when DAILY_CAP_HIT fires after partial progress", async () => {
+    const mockJob = {
+      id: "job-cap-mid",
+      entityType: "company",
+      provider: "firecrawl",
+      status: "pending",
+      totalCount: 5,
+      processedCount: 2, // resuming from offset 2
+      chunkSize: 3,
+      entityIds: JSON.stringify(["c1", "c2", "c3", "c4", "c5"]),
+      errorLog: null,
+      workspaceSlug: null,
+      resumeAt: null,
+    };
+    (prisma.enrichmentJob.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(mockJob);
+    (prisma.enrichmentJob.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    const onProcess = vi.fn()
+      .mockResolvedValueOnce(undefined)    // c3 succeeds
+      .mockResolvedValueOnce(undefined)    // c4 succeeds
+      .mockRejectedValueOnce(new Error("DAILY_CAP_HIT"));  // c5 hits cap
+
+    const result = await processNextChunk(onProcess);
+
+    expect(result).toMatchObject({
+      processed: 2,  // c3 and c4 succeeded before cap
+      total: 5,
+      done: false,
+      status: "paused",
+    });
+    // processedCount in DB should be chunkStart(2) + processedInChunk(2) = 4
+    const pauseCall = (prisma.enrichmentJob.update as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call: unknown[]) => (call[0] as Record<string, unknown>).data && ((call[0] as Record<string, Record<string, unknown>>).data.status === "paused")
+    );
+    expect(pauseCall).toBeDefined();
+    expect(pauseCall![0].data.processedCount).toBe(4);
+  });
 });
