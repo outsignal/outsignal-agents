@@ -71,3 +71,21 @@ export type EmailAdapter = (input: EmailAdapterInput) => Promise<EmailProviderRe
 
 /** Company provider adapter — takes domain, returns company data. */
 export type CompanyAdapter = (domain: string) => Promise<CompanyProviderResult>;
+
+/** Result from a person data provider adapter — enriches person fields beyond just email. */
+export interface PersonProviderResult {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  linkedinUrl?: string;
+  location?: string;
+  company?: string;
+  companyDomain?: string;
+  source: Provider;
+  rawResponse: unknown;
+  costUsd: number;
+}
+
+/** Person data provider adapter — takes person identifiers, returns enriched person fields. */
+export type PersonAdapter = (input: EmailAdapterInput) => Promise<PersonProviderResult>;
