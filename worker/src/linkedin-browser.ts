@@ -89,6 +89,7 @@ export class LinkedInBrowser {
     // Dynamic import — agent-browser may not be available in all environments
     let BM: new () => BrowserManager;
     try {
+      // @ts-ignore — module not installed; guarded by try/catch at runtime
       const mod = await import("@anthropic-ai/agent-browser");
       BM = mod.BrowserManager as unknown as new () => BrowserManager;
     } catch {
