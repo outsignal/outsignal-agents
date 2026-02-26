@@ -9,28 +9,33 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { registerSearchTools } from "./tools/search.js";
+import { registerEnrichTools } from "./tools/enrich.js";
+import { registerScoreTools } from "./tools/score.js";
+import { registerListTools } from "./tools/lists.js";
+import { registerExportTools } from "./tools/export.js";
+import { registerStatusTools } from "./tools/status.js";
+import { registerWorkspaceTools } from "./tools/workspace.js";
 
 const server = new McpServer({
   name: "outsignal-leads",
   version: "1.0.0",
 });
 
-// --- Tool registrations will be added in Plan 03-03 ---
-// Placeholder: register a ping tool to verify the server starts correctly
-server.tool(
-  "ping",
-  "Health check — returns pong. Use to verify the MCP server is running.",
-  {},
-  async () => {
-    return { content: [{ type: "text" as const, text: "pong" }] };
-  }
-);
+// Register all tool modules
+registerSearchTools(server);
+registerEnrichTools(server);
+registerScoreTools(server);
+registerListTools(server);
+registerExportTools(server);
+registerStatusTools(server);
+registerWorkspaceTools(server);
 
 // --- Connect transport ---
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("[outsignal-leads] MCP server connected via stdio");
+  console.error("[outsignal-leads] MCP server connected via stdio — all tools registered");
 }
 
 main().catch((err) => {
