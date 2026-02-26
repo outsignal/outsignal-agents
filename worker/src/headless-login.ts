@@ -67,6 +67,16 @@ function log(msg: string): void {
   console.log(`[HeadlessLogin] ${msg}`);
 }
 
+/**
+ * Extract the evaluated value from a Runtime.evaluate CDP response.
+ * CDP returns { result: { result: { type, value } } } — this unwraps it.
+ */
+function evalValue(response: CdpResponse): unknown {
+  const outer = response.result as Record<string, unknown> | undefined;
+  const inner = outer?.result as Record<string, unknown> | undefined;
+  return inner?.value;
+}
+
 function killProcess(proc: ChildProcess): void {
   try {
     if (!proc.killed) {
@@ -224,7 +234,7 @@ export async function headlessLogin(options: {
 
     // Log page title to verify we got the login page
     const titleResult = await cdpSend(ws, "Runtime.evaluate", { expression: "document.title" }, nextId());
-    const pageTitle = String((titleResult.result as Record<string, unknown>)?.value ?? "");
+    const pageTitle = String(evalValue(titleResult) ?? "");
     log(`Page loaded — title: "${pageTitle}"`);
 
     // --- 7–8. Fill email and password ---
@@ -296,7 +306,7 @@ export async function headlessLogin(options: {
       { expression: "window.location.href" },
       nextId(),
     );
-    const currentUrl = String((urlResult.result as Record<string, unknown>)?.value ?? "");
+    const currentUrl = String(evalValue(urlResult) ?? "");
     log(`Current URL after login: ${currentUrl}`);
 
     const is2faChallenge =
@@ -407,7 +417,7 @@ export async function headlessLogin(options: {
         { expression: "window.location.href" },
         nextId(),
       );
-      const url = String((result.result as Record<string, unknown>)?.value ?? "");
+      const url = String(evalValue(result) ?? "");
 
       // Log URL changes for debugging
       if (url !== lastLoggedUrl) {
@@ -436,7 +446,7 @@ export async function headlessLogin(options: {
           },
           nextId(),
         );
-        const errorText = (errorCheck.result as Record<string, unknown>)?.value;
+        const errorText = evalValue(errorCheck);
         if (errorText) {
           throw new Error(`LinkedIn login failed: ${errorText}`);
         }
@@ -449,8 +459,8 @@ export async function headlessLogin(options: {
       // Capture final page state for debugging
       const finalUrl = await cdpSend(ws, "Runtime.evaluate", { expression: "window.location.href" }, nextId());
       const finalTitle = await cdpSend(ws, "Runtime.evaluate", { expression: "document.title" }, nextId());
-      const finalUrlVal = String((finalUrl.result as Record<string, unknown>)?.value ?? "");
-      const finalTitleVal = String((finalTitle.result as Record<string, unknown>)?.value ?? "");
+      const finalUrlVal = String(evalValue(finalUrl) ?? "");
+      const finalTitleVal = String(evalValue(finalTitle) ?? "");
       log(`Timeout — final URL: ${finalUrlVal}, title: ${finalTitleVal}`);
       throw new Error(`Login timed out. Final page: "${finalTitleVal}" at ${finalUrlVal}`);
     }
