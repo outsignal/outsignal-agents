@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Enrichment Foundation** - Schema extension, dedup logic, AI normalization, and async job infrastructure (completed 2026-02-26)
 - [x] **Phase 2: Provider Adapters + Waterfall** - All four provider adapters wired into the waterfall pipeline (completed 2026-02-26)
-- [ ] **Phase 3: ICP Qualification + Leads Agent** - Firecrawl/Haiku qualification, custom AI prompts, and the chat-driven leads agent
+- [x] **Phase 3: ICP Qualification + Leads Agent** - Firecrawl/Haiku qualification, custom AI prompts, and the chat-driven leads agent (completed 2026-02-26)
 - [ ] **Phase 4: Search, Filter + List Building** - Full lead search UI and workspace-scoped list management
 - [ ] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV
 
@@ -96,6 +96,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Enrichment Foundation | 3/3 | Complete   | 2026-02-26 |
 | 2. Provider Adapters + Waterfall | 6/6 | Complete   | 2026-02-26 |
-| 3. ICP Qualification + Leads Agent | 2/3 | In Progress|  |
+| 3. ICP Qualification + Leads Agent | 3/3 | Complete   | 2026-02-26 |
 | 4. Search, Filter + List Building | 0/TBD | Not started | - |
 | 5. Export + EmailBison Integration | 0/TBD | Not started | - |
