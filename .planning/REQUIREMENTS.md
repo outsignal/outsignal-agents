@@ -9,19 +9,19 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Enrichment Pipeline
 
-- [ ] **ENRICH-01**: System checks local DB for existing person/company data before calling any paid API (dedup-first)
+- [x] **ENRICH-01**: System checks local DB for existing person/company data before calling any paid API (dedup-first)
 - [ ] **ENRICH-02**: System enriches person data via waterfall strategy — Prospeo → AI Ark → LeadMagic → FindyMail, cheapest source first
 - [ ] **ENRICH-03**: System enriches company data via waterfall strategy — AI Ark → Firecrawl, with local cache check
 - [ ] **ENRICH-04**: System finds email addresses via waterfall — Prospeo → LeadMagic → FindyMail
 - [ ] **ENRICH-05**: System verifies email addresses via LeadMagic before export (hard gate — no unverified emails exported)
-- [ ] **ENRICH-06**: System tracks enrichment provenance — which source provided which data, timestamp, cost per record
+- [x] **ENRICH-06**: System tracks enrichment provenance — which source provided which data, timestamp, cost per record
 - [ ] **ENRICH-07**: System handles batch enrichment asynchronously (not blocked by Vercel 30s timeout)
 
 ### AI Normalization & Qualification
 
-- [ ] **AI-01**: System normalizes industry/vertical classification via Claude (replace Clay AI)
-- [ ] **AI-02**: System normalizes company names via Claude (extend existing normalize.ts)
-- [ ] **AI-03**: System extracts structured fields from unstructured data via Claude (job title standardization, seniority level)
+- [x] **AI-01**: System normalizes industry/vertical classification via Claude (replace Clay AI)
+- [x] **AI-02**: System normalizes company names via Claude (extend existing normalize.ts)
+- [x] **AI-03**: System extracts structured fields from unstructured data via Claude (job title standardization, seniority level)
 - [ ] **AI-04**: System qualifies leads against ICP using Firecrawl + Haiku — crawl prospect's website and classify fit
 - [ ] **AI-05**: System supports custom AI enrichment prompts per workspace/project (different clients need different personalization and normalization rules)
 
@@ -86,12 +86,12 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENRICH-01 | Phase 1 | Pending |
-| ENRICH-06 | Phase 1 | Pending |
+| ENRICH-01 | Phase 1 | Complete |
+| ENRICH-06 | Phase 1 | Complete |
 | ENRICH-07 | Phase 1 | Pending |
-| AI-01 | Phase 1 | Pending |
-| AI-02 | Phase 1 | Pending |
-| AI-03 | Phase 1 | Pending |
+| AI-01 | Phase 1 | Complete |
+| AI-02 | Phase 1 | Complete |
+| AI-03 | Phase 1 | Complete |
 | PROV-01 | Phase 2 | Pending |
 | PROV-02 | Phase 2 | Pending |
 | PROV-03 | Phase 2 | Pending |
