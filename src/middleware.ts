@@ -24,12 +24,14 @@ export async function middleware(req: NextRequest) {
     return redirectToLogin(req);
   }
 
-  // Pass session data to server components via headers
-  const res = NextResponse.next();
-  res.headers.set("x-portal-workspace", session.workspaceSlug);
-  res.headers.set("x-portal-email", session.email);
+  // Pass session data to server components via request headers
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-portal-workspace", session.workspaceSlug);
+  requestHeaders.set("x-portal-email", session.email);
 
-  return res;
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 }
 
 function redirectToLogin(req: NextRequest): NextResponse {

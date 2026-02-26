@@ -18,14 +18,16 @@ export function ConnectButton({ senderId, sessionStatus }: ConnectButtonProps) {
   const [status, setStatus] = useState(sessionStatus);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
 
-  // Poll for status changes when a login window is open
+  // Poll for status changes when a login session is active
   const poll = useCallback(async () => {
     const result = await getSessionStatus(senderId);
     if (result?.status === "active" && status !== "active") {
       setStatus("active");
       setLoading(false);
       setPolling(false);
+      setLoginUrl(null);
     }
   }, [senderId, status]);
 
@@ -39,8 +41,8 @@ export function ConnectButton({ senderId, sessionStatus }: ConnectButtonProps) {
   const handleConnect = async () => {
     setLoading(true);
     try {
-      const { loginUrl } = await startLoginSession(senderId);
-      window.open(loginUrl, "_blank", "width=1320,height=800");
+      const { loginUrl: url } = await startLoginSession(senderId);
+      setLoginUrl(url);
       setPolling(true);
     } catch (err) {
       setLoading(false);
@@ -58,17 +60,28 @@ export function ConnectButton({ senderId, sessionStatus }: ConnectButtonProps) {
         {config.label}
       </span>
 
-      <button
-        onClick={handleConnect}
-        disabled={loading}
-        className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
-      >
-        {loading
-          ? "Connecting..."
-          : status === "active"
-            ? "Reconnect"
-            : "Connect LinkedIn"}
-      </button>
+      {loginUrl ? (
+        <a
+          href={loginUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-white bg-[#F0FF7A] text-black hover:bg-[#d9e66e] transition-colors"
+        >
+          Open Login Window
+        </a>
+      ) : (
+        <button
+          onClick={handleConnect}
+          disabled={loading}
+          className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+        >
+          {loading
+            ? "Starting session..."
+            : status === "active"
+              ? "Reconnect"
+              : "Connect LinkedIn"}
+        </button>
+      )}
     </div>
   );
 }
