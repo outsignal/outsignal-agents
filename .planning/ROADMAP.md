@@ -13,7 +13,7 @@ Build a self-hosted lead enrichment pipeline that replaces Clay end-to-end: sche
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Enrichment Foundation** - Schema extension, dedup logic, AI normalization, and async job infrastructure (completed 2026-02-26)
-- [ ] **Phase 2: Provider Adapters + Waterfall** - All four provider adapters wired into the waterfall pipeline
+- [x] **Phase 2: Provider Adapters + Waterfall** - All four provider adapters wired into the waterfall pipeline (completed 2026-02-26)
 - [ ] **Phase 3: ICP Qualification + Leads Agent** - Firecrawl/Haiku qualification, custom AI prompts, and the chat-driven leads agent
 - [ ] **Phase 4: Search, Filter + List Building** - Full lead search UI and workspace-scoped list management
 - [ ] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Enrichment Foundation | 3/3 | Complete   | 2026-02-26 |
-| 2. Provider Adapters + Waterfall | 4/5 | In Progress|  |
+| 2. Provider Adapters + Waterfall | 5/5 | Complete   | 2026-02-26 |
 | 3. ICP Qualification + Leads Agent | 0/TBD | Not started | - |
 | 4. Search, Filter + List Building | 0/TBD | Not started | - |
 | 5. Export + EmailBison Integration | 0/TBD | Not started | - |

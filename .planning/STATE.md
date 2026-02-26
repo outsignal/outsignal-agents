@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-26T18:18:34Z"
+last_updated: "2026-02-26T18:30:30Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 
 ## Current Position
 
-Phase: 2 of 5 (Provider Adapters + Waterfall)
-Plan: 4 of 5 in current phase (02-04 complete)
-Status: In progress
-Last activity: 2026-02-26 — Completed 02-04 (waterfall orchestration + queue integration)
+Phase: 2 of 5 (Provider Adapters + Waterfall) — COMPLETE
+Plan: 5 of 5 in current phase (02-05 complete)
+Status: Phase 2 complete, ready for Phase 3
+Last activity: 2026-02-26 — Completed 02-05 (cost dashboard API + Recharts admin page)
 
-Progress: [█████░░░░░] ~40%
+Progress: [████████░░] ~60%
 
 ## Performance Metrics
 
@@ -41,10 +41,10 @@ Progress: [█████░░░░░] ~40%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
-| 02-provider-adapters-waterfall | 4 | ~9 min | ~2.25 min |
+| 02-provider-adapters-waterfall | 5 | ~11 min | ~2.2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (async queue), 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters), 02-04 (waterfall+queue integration)
+- Last 5 plans: 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters), 02-04 (waterfall+queue integration), 02-05 (cost dashboard)
 - Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
@@ -84,6 +84,9 @@ Recent decisions affecting current work:
 - [02-04]: DAILY_CAP_HIT thrown as Error, caught by processNextChunk, sets resumeAt = midnight UTC next day — clean control flow without custom error types
 - [02-04]: Circuit breaker is in-memory per-invocation — resets between cron calls; protects only within a single batch run, not across runs
 - [02-04]: Person.email is String @unique (never null) — run trigger relies on dedup gate inside waterfall to avoid re-enriching people
+- [02-05]: Dashboard placed in (admin) route group (not /admin) — consistent with existing admin pages using AppShell layout
+- [02-05]: DailyCostTotal used for byDate query — avoids expensive groupBy on EnrichmentLog by date; O(days) vs O(log_rows)
+- [02-05]: ReferenceLine at daily cap on trend chart — immediate visual feedback when approaching/hitting cap
 
 ### Pending Todos
 
@@ -98,5 +101,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-04-PLAN.md — waterfall orchestration + queue integration
+Stopped at: Completed 02-05-PLAN.md — cost dashboard API + Recharts admin page (Phase 2 complete)
 Resume file: None
