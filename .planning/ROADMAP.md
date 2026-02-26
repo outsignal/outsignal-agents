@@ -15,6 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Enrichment Foundation** - Schema extension, dedup logic, AI normalization, and async job infrastructure (completed 2026-02-26)
 - [x] **Phase 2: Provider Adapters + Waterfall** - All four provider adapters wired into the waterfall pipeline (completed 2026-02-26)
 - [x] **Phase 3: ICP Qualification + Leads Agent** - Firecrawl/Haiku qualification, custom AI prompts, and the chat-driven leads agent (completed 2026-02-26)
+- [ ] **Phase 3.1: API Security + Hardening** - Auth guards on enrichment routes, MCP env var fixes, test infrastructure cleanup (INSERTED — gap closure from v1.0 audit)
 - [ ] **Phase 4: Search, Filter + List Building** - Full lead search UI and workspace-scoped list management
 - [ ] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV
 
@@ -65,6 +66,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] 03-02-PLAN.md — ICP scoring engine (crawl cache + Haiku scorer) + LeadMagic email verification adapter
 - [ ] 03-03-PLAN.md — MCP tools (search, enrich, score, lists, export, status, workspace prompts) wired into Leads Agent server
 
+### Phase 3.1: API Security + Hardening (INSERTED — Gap Closure)
+**Goal**: Enrichment API routes are protected from unauthorized access, MCP server has all required env vars, and test infrastructure gaps are closed
+**Depends on**: Phase 3
+**Requirements**: (none — closes integration gap INT-01 and tech debt from v1.0 audit)
+**Gap Closure:** Closes INT-01 from v1.0-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. POST /api/enrichment/run and POST /api/enrichment/jobs/process reject requests without valid CRON_SECRET authorization
+  2. .mcp.json forwards FIRECRAWL_API_KEY, ANTHROPIC_API_KEY, and LEADMAGIC_API_KEY via ${VAR} syntax
+  3. dailyCostTotal is included in the test mock setup so waterfall cost cap tests can exercise the full path
+  4. Pre-existing TypeScript errors in test files are resolved
+**Plans**: TBD
+
 ### Phase 4: Search, Filter + List Building
 **Goal**: Users can find any person or company in the database, filter by enrichment state and ICP criteria, and assemble qualified lists ready for export
 **Depends on**: Phase 3
@@ -90,12 +103,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Enrichment Foundation | 3/3 | Complete   | 2026-02-26 |
 | 2. Provider Adapters + Waterfall | 6/6 | Complete   | 2026-02-26 |
 | 3. ICP Qualification + Leads Agent | 3/3 | Complete    | 2026-02-26 |
+| 3.1 API Security + Hardening | 0/TBD | Not started | - |
 | 4. Search, Filter + List Building | 0/TBD | Not started | - |
 | 5. Export + EmailBison Integration | 0/TBD | Not started | - |
