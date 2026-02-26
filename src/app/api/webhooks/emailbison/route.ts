@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { notifyReply } from "@/lib/notifications";
+import { enqueueAction, bumpPriority } from "@/lib/linkedin/queue";
+import { assignSenderForPerson } from "@/lib/linkedin/sender";
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +31,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Handle EMAIL_SENT — update person status to "contacted"
+    if (eventType === "EMAIL_SENT" && leadEmail) {
+      await prisma.person.updateMany({
+        where: { email: leadEmail, status: "new" },
+        data: { status: "contacted" },
+      });
+
+      await prisma.personWorkspace.updateMany({
+        where: {
+          workspace: workspaceSlug,
+          person: { email: leadEmail },
+          status: "new",
+        },
+        data: { status: "contacted" },
+      });
+    }
+
     if (leadEmail) {
       const statusMap: Record<string, string> = {
         LEAD_REPLIED: "replied",
@@ -50,6 +69,46 @@ export async function POST(request: NextRequest) {
           },
           data: { status: newStatus },
         });
+      }
+    }
+
+    // LinkedIn fast-track: on reply/interested, queue P1 connection request
+    const linkedInTriggerEvents = ["LEAD_REPLIED", "LEAD_INTERESTED"];
+    if (linkedInTriggerEvents.includes(eventType) && leadEmail) {
+      try {
+        const person = await prisma.person.findUnique({ where: { email: leadEmail } });
+        if (person?.linkedinUrl) {
+          // Try to bump existing pending connection to P1
+          const bumped = await bumpPriority(person.id, workspaceSlug);
+
+          if (!bumped) {
+            // No existing action — check if already connected, if not enqueue new P1
+            const existingConnection = await prisma.linkedInConnection.findFirst({
+              where: { personId: person.id, sender: { workspaceSlug } },
+            });
+
+            if (!existingConnection || existingConnection.status === "none") {
+              const sender = await assignSenderForPerson(workspaceSlug, {
+                emailSenderAddress: senderEmail ?? undefined,
+                mode: senderEmail ? "email_linkedin" : "linkedin_only",
+              });
+
+              if (sender) {
+                await enqueueAction({
+                  senderId: sender.id,
+                  personId: person.id,
+                  workspaceSlug,
+                  actionType: "connect",
+                  priority: 1,
+                  scheduledFor: new Date(), // ASAP
+                  campaignName: data.campaign?.name ?? null,
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("LinkedIn fast-track error:", err);
       }
     }
 

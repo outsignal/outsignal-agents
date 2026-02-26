@@ -12,6 +12,7 @@ import {
   UserPlus,
   ClipboardList,
   ChevronRight,
+  Linkedin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -137,6 +138,18 @@ export function Sidebar({ workspaces }: SidebarProps) {
                       >
                         <HeartPulse className="h-3 w-3" />
                         Inbox Health
+                      </Link>
+                      <Link
+                        href={`${wsPath}/linkedin`}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs transition-colors",
+                          pathname === `${wsPath}/linkedin`
+                            ? "text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/50 hover:text-sidebar-foreground/70",
+                        )}
+                      >
+                        <Linkedin className="h-3 w-3" />
+                        LinkedIn
                       </Link>
                       <Link
                         href={`${wsPath}/settings`}

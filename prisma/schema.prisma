@@ -54,6 +54,9 @@ model Workspace {
   targetVolume       String?
   onboardingNotes    String?
 
+  // Client portal access
+  clientEmails String? // JSON array of authorized client email addresses
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -473,4 +476,17 @@ model CampaignSequenceRule {
   createdAt DateTime @default(now())
 
   @@index([workspaceSlug, campaignName])
+}
+
+model MagicLinkToken {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  email         String
+  workspaceSlug String
+  expiresAt     DateTime
+  used          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([token])
+  @@index([email])
 }

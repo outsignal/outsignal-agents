@@ -48,5 +48,44 @@ vi.mock("@/lib/db", () => ({
       update: vi.fn(),
       findMany: vi.fn(),
     },
+    person: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+      count: vi.fn(),
+    },
+    personWorkspace: {
+      updateMany: vi.fn(),
+    },
+    sender: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    linkedInAction: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    linkedInDailyUsage: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+    },
+    linkedInConnection: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+      count: vi.fn(),
+    },
+    campaignSequenceRule: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
   },
 }));
