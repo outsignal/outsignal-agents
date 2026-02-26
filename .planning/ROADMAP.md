@@ -43,12 +43,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Given a domain, the pipeline returns company data (headcount, industry, description) by trying AI Ark then Firecrawl, with local cache preventing repeat crawls
   3. Given a batch of people records, enrichment completes without burning credits on records that already have sufficient data (dedup gate fires correctly)
   4. Provider errors (404 permanent, 429 rate-limit, 422 bad input) are handled distinctly — rate-limit errors back off and retry, permanent errors do not
-**Plans**: 5 plans
-- [ ] 02-01-PLAN.md — Schema migration (DailyCostTotal, paused status, workspaceSlug), adapter types, cost config, merge logic
-- [ ] 02-02-PLAN.md — Email provider adapters (Prospeo, LeadMagic, FindyMail)
-- [ ] 02-03-PLAN.md — Company provider adapters (AI Ark, Firecrawl extract)
-- [ ] 02-04-PLAN.md — Waterfall orchestration (enrichEmail, enrichCompany) + queue wiring + run trigger
-- [ ] 02-05-PLAN.md — Cost dashboard (API endpoint + Recharts UI page)
+**Plans**: 6 plans
+- [x] 02-01-PLAN.md — Schema migration (DailyCostTotal, paused status, workspaceSlug), adapter types, cost config, merge logic
+- [x] 02-02-PLAN.md — Email provider adapters (Prospeo, LeadMagic, FindyMail)
+- [x] 02-03-PLAN.md — Company provider adapters (AI Ark, Firecrawl extract)
+- [x] 02-04-PLAN.md — Waterfall orchestration (enrichEmail, enrichCompany) + queue wiring + run trigger
+- [x] 02-05-PLAN.md — Cost dashboard (API endpoint + Recharts UI page)
+- [ ] 02-06-PLAN.md — Gap closure: AI Ark person adapter + wire into enrichEmail waterfall (PROV-02, ENRICH-02)
 
 ### Phase 3: ICP Qualification + Leads Agent
 **Goal**: Prospects are classified against ICP criteria using web research, custom workspace rules are supported, and all pipeline capabilities are accessible through the chat dashboard
@@ -91,7 +92,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Enrichment Foundation | 3/3 | Complete   | 2026-02-26 |
-| 2. Provider Adapters + Waterfall | 5/5 | Complete   | 2026-02-26 |
+| 2. Provider Adapters + Waterfall | 5/6 | Gap closure | 2026-02-26 |
 | 3. ICP Qualification + Leads Agent | 0/TBD | Not started | - |
 | 4. Search, Filter + List Building | 0/TBD | Not started | - |
 | 5. Export + EmailBison Integration | 0/TBD | Not started | - |
