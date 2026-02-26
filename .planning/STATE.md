@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-26T19:36:22.436Z"
+last_updated: "2026-02-26T21:59:23.865Z"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 12
+  completed_plans: 10
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 2 — Provider Adapters + Waterfall
+**Current focus:** Phase 3 — ICP Qualification + Leads Agent
 
 ## Current Position
 
-Phase: 2 of 5 (Provider Adapters + Waterfall) — COMPLETE (gap closure plan 02-06 also complete)
-Plan: 6 of 6 in current phase (02-06 complete — gap closure)
-Status: Phase 2 fully complete (including gap closure), ready for Phase 3
-Last activity: 2026-02-26 — Completed 02-06 (AI Ark person adapter + waterfall ENRICH-02 gap closure)
+Phase: 3 of 5 (ICP Qualification + Leads Agent) — IN PROGRESS
+Plan: 1 of 3 in current phase (03-01 complete — schema + MCP foundation)
+Status: Phase 3 plan 01 complete — schema pushed, MCP server skeleton running, ready for 03-02
+Last activity: 2026-02-26 — Completed 03-01 (schema migration, MCP server skeleton, leadmagic-verify type)
 
-Progress: [████████░░] ~65%
+Progress: [█████████░] ~70%
 
 ## Performance Metrics
 
@@ -42,12 +42,14 @@ Progress: [████████░░] ~65%
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
 | 02-provider-adapters-waterfall | 5 | ~11 min | ~2.2 min |
+| 03-icp-qualification-leads-agent | 1 so far | ~6 min | ~6 min |
 
 **Recent Trend:**
 - Last 5 plans: 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters), 02-04 (waterfall+queue integration), 02-05 (cost dashboard)
 - Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
+| Phase 03-icp-qualification-leads-agent P01 | 6 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -90,6 +92,9 @@ Recent decisions affecting current work:
 - [02-06]: AI Ark person step implemented as pre-email block (not EMAIL_PROVIDERS entry) — PersonAdapter return type differs from EmailAdapter
 - [02-06]: No-cost empty result returned when neither LinkedIn URL nor name+company available — avoids unnecessary API calls
 - [02-06]: costUsd=0 guard prevents recording enrichment when no API call was made (preserves dedup gate for future enrichment)
+- [Phase 03-01]: Used async main() wrapper in MCP server instead of top-level await — tsx/esbuild CJS mode rejects top-level await; async function is identical behavior
+- [Phase 03-01]: db push (not migrate dev) for Phase 3 schema changes — consistent with [01-01] decision, avoids migration history requirement
+- [Phase 03-01]: leadmagic-verify cost at $0.05/call — only valid/invalid/valid_catch_all statuses are charged; catch_all and unknown are free
 
 ### Pending Todos
 
@@ -104,5 +109,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-06-PLAN.md — AI Ark person adapter + ENRICH-02 waterfall gap closure (Phase 2 fully complete)
+Stopped at: Completed 03-01-PLAN.md — schema migration + MCP server foundation (Phase 3 plan 01 complete)
 Resume file: None

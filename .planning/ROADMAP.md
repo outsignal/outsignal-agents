@@ -52,15 +52,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] 02-06-PLAN.md — Gap closure: AI Ark person adapter + wire into enrichEmail waterfall (PROV-02, ENRICH-02)
 
 ### Phase 3: ICP Qualification + Leads Agent
-**Goal**: Prospects are classified against ICP criteria using web research, custom workspace rules are supported, and all pipeline capabilities are accessible through the chat dashboard
+**Goal**: Prospects are classified against ICP criteria using web research, custom workspace rules are supported, and all pipeline capabilities are accessible through the MCP-powered Leads Agent in Claude Code
 **Depends on**: Phase 2
 **Requirements**: AI-04, AI-05, ENRICH-05
 **Success Criteria** (what must be TRUE):
-  1. A prospect's website can be crawled and scored for ICP fit (pass/fail + reasoning), with the result persisted to the person record and the crawl result cached to prevent re-crawling
+  1. A prospect's website can be crawled and scored for ICP fit (0-100 + reasoning), with the result persisted to PersonWorkspace and the crawl result cached on Company to prevent re-crawling
   2. Email addresses are gated through LeadMagic verification before any export path can proceed — the export surface refuses to proceed on unverified emails
-  3. The Leads Agent is accessible from the dashboard chat interface and can enrich a person, search people, build a list, and trigger export via natural language commands
-  4. Workspace-specific AI prompt overrides are configurable, so different clients can customize normalization and qualification rules without code changes
-**Plans**: TBD
+  3. The Leads Agent is accessible as an MCP server in Claude Code and can enrich a person, search people, build a list, score prospects, and trigger export via natural language commands
+  4. Workspace-specific AI prompt overrides are configurable (ICP criteria, normalization rules, outreach tone), so different clients can customize qualification and normalization rules without code changes
+**Plans**: 3 plans
+- [ ] 03-01-PLAN.md — Schema migration (Company crawl cache, PersonWorkspace ICP score, Workspace AI prompts), deps install, MCP server skeleton + .mcp.json
+- [ ] 03-02-PLAN.md — ICP scoring engine (crawl cache + Haiku scorer) + LeadMagic email verification adapter
+- [ ] 03-03-PLAN.md — MCP tools (search, enrich, score, lists, export, status, workspace prompts) wired into Leads Agent server
 
 ### Phase 4: Search, Filter + List Building
 **Goal**: Users can find any person or company in the database, filter by enrichment state and ICP criteria, and assemble qualified lists ready for export
@@ -93,6 +96,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Enrichment Foundation | 3/3 | Complete   | 2026-02-26 |
 | 2. Provider Adapters + Waterfall | 6/6 | Complete   | 2026-02-26 |
-| 3. ICP Qualification + Leads Agent | 0/TBD | Not started | - |
+| 3. ICP Qualification + Leads Agent | 1/3 | In Progress|  |
 | 4. Search, Filter + List Building | 0/TBD | Not started | - |
 | 5. Export + EmailBison Integration | 0/TBD | Not started | - |

@@ -13,7 +13,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENRICH-02**: System enriches person data via waterfall strategy — Prospeo → AI Ark → LeadMagic → FindyMail, cheapest source first
 - [x] **ENRICH-03**: System enriches company data via waterfall strategy — AI Ark → Firecrawl, with local cache check
 - [x] **ENRICH-04**: System finds email addresses via waterfall — Prospeo → LeadMagic → FindyMail
-- [ ] **ENRICH-05**: System verifies email addresses via LeadMagic before export (hard gate — no unverified emails exported)
+- [x] **ENRICH-05**: System verifies email addresses via LeadMagic before export (hard gate — no unverified emails exported)
 - [x] **ENRICH-06**: System tracks enrichment provenance — which source provided which data, timestamp, cost per record
 - [x] **ENRICH-07**: System handles batch enrichment asynchronously (not blocked by Vercel 30s timeout)
 
@@ -22,8 +22,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **AI-01**: System normalizes industry/vertical classification via Claude (replace Clay AI)
 - [x] **AI-02**: System normalizes company names via Claude (extend existing normalize.ts)
 - [x] **AI-03**: System extracts structured fields from unstructured data via Claude (job title standardization, seniority level)
-- [ ] **AI-04**: System qualifies leads against ICP using Firecrawl + Haiku — crawl prospect's website and classify fit
-- [ ] **AI-05**: System supports custom AI enrichment prompts per workspace/project (different clients need different personalization and normalization rules)
+- [x] **AI-04**: System qualifies leads against ICP using Firecrawl + Haiku — crawl prospect's website and classify fit
+- [x] **AI-05**: System supports custom AI enrichment prompts per workspace/project (different clients need different personalization and normalization rules)
 
 ### Lead Search & Filter
 
@@ -100,9 +100,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | ENRICH-02 | Phase 2 | Complete |
 | ENRICH-03 | Phase 2 | Complete |
 | ENRICH-04 | Phase 2 | Complete |
-| AI-04 | Phase 3 | Pending |
-| AI-05 | Phase 3 | Pending |
-| ENRICH-05 | Phase 3 | Pending |
+| AI-04 | Phase 3 | Complete |
+| AI-05 | Phase 3 | Complete |
+| ENRICH-05 | Phase 3 | Complete |
 | SEARCH-01 | Phase 4 | Pending |
 | SEARCH-02 | Phase 4 | Pending |
 | SEARCH-03 | Phase 4 | Pending |
