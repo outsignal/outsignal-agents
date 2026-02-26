@@ -29,3 +29,45 @@ export interface EnrichmentResult {
   costUsd?: number;
   errorMessage?: string;
 }
+
+/** Result from an email-finding provider adapter. */
+export interface EmailProviderResult {
+  email: string | null;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  linkedinUrl?: string;
+  location?: string;
+  source: Provider;
+  rawResponse: unknown;
+  costUsd: number;
+}
+
+/** Result from a company data provider adapter. */
+export interface CompanyProviderResult {
+  name?: string;
+  industry?: string;
+  headcount?: number;
+  description?: string;
+  website?: string;
+  location?: string;
+  yearFounded?: number;
+  source: Provider;
+  rawResponse: unknown;
+  costUsd: number;
+}
+
+/** Input for email-finding adapters. */
+export interface EmailAdapterInput {
+  linkedinUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+  companyDomain?: string;
+}
+
+/** Email provider adapter — takes person info, returns email (or null). */
+export type EmailAdapter = (input: EmailAdapterInput) => Promise<EmailProviderResult>;
+
+/** Company provider adapter — takes domain, returns company data. */
+export type CompanyAdapter = (domain: string) => Promise<CompanyProviderResult>;
