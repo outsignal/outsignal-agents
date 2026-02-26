@@ -20,12 +20,9 @@ export async function POST() {
       const leads = await client.getLeads();
       for (const lead of leads) {
         try {
-          await prisma.lead.upsert({
+          const upsertedLead = await prisma.person.upsert({
             where: {
-              email_workspace: {
-                email: lead.email,
-                workspace: ws.slug,
-              },
+              email: lead.email,
             },
             create: {
               email: lead.email,
@@ -38,10 +35,6 @@ export async function POST() {
                 ? JSON.stringify(lead.custom_variables)
                 : null,
               source: "emailbison",
-              sourceId: lead.id.toString(),
-              workspace: ws.slug,
-              vertical: ws.vertical ?? null,
-              tags: lead.tags?.map((t) => t.name).join(",") ?? null,
             },
             update: {
               firstName: lead.first_name ?? undefined,
@@ -52,9 +45,32 @@ export async function POST() {
               enrichmentData: lead.custom_variables
                 ? JSON.stringify(lead.custom_variables)
                 : undefined,
+            },
+          });
+
+          await prisma.personWorkspace.upsert({
+            where: {
+              personId_workspace: {
+                personId: upsertedLead.id,
+                workspace: ws.slug,
+              },
+            },
+            create: {
+              personId: upsertedLead.id,
+              workspace: ws.slug,
+              sourceId: lead.id.toString(),
+              status: lead.status ?? "new",
+              vertical: ws.vertical ?? null,
+              tags: lead.tags?.map((t) => t.name).join(",") ?? null,
+            },
+            update: {
+              sourceId: lead.id.toString(),
+              status: lead.status ?? undefined,
+              vertical: ws.vertical ?? undefined,
               tags: lead.tags?.map((t) => t.name).join(",") ?? undefined,
             },
           });
+
           synced++;
         } catch {
           errors++;

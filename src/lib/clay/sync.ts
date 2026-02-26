@@ -31,12 +31,9 @@ export async function importClayContacts(
 
   for (const contact of contacts) {
     try {
-      await prisma.lead.upsert({
+      const lead = await prisma.person.upsert({
         where: {
-          email_workspace: {
-            email: contact.email,
-            workspace: options?.workspace ?? "",
-          },
+          email: contact.email,
         },
         create: {
           email: contact.email,
@@ -49,8 +46,6 @@ export async function importClayContacts(
           linkedinUrl: contact.linkedinUrl,
           location: contact.location,
           source: "clay",
-          workspace: options?.workspace ?? null,
-          vertical: options?.vertical,
           enrichmentData: contact.enrichmentData
             ? JSON.stringify(contact.enrichmentData)
             : null,
@@ -69,6 +64,27 @@ export async function importClayContacts(
             : undefined,
         },
       });
+
+      // If workspace is provided, upsert a PersonWorkspace record
+      if (options?.workspace) {
+        await prisma.personWorkspace.upsert({
+          where: {
+            personId_workspace: {
+              personId: lead.id,
+              workspace: options.workspace,
+            },
+          },
+          create: {
+            personId: lead.id,
+            workspace: options.workspace,
+            vertical: options.vertical,
+          },
+          update: {
+            vertical: options.vertical,
+          },
+        });
+      }
+
       results.created++;
     } catch {
       results.errors++;

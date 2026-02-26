@@ -171,9 +171,9 @@ export const chatTools = {
     },
   }),
 
-  queryLeads: tool({
+  queryPeople: tool({
     description:
-      "Query leads from the database with optional filters by workspace slug, status, and limit",
+      "Query people from the database with optional filters by workspace slug, status, and limit",
     inputSchema: z.object({
       workspaceSlug: z
         .string()
@@ -189,30 +189,33 @@ export const chatTools = {
           "unsubscribed",
         ])
         .optional()
-        .describe("Filter by lead status"),
+        .describe("Filter by person status"),
       limit: z
         .number()
         .optional()
         .default(25)
-        .describe("Max leads to return (default 25)"),
+        .describe("Max people to return (default 25)"),
     }),
     execute: async ({ workspaceSlug, status, limit }) => {
-      const leads = await prisma.lead.findMany({
+      const people = await prisma.person.findMany({
         where: {
-          ...(workspaceSlug ? { workspace: workspaceSlug } : {}),
+          ...(workspaceSlug
+            ? { workspaces: { some: { workspace: workspaceSlug } } }
+            : {}),
           ...(status ? { status } : {}),
         },
+        include: { workspaces: { select: { workspace: true } } },
         orderBy: { createdAt: "desc" },
         take: limit,
       });
-      return leads.map((l) => ({
-        email: l.email,
-        name: [l.firstName, l.lastName].filter(Boolean).join(" ") || "N/A",
-        company: l.company ?? "N/A",
-        jobTitle: l.jobTitle ?? "N/A",
-        status: l.status,
-        source: l.source ?? "N/A",
-        workspace: l.workspace,
+      return people.map((p) => ({
+        email: p.email,
+        name: [p.firstName, p.lastName].filter(Boolean).join(" ") || "N/A",
+        company: p.company ?? "N/A",
+        jobTitle: p.jobTitle ?? "N/A",
+        status: p.status,
+        source: p.source ?? "N/A",
+        workspaces: p.workspaces.map((pw) => pw.workspace),
       }));
     },
   }),

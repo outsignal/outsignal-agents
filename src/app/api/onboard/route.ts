@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createChannelWithMembers, postMessage } from "@/lib/slack";
+import { runResearchAgent } from "@/lib/agents/research";
 
 function slugify(text: string): string {
   return text
@@ -150,6 +151,20 @@ export async function POST(request: NextRequest) {
       } catch {
         // Non-critical
       }
+    }
+
+    // Fire-and-forget: Research Agent analyzes the client's website
+    if (workspaceSlug && body.website) {
+      const websiteUrl = body.website.startsWith("http")
+        ? body.website
+        : `https://${body.website}`;
+      runResearchAgent({
+        workspaceSlug,
+        url: websiteUrl,
+        task: "Analyze this client's website and extract ICP, USPs, case studies, and value propositions. Update the workspace with any fields that are currently empty.",
+      }).catch((err) =>
+        console.error("Post-onboard website analysis failed:", err),
+      );
     }
 
     return NextResponse.json({

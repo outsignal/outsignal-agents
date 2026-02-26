@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Import error:", error);
     return NextResponse.json(
-      { error: "Failed to import leads" },
+      { error: "Failed to import people" },
       { status: 500 },
     );
   }
