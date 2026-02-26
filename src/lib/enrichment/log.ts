@@ -14,6 +14,7 @@ export async function recordEnrichment(params: {
   costUsd?: number;
   rawResponse?: unknown;
   errorMessage?: string;
+  workspaceSlug?: string;
 }): Promise<void> {
   await prisma.enrichmentLog.create({
     data: {
@@ -29,6 +30,7 @@ export async function recordEnrichment(params: {
         ? JSON.stringify(params.rawResponse)
         : null,
       errorMessage: params.errorMessage ?? null,
+      workspaceSlug: params.workspaceSlug ?? null,
     },
   });
 }

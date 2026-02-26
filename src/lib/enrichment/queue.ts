@@ -65,11 +65,19 @@ export async function enqueueJob(params: EnqueueJobParams): Promise<string> {
  *   This allows Phase 1 to test the queue mechanics independently of provider logic.
  */
 export async function processNextChunk(
-  onProcess?: (entityId: string, job: { entityType: string; provider: string }) => Promise<void>,
+  onProcess?: (
+    entityId: string,
+    job: { entityType: string; provider: string; workspaceSlug?: string | null },
+  ) => Promise<void>,
 ): Promise<ChunkResult | null> {
-  // Pick up the oldest pending job
+  // Pick up the oldest pending job, or a paused job whose resumeAt is in the past
   const job = await prisma.enrichmentJob.findFirst({
-    where: { status: "pending" },
+    where: {
+      OR: [
+        { status: "pending" },
+        { status: "paused", resumeAt: { lte: new Date() } },
+      ],
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -89,6 +97,7 @@ export async function processNextChunk(
 
     // Process each entity in the chunk
     const errors: Array<{ entityId: string; error: string }> = [];
+    let processedInChunk = 0;
 
     for (const entityId of chunk) {
       if (onProcess) {
@@ -96,12 +105,34 @@ export async function processNextChunk(
           await onProcess(entityId, {
             entityType: job.entityType,
             provider: job.provider,
+            workspaceSlug: job.workspaceSlug,
           });
+          processedInChunk++;
         } catch (err) {
-          errors.push({
-            entityId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg === "DAILY_CAP_HIT") {
+            // Pause the job — resume at midnight UTC tomorrow
+            const tomorrow = new Date();
+            tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+            tomorrow.setUTCHours(0, 0, 0, 0);
+            await prisma.enrichmentJob.update({
+              where: { id: job.id },
+              data: {
+                status: "paused",
+                resumeAt: tomorrow,
+                processedCount: chunkStart + processedInChunk,
+              },
+            });
+            return {
+              jobId: job.id,
+              processed: processedInChunk,
+              total: job.totalCount,
+              done: false,
+              status: "paused",
+            };
+          }
+          errors.push({ entityId, error: errMsg });
+          processedInChunk++;
         }
       }
     }
