@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-26T17:01:44.851Z"
+last_updated: "2026-02-26T18:14:00Z"
 progress:
-  total_phases: 1
+  total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 8
+  completed_plans: 4
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 1 — Enrichment Foundation
+**Current focus:** Phase 2 — Provider Adapters + Waterfall
 
 ## Current Position
 
-Phase: 1 of 5 (Enrichment Foundation)
-Plan: 3 of TBD in current phase
+Phase: 2 of 5 (Provider Adapters + Waterfall)
+Plan: 1 of 5 in current phase (02-01 complete)
 Status: In progress
-Last activity: 2026-02-26 — Completed 01-03 (async job queue)
+Last activity: 2026-02-26 — Completed 02-01 (schema, types, cost tracking, merge logic)
 
-Progress: [██░░░░░░░░] ~10%
+Progress: [███░░░░░░░] ~20%
 
 ## Performance Metrics
 
@@ -41,9 +41,10 @@ Progress: [██░░░░░░░░] ~10%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
+| 02-provider-adapters-waterfall | 1 | ~2 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (schema), 01-02 (normalizers), 01-03 (async queue)
+- Last 5 plans: 01-01 (schema), 01-02 (normalizers), 01-03 (async queue), 02-01 (schema+types+costs+merge)
 - Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
@@ -69,6 +70,10 @@ Recent decisions affecting current work:
 - [01-03]: onProcess callback defaults to no-op in Phase 1 — separates queue mechanics from provider logic, enables isolated testing
 - [01-03]: Job returns to pending (not running) between chunks — natural FIFO pickup by cron without special resume logic
 - [01-03]: Individual entity errors accumulated in errorLog without failing the job — allows partial success on large batches
+- [02-01]: DailyCostTotal uses String date key (YYYY-MM-DD UTC) not DateTime — simpler upsert, avoids TZ edge cases
+- [02-01]: incrementDailySpend check+increment not atomic — accepts tiny overspend risk (one chunk) rather than transaction overhead
+- [02-01]: Merge functions use read-then-write with null guard — existing data wins, never overwrite provider data over existing values
+- [02-01]: EmailAdapter/CompanyAdapter defined as function types (not interfaces) — simpler, works with any async function matching the signature
 
 ### Pending Todos
 
@@ -83,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 01-03-PLAN.md — async job queue built and tested
+Stopped at: Completed 02-01-PLAN.md — schema migration, adapter types, cost tracking, merge logic
 Resume file: None

@@ -10,9 +10,9 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Enrichment Pipeline
 
 - [x] **ENRICH-01**: System checks local DB for existing person/company data before calling any paid API (dedup-first)
-- [ ] **ENRICH-02**: System enriches person data via waterfall strategy — Prospeo → AI Ark → LeadMagic → FindyMail, cheapest source first
-- [ ] **ENRICH-03**: System enriches company data via waterfall strategy — AI Ark → Firecrawl, with local cache check
-- [ ] **ENRICH-04**: System finds email addresses via waterfall — Prospeo → LeadMagic → FindyMail
+- [x] **ENRICH-02**: System enriches person data via waterfall strategy — Prospeo → AI Ark → LeadMagic → FindyMail, cheapest source first
+- [x] **ENRICH-03**: System enriches company data via waterfall strategy — AI Ark → Firecrawl, with local cache check
+- [x] **ENRICH-04**: System finds email addresses via waterfall — Prospeo → LeadMagic → FindyMail
 - [ ] **ENRICH-05**: System verifies email addresses via LeadMagic before export (hard gate — no unverified emails exported)
 - [x] **ENRICH-06**: System tracks enrichment provenance — which source provided which data, timestamp, cost per record
 - [x] **ENRICH-07**: System handles batch enrichment asynchronously (not blocked by Vercel 30s timeout)
@@ -97,9 +97,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | PROV-03 | Phase 2 | Pending |
 | PROV-04 | Phase 2 | Pending |
 | PROV-05 | Phase 2 | Pending |
-| ENRICH-02 | Phase 2 | Pending |
-| ENRICH-03 | Phase 2 | Pending |
-| ENRICH-04 | Phase 2 | Pending |
+| ENRICH-02 | Phase 2 | Complete |
+| ENRICH-03 | Phase 2 | Complete |
+| ENRICH-04 | Phase 2 | Complete |
 | AI-04 | Phase 3 | Pending |
 | AI-05 | Phase 3 | Pending |
 | ENRICH-05 | Phase 3 | Pending |
