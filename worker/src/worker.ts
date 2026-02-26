@@ -14,6 +14,7 @@
 import { ApiClient } from "./api-client.js";
 import { LinkedInBrowser } from "./linkedin-browser.js";
 import type { ActionResult } from "./linkedin-browser.js";
+import type { CdpCookie } from "./cdp.js";
 import {
   isWithinBusinessHours,
   msUntilBusinessHours,
@@ -301,23 +302,12 @@ export class Worker {
     const existing = this.activeBrowsers.get(sender.id);
     if (existing) return existing;
 
-    // Parse session cookies
-    let cookies: Array<{
-      name: string;
-      value: string;
-      domain: string;
-      path: string;
-      httpOnly?: boolean;
-      secure?: boolean;
-      sameSite?: string;
-      expires?: number;
-    }> = [];
+    // Parse session cookies (CDP format from Network.getAllCookies)
+    let cookies: CdpCookie[] = [];
 
     if (sender.sessionData) {
       try {
-        // Session data is encrypted — decrypt it
-        // The worker receives it already decrypted from the API
-        cookies = JSON.parse(sender.sessionData);
+        cookies = JSON.parse(sender.sessionData) as CdpCookie[];
       } catch {
         console.error(`[Worker] Failed to parse session data for ${sender.name}`);
       }

@@ -1,44 +1,24 @@
 /**
- * LinkedIn browser automation using agent-browser.
+ * LinkedIn browser automation using direct CDP (Chrome DevTools Protocol).
  *
- * Uses the accessibility tree for navigation instead of CSS selectors.
- * This makes it undetectable by LinkedIn since there are no selector
- * patterns to flag — we interact with ARIA roles and text labels.
+ * Spawns a Chromium process, connects via WebSocket, and drives LinkedIn
+ * interactions through Runtime.evaluate calls. All evaluated expressions
+ * return serializable objects (never raw DOM elements).
  */
 
-// agent-browser types — will be refined when we install the actual package
-interface BrowserManager {
-  launch(options?: { proxy?: string }): Promise<BrowserSession>;
-}
-
-interface BrowserSession {
-  goto(url: string): Promise<void>;
-  snapshot(): Promise<AccessibilityNode[]>;
-  click(selector: string): Promise<void>;
-  type(selector: string, text: string): Promise<void>;
-  waitForNavigation(options?: { timeout?: number }): Promise<void>;
-  close(): Promise<void>;
-  cookies(): Promise<CookieData[]>;
-  setCookies(cookies: CookieData[]): Promise<void>;
-}
-
-interface AccessibilityNode {
-  role: string;
-  name: string;
-  value?: string;
-  children?: AccessibilityNode[];
-}
-
-interface CookieData {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: string;
-  expires?: number;
-}
+import { ChildProcess } from "child_process";
+import {
+  CdpCookie,
+  cdpSend,
+  evalValue,
+  wait,
+  killProcess,
+  spawnChromium,
+  connectCdp,
+  setupProxyAuth,
+  initCdp,
+  log as cdpLog,
+} from "./cdp.js";
 
 export interface ActionResult {
   success: boolean;
@@ -46,113 +26,151 @@ export interface ActionResult {
   details?: Record<string, unknown>;
 }
 
-/**
- * Find a node in the accessibility tree by role and name.
- */
-function findNode(
-  nodes: AccessibilityNode[],
-  role: string,
-  namePattern: string | RegExp,
-): AccessibilityNode | null {
-  for (const node of nodes) {
-    const nameMatch =
-      typeof namePattern === "string"
-        ? node.name.toLowerCase().includes(namePattern.toLowerCase())
-        : namePattern.test(node.name);
-
-    if (node.role === role && nameMatch) {
-      return node;
-    }
-
-    if (node.children) {
-      const found = findNode(node.children, role, namePattern);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 export class LinkedInBrowser {
-  private session: BrowserSession | null = null;
+  private ws: WebSocket | null = null;
+  private chromium: ChildProcess | null = null;
+  private msgId = 0;
+  private cookies: CdpCookie[];
   private proxyUrl: string | undefined;
-  private cookies: CookieData[];
 
-  constructor(cookies: CookieData[], proxyUrl?: string) {
+  constructor(cookies: CdpCookie[], proxyUrl?: string) {
     this.cookies = cookies;
     this.proxyUrl = proxyUrl;
   }
 
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private nextId(): number {
+    return ++this.msgId;
+  }
+
+  private log(msg: string): void {
+    cdpLog("LinkedInBrowser", msg);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return wait(ms);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
   /**
-   * Launch the browser with stored cookies and proxy.
+   * Launch Chromium, connect via CDP, load cookies, and navigate to the feed.
    */
   async launch(): Promise<void> {
-    // Dynamic import — agent-browser may not be available in all environments
-    let BM: new () => BrowserManager;
-    try {
-      // @ts-ignore — module not installed; guarded by try/catch at runtime
-      const mod = await import("@anthropic-ai/agent-browser");
-      BM = mod.BrowserManager as unknown as new () => BrowserManager;
-    } catch {
-      throw new Error(
-        "agent-browser not available — LinkedIn action execution is disabled. " +
-        "Session login via VNC still works.",
+    this.log("Launching Chromium…");
+
+    const { proc, port, proxyAuth } = await spawnChromium({
+      proxyUrl: this.proxyUrl,
+    });
+    this.chromium = proc;
+
+    this.ws = await connectCdp(port);
+
+    // Enable Page, Network, Runtime domains + anti-detection patches
+    await initCdp(this.ws, () => this.nextId());
+
+    // Authenticate with the proxy if credentials were embedded in the URL
+    if (proxyAuth) {
+      await setupProxyAuth(this.ws, proxyAuth, () => this.nextId());
+    }
+
+    // Inject stored cookies
+    if (this.cookies.length > 0) {
+      this.log(`Loading ${this.cookies.length} cookies`);
+      await cdpSend(
+        this.ws,
+        "Network.setCookies",
+        { cookies: this.cookies },
+        this.nextId(),
       );
     }
-    const manager = new BM();
 
-    this.session = await manager.launch({
-      proxy: this.proxyUrl,
-    });
+    // Navigate to the feed
+    this.log("Navigating to LinkedIn feed");
+    await cdpSend(
+      this.ws,
+      "Page.navigate",
+      { url: "https://www.linkedin.com/feed/" },
+      this.nextId(),
+    );
+    await this.sleep(3000);
 
-    // Load stored cookies
-    if (this.cookies.length > 0) {
-      await this.session.setCookies(this.cookies);
-    }
+    this.log("Launch complete");
   }
 
   /**
-   * Close the browser session.
+   * Tear down the browser session.
    */
   async close(): Promise<void> {
-    if (this.session) {
-      await this.session.close();
-      this.session = null;
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
     }
+    if (this.chromium) {
+      killProcess(this.chromium);
+      this.chromium = null;
+    }
+    this.log("Closed");
   }
+
+  // ---------------------------------------------------------------------------
+  // Session validation
+  // ---------------------------------------------------------------------------
 
   /**
    * Check if the current session is valid (logged into LinkedIn).
    */
   async isSessionValid(): Promise<boolean> {
-    if (!this.session) return false;
+    if (!this.ws) return false;
 
     try {
-      await this.session.goto("https://www.linkedin.com/feed/");
+      await cdpSend(
+        this.ws,
+        "Page.navigate",
+        { url: "https://www.linkedin.com/feed/" },
+        this.nextId(),
+      );
       await this.sleep(3000);
 
-      const tree = await this.session.snapshot();
-
-      // If we can see the feed, we're logged in
-      // Look for navigation elements that only appear when authenticated
-      const navNode = findNode(tree, "navigation", /global/i);
-      const feedNode = findNode(tree, "main", /main/i);
-
-      return !!(navNode || feedNode);
-    } catch {
+      const resp = await cdpSend(
+        this.ws,
+        "Runtime.evaluate",
+        { expression: "window.location.href", returnByValue: true },
+        this.nextId(),
+      );
+      const url = evalValue(resp);
+      this.log(`Session check URL: ${url}`);
+      return typeof url === "string" && url.includes("/feed");
+    } catch (err) {
+      this.log(`Session check failed: ${err}`);
       return false;
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
   /**
-   * Visit a LinkedIn profile. This counts as a profile view.
+   * Visit a LinkedIn profile (counts as a profile view).
    */
   async viewProfile(profileUrl: string): Promise<ActionResult> {
-    if (!this.session) return { success: false, error: "Browser not launched" };
+    if (!this.ws) return { success: false, error: "Browser not launched" };
 
     try {
-      await this.session.goto(profileUrl);
+      this.log(`Viewing profile: ${profileUrl}`);
+      await cdpSend(
+        this.ws,
+        "Page.navigate",
+        { url: profileUrl },
+        this.nextId(),
+      );
       await this.sleep(3000 + Math.random() * 2000);
-
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -161,69 +179,149 @@ export class LinkedInBrowser {
 
   /**
    * Send a blank connection request (no note).
-   * Navigate to profile → click Connect → send without note.
    */
   async sendConnectionRequest(profileUrl: string): Promise<ActionResult> {
-    if (!this.session) return { success: false, error: "Browser not launched" };
+    if (!this.ws) return { success: false, error: "Browser not launched" };
 
     try {
+      this.log(`Sending connection request: ${profileUrl}`);
+
       // Navigate to profile
-      await this.session.goto(profileUrl);
+      await cdpSend(
+        this.ws,
+        "Page.navigate",
+        { url: profileUrl },
+        this.nextId(),
+      );
       await this.sleep(3000 + Math.random() * 2000);
 
-      const tree = await this.session.snapshot();
+      // Step 1: Try to find and click the Connect button directly
+      const connectResult = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  // Try aria-label first
+  let btn = document.querySelector('button[aria-label*="connect" i]');
+  // Exclude "Connected" labels
+  if (btn && btn.getAttribute('aria-label')?.toLowerCase().includes('connected')) btn = null;
+  // Fallback: text content
+  if (!btn) {
+    btn = Array.from(document.querySelectorAll('button')).find(b => {
+      const t = b.textContent?.trim();
+      return t === 'Connect' || t === 'Connect ';
+    });
+  }
+  if (!btn) return { found: false };
+  btn.click();
+  return { found: true, clicked: true };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { found: boolean; clicked?: boolean } | null;
 
-      // Look for the "Connect" button
-      const connectBtn = findNode(tree, "button", /^connect$/i);
+      if (!connectResult?.found) {
+        // Step 2: Try the "More" dropdown
+        this.log("Connect not found directly, trying More dropdown");
+        const moreResult = evalValue(
+          await cdpSend(
+            this.ws,
+            "Runtime.evaluate",
+            {
+              expression: `(() => {
+  const btn = Array.from(document.querySelectorAll('button')).find(b =>
+    b.textContent?.trim().startsWith('More')
+  );
+  if (!btn) return { found: false };
+  btn.click();
+  return { found: true };
+})()`,
+              returnByValue: true,
+            },
+            this.nextId(),
+          ),
+        ) as { found: boolean } | null;
 
-      if (!connectBtn) {
-        // Check if "More" dropdown contains Connect
-        const moreBtn = findNode(tree, "button", /more/i);
-        if (moreBtn) {
-          await this.session.click(`button[name*="More"]`);
-          await this.sleep(1000);
-
-          const dropdown = await this.session.snapshot();
-          const connectInMenu = findNode(dropdown, "menuitem", /connect/i);
-
-          if (!connectInMenu) {
-            // Already connected or connect not available
-            return {
-              success: false,
-              error: "Connect button not found — may already be connected",
-            };
-          }
-
-          await this.session.click(`menuitem[name*="Connect"]`);
-        } else {
+        if (!moreResult?.found) {
           return {
             success: false,
             error: "Connect button not found on profile",
           };
         }
-      } else {
-        await this.session.click(`button[name="Connect"]`);
+
+        await this.sleep(1000);
+
+        // Step 3: Look for Connect in the dropdown menu
+        const menuResult = evalValue(
+          await cdpSend(
+            this.ws,
+            "Runtime.evaluate",
+            {
+              expression: `(() => {
+  const items = document.querySelectorAll('[role="menuitem"], [role="option"], li span');
+  const connectItem = Array.from(items).find(el =>
+    el.textContent?.trim().toLowerCase().includes('connect')
+  );
+  if (!connectItem) return { found: false };
+  connectItem.click();
+  return { found: true, clicked: true };
+})()`,
+              returnByValue: true,
+            },
+            this.nextId(),
+          ),
+        ) as { found: boolean; clicked?: boolean } | null;
+
+        if (!menuResult?.found) {
+          return {
+            success: false,
+            error: "Connect button not found — may already be connected",
+          };
+        }
+      }
+
+      // Step 4: Wait for the connection modal
+      await this.sleep(2000);
+
+      // Step 5: Handle modal — "Send without a note" or just "Send"
+      const modalResult = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  // Try "Send without a note" first
+  let btn = Array.from(document.querySelectorAll('button')).find(b =>
+    b.textContent?.trim().toLowerCase().includes('send without a note')
+  );
+  // Fallback: just "Send" button in modal
+  if (!btn) {
+    btn = Array.from(document.querySelectorAll('button')).find(b =>
+      b.textContent?.trim() === 'Send'
+    );
+  }
+  if (!btn) return { found: false };
+  btn.click();
+  return { found: true, clicked: true };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { found: boolean; clicked?: boolean } | null;
+
+      if (!modalResult?.found) {
+        return {
+          success: false,
+          error: "Send button not found in connection modal",
+        };
       }
 
       await this.sleep(2000);
-
-      // Handle the "Add a note" / "Send without a note" modal
-      const modalTree = await this.session.snapshot();
-
-      // Look for "Send without a note" or just "Send" button
-      const sendWithoutNote = findNode(modalTree, "button", /send without a note/i);
-      const sendBtn = findNode(modalTree, "button", /^send$/i);
-
-      if (sendWithoutNote) {
-        await this.session.click(`button[name*="Send without"]`);
-      } else if (sendBtn) {
-        await this.session.click(`button[name="Send"]`);
-      } else {
-        return { success: false, error: "Send button not found in connection modal" };
-      }
-
-      await this.sleep(2000);
-
+      this.log("Connection request sent");
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -233,44 +331,122 @@ export class LinkedInBrowser {
   /**
    * Send a message to a 1st-degree connection.
    */
-  async sendMessage(profileUrl: string, message: string): Promise<ActionResult> {
-    if (!this.session) return { success: false, error: "Browser not launched" };
+  async sendMessage(
+    profileUrl: string,
+    message: string,
+  ): Promise<ActionResult> {
+    if (!this.ws) return { success: false, error: "Browser not launched" };
 
     try {
-      await this.session.goto(profileUrl);
+      this.log(`Sending message to: ${profileUrl}`);
+
+      // Navigate to profile
+      await cdpSend(
+        this.ws,
+        "Page.navigate",
+        { url: profileUrl },
+        this.nextId(),
+      );
       await this.sleep(3000 + Math.random() * 2000);
 
-      const tree = await this.session.snapshot();
+      // Step 1: Click the "Message" button
+      const msgBtnResult = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  const btn = Array.from(document.querySelectorAll('button')).find(b =>
+    b.textContent?.trim() === 'Message'
+  );
+  if (!btn) return { found: false };
+  btn.click();
+  return { found: true };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { found: boolean } | null;
 
-      // Look for "Message" button
-      const messageBtn = findNode(tree, "button", /^message$/i);
-      if (!messageBtn) {
-        return { success: false, error: "Message button not found — may not be connected" };
+      if (!msgBtnResult?.found) {
+        return {
+          success: false,
+          error: "Message button not found — may not be connected",
+        };
       }
 
-      await this.session.click(`button[name="Message"]`);
+      // Step 2: Wait for the message overlay
       await this.sleep(2000);
 
-      // Type the message in the message input
-      const msgTree = await this.session.snapshot();
-      const msgInput = findNode(msgTree, "textbox", /write a message/i);
+      // Step 3: Type the message into the contenteditable div
+      // Escape the message for safe injection into a JS string literal
+      const escaped = message
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r");
 
-      if (!msgInput) {
+      const typeResult = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
+  if (!input) return { found: false };
+  input.focus();
+  input.innerHTML = '<p>${escaped}</p>';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return { found: true };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { found: boolean } | null;
+
+      if (!typeResult?.found) {
         return { success: false, error: "Message input not found" };
       }
 
-      await this.session.type(`textbox[name*="Write a message"]`, message);
+      // Step 4: Wait a moment, then click Send
       await this.sleep(1000);
 
-      // Click send
-      const sendBtn = findNode(await this.session.snapshot(), "button", /^send$/i);
-      if (!sendBtn) {
-        return { success: false, error: "Send button not found in message dialog" };
+      const sendResult = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  const btn = Array.from(document.querySelectorAll('button[type="submit"]')).find(b =>
+    b.textContent?.trim().toLowerCase() === 'send'
+  );
+  if (!btn) {
+    const fallback = Array.from(document.querySelectorAll('button')).find(b =>
+      b.textContent?.trim() === 'Send' && b.closest('.msg-form__footer, .msg-form')
+    );
+    if (fallback) { fallback.click(); return { found: true }; }
+    return { found: false };
+  }
+  btn.click();
+  return { found: true };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { found: boolean } | null;
+
+      if (!sendResult?.found) {
+        return {
+          success: false,
+          error: "Send button not found in message dialog",
+        };
       }
 
-      await this.session.click(`button[name="Send"]`);
       await this.sleep(1500);
-
+      this.log("Message sent");
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -283,40 +459,75 @@ export class LinkedInBrowser {
   async checkConnectionStatus(
     profileUrl: string,
   ): Promise<"connected" | "pending" | "not_connected"> {
-    if (!this.session) return "not_connected";
+    if (!this.ws) return "not_connected";
 
     try {
-      await this.session.goto(profileUrl);
+      this.log(`Checking connection status: ${profileUrl}`);
+
+      await cdpSend(
+        this.ws,
+        "Page.navigate",
+        { url: profileUrl },
+        this.nextId(),
+      );
       await this.sleep(3000 + Math.random() * 2000);
 
-      const tree = await this.session.snapshot();
+      const result = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  const buttons = Array.from(document.querySelectorAll('button'));
+  const hasMessage = buttons.some(b => b.textContent?.trim() === 'Message');
+  const hasPending = buttons.some(b => b.textContent?.trim() === 'Pending');
+  return { hasMessage, hasPending };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { hasMessage: boolean; hasPending: boolean } | null;
 
-      // If "Message" button is visible, we're connected
-      const messageBtn = findNode(tree, "button", /^message$/i);
-      if (messageBtn) return "connected";
-
-      // If "Pending" is visible, request is pending
-      const pendingBtn = findNode(tree, "button", /pending/i);
-      if (pendingBtn) return "pending";
-
-      // Otherwise not connected
+      if (result?.hasMessage) return "connected";
+      if (result?.hasPending) return "pending";
       return "not_connected";
     } catch {
       return "not_connected";
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Safety checks
+  // ---------------------------------------------------------------------------
+
   /**
    * Check if LinkedIn is showing a CAPTCHA or verification challenge.
    */
   async checkForCaptcha(): Promise<boolean> {
-    if (!this.session) return false;
+    if (!this.ws) return false;
 
     try {
-      const tree = await this.session.snapshot();
-      const captcha = findNode(tree, "heading", /security verification/i);
-      const challenge = findNode(tree, "heading", /let's do a quick security check/i);
-      return !!(captcha || challenge);
+      const result = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  const url = window.location.href;
+  const title = document.title;
+  return {
+    checkpoint: url.includes('/checkpoint') || url.includes('/challenge'),
+    securityTitle: title.toLowerCase().includes('security verification'),
+  };
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      ) as { checkpoint: boolean; securityTitle: boolean } | null;
+
+      return !!(result?.checkpoint || result?.securityTitle);
     } catch {
       return false;
     }
@@ -326,30 +537,59 @@ export class LinkedInBrowser {
    * Check if LinkedIn is showing a restriction warning.
    */
   async checkForRestriction(): Promise<boolean> {
-    if (!this.session) return false;
+    if (!this.ws) return false;
 
     try {
-      const tree = await this.session.snapshot();
-      const restriction = findNode(tree, "heading", /restriction/i);
-      const limit = findNode(tree, "heading", /you've reached/i);
-      return !!(restriction || limit);
+      const result = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+  const headings = Array.from(document.querySelectorAll('h1, h2, h3'));
+  return headings.some(h => {
+    const t = h.textContent?.toLowerCase() || '';
+    return t.includes('restriction') || t.includes("you've reached");
+  });
+})()`,
+            returnByValue: true,
+          },
+          this.nextId(),
+        ),
+      );
+
+      return !!result;
     } catch {
       return false;
     }
   }
 
-  /**
-   * Export current cookies for storage.
-   */
-  async exportCookies(): Promise<CookieData[]> {
-    if (!this.session) return [];
-    return this.session.cookies();
-  }
+  // ---------------------------------------------------------------------------
+  // Cookie management
+  // ---------------------------------------------------------------------------
 
   /**
-   * Human-like delay.
+   * Export current cookies for storage (filtered to linkedin.com).
    */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  async exportCookies(): Promise<CdpCookie[]> {
+    if (!this.ws) return [];
+
+    try {
+      const resp = await cdpSend(
+        this.ws,
+        "Network.getAllCookies",
+        {},
+        this.nextId(),
+      );
+
+      const allCookies = (resp?.result?.cookies as CdpCookie[] | undefined) ?? [];
+      return allCookies.filter(
+        (c) =>
+          c.domain.includes("linkedin.com"),
+      );
+    } catch {
+      this.log("Failed to export cookies");
+      return [];
+    }
   }
 }

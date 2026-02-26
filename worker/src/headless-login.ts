@@ -6,114 +6,23 @@
  * redirect, then extracts and returns all LinkedIn cookies via CDP.
  */
 
-import { spawn, ChildProcess } from "child_process";
 import { TOTP } from "otpauth";
-
-interface CdpCookie {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  httpOnly: boolean;
-  secure: boolean;
-  sameSite: string;
-  expires: number;
-}
-
-interface CdpResponse {
-  id: number;
-  result?: Record<string, unknown>;
-  error?: { code: number; message: string };
-}
-
-/**
- * Send a CDP command over WebSocket and wait for the matching response.
- */
-function cdpSend(
-  ws: WebSocket,
-  method: string,
-  params: Record<string, unknown>,
-  id: number,
-  timeoutMs = 15_000,
-): Promise<CdpResponse> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`CDP command '${method}' timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    const handler = (event: MessageEvent) => {
-      const data: CdpResponse = JSON.parse(String(event.data));
-      if (data.id === id) {
-        clearTimeout(timer);
-        ws.removeEventListener("message", handler);
-        if (data.error) {
-          reject(new Error(`CDP error on '${method}': ${data.error.message}`));
-        } else {
-          resolve(data);
-        }
-      }
-    };
-
-    ws.addEventListener("message", handler);
-    ws.send(JSON.stringify({ id, method, params }));
-  });
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import {
+  CdpCookie,
+  cdpSend,
+  evalValue,
+  parseProxyUrl,
+  killProcess,
+  wait,
+  log as cdpLog,
+  spawnChromium,
+  connectCdp,
+  setupProxyAuth,
+  initCdp,
+} from "./cdp.js";
 
 function log(msg: string): void {
-  console.log(`[HeadlessLogin] ${msg}`);
-}
-
-/**
- * Extract the evaluated value from a Runtime.evaluate CDP response.
- * CDP returns { result: { result: { type, value } } } — this unwraps it.
- */
-function evalValue(response: CdpResponse): unknown {
-  const outer = response.result as Record<string, unknown> | undefined;
-  const inner = outer?.result as Record<string, unknown> | undefined;
-  return inner?.value;
-}
-
-/**
- * Parse a proxy URL like http://user:pass@host:port into components.
- */
-function parseProxyUrl(url: string): { host: string; port: string; username?: string; password?: string } {
-  try {
-    const parsed = new URL(url);
-    return {
-      host: parsed.hostname,
-      port: parsed.port,
-      username: parsed.username || undefined,
-      password: parsed.password || undefined,
-    };
-  } catch {
-    // Fallback: treat as host:port
-    const [host, port] = url.split(":");
-    return { host, port };
-  }
-}
-
-function killProcess(proc: ChildProcess): void {
-  try {
-    if (!proc.killed) {
-      proc.kill("SIGTERM");
-    }
-  } catch {
-    // Process may already be dead
-  }
-  // Force kill after a short delay
-  setTimeout(() => {
-    try {
-      if (!proc.killed) {
-        proc.kill("SIGKILL");
-      }
-    } catch {
-      // Already dead
-    }
-  }, 2000);
+  cdpLog("HeadlessLogin", msg);
 }
 
 /**
@@ -130,49 +39,23 @@ export async function headlessLogin(options: {
   proxyUrl?: string;
 }): Promise<CdpCookie[]> {
   const { email, password, totpSecret, proxyUrl } = options;
-  const cdpPort = 9300 + Math.floor(Math.random() * 100);
-  const chromiumPath = process.env.CHROME_PATH ?? "chromium";
-  let chromium: ChildProcess | null = null;
   let msgId = 0;
 
   const nextId = () => ++msgId;
 
+  let chromiumProc: ReturnType<typeof spawnChromium> | null = null;
+
   try {
     // --- 1. Spawn headless Chromium ---
-    log(`Launching headless Chromium on CDP port ${cdpPort}`);
+    log("Launching headless Chromium");
 
-    const chromiumArgs = [
-      "--headless=new",
-      "--no-sandbox",
-      "--disable-gpu",
-      "--disable-dev-shm-usage",
-      `--remote-debugging-port=${cdpPort}`,
-      "--window-size=1920,1080",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-infobars",
-      // Anti-detection
-      "--disable-blink-features=AutomationControlled",
-      "--disable-features=TranslateUI",
-      "--lang=en-US,en",
-      `--user-data-dir=/tmp/headless-login-${cdpPort}`,
-      "about:blank",
-    ];
-
-    let proxyAuth: { username: string; password: string } | null = null;
     if (proxyUrl) {
       const proxy = parseProxyUrl(proxyUrl);
-      chromiumArgs.push(`--proxy-server=${proxy.host}:${proxy.port}`);
-      if (proxy.username && proxy.password) {
-        proxyAuth = { username: proxy.username, password: proxy.password };
-      }
-      log(`Using proxy: ${proxy.host}:${proxy.port} (auth: ${!!proxyAuth})`);
+      log(`Using proxy: ${proxy.host}:${proxy.port} (auth: ${!!(proxy.username && proxy.password)})`);
     }
 
-    chromium = spawn(chromiumPath, chromiumArgs, { stdio: "pipe" });
+    chromiumProc = spawnChromium({ proxyUrl });
+    const { proc: chromium, port: cdpPort, proxyAuth } = chromiumProc;
 
     chromium.on("error", (err) => {
       console.error("[HeadlessLogin] Chromium spawn error:", err);
@@ -186,99 +69,19 @@ export async function headlessLogin(options: {
     log("Waiting for Chromium to initialize...");
     await wait(2000);
 
-    // --- 3. Get CDP WebSocket URL ---
+    // --- 3-4. Connect to CDP via WebSocket ---
     log("Connecting to CDP...");
-    let wsUrl: string | null = null;
+    const ws = await connectCdp(cdpPort);
+    log(`CDP connected on port ${cdpPort}`);
 
-    for (let attempt = 0; attempt < 10; attempt++) {
-      try {
-        const response = await fetch(`http://localhost:${cdpPort}/json`);
-        const pages = (await response.json()) as Array<{ webSocketDebuggerUrl: string }>;
-        if (pages.length > 0 && pages[0].webSocketDebuggerUrl) {
-          wsUrl = pages[0].webSocketDebuggerUrl;
-          break;
-        }
-      } catch {
-        // CDP not ready yet
-      }
-      await wait(500);
-    }
-
-    if (!wsUrl) {
-      throw new Error("Failed to connect to CDP — no pages found after 5 seconds");
-    }
-
-    log(`CDP connected: ${wsUrl}`);
-
-    // --- 4. Open WebSocket ---
-    const ws = new WebSocket(wsUrl);
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error("WebSocket connection to CDP timed out"));
-      }, 10_000);
-
-      ws.onopen = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-
-      ws.onerror = () => {
-        clearTimeout(timer);
-        reject(new Error("WebSocket connection to CDP failed"));
-      };
-    });
-
-    // Enable required CDP domains
-    await cdpSend(ws, "Page.enable", {}, nextId());
-    await cdpSend(ws, "Network.enable", {}, nextId());
-    await cdpSend(ws, "Runtime.enable", {}, nextId());
+    // Enable required CDP domains + anti-detection
+    await initCdp(ws, nextId);
 
     // Handle proxy authentication via CDP Fetch domain
     if (proxyAuth) {
-      await cdpSend(ws, "Fetch.enable", { handleAuthRequests: true }, nextId());
-      ws.addEventListener("message", (event: MessageEvent) => {
-        const msg = JSON.parse(String(event.data));
-        if (msg.method === "Fetch.authRequired") {
-          const requestId = msg.params.requestId;
-          ws.send(JSON.stringify({
-            id: nextId(),
-            method: "Fetch.continueWithAuth",
-            params: {
-              requestId,
-              authChallengeResponse: {
-                response: "ProvideCredentials",
-                username: proxyAuth!.username,
-                password: proxyAuth!.password,
-              },
-            },
-          }));
-        } else if (msg.method === "Fetch.requestPaused") {
-          // Continue any paused requests
-          ws.send(JSON.stringify({
-            id: nextId(),
-            method: "Fetch.continueRequest",
-            params: { requestId: msg.params.requestId },
-          }));
-        }
-      });
+      setupProxyAuth(ws, proxyAuth, nextId);
       log("Proxy auth handler registered");
     }
-
-    // Remove automation indicators before navigating
-    await cdpSend(ws, "Page.addScriptToEvaluateOnNewDocument", {
-      source: `
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        window.chrome = { runtime: {} };
-      `,
-    }, nextId());
-
-    // Set a realistic user agent
-    await cdpSend(ws, "Network.setUserAgentOverride", {
-      userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    }, nextId());
 
     // --- 5. Navigate to LinkedIn login ---
     log("Navigating to LinkedIn login page...");
@@ -587,19 +390,17 @@ export async function headlessLogin(options: {
     ws.close();
 
     // --- 15. Kill Chromium ---
-    if (chromium) {
-      log("Shutting down Chromium...");
-      killProcess(chromium);
-      chromium = null;
-    }
+    log("Shutting down Chromium...");
+    killProcess(chromiumProc.proc);
+    chromiumProc = null;
 
     // --- 16. Return cookies ---
     return linkedinCookies;
   } catch (error) {
     // Always clean up Chromium on error
-    if (chromium) {
+    if (chromiumProc) {
       log("Error occurred — killing Chromium...");
-      killProcess(chromium);
+      killProcess(chromiumProc.proc);
     }
     throw error;
   }
