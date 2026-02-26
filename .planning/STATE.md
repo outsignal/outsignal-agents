@@ -8,7 +8,7 @@ progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 2 of 5 (Provider Adapters + Waterfall)
-Plan: 3 of 5 in current phase (02-03 complete)
+Plan: 4 of 5 in current phase (02-04 complete)
 Status: In progress
-Last activity: 2026-02-26 — Completed 02-03 (AI Ark, Firecrawl company adapters)
+Last activity: 2026-02-26 — Completed 02-04 (waterfall orchestration + queue integration)
 
-Progress: [████░░░░░░] ~30%
+Progress: [█████░░░░░] ~40%
 
 ## Performance Metrics
 
@@ -41,10 +41,10 @@ Progress: [████░░░░░░] ~30%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-enrichment-foundation | 3 | ~8 min | ~2.7 min |
-| 02-provider-adapters-waterfall | 3 | ~6 min | ~2 min |
+| 02-provider-adapters-waterfall | 4 | ~9 min | ~2.25 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (normalizers), 01-03 (async queue), 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters)
+- Last 5 plans: 01-03 (async queue), 02-01 (schema+types+costs+merge), 02-02 (email adapters), 02-03 (company adapters), 02-04 (waterfall+queue integration)
 - Trend: Fast (all < 5 min)
 
 *Updated after each plan completion*
@@ -81,6 +81,9 @@ Recent decisions affecting current work:
 - [02-03]: AI Ark auth header X-TOKEN is LOW confidence — adapter warns on 401/403 with fix instructions pointing to AUTH_HEADER_NAME constant
 - [02-03]: Firecrawl default export is v2 FirecrawlClient (not v1 FirecrawlApp) — extract() takes single bundled-arg object, not (urls, params)
 - [02-03]: Zod schema cast to `any` to bridge zod v3 (project) and zod v4 (Firecrawl SDK bundled) type incompatibility — safe at runtime
+- [02-04]: DAILY_CAP_HIT thrown as Error, caught by processNextChunk, sets resumeAt = midnight UTC next day — clean control flow without custom error types
+- [02-04]: Circuit breaker is in-memory per-invocation — resets between cron calls; protects only within a single batch run, not across runs
+- [02-04]: Person.email is String @unique (never null) — run trigger relies on dedup gate inside waterfall to avoid re-enriching people
 
 ### Pending Todos
 
@@ -95,5 +98,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-03-PLAN.md — AI Ark and Firecrawl company data adapters
+Stopped at: Completed 02-04-PLAN.md — waterfall orchestration + queue integration
 Resume file: None
