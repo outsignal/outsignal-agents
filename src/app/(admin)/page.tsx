@@ -84,7 +84,7 @@ async function fetchWorkspaceSummaries(): Promise<WorkspaceSummary[]> {
 
 export default async function DashboardPage() {
   const summaries = await fetchWorkspaceSummaries();
-  const dbLeadCount = await prisma.lead.count();
+  const dbPeopleCount = await prisma.person.count();
 
   const totalActiveCampaigns = summaries.reduce(
     (sum, s) => sum + s.activeCampaigns,
@@ -114,8 +114,8 @@ export default async function DashboardPage() {
             value={totalLeads.toLocaleString()}
           />
           <MetricCard
-            label="DB Leads"
-            value={dbLeadCount.toLocaleString()}
+            label="People"
+            value={dbPeopleCount.toLocaleString()}
             detail="Synced from Email Bison + Clay"
           />
           <MetricCard

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 
-interface LeadsPageProps {
+interface PeoplePageProps {
   searchParams: Promise<{
     source?: string;
     workspace?: string;
@@ -23,14 +23,15 @@ interface LeadsPageProps {
   }>;
 }
 
-export default async function LeadsPage({ searchParams }: LeadsPageProps) {
+export default async function PeoplePage({ searchParams }: PeoplePageProps) {
   const params = await searchParams;
   const page = Number(params.page ?? "1");
   const pageSize = 50;
 
   const where: Record<string, unknown> = {};
   if (params.source) where.source = params.source;
-  if (params.workspace) where.workspace = params.workspace;
+  if (params.workspace)
+    where.workspaces = { some: { workspace: params.workspace } };
   if (params.status) where.status = params.status;
   if (params.q) {
     where.OR = [
@@ -41,14 +42,15 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     ];
   }
 
-  const [leads, totalCount] = await Promise.all([
-    prisma.lead.findMany({
+  const [people, totalCount] = await Promise.all([
+    prisma.person.findMany({
       where,
+      include: { workspaces: { select: { workspace: true } } },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.lead.count({ where }),
+    prisma.person.count({ where }),
   ]);
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -65,8 +67,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   return (
     <div>
       <Header
-        title="Leads"
-        description={`${totalCount.toLocaleString()} total leads in database`}
+        title="People"
+        description={`${totalCount.toLocaleString()} total people in database`}
       />
       <div className="p-8 space-y-6">
         {/* Filters */}
@@ -76,8 +78,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               source === "all" ? !params.source : params.source === source;
             const href =
               source === "all"
-                ? "/leads"
-                : `/leads?source=${source}${params.q ? `&q=${params.q}` : ""}`;
+                ? "/people"
+                : `/people?source=${source}${params.q ? `&q=${params.q}` : ""}`;
             return (
               <a key={source} href={href}>
                 <Badge
@@ -102,7 +104,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         </div>
 
         {/* Search */}
-        <form className="flex gap-2" action="/leads">
+        <form className="flex gap-2" action="/people">
           <input
             name="q"
             type="text"
@@ -124,7 +126,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         <Card>
           <CardHeader>
             <CardTitle className="font-heading">
-              Leads
+              People
               {params.q && (
                 <span className="font-normal text-muted-foreground">
                   {" "}
@@ -147,46 +149,60 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leads.map((lead) => (
-                  <TableRow key={lead.id}>
+                {people.map((person) => (
+                  <TableRow key={person.id}>
                     <TableCell className="font-medium">
-                      {[lead.firstName, lead.lastName]
+                      {[person.firstName, person.lastName]
                         .filter(Boolean)
                         .join(" ") || "-"}
                     </TableCell>
-                    <TableCell className="text-sm">{lead.email}</TableCell>
-                    <TableCell>{lead.company ?? "-"}</TableCell>
+                    <TableCell className="text-sm">{person.email}</TableCell>
+                    <TableCell>{person.company ?? "-"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {lead.jobTitle ?? "-"}
+                      {person.jobTitle ?? "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">
-                        {lead.source === "emailbison"
+                        {person.source === "emailbison"
                           ? "Email Bison"
-                          : lead.source === "clay"
+                          : person.source === "clay"
                             ? "Clay"
-                            : lead.source}
+                            : person.source}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {lead.workspace ?? "-"}
+                      {person.workspaces.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {person.workspaces.map((pw) => (
+                            <Badge
+                              key={pw.workspace}
+                              variant="outline"
+                              className="text-xs"
+                            >
+                              {pw.workspace}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge
-                        className={`text-xs ${statusColors[lead.status] ?? ""}`}
+                        className={`text-xs ${statusColors[person.status] ?? ""}`}
                       >
-                        {lead.status}
+                        {person.status}
                       </Badge>
                     </TableCell>
                   </TableRow>
                 ))}
-                {leads.length === 0 && (
+                {people.length === 0 && (
                   <TableRow>
                     <TableCell
                       colSpan={7}
                       className="text-center py-8 text-muted-foreground"
                     >
-                      No leads found. Sync from Email Bison or import from Clay.
+                      No people found. Sync from Email Bison or import from Clay.
                     </TableCell>
                   </TableRow>
                 )}
@@ -202,7 +218,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                 <div className="flex gap-2">
                   {page > 1 && (
                     <a
-                      href={`/leads?page=${page - 1}${params.source ? `&source=${params.source}` : ""}${params.q ? `&q=${params.q}` : ""}`}
+                      href={`/people?page=${page - 1}${params.source ? `&source=${params.source}` : ""}${params.q ? `&q=${params.q}` : ""}`}
                       className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-sm hover:bg-accent"
                     >
                       Previous
@@ -210,7 +226,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                   )}
                   {page < totalPages && (
                     <a
-                      href={`/leads?page=${page + 1}${params.source ? `&source=${params.source}` : ""}${params.q ? `&q=${params.q}` : ""}`}
+                      href={`/people?page=${page + 1}${params.source ? `&source=${params.source}` : ""}${params.q ? `&q=${params.q}` : ""}`}
                       className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-sm hover:bg-accent"
                     >
                       Next

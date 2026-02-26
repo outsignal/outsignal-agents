@@ -31,7 +31,7 @@ interface SidebarProps {
 
 const mainNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads", label: "Leads", icon: Users },
+  { href: "/people", label: "People", icon: Users },
   { href: "/onboard", label: "Proposals", icon: UserPlus },
   { href: "/onboarding", label: "Onboarding", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
