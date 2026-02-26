@@ -8,12 +8,12 @@ datasource db {
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
-  slug      String   @unique
-  name      String
-  vertical  String?
-  apiToken  String?
-  status    String   @default("onboarding") // onboarding | pending_emailbison | active
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  name     String
+  vertical String?
+  apiToken String?
+  status   String  @default("onboarding") // onboarding | pending_emailbison | active
 
   // Notification config
   slackChannelId     String?
@@ -38,15 +38,15 @@ model Workspace {
   icpExclusionCriteria   String?
 
   // Section 4-12 - Campaign brief
-  coreOffers        String?
-  pricingSalesCycle  String?
-  differentiators    String?
-  painPoints         String?
-  caseStudies        String?
-  leadMagnets        String?
-  existingMessaging  String?
+  coreOffers          String?
+  pricingSalesCycle   String?
+  differentiators     String?
+  painPoints          String?
+  caseStudies         String?
+  leadMagnets         String?
+  existingMessaging   String?
   supportingMaterials String?
-  exclusionList      String?
+  exclusionList       String?
 
   // Additional
   website            String?
@@ -58,9 +58,9 @@ model Workspace {
   updatedAt DateTime @updatedAt
 }
 
-model Lead {
+model Person {
   id             String   @id @default(cuid())
-  email          String
+  email          String   @unique
   firstName      String?
   lastName       String?
   company        String?
@@ -69,21 +69,38 @@ model Lead {
   phone          String?
   linkedinUrl    String?
   location       String?
-  source         String // "clay" | "emailbison" | "manual"
-  sourceId       String?
-  workspace      String?
   vertical       String?
+  source         String // "clay" | "emailbison" | "manual"
   status         String   @default("new") // new | contacted | replied | interested | bounced | unsubscribed
   enrichmentData String?
-  tags           String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  @@unique([email, workspace])
-  @@index([workspace])
+  workspaces     PersonWorkspace[]
+
   @@index([source])
   @@index([status])
+  @@index([company])
   @@index([vertical])
+  @@map("Lead")
+}
+
+model PersonWorkspace {
+  id        String   @id @default(cuid())
+  personId  String   @map("leadId")
+  workspace String
+  sourceId  String?
+  status    String   @default("new")
+  vertical  String?
+  tags      String?
+  createdAt DateTime @default(now())
+
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, workspace], map: "LeadWorkspace_leadId_workspace_key")
+  @@index([workspace])
+  @@index([status])
+  @@map("LeadWorkspace")
 }
 
 model Company {
@@ -93,10 +110,19 @@ model Company {
   industry       String?
   headcount      Int?
   location       String?
-  techStack      String?
-  enrichmentData String?
+  website        String?
+  linkedinUrl    String?
+  description    String?
+  revenue        String?
+  yearFounded    Int?
+  companyType    String?  // "private" | "public" | "nonprofit" | "government"
+  techStack      String?  // JSON array
+  enrichmentData String?  // JSON — extra fields from Clay
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([industry])
+  @@index([headcount])
 }
 
 model WebhookEvent {
@@ -138,7 +164,7 @@ model Proposal {
   packageType String
 
   // Pricing in pence (defaults per package, admin can override)
-  setupFee     Int     @default(0)
+  setupFee     Int @default(0)
   platformCost Int
   retainerCost Int
 
@@ -151,7 +177,7 @@ model Proposal {
   stripeSessionId   String?
   stripePaymentLink String?
   paidAt            DateTime?
-  paidManually      Boolean @default(false)
+  paidManually      Boolean   @default(false)
 
   // Link to workspace (created after onboarding)
   workspaceSlug String?
@@ -161,15 +187,15 @@ model Proposal {
 }
 
 model OnboardingInvite {
-  id            String   @id @default(cuid())
-  token         String   @unique
-  status        String   @default("draft") // draft | sent | viewed | completed
+  id     String @id @default(cuid())
+  token  String @unique
+  status String @default("draft") // draft | sent | viewed | completed
 
-  clientName    String
-  clientEmail   String?
+  clientName  String
+  clientEmail String?
 
   // Optional link to an existing proposal
-  proposalId    String?
+  proposalId String?
 
   // Whether to create a workspace when onboarding completes
   createWorkspace Boolean @default(true)
@@ -179,4 +205,70 @@ model OnboardingInvite {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// --- Agent System ---
+
+model AgentRun {
+  id            String   @id @default(cuid())
+  agent         String // "research" | "leads" | "writer" | "campaign"
+  workspaceSlug String?
+  input         String // JSON
+  output        String? // JSON
+  status        String   @default("running") // running | complete | failed
+  steps         String? // JSON - tool call log
+  durationMs    Int?
+  error         String?
+  triggeredBy   String? // "orchestrator" | "cli" | "api" | "pipeline"
+  createdAt     DateTime @default(now())
+
+  @@index([agent, workspaceSlug])
+  @@index([status])
+}
+
+model WebsiteAnalysis {
+  id            String   @id @default(cuid())
+  workspaceSlug String
+  url           String
+  crawlData     String // JSON - raw page markdowns from Firecrawl
+  analysis      String // JSON - structured ResearchOutput
+  suggestions   String? // JSON - ICP enhancement suggestions
+  status        String   @default("pending") // pending | crawling | analyzing | complete | failed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceSlug])
+}
+
+model KnowledgeDocument {
+  id        String   @id @default(cuid())
+  title     String
+  source    String // "upload" | "url"
+  content   String // Full original text
+  chunks    String // JSON array of text chunks
+  tags      String? // Comma-separated tags for filtering
+  createdAt DateTime @default(now())
+
+  @@index([source])
+}
+
+model EmailDraft {
+  id              String   @id @default(cuid())
+  workspaceSlug   String
+  campaignName    String
+  channel         String   @default("email") // "email" | "linkedin"
+  sequenceStep    Int
+  subjectLine     String?  // null for LinkedIn messages
+  subjectVariantB String?
+  bodyHtml        String?
+  bodyText        String
+  delayDays       Int      @default(1)
+  status          String   @default("draft") // draft | review | approved | deployed
+  version         Int      @default(1)
+  feedback        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceSlug, campaignName])
+  @@index([status])
 }
