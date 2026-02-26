@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "outsignal-leads": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp/leads-agent/index.ts"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      }
+    }
+  }
+}
