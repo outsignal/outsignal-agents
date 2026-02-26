@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Enrichment Foundation** - Schema extension, dedup logic, AI normalization, and async job infrastructure (completed 2026-02-26)
 - [x] **Phase 2: Provider Adapters + Waterfall** - All four provider adapters wired into the waterfall pipeline (completed 2026-02-26)
 - [x] **Phase 3: ICP Qualification + Leads Agent** - Firecrawl/Haiku qualification, custom AI prompts, and the chat-driven leads agent (completed 2026-02-26)
-- [ ] **Phase 3.1: API Security + Hardening** - Auth guards on enrichment routes, MCP env var fixes, test infrastructure cleanup (INSERTED — gap closure from v1.0 audit)
+- [x] **Phase 3.1: API Security + Hardening** - Auth guards on enrichment routes, MCP env var fixes, test infrastructure cleanup (INSERTED — gap closure from v1.0 audit) (completed 2026-02-26)
 - [ ] **Phase 4: Search, Filter + List Building** - Full lead search UI and workspace-scoped list management
 - [ ] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV
 
@@ -76,7 +76,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. .mcp.json forwards FIRECRAWL_API_KEY, ANTHROPIC_API_KEY, and LEADMAGIC_API_KEY via ${VAR} syntax
   3. dailyCostTotal is included in the test mock setup so waterfall cost cap tests can exercise the full path
   4. Pre-existing TypeScript errors in test files are resolved
-**Plans**: TBD
+**Plans**: 2 plans
+- [x] 03.1-01-PLAN.md — validateCronSecret helper + hardened enrichment routes + MCP env vars
+- [x] 03.1-02-PLAN.md — Test infrastructure gap closure: dailyCostTotal mock, DAILY_CAP_HIT tests, TS fix
 
 ### Phase 4: Search, Filter + List Building
 **Goal**: Users can find any person or company in the database, filter by enrichment state and ICP criteria, and assemble qualified lists ready for export
