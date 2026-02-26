@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 
 ## Current Position
 
-Phase: 2 of 5 (Provider Adapters + Waterfall) — COMPLETE
-Plan: 5 of 5 in current phase (02-05 complete)
-Status: Phase 2 complete, ready for Phase 3
-Last activity: 2026-02-26 — Completed 02-05 (cost dashboard API + Recharts admin page)
+Phase: 2 of 5 (Provider Adapters + Waterfall) — COMPLETE (gap closure plan 02-06 also complete)
+Plan: 6 of 6 in current phase (02-06 complete — gap closure)
+Status: Phase 2 fully complete (including gap closure), ready for Phase 3
+Last activity: 2026-02-26 — Completed 02-06 (AI Ark person adapter + waterfall ENRICH-02 gap closure)
 
-Progress: [████████░░] ~60%
+Progress: [████████░░] ~65%
 
 ## Performance Metrics
 
@@ -87,6 +87,9 @@ Recent decisions affecting current work:
 - [02-05]: Dashboard placed in (admin) route group (not /admin) — consistent with existing admin pages using AppShell layout
 - [02-05]: DailyCostTotal used for byDate query — avoids expensive groupBy on EnrichmentLog by date; O(days) vs O(log_rows)
 - [02-05]: ReferenceLine at daily cap on trend chart — immediate visual feedback when approaching/hitting cap
+- [02-06]: AI Ark person step implemented as pre-email block (not EMAIL_PROVIDERS entry) — PersonAdapter return type differs from EmailAdapter
+- [02-06]: No-cost empty result returned when neither LinkedIn URL nor name+company available — avoids unnecessary API calls
+- [02-06]: costUsd=0 guard prevents recording enrichment when no API call was made (preserves dedup gate for future enrichment)
 
 ### Pending Todos
 
@@ -101,5 +104,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-05-PLAN.md — cost dashboard API + Recharts admin page (Phase 2 complete)
+Stopped at: Completed 02-06-PLAN.md — AI Ark person adapter + ENRICH-02 waterfall gap closure (Phase 2 fully complete)
 Resume file: None
