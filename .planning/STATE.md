@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: active
-last_updated: "2026-02-27T11:22:33Z"
+status: unknown
+last_updated: "2026-02-27T11:28:41.014Z"
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 1
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 19
+  completed_plans: 17
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 04 Search/Filter/List Building — Plan 01 complete
+**Current focus:** Phase 04 Search/Filter/List Building — Plans 01 and 03 complete
 
 ## Current Position
 
 Phase: 04 (Search/Filter/List Building) — IN PROGRESS
-Plan: 1 of 5 complete (04-01 — foundation: TargetList schema, nuqs, enrichment status utility)
-Status: Phase 04 active — foundation complete, Plans 02-05 ready to execute
-Last activity: 2026-02-27 — Completed 04-01 (TargetList schema, nuqs install, enrichment status utility, NuqsAdapter layout)
+Plan: 3 of 5 complete (04-01 — foundation; 04-03 — companies search API + UI)
+Status: Phase 04 active — companies search shipped, Plans 02, 04, 05 ready
+Last activity: 2026-02-27 — Completed 04-03 (GET /api/companies/search, CompaniesSearchPage, /companies page)
 
-Progress: [██░░░░░░░░] Phase 04 in progress (1/5 plans)
+Progress: [████░░░░░░] Phase 04 in progress (2/5 plans)
 
 ## Performance Metrics
 
@@ -54,6 +54,8 @@ Progress: [██░░░░░░░░] Phase 04 in progress (1/5 plans)
 | Phase 03-icp-qualification-leads-agent P03 | 3 | 2 tasks | 8 files |
 | Phase 03.1-api-security-hardening P01 | 2 | 2 tasks | 4 files |
 | Phase 04-search-filter-list-building P01 | 3 | 2 tasks | 4 files |
+| Phase 04-search-filter-list-building P02 | 3 | 2 tasks | 5 files |
+| Phase 04-search-filter-list-building P03 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -117,6 +119,12 @@ Recent decisions affecting current work:
 - [04-01]: NuqsAdapter placed inside TooltipProvider wrapping AppShell — scopes URL state to (admin)/ routes only
 - [04-01]: Enrichment status derived from field presence (not stored column) — no backfill migration needed for 14,563+ existing person records
 - [04-01]: ENRICHMENT_COLORS uses teal-green/brand-yellow/red for full/partial/missing — matches brand palette (#F0FF7A)
+- [04-03]: enrichmentStatus annotated server-side in API route response — client receives pre-computed status, avoids re-deriving on every render
+- [04-03]: allIndustries state initialized once from first API response and preserved — prevents sidebar emptying when vertical filter applied
+- [04-03]: CompanyEnrichmentBadge defined inline in companies-search-page.tsx — component too small for separate file
+- [Phase 04-02]: filterOptions bundled in search response — single round trip, no extra API call for filter sidebar
+- [Phase 04-02]: AND conditions array for Prisma WHERE — safe composition avoids overwriting OR conditions
+- [Phase 04-02]: People page replaced wholesale server→client — server-side form submit is anti-pattern for instant search
 
 ### Pending Todos
 
@@ -131,5 +139,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 04-01-PLAN.md — Phase 4 foundation: TargetList schema, nuqs install, enrichment status utility, NuqsAdapter layout
+Stopped at: Completed 04-02-PLAN.md — People search API route (GET /api/people/search) + client search page with filter sidebar, enrichment badges, nuqs URL state
 Resume file: None
