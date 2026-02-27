@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Outbound Pipeline
 status: in_progress
-last_updated: "2026-02-27T21:30:00.000Z"
+last_updated: "2026-02-27T22:00:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 7.1 of 10 (Leads Agent Integration Fixes — complete)
-Plan: 2 of 2 in current phase (both plans complete, phase done)
-Status: In Progress (Phase 7.1 complete — next: Phase 8)
-Last activity: 2026-02-27 — Executed Plan 02: migrated MCP tools to operations layer (search, create_list, add_to_list, view_list), documented scope divergences in batch_score_list and export_to_emailbison
+Phase: 7.1 of 10 (Leads Agent Integration Fixes — fully complete, including SC-1 gap closure)
+Plan: 3 of 3 in current phase (all plans complete, phase done)
+Status: In Progress (Phase 7.1 fully complete — next: Phase 8)
+Last activity: 2026-02-27 — Executed Plan 03: removed dead operations imports from score.ts and export.ts, updated ROADMAP SC-1 with accepted-exclusions language, added LEAD-05 scope note to REQUIREMENTS
 
 Progress: [██░░░░░░░░] 20% (v1.1 — Phase 7 complete, 7.1-10 remaining)
 
@@ -64,6 +64,8 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [07.1-02]: view_list retains both operations.getList and getListExportReadiness — readiness provides verification/enrichment metadata not in ListDetail
 - [07.1-02]: batch_score_list workspace scope retained (not migrated to operations.scoreList) — different granularity; scoring via shared scorePersonIcp satisfies LEAD-05
 - [07.1-02]: export_to_emailbison confirm=true path not replaced — MCP is superset (campaign management + custom variables); unified in Phase 8
+- [07.1-03]: SC-1 reframed from "zero divergent implementations" to accepted-exclusions — batch_score_list (workspace-level) and export campaign management are formally deferred to Phase 8; LEAD-05 remains checked
+- [07.1-03]: SCOPE comments replace NOTE comments in score.ts and export.ts — scope-as-documentation pattern with explicit LEAD-05 references
 
 ### Blockers/Concerns
 
@@ -74,5 +76,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 07.1-02-PLAN.md (MCP operations migration: search.ts, lists.ts migrated; score.ts, export.ts documented). Phase 7.1 complete. Next: Phase 8.
+Stopped at: Completed 07.1-03-PLAN.md (SC-1 gap closure: dead imports removed from score.ts and export.ts, ROADMAP SC-1 and REQUIREMENTS LEAD-05 scope documented). Phase 7.1 fully complete. Next: Phase 8.
 Resume file: None

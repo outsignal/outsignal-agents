@@ -57,10 +57,11 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   2. Export via agent returns an actionable error when workspace exists but apiToken is missing (not "Workspace not found")
   3. Orchestrator's `delegateToLeads` schema includes `conversationContext` and passes it to `runLeadsAgent` — multi-turn "narrow to London" follow-ups refine previous results
   4. `scoreList` in operations.ts has a code-level confirm gate (returns count without scoring when `confirm: false`) matching the MCP equivalent
-**Plans**: 2 plans
+**Plans**: 3/3 complete
 Plans:
-- [ ] 07.1-01-PLAN.md — Surgical fixes: apiToken error, conversationContext wiring, scoreList confirm gate
-- [ ] 07.1-02-PLAN.md — MCP tools migration to operations layer
+- [x] 07.1-01-PLAN.md — Surgical fixes: apiToken error, conversationContext wiring, scoreList confirm gate
+- [x] 07.1-02-PLAN.md — MCP tools migration to operations layer
+- [x] 07.1-03-PLAN.md — SC-1 gap closure: dead imports removed, scope documented in ROADMAP + REQUIREMENTS
 
 ### Phase 8: Campaign Entity + Writer Integration
 **Goal**: Campaign becomes a first-class entity in Outsignal that owns leads (TargetList) AND content (email + LinkedIn sequences). Admin creates campaigns, generates content via writer agent, reviews and iterates via Cmd+J, and promotes to client review — all through natural language chat. Writer agent also generates suggested responses to incoming replies, surfaced in Slack notifications and available for refinement via Cmd+J.
@@ -121,7 +122,7 @@ Plans:
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
-| 7.1 Leads Agent Integration Fixes | 2/2 | Complete   | 2026-02-27 | - |
+| 7.1 Leads Agent Integration Fixes | v1.1 | 3/3 | Complete | 2026-02-27 |
 | 8. Campaign Entity + Writer Integration | v1.1 | 0/TBD | Not started | - |
 | 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
