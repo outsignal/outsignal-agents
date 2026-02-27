@@ -327,11 +327,13 @@ export class LinkedInBrowser {
           eventCreate: {
             value: {
               "com.linkedin.voyager.messaging.create.MessageCreate": {
+                body: messageText,
+                attachments: [],
                 attributedBody: {
                   text: messageText,
                   attributes: [],
                 },
-                attachments: [],
+                mediaAttachments: [],
               },
             },
           },
@@ -343,7 +345,7 @@ export class LinkedInBrowser {
       this.log(`Voyager message send to ${fullUrn}`);
 
       const response = await fetch(
-        "https://www.linkedin.com/voyager/api/messaging/conversations",
+        "https://www.linkedin.com/voyager/api/messaging/conversations?action=create",
         {
           method: "POST",
           headers: {
