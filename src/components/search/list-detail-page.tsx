@@ -132,6 +132,8 @@ export function ListDetailPage({ listId }: Props) {
   const [showDeleteList, setShowDeleteList] = useState(false);
   const [deletingList, setDeletingList] = useState(false);
   const [removingPersonId, setRemovingPersonId] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const fetchData = useCallback(
     async (p: number) => {
@@ -171,6 +173,33 @@ export function ListDetailPage({ listId }: Props) {
       console.error("Failed to delete list:", err);
     } finally {
       setDeletingList(false);
+    }
+  }
+
+  async function handleExportCsv() {
+    setExportLoading(true);
+    setExportError(null);
+    try {
+      const res = await fetch(`/api/lists/${listId}/export`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: "Export failed" }));
+        setExportError(json.error ?? "Export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const filename =
+        res.headers.get("Content-Disposition")?.match(/filename="(.+?)"/)?.[1] ??
+        "export.csv";
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportLoading(false);
     }
   }
 
@@ -250,27 +279,30 @@ export function ListDetailPage({ listId }: Props) {
             <p className="text-sm text-zinc-400">{list.description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800"
-            onClick={() => {
-              window.open(`/api/lists/${listId}/export`, "_blank");
-            }}
-            disabled={loading && !list}
-          >
-            Export CSV
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-red-400 hover:text-red-300 hover:bg-red-950"
-            onClick={() => setShowDeleteList(true)}
-            disabled={loading && !list}
-          >
-            Delete List
-          </Button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800"
+              onClick={handleExportCsv}
+              disabled={exportLoading || (loading && !list)}
+            >
+              {exportLoading ? "Exporting..." : "Export CSV"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-400 hover:text-red-300 hover:bg-red-950"
+              onClick={() => setShowDeleteList(true)}
+              disabled={loading && !list}
+            >
+              Delete List
+            </Button>
+          </div>
+          {exportError && (
+            <p className="text-xs text-red-400">{exportError}</p>
+          )}
         </div>
       </div>
 
