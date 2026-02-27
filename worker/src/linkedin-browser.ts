@@ -192,48 +192,27 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Resolve the member URN/ID for a profile using multiple strategies.
-   *
-   * Returns { urn, urnType, name } where urn is the ID to use in the compose
-   * URL and urnType is 'fsd_profile' or 'member' (determines URL format).
-   *
-   * Strategy order:
-   * 1. Direct Voyager API fetch (most reliable — bypasses headless detection)
-   * 2. Numeric ID from URL slug (instant, no network — covers most profiles)
+   * Resolve the member URN for a profile via direct Voyager API fetch.
+   * No fallbacks — if we can't get the URN reliably, we fail the action.
    */
   private async resolveRecipient(profileUrl: string): Promise<{
     urn: string;
-    urnType: "fsd_profile" | "member";
     name: string | null;
   } | null> {
-    // Extract the public identifier (slug) from the URL
     const slugMatch = profileUrl.match(/\/in\/([^/?]+)/);
     if (!slugMatch) return null;
     const publicId = slugMatch[1].replace(/\/$/, "");
 
-    // Strategy 1: Direct Voyager API fetch using session cookies
-    const voyagerResult = await this.fetchVoyagerProfile(publicId);
-    if (voyagerResult) return voyagerResult;
-
-    // Strategy 2: Numeric suffix from URL slug (e.g., "april-newman-27713482" → 27713482)
-    const numericMatch = publicId.match(/-(\d{5,})$/);
-    if (numericMatch) {
-      const numericId = numericMatch[1];
-      this.log(`Using numeric member ID from URL slug: ${numericId}`);
-      return { urn: numericId, urnType: "member", name: null };
-    }
-
-    this.log("All URN resolution strategies failed");
-    return null;
+    return this.fetchVoyagerProfile(publicId);
   }
 
   /**
    * Fetch profile data directly from LinkedIn Voyager API using session cookies.
    * Bypasses headless Chrome detection entirely.
+   * Tries multiple Voyager endpoints since LinkedIn deprecates them over time.
    */
   private async fetchVoyagerProfile(publicId: string): Promise<{
     urn: string;
-    urnType: "fsd_profile";
     name: string | null;
   } | null> {
     if (!this.ws) return null;
@@ -259,46 +238,67 @@ export class LinkedInBrowser {
       // CSRF token is the JSESSIONID value without quotes
       const csrfToken = jsessionId.replace(/"/g, "");
 
-      const url = `https://www.linkedin.com/voyager/api/identity/profiles/${publicId}/profileView`;
-      this.log(`Voyager API fetch: ${url}`);
+      const headers: Record<string, string> = {
+        "cookie": cookieHeader,
+        "csrf-token": csrfToken,
+        "x-restli-protocol-version": "2.0.0",
+        "accept": "application/vnd.linkedin.normalized+json+2.1",
+        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      };
 
-      const response = await fetch(url, {
-        headers: {
-          "cookie": cookieHeader,
-          "csrf-token": csrfToken,
-          "x-restli-protocol-version": "2.0.0",
-          "accept": "application/vnd.linkedin.normalized+json+2.1",
-          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        },
-      });
+      // Try multiple Voyager endpoints — LinkedIn deprecates them over time
+      const endpoints = [
+        `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${publicId}`,
+        `https://www.linkedin.com/voyager/api/identity/profiles/${publicId}/profileView`,
+      ];
 
-      if (!response.ok) {
-        this.log(`Voyager API returned ${response.status}`);
-        return null;
-      }
+      for (const url of endpoints) {
+        this.log(`Voyager API fetch: ${url.substring(0, 120)}`);
 
-      const bodyText = await response.text();
+        const response = await fetch(url, { headers });
 
-      // Extract fsd_profile URN
-      const urnMatch = bodyText.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-      if (!urnMatch) {
-        this.log("Voyager response has no fsd_profile URN");
-        return null;
-      }
-
-      // Try to extract name from the response
-      let name: string | null = null;
-      try {
-        const json = JSON.parse(bodyText);
-        const firstName = json?.profile?.firstName ?? "";
-        const lastName = json?.profile?.lastName ?? "";
-        if (firstName || lastName) {
-          name = `${firstName} ${lastName}`.trim();
+        if (!response.ok) {
+          this.log(`Voyager API returned ${response.status} for ${url.substring(url.lastIndexOf("/"))}`);
+          continue;
         }
-      } catch { /* name extraction is best-effort */ }
 
-      this.log(`Voyager API resolved: urn="${urnMatch[1]}", name="${name}"`);
-      return { urn: urnMatch[1], urnType: "fsd_profile", name };
+        const bodyText = await response.text();
+
+        // Extract fsd_profile URN
+        const urnMatch = bodyText.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+        if (!urnMatch) {
+          this.log("Voyager response has no fsd_profile URN, trying next endpoint");
+          continue;
+        }
+
+        // Extract name from the response — try multiple JSON structures
+        let name: string | null = null;
+        try {
+          const json = JSON.parse(bodyText);
+          // Structure varies by endpoint
+          const profile = json?.profile ?? json?.elements?.[0] ?? {};
+          const firstName = profile?.firstName ?? profile?.localizedFirstName ?? "";
+          const lastName = profile?.lastName ?? profile?.localizedLastName ?? "";
+          if (firstName || lastName) {
+            name = `${firstName} ${lastName}`.trim();
+          }
+          // Fallback: search included array for miniProfile
+          if (!name && Array.isArray(json?.included)) {
+            for (const item of json.included) {
+              if (item?.firstName && item?.lastName) {
+                name = `${item.firstName} ${item.lastName}`.trim();
+                break;
+              }
+            }
+          }
+        } catch { /* name extraction is best-effort */ }
+
+        this.log(`Voyager API resolved: urn="${urnMatch[1]}", name="${name}"`);
+        return { urn: urnMatch[1], name };
+      }
+
+      this.log("All Voyager endpoints failed");
+      return null;
     } catch (error) {
       this.log(`Voyager API fetch failed: ${error}`);
       return null;
@@ -350,42 +350,59 @@ export class LinkedInBrowser {
       const result = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
-  // Strategy 1: element with data-entity-urn containing a span (pill with name)
-  const urnEl = document.querySelector('[data-entity-urn] span');
-  if (urnEl && urnEl.textContent?.trim()) return { name: urnEl.textContent.trim(), strategy: 'data-entity-urn span' };
+  // Exclude known nav pills (Jobs, Messaging, Notifications, etc.)
+  const navWords = new Set(['jobs', 'messaging', 'notifications', 'home', 'network', 'my network', 'post', 'me']);
+  const isNavPill = (text) => navWords.has(text.toLowerCase().trim());
 
-  // Strategy 2: pill-like classes LinkedIn uses
-  const pill = document.querySelector('.msg-compose-pill, .msg-connections-typeahead__pill, .artdeco-pill');
-  if (pill && pill.textContent?.trim()) return { name: pill.textContent.trim(), strategy: 'pill-class' };
-
-  // Strategy 3: listitem role inside recipient area
-  const listItem = document.querySelector('[role="listitem"]');
-  if (listItem && listItem.textContent?.trim()) return { name: listItem.textContent.trim(), strategy: 'role-listitem' };
-
-  // Strategy 4: pill-like elements near the "To:" label
-  const toLabel = Array.from(document.querySelectorAll('label, span')).find(el =>
-    el.textContent?.trim().toLowerCase() === 'to' || el.textContent?.trim().toLowerCase() === 'to:'
-  );
-  if (toLabel) {
-    const container = toLabel.closest('div');
-    if (container) {
-      const pill = container.querySelector('span[data-entity-urn], button, .artdeco-pill');
-      if (pill && pill.textContent?.trim()) return { name: pill.textContent.trim(), strategy: 'near-to-label' };
+  // Strategy 1: element with data-entity-urn inside the compose/messaging area
+  const composeArea = document.querySelector('[class*="msg-compose"], [class*="msg-overlay"], [class*="messaging"]');
+  if (composeArea) {
+    const urnEl = composeArea.querySelector('[data-entity-urn] span');
+    if (urnEl && urnEl.textContent?.trim() && !isNavPill(urnEl.textContent)) {
+      return { name: urnEl.textContent.trim(), strategy: 'compose-area entity-urn' };
+    }
+    const pill = composeArea.querySelector('.msg-compose-pill, .msg-connections-typeahead__pill, .artdeco-pill');
+    if (pill && pill.textContent?.trim() && !isNavPill(pill.textContent)) {
+      return { name: pill.textContent.trim(), strategy: 'compose-area pill' };
+    }
+    const listItem = composeArea.querySelector('[role="listitem"]');
+    if (listItem && listItem.textContent?.trim() && !isNavPill(listItem.textContent)) {
+      return { name: listItem.textContent.trim(), strategy: 'compose-area listitem' };
     }
   }
 
-  return null;
+  // Strategy 2: pill-like elements near "To:" / "New message" header
+  const labels = Array.from(document.querySelectorAll('label, span, h2'));
+  const toLabel = labels.find(el => {
+    const t = el.textContent?.trim().toLowerCase() ?? '';
+    return t === 'to' || t === 'to:' || t === 'new message';
+  });
+  if (toLabel) {
+    const container = toLabel.closest('[class*="msg"], [class*="compose"], form');
+    if (container) {
+      const pill = container.querySelector('[data-entity-urn] span, .artdeco-pill, [role="listitem"]');
+      if (pill && pill.textContent?.trim() && !isNavPill(pill.textContent)) {
+        return { name: pill.textContent.trim(), strategy: 'near-to-label' };
+      }
+    }
+  }
+
+  // Debug: what pills exist on the page
+  const allPills = Array.from(document.querySelectorAll('.artdeco-pill, [role="listitem"]')).slice(0, 5).map(
+    p => p.textContent?.trim().substring(0, 20) ?? ''
+  );
+  return { name: null, strategy: 'none', debug: allPills };
 })()`,
           returnByValue: true,
         }, this.nextId()),
-      ) as { name: string; strategy: string } | null;
+      ) as { name: string | null; strategy: string; debug?: string[] } | null;
 
       if (result?.name) {
         this.log(`Compose recipient found: "${result.name}" via strategy: ${result.strategy}`);
         return result.name;
       }
 
-      this.log(`Recipient poll ${i + 1}: no pill found yet`);
+      this.log(`Recipient poll ${i + 1}: no pill found yet (debug: ${result?.debug?.join(', ') ?? 'none'})`);
       await this.sleep(500);
     }
 
@@ -694,7 +711,7 @@ export class LinkedInBrowser {
           error: `Failed to resolve member URN for: ${profileUrl}`,
         };
       }
-      const { urn: memberId, urnType, name: voyagerName } = recipient;
+      const { urn: memberId, name: voyagerName } = recipient;
 
       // Step 2: Navigate to the profile page (counts as a profile view)
       const landedUrl = await this.navigate(profileUrl);
@@ -708,7 +725,7 @@ export class LinkedInBrowser {
       this.log(`Profile name for verification: "${profileName}"`);
 
       // Step 4: Navigate to compose URL with recipient URN
-      const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:${urnType}:${memberId}`;
+      const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:fsd_profile:${memberId}`;
       this.log(`Navigating to compose URL: ${composeUrl}`);
       await this.navigate(composeUrl);
 
@@ -758,7 +775,11 @@ export class LinkedInBrowser {
         }
         this.log("Name verification passed");
       } else {
-        this.log("Skipping name verification — profile name not extracted");
+        // Name verification is MANDATORY — refuse to send without it
+        return {
+          success: false,
+          error: `Cannot verify recipient — no profile name available (pill='${pillName}', memberId=${memberId})`,
+        };
       }
 
       // Step 8: Focus the message textbox
