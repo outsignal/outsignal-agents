@@ -337,76 +337,143 @@ export class LinkedInBrowser {
   /**
    * Send a message via the Voyager messaging API (executed in browser context).
    */
-  private async sendMessageViaVoyager(
+  /**
+   * Send message via the compose URL approach — navigates to LinkedIn's
+   * compose page with the recipient URN pre-filled, types the message,
+   * and clicks send. This works because LinkedIn's own JS handles the
+   * Voyager API calls internally.
+   */
+  private async sendMessageViaCompose(
     profileId: string,
-    memberUrn: string,
+    recipientName: string | null,
     messageText: string,
   ): Promise<{ success: boolean; error?: string }> {
-    // Try multiple URN formats — LinkedIn API may accept different ones
-    const urnCandidates = [
-      `urn:li:fs_miniProfile:${profileId}`,
-      `urn:li:fsd_profile:${profileId}`,
-    ];
-    // Add numeric member URN if available (different from profileId)
-    if (memberUrn !== profileId) {
-      urnCandidates.push(`urn:li:member:${memberUrn}`);
-    }
+    if (!this.ws) return { success: false, error: "Browser not launched" };
 
-    for (const fullUrn of urnCandidates) {
-      // Generate tracking IDs matching LinkedIn's expected format (from linkedin-api library)
-      const originToken = crypto.randomUUID();
-      const trackingBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
-      const trackingId = String.fromCharCode(...trackingBytes);
+    // Navigate to compose page with recipient URN pre-filled
+    const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn%3Ali%3Afsd_profile%3A${profileId}`;
+    this.log(`Navigating to compose: ${composeUrl}`);
 
-      const body = JSON.stringify({
-        keyVersion: "LEGACY_INBOX",
-        conversationCreate: {
-          eventCreate: {
-            originToken,
-            value: {
-              "com.linkedin.voyager.messaging.create.MessageCreate": {
-                attributedBody: {
-                  text: messageText,
-                  attributes: [],
-                },
-                attachments: [],
-              },
-            },
-            trackingId,
-          },
-          dedupeByClientGeneratedToken: false,
-          recipients: [fullUrn],
-          subtype: "MEMBER_TO_MEMBER",
-        },
-      });
+    await cdpSend(this.ws, "Page.navigate", { url: "about:blank" }, this.nextId());
+    await this.waitForEvent("Page.loadEventFired", 5_000);
+    await this.sleep(500);
 
-      this.log(`Voyager message send attempt: ${fullUrn}`);
+    const loadPromise = this.waitForEvent("Page.loadEventFired", 25_000);
+    this.ws.send(JSON.stringify({
+      id: this.nextId(),
+      method: "Page.navigate",
+      params: { url: composeUrl },
+    }));
+    await loadPromise;
+    this.log("Compose page loaded");
 
-      const result = await this.voyagerFetch(
-        "https://www.linkedin.com/voyager/api/messaging/conversations?action=create",
-        "POST",
-        body,
-      );
+    // Wait for the compose form to render (poll for message input)
+    let inputFound = false;
+    for (let i = 0; i < 20; i++) {
+      await this.sleep(1000);
+      const check = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  const msgInput = document.querySelector('.msg-form__contenteditable, [role="textbox"][contenteditable="true"], .msg-form__message-texteditable');
+  const pills = document.querySelectorAll('.msg-compose__recipient-item, .artdeco-pill, [data-artdeco-is-focused]');
+  const url = window.location.href;
+  return {
+    hasInput: !!msgInput,
+    pillCount: pills.length,
+    pillTexts: Array.from(pills).slice(0, 3).map(p => p.textContent?.trim()?.substring(0, 30) ?? ''),
+    url: url.substring(0, 100),
+    bodyLen: document.body?.innerText?.length ?? 0,
+  };
+})()`,
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { hasInput: boolean; pillCount: number; pillTexts: string[]; url: string; bodyLen: number } | null;
 
-      if (!result) {
-        this.log(`Browser fetch failed for ${fullUrn}`);
-        continue;
-      }
+      this.log(`Compose poll ${i + 1}: input=${check?.hasInput}, pills=${check?.pillCount}, pillTexts=[${check?.pillTexts?.join(', ')}], body=${check?.bodyLen}`);
 
-      if (result.status === 200 || result.status === 201) {
-        this.log(`Voyager message sent successfully via ${fullUrn}`);
-        return { success: true };
-      }
-
-      this.log(`Voyager message failed (${fullUrn}): ${result.status} ${result.body.substring(0, 300)}`);
-
-      // If 400 (bad format), try next URN. If 403, might be permissions — try next anyway
-      if (result.status !== 400 && result.status !== 403) {
-        return { success: false, error: `Voyager API ${result.status}: ${result.body.substring(0, 200)}` };
+      if (check?.hasInput) {
+        inputFound = true;
+        // Verify the recipient pill is the right person
+        if (recipientName && check.pillCount > 0) {
+          const nameLower = recipientName.toLowerCase().split(" ")[0];
+          const anyMatch = check.pillTexts.some(t => t.toLowerCase().includes(nameLower));
+          if (!anyMatch) {
+            this.log(`WARNING: Recipient pill doesn't match expected name "${recipientName}": [${check.pillTexts.join(', ')}]`);
+          }
+        }
+        break;
       }
     }
 
-    return { success: false, error: `All URN formats failed for messaging (tried ${urnCandidates.length} formats)` };
+    if (!inputFound) {
+      return { success: false, error: "Compose form did not render (no message input found)" };
+    }
+
+    // Focus the message input and type the message
+    this.log("Typing message...");
+    await cdpSend(this.ws, "Runtime.evaluate", {
+      expression: `(() => {
+  const input = document.querySelector('.msg-form__contenteditable, [role="textbox"][contenteditable="true"], .msg-form__message-texteditable');
+  if (input) {
+    input.focus();
+    input.click();
+  }
+})()`,
+      returnByValue: true,
+    }, this.nextId());
+    await this.sleep(500);
+
+    // Type using Input.insertText (reliable for contenteditable)
+    await cdpSend(this.ws, "Input.insertText", { text: messageText }, this.nextId());
+    await this.sleep(1000);
+
+    // Click the send button
+    const sendResult = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(() => {
+  // Look for the Send button in the compose form
+  const btns = Array.from(document.querySelectorAll('button'));
+  const sendBtn = btns.find(b => {
+    const text = b.textContent?.trim().toLowerCase() ?? '';
+    const label = b.getAttribute('aria-label')?.toLowerCase() ?? '';
+    return text === 'send' || label.includes('send');
+  });
+  if (!sendBtn) return { found: false, buttons: btns.slice(-5).map(b => b.textContent?.trim()?.substring(0, 20) ?? '') };
+  if (sendBtn.disabled) return { found: true, disabled: true };
+  sendBtn.click();
+  return { found: true, clicked: true };
+})()`,
+        returnByValue: true,
+      }, this.nextId()),
+    ) as { found: boolean; clicked?: boolean; disabled?: boolean; buttons?: string[] } | null;
+
+    if (!sendResult?.found) {
+      this.log(`Send button not found. Available buttons: [${sendResult?.buttons?.join(', ')}]`);
+      return { success: false, error: "Send button not found on compose page" };
+    }
+    if (sendResult.disabled) {
+      return { success: false, error: "Send button found but disabled" };
+    }
+
+    this.log("Send button clicked, waiting for confirmation...");
+    await this.sleep(3000);
+
+    // Verify the message was sent (compose form should clear or navigate)
+    const afterSend = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(() => {
+  const url = window.location.href;
+  const input = document.querySelector('.msg-form__contenteditable, [role="textbox"][contenteditable="true"]');
+  const inputText = input?.textContent?.trim() ?? '';
+  return { url: url.substring(0, 120), inputEmpty: inputText.length === 0 };
+})()`,
+        returnByValue: true,
+      }, this.nextId()),
+    ) as { url: string; inputEmpty: boolean } | null;
+
+    this.log(`After send: url=${afterSend?.url}, inputEmpty=${afterSend?.inputEmpty}`);
+
+    return { success: true };
   }
 
   // ---------------------------------------------------------------------------
@@ -720,12 +787,12 @@ export class LinkedInBrowser {
       // Human-like delay after viewing profile
       await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 3: Send message via Voyager messaging API — try multiple URN formats
-      const sendResult = await this.sendMessageViaVoyager(profileId, memberUrn ?? profileId, message);
+      // Step 3: Send message via compose URL (LinkedIn's own UI handles the API calls)
+      const sendResult = await this.sendMessageViaCompose(profileId, recipientName, message);
       if (!sendResult.success) {
         return {
           success: false,
-          error: sendResult.error ?? "Voyager messaging API failed",
+          error: sendResult.error ?? "Compose messaging failed",
         };
       }
 
