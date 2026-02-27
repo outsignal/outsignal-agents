@@ -170,8 +170,20 @@ export class LinkedInBrowser {
         { url: profileUrl },
         this.nextId(),
       );
-      await this.sleep(3000 + Math.random() * 2000);
-      return { success: true };
+      await this.sleep(4000 + Math.random() * 2000);
+
+      // Verify we landed on the profile
+      const url = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          { expression: "window.location.href", returnByValue: true },
+          this.nextId(),
+        ),
+      ) as string | null;
+      this.log(`Profile view landed on: ${url}`);
+
+      return { success: true, details: { landedUrl: url } };
     } catch (error) {
       return { success: false, error: String(error) };
     }
@@ -347,7 +359,25 @@ export class LinkedInBrowser {
         { url: profileUrl },
         this.nextId(),
       );
-      await this.sleep(3000 + Math.random() * 2000);
+      await this.sleep(4000 + Math.random() * 2000);
+
+      // Verify we actually landed on a profile page
+      const navCheck = evalValue(
+        await cdpSend(
+          this.ws,
+          "Runtime.evaluate",
+          { expression: "window.location.href", returnByValue: true },
+          this.nextId(),
+        ),
+      ) as string | null;
+      this.log(`After navigation, URL: ${navCheck}`);
+
+      if (navCheck && !navCheck.includes("/in/")) {
+        return {
+          success: false,
+          error: `Navigation failed — landed on ${navCheck} instead of profile`,
+        };
+      }
 
       // Step 1: Click the "Message" button
       const msgBtnResult = evalValue(
