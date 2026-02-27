@@ -207,44 +207,48 @@ export class LinkedInBrowser {
   }
 
   /**
+   * Build Voyager API headers from the current browser session cookies.
+   */
+  private async getVoyagerHeaders(): Promise<Record<string, string> | null> {
+    if (!this.ws) return null;
+
+    const resp = await cdpSend(
+      this.ws, "Network.getAllCookies", {}, this.nextId(),
+    );
+    const allCookies = (resp?.result?.cookies as CdpCookie[] | undefined) ?? [];
+    const liCookies = allCookies.filter(c => c.domain.includes("linkedin.com"));
+
+    const liAt = liCookies.find(c => c.name === "li_at")?.value;
+    const jsessionId = liCookies.find(c => c.name === "JSESSIONID")?.value;
+
+    if (!liAt || !jsessionId) {
+      this.log("Voyager: missing li_at or JSESSIONID cookie");
+      return null;
+    }
+
+    const cookieHeader = liCookies.map(c => `${c.name}=${c.value}`).join("; ");
+    const csrfToken = jsessionId.replace(/"/g, "");
+
+    return {
+      "cookie": cookieHeader,
+      "csrf-token": csrfToken,
+      "x-restli-protocol-version": "2.0.0",
+      "accept": "application/vnd.linkedin.normalized+json+2.1",
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    };
+  }
+
+  /**
    * Fetch profile data directly from LinkedIn Voyager API using session cookies.
    * Bypasses headless Chrome detection entirely.
-   * Tries multiple Voyager endpoints since LinkedIn deprecates them over time.
    */
   private async fetchVoyagerProfile(publicId: string): Promise<{
     urn: string;
     name: string | null;
   } | null> {
-    if (!this.ws) return null;
-
     try {
-      // Get cookies from the browser session
-      const resp = await cdpSend(
-        this.ws, "Network.getAllCookies", {}, this.nextId(),
-      );
-      const allCookies = (resp?.result?.cookies as CdpCookie[] | undefined) ?? [];
-      const liCookies = allCookies.filter(c => c.domain.includes("linkedin.com"));
-
-      const liAt = liCookies.find(c => c.name === "li_at")?.value;
-      const jsessionId = liCookies.find(c => c.name === "JSESSIONID")?.value;
-
-      if (!liAt || !jsessionId) {
-        this.log("Voyager fetch: missing li_at or JSESSIONID cookie");
-        return null;
-      }
-
-      // Build cookie header
-      const cookieHeader = liCookies.map(c => `${c.name}=${c.value}`).join("; ");
-      // CSRF token is the JSESSIONID value without quotes
-      const csrfToken = jsessionId.replace(/"/g, "");
-
-      const headers: Record<string, string> = {
-        "cookie": cookieHeader,
-        "csrf-token": csrfToken,
-        "x-restli-protocol-version": "2.0.0",
-        "accept": "application/vnd.linkedin.normalized+json+2.1",
-        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      };
+      const headers = await this.getVoyagerHeaders();
+      if (!headers) return null;
 
       // Try multiple Voyager endpoints — LinkedIn deprecates them over time
       const endpoints = [
@@ -253,12 +257,12 @@ export class LinkedInBrowser {
       ];
 
       for (const url of endpoints) {
-        this.log(`Voyager API fetch: ${url.substring(0, 120)}`);
+        this.log(`Voyager profile fetch: ${url.substring(0, 120)}`);
 
         const response = await fetch(url, { headers });
 
         if (!response.ok) {
-          this.log(`Voyager API returned ${response.status} for ${url.substring(url.lastIndexOf("/"))}`);
+          this.log(`Voyager returned ${response.status} for ${url.substring(url.lastIndexOf("/"))}`);
           continue;
         }
 
@@ -275,7 +279,6 @@ export class LinkedInBrowser {
         let name: string | null = null;
         try {
           const json = JSON.parse(bodyText);
-          // Structure varies by endpoint
           const profile = json?.profile ?? json?.elements?.[0] ?? {};
           const firstName = profile?.firstName ?? profile?.localizedFirstName ?? "";
           const lastName = profile?.lastName ?? profile?.localizedLastName ?? "";
@@ -293,120 +296,76 @@ export class LinkedInBrowser {
           }
         } catch { /* name extraction is best-effort */ }
 
-        this.log(`Voyager API resolved: urn="${urnMatch[1]}", name="${name}"`);
+        this.log(`Voyager profile resolved: urn="${urnMatch[1]}", name="${name}"`);
         return { urn: urnMatch[1], name };
       }
 
-      this.log("All Voyager endpoints failed");
+      this.log("All Voyager profile endpoints failed");
       return null;
     } catch (error) {
-      this.log(`Voyager API fetch failed: ${error}`);
+      this.log(`Voyager profile fetch failed: ${error}`);
       return null;
     }
   }
 
   /**
-   * Extract the profile name from the current profile page's <h1> tag.
-   * Single-shot eval — profile content should already be loaded by navigate().
+   * Send a message via the Voyager messaging API.
+   * Bypasses the compose UI entirely — no DOM interaction needed.
    */
-  private async extractProfileName(): Promise<string | null> {
-    if (!this.ws) return null;
+  private async sendMessageViaVoyager(
+    recipientUrn: string,
+    messageText: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const headers = await this.getVoyagerHeaders();
+      if (!headers) return { success: false, error: "Missing session cookies" };
 
-    const result = evalValue(
-      await cdpSend(this.ws, "Runtime.evaluate", {
-        expression: `(() => {
-  const h1 = document.querySelector('h1');
-  if (!h1) return null;
-  const text = h1.textContent?.trim() ?? '';
-  return text.length > 0 ? text : null;
-})()`,
-        returnByValue: true,
-      }, this.nextId()),
-    ) as string | null;
+      const fullUrn = `urn:li:fsd_profile:${recipientUrn}`;
+      const body = JSON.stringify({
+        keyVersion: "LEGACY_INBOX",
+        conversationCreate: {
+          eventCreate: {
+            value: {
+              "com.linkedin.voyager.messaging.create.MessageCreate": {
+                attributedBody: {
+                  text: messageText,
+                  attributes: [],
+                },
+                attachments: [],
+              },
+            },
+          },
+          recipients: [fullUrn],
+          subtype: "MEMBER_TO_MEMBER",
+        },
+      });
 
-    if (result) {
-      this.log(`Extracted profile name: "${result}"`);
-    } else {
-      this.log("Could not extract profile name from h1");
-    }
+      this.log(`Voyager message send to ${fullUrn}`);
 
-    return result;
-  }
+      const response = await fetch(
+        "https://www.linkedin.com/voyager/api/messaging/conversations",
+        {
+          method: "POST",
+          headers: {
+            ...headers,
+            "content-type": "application/json; charset=UTF-8",
+          },
+          body,
+        },
+      );
 
-  /**
-   * Wait for a recipient pill/tag to appear in the compose form.
-   * Polls multiple CSS selectors that LinkedIn uses for recipient pills.
-   */
-  private async waitForComposeRecipient(maxWaitMs = 10_000): Promise<string | null> {
-    if (!this.ws) return null;
-    const start = Date.now();
-
-    for (let i = 0; i < 20; i++) {
-      if (Date.now() - start > maxWaitMs) {
-        this.log(`Compose recipient poll timed out after ${maxWaitMs}ms`);
-        break;
+      if (response.ok || response.status === 201) {
+        this.log("Voyager message sent successfully");
+        return { success: true };
       }
 
-      const result = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  // Exclude known nav pills (Jobs, Messaging, Notifications, etc.)
-  const navWords = new Set(['jobs', 'messaging', 'notifications', 'home', 'network', 'my network', 'post', 'me']);
-  const isNavPill = (text) => navWords.has(text.toLowerCase().trim());
-
-  // Strategy 1: element with data-entity-urn inside the compose/messaging area
-  const composeArea = document.querySelector('[class*="msg-compose"], [class*="msg-overlay"], [class*="messaging"]');
-  if (composeArea) {
-    const urnEl = composeArea.querySelector('[data-entity-urn] span');
-    if (urnEl && urnEl.textContent?.trim() && !isNavPill(urnEl.textContent)) {
-      return { name: urnEl.textContent.trim(), strategy: 'compose-area entity-urn' };
+      const errBody = await response.text().catch(() => "");
+      this.log(`Voyager message failed: ${response.status} ${errBody.substring(0, 200)}`);
+      return { success: false, error: `Voyager API ${response.status}: ${errBody.substring(0, 100)}` };
+    } catch (error) {
+      this.log(`Voyager message error: ${error}`);
+      return { success: false, error: String(error) };
     }
-    const pill = composeArea.querySelector('.msg-compose-pill, .msg-connections-typeahead__pill, .artdeco-pill');
-    if (pill && pill.textContent?.trim() && !isNavPill(pill.textContent)) {
-      return { name: pill.textContent.trim(), strategy: 'compose-area pill' };
-    }
-    const listItem = composeArea.querySelector('[role="listitem"]');
-    if (listItem && listItem.textContent?.trim() && !isNavPill(listItem.textContent)) {
-      return { name: listItem.textContent.trim(), strategy: 'compose-area listitem' };
-    }
-  }
-
-  // Strategy 2: pill-like elements near "To:" / "New message" header
-  const labels = Array.from(document.querySelectorAll('label, span, h2'));
-  const toLabel = labels.find(el => {
-    const t = el.textContent?.trim().toLowerCase() ?? '';
-    return t === 'to' || t === 'to:' || t === 'new message';
-  });
-  if (toLabel) {
-    const container = toLabel.closest('[class*="msg"], [class*="compose"], form');
-    if (container) {
-      const pill = container.querySelector('[data-entity-urn] span, .artdeco-pill, [role="listitem"]');
-      if (pill && pill.textContent?.trim() && !isNavPill(pill.textContent)) {
-        return { name: pill.textContent.trim(), strategy: 'near-to-label' };
-      }
-    }
-  }
-
-  // Debug: what pills exist on the page
-  const allPills = Array.from(document.querySelectorAll('.artdeco-pill, [role="listitem"]')).slice(0, 5).map(
-    p => p.textContent?.trim().substring(0, 20) ?? ''
-  );
-  return { name: null, strategy: 'none', debug: allPills };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { name: string | null; strategy: string; debug?: string[] } | null;
-
-      if (result?.name) {
-        this.log(`Compose recipient found: "${result.name}" via strategy: ${result.strategy}`);
-        return result.name;
-      }
-
-      this.log(`Recipient poll ${i + 1}: no pill found yet (debug: ${result?.debug?.join(', ') ?? 'none'})`);
-      await this.sleep(500);
-    }
-
-    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -681,13 +640,13 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Send a message to a 1st-degree connection.
+   * Send a message to a LinkedIn connection.
    *
-   * Uses URN-based compose URL for reliable recipient targeting:
-   * 1. Navigate to the profile page to extract the member URN
-   * 2. Open /messaging/compose/?recipientUrn=urn:li:fsd_profile:{id}
-   * 3. Verify recipient pill matches profile name
-   * 4. Type and send the message
+   * Uses the Voyager messaging API directly — no compose page, no DOM interaction.
+   * Flow:
+   * 1. Resolve recipient URN via Voyager profile API
+   * 2. Navigate to profile (counts as a profile view for human-like behavior)
+   * 3. Send message via Voyager messaging API
    */
   async sendMessage(
     profileUrl: string,
@@ -695,15 +654,14 @@ export class LinkedInBrowser {
   ): Promise<ActionResult> {
     if (!this.ws) return { success: false, error: "Browser not launched" };
 
-    // Validate profile URL
     if (!profileUrl.includes("/in/")) {
       return { success: false, error: `Invalid profile URL (missing /in/): ${profileUrl}` };
     }
 
     try {
-      this.log(`Sending message via URN compose to: ${profileUrl}`);
+      this.log(`Sending message to: ${profileUrl}`);
 
-      // Step 1: Resolve the recipient URN (Voyager API fetch, then URL slug fallback)
+      // Step 1: Resolve the recipient URN via Voyager API
       const recipient = await this.resolveRecipient(profileUrl);
       if (!recipient) {
         return {
@@ -711,7 +669,8 @@ export class LinkedInBrowser {
           error: `Failed to resolve member URN for: ${profileUrl}`,
         };
       }
-      const { urn: memberId, name: voyagerName } = recipient;
+      const { urn: memberId, name: recipientName } = recipient;
+      this.log(`Resolved: ${recipientName} (${memberId})`);
 
       // Step 2: Navigate to the profile page (counts as a profile view)
       const landedUrl = await this.navigate(profileUrl);
@@ -720,167 +679,18 @@ export class LinkedInBrowser {
       // Human-like delay after viewing profile
       await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 3: Use profile name from Voyager if available, else try DOM
-      const profileName = voyagerName ?? await this.extractProfileName();
-      this.log(`Profile name for verification: "${profileName}"`);
-
-      // Step 4: Navigate to compose URL with recipient URN
-      const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:fsd_profile:${memberId}`;
-      this.log(`Navigating to compose URL: ${composeUrl}`);
-      await this.navigate(composeUrl);
-
-      // Step 6: Wait for the recipient pill to appear
-      const pillName = await this.waitForComposeRecipient();
-      if (!pillName) {
-        // Diagnose why the pill didn't appear
-        const diagResult = evalValue(
-          await cdpSend(this.ws, "Runtime.evaluate", {
-            expression: `(() => {
-  return {
-    url: window.location.href,
-    title: document.title.substring(0, 80),
-    bodyText: document.body?.innerText?.substring(0, 200) ?? '',
-  };
-})()`,
-            returnByValue: true,
-          }, this.nextId()),
-        ) as { url: string; title: string; bodyText: string } | null;
-
-        const currentUrl = diagResult?.url ?? "unknown";
-        if (currentUrl.includes("/messaging/compose")) {
-          return {
-            success: false,
-            error: `Compose loaded but no recipient pill — cannot message this person (memberId=${memberId}, url=${currentUrl})`,
-          };
-        }
+      // Step 3: Send message via Voyager messaging API
+      const sendResult = await this.sendMessageViaVoyager(memberId, message);
+      if (!sendResult.success) {
         return {
           success: false,
-          error: `Compose redirect failed — landed on ${currentUrl} (title="${diagResult?.title}")`,
+          error: sendResult.error ?? "Voyager messaging API failed",
         };
-      }
-
-      // Step 7: Name verification — compare pill name to profile name
-      if (profileName) {
-        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
-        const normalizedPill = normalize(pillName);
-        const normalizedProfile = normalize(profileName);
-
-        this.log(`Name verification: pill="${pillName}" (${normalizedPill}) vs profile="${profileName}" (${normalizedProfile})`);
-
-        if (!normalizedPill.startsWith(normalizedProfile) && !normalizedProfile.startsWith(normalizedPill)) {
-          return {
-            success: false,
-            error: `Recipient mismatch: pill='${pillName}' profile='${profileName}'`,
-          };
-        }
-        this.log("Name verification passed");
-      } else {
-        // Name verification is MANDATORY — refuse to send without it
-        return {
-          success: false,
-          error: `Cannot verify recipient — no profile name available (pill='${pillName}', memberId=${memberId})`,
-        };
-      }
-
-      // Step 8: Focus the message textbox
-      const focusResult = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) {
-    const allEditable = document.querySelectorAll('[contenteditable="true"]');
-    return { found: false, editableCount: allEditable.length };
-  }
-  input.focus();
-  input.click();
-  return { found: true };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { found: boolean; editableCount?: number } | null;
-
-      if (!focusResult?.found) {
-        return { success: false, error: `Message textbox not found (${focusResult?.editableCount ?? 0} editables)` };
-      }
-
-      // Step 9: Type the message character by character using CDP Input.dispatchKeyEvent
-      await this.sleep(500);
-      for (const char of message) {
-        await cdpSend(this.ws, "Input.dispatchKeyEvent", {
-          type: "keyDown",
-          text: char,
-        }, this.nextId());
-        await cdpSend(this.ws, "Input.dispatchKeyEvent", {
-          type: "keyUp",
-          text: char,
-        }, this.nextId());
-        // Small delay between characters for realism
-        await this.sleep(30 + Math.random() * 50);
-      }
-
-      this.log("Message typed via keyboard events");
-
-      // Step 10: Verify the message was typed
-      await this.sleep(1500);
-
-      const verifyResult = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) return { found: false };
-  const text = input.textContent?.trim() ?? '';
-  return { found: true, hasText: text.length > 0, textLen: text.length, preview: text.substring(0, 30) };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { found: boolean; hasText?: boolean; textLen?: number; preview?: string } | null;
-
-      if (!verifyResult?.found || !verifyResult?.hasText) {
-        this.log(`Message not in textbox. Result: ${JSON.stringify(verifyResult)}`);
-        return { success: false, error: `Message not typed (textLen=${verifyResult?.textLen ?? 0})` };
-      }
-      this.log(`Message in textbox: "${verifyResult.preview}..." (${verifyResult.textLen} chars)`);
-
-      // Step 11: Press Enter to send
-      await cdpSend(this.ws, "Input.dispatchKeyEvent", {
-        type: "rawKeyDown",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13,
-      }, this.nextId());
-      await cdpSend(this.ws, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13,
-      }, this.nextId());
-
-      // Step 12: Verify textbox cleared (message was sent)
-      await this.sleep(2000);
-
-      const afterSend = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) return { cleared: true };
-  const text = input.textContent?.trim() ?? '';
-  return { cleared: text.length === 0, remainingLen: text.length };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { cleared: boolean; remainingLen?: number } | null;
-
-      if (afterSend?.cleared) {
-        this.log("Message sent (textbox cleared)");
-      } else {
-        this.log(`Textbox still has ${afterSend?.remainingLen} chars after Enter — message may still have sent`);
       }
 
       return {
         success: true,
-        details: { memberId, recipientName: pillName },
+        details: { memberId, recipientName },
       };
     } catch (error) {
       return { success: false, error: String(error) };
