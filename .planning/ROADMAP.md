@@ -24,13 +24,13 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
 ### 🚧 v1.1 Outbound Pipeline (In Progress)
 
-**Milestone Goal:** Complete the outbound pipeline loop — admin builds lists via natural language chat, client reviews and approves in a portal, system auto-deploys campaigns to EmailBison on approval.
+**Milestone Goal:** Complete the outbound pipeline loop — admin creates campaigns via Cmd+J chat (leads + content), client reviews and approves leads and content separately in a portal, system auto-deploys to EmailBison + LinkedIn on dual approval.
 
 - [x] **Phase 7: Leads Agent Dashboard** - Natural language access to search, list build, score, and export via Cmd+J chat (completed 2026-02-27)
 - [ ] **Phase 7.1: Leads Agent Integration Fixes** - MCP operations migration, export error handling, conversationContext wiring, score credit-gate
-- [ ] **Phase 8: Schema + Admin Promotion** - TargetList status lifecycle + admin promote UI unlocks portal
-- [ ] **Phase 9: Client Portal Review + Approvals** - Client approves/rejects leads and copy; notifications fire on action
-- [ ] **Phase 10: Campaign Deploy Service** - EmailBison campaign creation, sequence steps, lead assignment, fire-and-forget execution
+- [ ] **Phase 8: Campaign Entity + Writer Integration** - Campaign model owns leads + content; writer agent generates sequences; admin promotes to client review via Cmd+J
+- [ ] **Phase 9: Client Portal Campaign Approval** - Client approves leads and content separately; notifications fire on action; dual approval triggers deploy
+- [ ] **Phase 10: Auto-Deploy on Approval** - On dual approval, auto-deploy to EmailBison + LinkedIn; fire-and-forget with status tracking
 
 ## Phase Details
 
@@ -45,7 +45,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   4. Admin types "export Rise Q1 to EmailBison" and the export runs through the verification gate and confirms success or reports why leads were excluded
   5. EmailBison API surface is documented in a spike note: sequence step schema and campaign-lead assignment endpoint are verified as present or absent against the live white-label instance
   6. Every Leads Agent action (search, list create, score, export) appears as an AgentRun record in the audit trail
-**Plans**: TBD
+**Plans**: 4/4 complete
 
 ### Phase 7.1: Leads Agent Integration Fixes
 **Goal**: Close integration gaps from Phase 7 audit — MCP tools share the operations layer, export errors are actionable, conversational refinement works end-to-end, and scoring has a code-level credit gate
@@ -57,42 +57,52 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   2. Export via agent returns an actionable error when workspace exists but apiToken is missing (not "Workspace not found")
   3. Orchestrator's `delegateToLeads` schema includes `conversationContext` and passes it to `runLeadsAgent` — multi-turn "narrow to London" follow-ups refine previous results
   4. `scoreList` in operations.ts has a code-level confirm gate (returns count without scoring when `confirm: false`) matching the MCP equivalent
+**Plans**: 2 plans
+Plans:
+- [ ] 07.1-01-PLAN.md — Surgical fixes: apiToken error, conversationContext wiring, scoreList confirm gate
+- [ ] 07.1-02-PLAN.md — MCP tools migration to operations layer
+
+### Phase 8: Campaign Entity + Writer Integration
+**Goal**: Campaign becomes a first-class entity in Outsignal that owns leads (TargetList) AND content (email + LinkedIn sequences). Admin creates campaigns, generates content via writer agent, reviews and iterates via Cmd+J, and promotes to client review — all through natural language chat.
+**Depends on**: Phase 7 (Leads Agent tools exist), Writer agent (exists, needs wiring to campaign context)
+**Requirements**: CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, WRITER-01, WRITER-02
+**Success Criteria** (what must be TRUE):
+  1. Campaign model exists in Prisma with status lifecycle (draft → internal_review → pending_approval → approved → deployed → active → paused → completed), channel selection, separate lead/content approval fields, and deployment tracking
+  2. Admin types "create a campaign for Rise using the fintech CTO list, email + LinkedIn" in Cmd+J and a Campaign record is created with the TargetList linked and channels set
+  3. Admin types "write email sequence for this campaign — 3 steps, pain-point angle" and the writer agent generates a multi-step email sequence stored on the Campaign
+  4. Admin types "write LinkedIn messages for this campaign" and the writer generates LinkedIn connection request + follow-up messages stored on the Campaign
+  5. Admin can review content in chat, give feedback ("too formal, simplify the CTA"), and the writer iterates — conversational back-and-forth
+  6. Admin types "push this campaign for client approval" and Campaign.status transitions to pending_approval, triggering a client notification (email + Slack)
+  7. Campaign CRUD API routes exist at `/api/campaigns/*` with workspace ownership enforcement
 **Plans**: TBD
 
-### Phase 8: Schema + Admin Promotion
-**Goal**: TargetList gains a full status lifecycle and admins can promote lists and drafts to review state, unblocking all portal and deploy features
-**Depends on**: Phase 7
-**Requirements**: SCHEMA-01, SCHEMA-02
+### Phase 9: Client Portal Campaign Approval
+**Goal**: Clients log into the portal, see their pending campaigns, preview lead sample and content, and approve or reject leads and content separately — triggering admin notifications. Campaign deploys ONLY when both leads AND content are approved.
+**Depends on**: Phase 8 (Campaign model exists)
+**Requirements**: PORTAL-01, PORTAL-02, PORTAL-03, PORTAL-04, PORTAL-05, PORTAL-06, PORTAL-07, NOTIF-01, NOTIF-02
 **Success Criteria** (what must be TRUE):
-  1. TargetList records have a status field that accepts building, pending_review, approved, rejected, and deployed values
-  2. Admin opens a list detail page and sees a "Send to Client Review" button that transitions the list from building to pending_review
-  3. Admin opens a draft detail page and sees a "Send to Client Review" button that transitions drafts from draft to review status
-  4. PortalApproval and CampaignDeploy models exist in the database and accept records without errors
+  1. Client opens /portal/campaigns and sees all campaigns for their workspace, with pending campaigns showing a notification badge
+  2. Campaign detail page shows two separate sections: Leads and Content
+  3. Leads section displays top N leads (configurable, default 50) by ICP score with name, title, company, location, LinkedIn — client clicks "Approve Leads" or "Request Changes" (with feedback text field)
+  4. Content section displays email sequence steps (subject + body) and LinkedIn messages (if channel includes LinkedIn) with multiple angles/variants — client clicks "Approve Content" or "Request Changes" (with feedback text field)
+  5. Lead approval and content approval are independent — approving one does not affect the other
+  6. When BOTH leads AND content are approved, Campaign.status transitions to approved and auto-deploy is triggered
+  7. Admin receives Slack message in workspace channel and email within 30 seconds of any client approval or rejection
+  8. Client from workspace A cannot view or act on campaigns belonging to workspace B
 **Plans**: TBD
 
-### Phase 9: Client Portal Review + Approvals
-**Goal**: Clients can log into the portal, preview their lead list and copy batch, and approve or reject each — triggering an admin Slack and email notification immediately
-**Depends on**: Phase 8
-**Requirements**: PORTAL-01, PORTAL-02, PORTAL-03, PORTAL-04, PORTAL-05, NOTIF-01, NOTIF-02
+### Phase 10: Auto-Deploy on Approval
+**Goal**: When client approves both leads and content, the system auto-deploys to EmailBison (campaign + sequence steps + leads) and LinkedIn sequencer (connection requests + follow-ups) as a fire-and-forget background job, with deploy status visible to admin.
+**Depends on**: Phase 9 (approval flow exists)
+**Requirements**: DEPLOY-02, DEPLOY-03, DEPLOY-04, DEPLOY-05, DEPLOY-06, DEPLOY-07
 **Success Criteria** (what must be TRUE):
-  1. Client opens /portal and sees a "Review Leads" card when their list is in pending_review state, showing the top 10 leads by ICP score with enrichment stats
-  2. Client clicks "Approve List" and the list status transitions to approved; clicking "Reject List" transitions it to rejected with optional feedback
-  3. Client opens /portal and sees a "Review Copy" card when drafts are in review state, showing email drafts grouped by campaign step with subject and body preview
-  4. Client clicks "Approve Copy" and all review-state drafts transition to approved; rejection records feedback
-  5. Admin receives a Slack message in the workspace channel and an email within 30 seconds of any client approval or rejection
-  6. A client from workspace A cannot view or act on leads or copy belonging to workspace B
-**Plans**: TBD
-
-### Phase 10: Campaign Deploy Service
-**Goal**: Approved leads and copy are deployed to EmailBison as a campaign with sequence steps in a fire-and-forget background job, with deploy status visible to admin and the portal showing deployment state
-**Depends on**: Phase 9
-**Requirements**: DEPLOY-02, DEPLOY-03, DEPLOY-04, DEPLOY-05, DEPLOY-06
-**Success Criteria** (what must be TRUE):
-  1. Admin triggers deploy on an approved list and receives an immediate response (under 2 seconds) while deploy runs in the background
-  2. EmailBison shows a new campaign (or updated existing campaign) with sequence steps matching the approved copy drafts after deploy completes
-  3. Verified leads from the approved TargetList are assigned to the campaign (or a clear admin prompt is shown if the EmailBison API has no assignment endpoint)
-  4. Deploy works when only leads are approved, only copy is approved, or both are approved — three separate execution paths
-  5. CampaignDeploy record in the database shows status (pending, running, complete, failed), lead count, step count, and any error message — visible in admin list detail page
+  1. On dual approval, deploy triggers automatically (no admin intervention) and returns immediately while running in background
+  2. EmailBison shows a new campaign with sequence steps matching the approved email content after deploy completes
+  3. Verified leads from the approved TargetList are pushed to the EmailBison workspace (manual campaign assignment in EB UI until API endpoint is available)
+  4. LinkedIn messages from Campaign.linkedinSequence are queued via the LinkedIn sequencer worker on Railway
+  5. Deploy handles email-only, LinkedIn-only, or both channels depending on Campaign.channels
+  6. CampaignDeploy record tracks status (pending → running → complete / failed), lead count, step count, error message — visible in admin campaign detail
+  7. Admin receives notification when deploy completes or fails
 **Plans**: TBD
 
 ## Progress
@@ -107,7 +117,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
-| 7.1 Leads Agent Integration Fixes | v1.1 | 0/TBD | Not started | - |
-| 8. Schema + Admin Promotion | v1.1 | 0/TBD | Not started | - |
-| 9. Client Portal Review + Approvals | v1.1 | 0/TBD | Not started | - |
-| 10. Campaign Deploy Service | v1.1 | 0/TBD | Not started | - |
+| 7.1 Leads Agent Integration Fixes | v1.1 | 0/2 | Planned | - |
+| 8. Campaign Entity + Writer Integration | v1.1 | 0/TBD | Not started | - |
+| 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
+| 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
