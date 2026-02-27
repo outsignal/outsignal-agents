@@ -27,7 +27,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 **Milestone Goal:** Complete the outbound pipeline loop — admin creates campaigns via Cmd+J chat (leads + content), client reviews and approves leads and content separately in a portal, system auto-deploys to EmailBison + LinkedIn on dual approval.
 
 - [x] **Phase 7: Leads Agent Dashboard** - Natural language access to search, list build, score, and export via Cmd+J chat (completed 2026-02-27)
-- [ ] **Phase 7.1: Leads Agent Integration Fixes** - MCP operations migration, export error handling, conversationContext wiring, score credit-gate
+- [x] **Phase 7.1: Leads Agent Integration Fixes** - MCP operations migration, export error handling, conversationContext wiring, score credit-gate (completed 2026-02-27)
 - [ ] **Phase 8: Campaign Entity + Writer Integration** - Campaign model owns leads + content; writer agent generates sequences; admin promotes to client review via Cmd+J
 - [ ] **Phase 9: Client Portal Campaign Approval** - Client approves leads and content separately; notifications fire on action; dual approval triggers deploy
 - [ ] **Phase 10: Auto-Deploy on Approval** - On dual approval, auto-deploy to EmailBison + LinkedIn; fire-and-forget with status tracking
@@ -119,7 +119,7 @@ Plans:
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
-| 7.1 Leads Agent Integration Fixes | 1/2 | In Progress|  | - |
+| 7.1 Leads Agent Integration Fixes | 2/2 | Complete   | 2026-02-27 | - |
 | 8. Campaign Entity + Writer Integration | v1.1 | 0/TBD | Not started | - |
 | 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |

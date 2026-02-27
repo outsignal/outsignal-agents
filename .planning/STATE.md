@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 7.1 of 10 (Leads Agent Integration Fixes — in progress)
-Plan: 1 of 2 in current phase (Plan 01 complete, Plan 02 next)
-Status: In Progress
-Last activity: 2026-02-27 — Executed Plan 01: three integration fixes (apiToken check, conversationContext wiring, scoreList confirm gate)
+Phase: 7.1 of 10 (Leads Agent Integration Fixes — complete)
+Plan: 2 of 2 in current phase (both plans complete, phase done)
+Status: In Progress (Phase 7.1 complete — next: Phase 8)
+Last activity: 2026-02-27 — Executed Plan 02: migrated MCP tools to operations layer (search, create_list, add_to_list, view_list), documented scope divergences in batch_score_list and export_to_emailbison
 
 Progress: [██░░░░░░░░] 20% (v1.1 — Phase 7 complete, 7.1-10 remaining)
 
@@ -60,6 +60,10 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [07.1-01]: apiToken check placed at call site in exportListToEmailBison, not in getClientForWorkspace — avoids changing shared utility used by many other tools
 - [07.1-01]: conversationContext gap was only in orchestrator schema; leads.ts already handled it — one-file fix
 - [07.1-01]: scoreList confirm defaults to true — backward-compatible, existing agent wrapper unchanged
+- [07.1-02]: status post-filter in search_people MCP tool — operations.searchPeople has no status param; total count inaccurate when filtering but acceptable (full status support deferred)
+- [07.1-02]: view_list retains both operations.getList and getListExportReadiness — readiness provides verification/enrichment metadata not in ListDetail
+- [07.1-02]: batch_score_list workspace scope retained (not migrated to operations.scoreList) — different granularity; scoring via shared scorePersonIcp satisfies LEAD-05
+- [07.1-02]: export_to_emailbison confirm=true path not replaced — MCP is superset (campaign management + custom variables); unified in Phase 8
 
 ### Blockers/Concerns
 
@@ -70,5 +74,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 07.1-01-PLAN.md (3 fixes: apiToken check, conversationContext wiring, scoreList confirm gate). Plan 02 (MCP migration) is next.
+Stopped at: Completed 07.1-02-PLAN.md (MCP operations migration: search.ts, lists.ts migrated; score.ts, export.ts documented). Phase 7.1 complete. Next: Phase 8.
 Resume file: None
