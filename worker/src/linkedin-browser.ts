@@ -383,10 +383,11 @@ export class LinkedInBrowser {
       ) as { found: boolean; debug?: string[] } | null;
 
       if (!msgBtnResult?.found) {
-        this.log("Message button not found. Buttons on page: " + JSON.stringify(msgBtnResult?.debug));
+        const debugInfo = msgBtnResult?.debug?.join(" | ") ?? "no buttons";
+        this.log("Message button not found. Buttons on page: " + debugInfo);
         return {
           success: false,
-          error: "Message button not found — may not be connected",
+          error: `Message button not found. Buttons: [${debugInfo}]`,
         };
       }
 
