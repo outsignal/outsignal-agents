@@ -1,13 +1,13 @@
 /**
  * List management tools for the Outsignal Leads Agent MCP server.
  *
- * Lists are stored as JSON arrays in PersonWorkspace.tags.
- * Each tag is a list name. A person can be in multiple lists within a workspace.
+ * Lists are stored as TargetList + TargetListPerson rows (same model as
+ * the Phase 4 UI and Phase 5 export tools).
  *
  * Tools registered:
- *   - create_list: Create a named list in a workspace.
- *   - add_to_list: Add people to a named list.
- *   - view_list: View people in a named list with their ICP scores.
+ *   - create_list: Create a named TargetList in a workspace.
+ *   - add_to_list: Add people to a TargetList via TargetListPerson.
+ *   - view_list: View people in a TargetList with enrichment status.
  *
  * CRITICAL: No console.log — stdout is reserved for JSON-RPC protocol messages.
  * Use console.error for logging.
@@ -16,38 +16,33 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 
-/**
- * Parse a JSON tags string into a string array.
- * Returns empty array on null or parse error.
- */
-function parseTags(tags: string | null): string[] {
-  if (!tags) return [];
-  try {
-    const parsed = JSON.parse(tags);
-    return Array.isArray(parsed) ? (parsed as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
   // create_list
   // ---------------------------------------------------------------------------
   server.tool(
     "create_list",
-    "Create a named list in a workspace. Lists are tags on PersonWorkspace records — the list exists when at least one person has the tag.",
+    "Create a named TargetList in a workspace. Returns the list ID for use with add_to_list and export tools.",
     {
       name: z.string().describe("Name of the list to create"),
       workspace: z.string().describe("Workspace slug"),
+      description: z.string().optional().describe("Optional list description"),
     },
     async (params) => {
-      const { name, workspace } = params;
+      const { name, workspace, description } = params;
 
       // Validate workspace exists
       await prisma.workspace.findUniqueOrThrow({ where: { slug: workspace } });
 
-      const text = `List '${name}' ready in workspace '${workspace}'. Use add_to_list to add people.`;
+      const list = await prisma.targetList.create({
+        data: {
+          name,
+          workspaceSlug: workspace,
+          description: description ?? null,
+        },
+      });
+
+      const text = `List '${name}' created (ID: ${list.id}) in workspace '${workspace}'. Use add_to_list with this list_id to add people.`;
       return { content: [{ type: "text" as const, text }] };
     },
   );
@@ -57,48 +52,57 @@ export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
   server.tool(
     "add_to_list",
-    "Add people to a named list in a workspace.",
+    "Add people to a TargetList by list ID.",
     {
-      list_name: z.string().describe("Name of the list"),
+      list_id: z.string().describe("TargetList ID (from create_list)"),
       person_ids: z.array(z.string()).describe("Array of Person IDs to add"),
-      workspace: z.string().describe("Workspace slug"),
     },
     async (params) => {
-      const { list_name, person_ids, workspace } = params;
+      const { list_id, person_ids } = params;
+
+      // Validate list exists
+      const list = await prisma.targetList.findUnique({
+        where: { id: list_id },
+        select: { id: true, name: true },
+      });
+      if (!list) {
+        return {
+          content: [
+            { type: "text" as const, text: `Error: TargetList '${list_id}' not found.` },
+          ],
+        };
+      }
 
       let addedCount = 0;
+      let skippedCount = 0;
       const errors: string[] = [];
 
       for (const personId of person_ids) {
         try {
-          const pw = await prisma.personWorkspace.findUnique({
-            where: {
-              personId_workspace: { personId, workspace },
-            },
-            select: { id: true, tags: true },
+          await prisma.targetListPerson.create({
+            data: { listId: list_id, personId },
           });
-
-          if (!pw) {
-            errors.push(`Person ${personId} not in workspace '${workspace}'`);
-            continue;
-          }
-
-          const currentTags = parseTags(pw.tags);
-          if (!currentTags.includes(list_name)) {
-            currentTags.push(list_name);
-            await prisma.personWorkspace.update({
-              where: { id: pw.id },
-              data: { tags: JSON.stringify(currentTags) },
-            });
-          }
           addedCount++;
         } catch (err) {
+          // Unique constraint violation = already in list
+          if (
+            err instanceof Error &&
+            err.message.includes("Unique constraint")
+          ) {
+            skippedCount++;
+            continue;
+          }
           console.error(`[add_to_list] Error for person ${personId}:`, err);
-          errors.push(`Person ${personId}: ${err instanceof Error ? err.message : String(err)}`);
+          errors.push(
+            `Person ${personId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
 
-      let text = `Added ${addedCount} people to list '${list_name}'.`;
+      let text = `Added ${addedCount} people to list '${list.name}'.`;
+      if (skippedCount > 0) {
+        text += ` ${skippedCount} already in list.`;
+      }
       if (errors.length > 0) {
         text += `\n\nErrors (${errors.length}):\n${errors.join("\n")}`;
       }
@@ -112,22 +116,28 @@ export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
   server.tool(
     "view_list",
-    "View people in a named list with their enrichment status and ICP score.",
+    "View people in a TargetList with their enrichment status and ICP score.",
     {
-      list_name: z.string().describe("Name of the list to view"),
-      workspace: z.string().describe("Workspace slug"),
+      list_id: z.string().describe("TargetList ID to view"),
       limit: z.number().default(50).describe("Max people to return"),
     },
     async (params) => {
-      const { list_name, workspace, limit } = params;
+      const { list_id, limit } = params;
 
-      // Query PersonWorkspace where workspace matches AND tags contains the list name.
-      // tags is stored as a JSON string array, so we match on the JSON string representation.
-      const pws = await prisma.personWorkspace.findMany({
-        where: {
-          workspace,
-          tags: { contains: `"${list_name}"` },
-        },
+      const list = await prisma.targetList.findUnique({
+        where: { id: list_id },
+        select: { id: true, name: true, workspaceSlug: true },
+      });
+      if (!list) {
+        return {
+          content: [
+            { type: "text" as const, text: `Error: TargetList '${list_id}' not found.` },
+          ],
+        };
+      }
+
+      const entries = await prisma.targetListPerson.findMany({
+        where: { listId: list_id },
         take: limit,
         include: {
           person: {
@@ -142,29 +152,42 @@ export function registerListTools(server: McpServer): void {
         },
       });
 
-      // Double-check that the tag is actually in the array (contains could match substrings)
-      const filtered = pws.filter((pw) => parseTags(pw.tags).includes(list_name));
-      const count = filtered.length;
+      // Get ICP scores from PersonWorkspace for this workspace
+      const personIds = entries.map((e) => e.personId);
+      const pws = await prisma.personWorkspace.findMany({
+        where: {
+          personId: { in: personIds },
+          workspace: list.workspaceSlug,
+        },
+        select: { personId: true, icpScore: true },
+      });
+      const icpMap = new Map(pws.map((pw) => [pw.personId, pw.icpScore]));
 
-      if (count === 0) {
-        const text = `0 people in list '${list_name}'. Use add_to_list to add people.`;
+      const totalCount = await prisma.targetListPerson.count({
+        where: { listId: list_id },
+      });
+
+      if (entries.length === 0) {
+        const text = `0 people in list '${list.name}'. Use add_to_list to add people.`;
         return { content: [{ type: "text" as const, text }] };
       }
 
       const header = "| Name | Email | Company | ICP Score | Status |";
       const divider = "|------|-------|---------|-----------|--------|";
       const escape = (s: string) => s.replace(/\|/g, "\\|");
-      const rows = filtered.map((pw) => {
+      const rows = entries.map((entry) => {
+        const p = entry.person;
         const name =
-          [pw.person.firstName, pw.person.lastName].filter(Boolean).join(" ") ||
-          "_Unknown_";
-        const company = pw.person.company ?? "_—_";
-        const score = pw.icpScore !== null ? `${pw.icpScore}/100` : "_—_";
-        return `| ${escape(name)} | ${escape(pw.person.email)} | ${escape(company)} | ${score} | ${escape(pw.person.status)} |`;
+          [p.firstName, p.lastName].filter(Boolean).join(" ") || "_Unknown_";
+        const company = p.company ?? "_—_";
+        const score = icpMap.get(entry.personId);
+        const scoreStr = score !== null && score !== undefined ? `${score}/100` : "_—_";
+        return `| ${escape(name)} | ${escape(p.email)} | ${escape(company)} | ${scoreStr} | ${escape(p.status)} |`;
       });
 
       const table = [header, divider, ...rows].join("\n");
-      const text = `${count} people in list '${list_name}':\n\n${table}`;
+      const showing = entries.length < totalCount ? ` (showing ${entries.length})` : "";
+      const text = `${totalCount} people in list '${list.name}'${showing}:\n\n${table}`;
 
       return { content: [{ type: "text" as const, text }] };
     },

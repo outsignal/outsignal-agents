@@ -250,15 +250,28 @@ export function ListDetailPage({ listId }: Props) {
             <p className="text-sm text-zinc-400">{list.description}</p>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-red-400 hover:text-red-300 hover:bg-red-950"
-          onClick={() => setShowDeleteList(true)}
-          disabled={loading && !list}
-        >
-          Delete List
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800"
+            onClick={() => {
+              window.open(`/api/lists/${listId}/export`, "_blank");
+            }}
+            disabled={loading && !list}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-400 hover:text-red-300 hover:bg-red-950"
+            onClick={() => setShowDeleteList(true)}
+            disabled={loading && !list}
+          >
+            Delete List
+          </Button>
+        </div>
       </div>
 
       {/* Enrichment summary bars */}
