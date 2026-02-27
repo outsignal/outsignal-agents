@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: unknown
-last_updated: "2026-02-27T14:09:31.733Z"
+milestone: v1.1
+milestone_name: Outbound Pipeline
+status: defining_requirements
+last_updated: "2026-02-27T15:00:00.000Z"
 progress:
-  total_phases: 1
+  total_phases: 0
   completed_phases: 0
   total_plans: 0
-  completed_plans: 1
+  completed_plans: 0
 ---
 
 # Project State
@@ -18,13 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v1.0 milestone complete. Next: LinkedIn sequencer rewrite.
+**Current focus:** v1.1 Outbound Pipeline — Leads Agent + client portal review + smart campaign deploy
 
 ## Current Position
 
-Milestone: v1.0 Lead Engine — SHIPPED 2026-02-27
-Status: Complete (29/29 requirements, 7/7 phases, 12 tech debt items non-blocking)
-Last activity: 2026-02-27 — Executed 06-01: MCP list tools rewrite + CSV button fix
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-27 — Milestone v1.1 started
 
 ## Accumulated Context
 
@@ -32,19 +33,20 @@ Last activity: 2026-02-27 — Executed 06-01: MCP list tools rewrite + CSV butto
 
 v1.0 decisions archived in PROJECT.md Key Decisions table.
 
-**06-01 (2026-02-27):**
-- Email-based add_to_list: resolve emails to personIds in parallel then bulk insert with createMany+skipDuplicates
-- view_list uses getListExportReadiness helper for enrichment coverage + verification status in one call
-- CSV download uses fetch+blob URL pattern with Content-Disposition filename extraction (no toast library)
+**v1.1 scoping (2026-02-27):**
+- Leads Agent: separate runner pattern (like research/writer), not direct MCP imports
+- Client portal: binary approve/reject at list level (not per-lead)
+- Deploy: auto-push on approve, handles leads + copy together or separately
+- Campaign: creates new or updates existing EmailBison campaigns
 
 ### Blockers/Concerns
 
 - AI Ark API shape (LOW confidence) — monitor 401/403 in logs
 - FindyMail API shape (MEDIUM confidence) — monitor rawResponse logs
-- EmailBison no campaign assignment API — leads go to workspace pool
+- EmailBison no campaign assignment API — leads go to workspace pool (investigate for v1.1 deploy)
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 06-mcp-list-migration-csv-button/06-01-PLAN.md
+Stopped at: Defining v1.1 requirements
 Resume file: None

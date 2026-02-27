@@ -41,21 +41,27 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] LinkedIn sequencer — profile-first targeting with agent-browser (send messages, connection requests, profile views)
+- [ ] Leads Agent in admin dashboard — separate runner with enrich, search, score, list ops, export via Cmd+J chat
+- [ ] Client portal lead list preview — sample ICP preview, client approves/rejects whole list
+- [ ] Client portal content preview — Writer copy preview, client approves/rejects whole batch
+- [ ] Smart campaign deployment — auto-push to EmailBison on approve (creates new or updates existing campaigns)
+- [ ] Deploy leads + copy together or separately depending on what's available
+- [ ] LinkedIn sequencer — profile-first targeting with agent-browser (separate milestone, in progress)
 - [ ] Lead scoring 1-10 based on signal overlap (cold email framework tiers)
 
 ### Out of Scope
 
-- Campaign Agent (auto-create and launch campaigns — future milestone)
 - Real-time intent signals (RB2B, Warmly, Vector, Trigify — future milestone, high complexity)
 - Domain infrastructure management — handled externally (PlusVibe)
 - CRM integration (HubSpot) — not needed, EmailBison is the system of record
 - Replacing EmailBison as sending infrastructure
+- Per-lead approve/reject in portal — binary list-level approval only
 
 ## Current State
 
 **Shipped:** v1.0 Lead Engine (2026-02-27) — 7 phases, 22 plans, 29/29 requirements
-**Next:** LinkedIn sequencer rewrite (agent-browser + profile-first targeting)
+**Current:** v1.1 Outbound Pipeline — Leads Agent + client portal review + smart campaign deploy
+**In progress (separate):** LinkedIn sequencer rewrite (agent-browser + profile-first targeting)
 
 **Codebase:** ~26,600 LOC TypeScript/TSX across 451 files
 **Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel
@@ -87,4 +93,4 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | Hard email verification gate | No unverified emails ever exported — strict deliverability policy | ✓ Good — prevents sending to invalid addresses |
 
 ---
-*Last updated: 2026-02-27 after v1.0 milestone*
+*Last updated: 2026-02-27 after v1.1 milestone start*
