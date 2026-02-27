@@ -16,7 +16,15 @@ import { enrichEmail, enrichCompany, createCircuitBreaker } from "@/lib/enrichme
 import { prisma } from "@/lib/db";
 import { validateCronSecret } from "@/lib/cron-auth";
 
+export async function GET(request: Request) {
+  return handleProcess(request);
+}
+
 export async function POST(request: Request) {
+  return handleProcess(request);
+}
+
+async function handleProcess(request: Request) {
   if (!validateCronSecret(request)) {
     console.log(`[${new Date().toISOString()}] Unauthorized: POST /api/enrichment/jobs/process`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
