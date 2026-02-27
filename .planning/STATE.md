@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-27T13:03:00Z"
+last_updated: "2026-02-27T13:07:31.315Z"
 progress:
-  total_phases: 5
-  completed_phases: 4
+  total_phases: 6
+  completed_phases: 6
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 05 Export + EmailBison Integration — 2 of 3 plans complete
+**Current focus:** Phase 05 Export + EmailBison Integration — COMPLETE (3 of 3 plans done)
 
 ## Current Position
 
-Phase: 05 (Export + EmailBison Integration) — IN PROGRESS
-Plan: 2 of 3 complete (05-02 — EmailBison client extensions)
-Status: Phase 05 in progress — 05-01 + 05-02 shipped
-Last activity: 2026-02-27 — Completed 05-02 (createCampaign, duplicateCampaign, createLead, ensureCustomVariables, getCustomVariables, createCustomVariable)
+Phase: 05 (Export + EmailBison Integration) — COMPLETE
+Plan: 3 of 3 complete (05-03 — MCP export tools rewritten with TargetList model)
+Status: Phase 05 complete — all 3 plans shipped
+Last activity: 2026-02-27 — Completed 05-03 (export_to_emailbison + export_csv MCP tools, TargetList model, workspace auto-create)
 
-Progress: [████████████████████] Phase 05 plan 2 of 3 complete
+Progress: [████████████████████] Phase 05 complete (3/3 plans)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████████████████████] Phase 0
 | Phase 04-search-filter-list-building P05 | 3 | 2 tasks | 4 files |
 | Phase 05-export-emailbison-integration P01 | 3 | 2 tasks | 3 files |
 | Phase 05-export-emailbison-integration P02 | 1 | 2 tasks | 2 files |
+| Phase 05-export-emailbison-integration P03 | 2 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,9 @@ Recent decisions affecting current work:
 - [05-02]: duplicateCampaign ignores name param — API always produces "Copy of {original}"; documented in code comment
 - [05-02]: createLead uses conditional field inclusion (truthy check) — avoids sending null/undefined to EmailBison API
 - [05-02]: ensureCustomVariables is idempotent via Set-based diff — safe to call multiple times with no side effects
+- [Phase 05-03]: export_to_emailbison uses list_id (TargetList ID) not list_name — TargetList model replaced tag-based list query
+- [Phase 05-03]: Workspace auto-created when slug not found — locked CONTEXT.md decision, produces informational message not error
+- [Phase 05-03]: Three-step MCP flow: summary (confirm=false) → verification (verify_unverified=true) → push (confirm=true)
 
 ### Pending Todos
 
@@ -160,5 +164,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 05-02-PLAN.md — EmailBisonClient extended with 6 new methods (createCampaign, duplicateCampaign, createLead, getCustomVariables, createCustomVariable, ensureCustomVariables)
+Stopped at: Completed 05-03-PLAN.md — MCP export tools rewritten with TargetList model (export_to_emailbison + export_csv), Phase 05 fully complete
 Resume file: None

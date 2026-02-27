@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: ICP Qualification + Leads Agent** - Firecrawl/Haiku qualification, custom AI prompts, and the chat-driven leads agent (completed 2026-02-26)
 - [x] **Phase 3.1: API Security + Hardening** - Auth guards on enrichment routes, MCP env var fixes, test infrastructure cleanup (INSERTED — gap closure from v1.0 audit) (completed 2026-02-26)
 - [x] **Phase 4: Search, Filter + List Building** - Full lead search UI and workspace-scoped list management (completed 2026-02-27)
-- [ ] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV
+- [x] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV (completed 2026-02-27)
 
 ## Phase Details
 
@@ -119,4 +119,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 | 3. ICP Qualification + Leads Agent | 3/3 | Complete    | 2026-02-26 |
 | 3.1 API Security + Hardening | 2/2 | Complete | 2026-02-26 |
 | 4. Search, Filter + List Building | 5/5 | Complete   | 2026-02-27 |
-| 5. Export + EmailBison Integration | 2/3 | In Progress|  |
+| 5. Export + EmailBison Integration | 3/3 | Complete   | 2026-02-27 |
