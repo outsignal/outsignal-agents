@@ -496,42 +496,64 @@ export class LinkedInBrowser {
     await cdpSend(this.ws, "Input.insertText", { text: messageText }, this.nextId());
     await this.sleep(1000);
 
-    // Step 6: Click the send button
+    // Step 6: Send the message — try button click first, Enter key as fallback
     const sendResult = evalValue(
       await cdpSend(this.ws, "Runtime.evaluate", {
         expression: `(() => {
   const btns = Array.from(document.querySelectorAll('button'));
-  // Look for Send button — must be inside a compose/messaging form, not nav
+  // Look for Send button by various patterns
   const sendBtn = btns.find(b => {
     const text = b.textContent?.trim().toLowerCase() ?? '';
     const label = (b.getAttribute('aria-label') ?? '').toLowerCase();
-    // Check it's in a messaging context (not the main nav)
-    const inMsgForm = b.closest('.msg-form, .msg-overlay, [role="dialog"], .msg-compose');
-    return (text === 'send' || label.includes('send message')) && inMsgForm;
+    return text === 'send' || label === 'send' || label === 'send message'
+      || (label.includes('send') && !label.includes('send options'));
   });
-  // Broader fallback: any Send button
-  const fallbackBtn = !sendBtn ? btns.find(b => b.textContent?.trim().toLowerCase() === 'send') : null;
-  const btn = sendBtn ?? fallbackBtn;
-  if (!btn) return { found: false, buttons: btns.filter(b => b.textContent?.trim()).slice(-8).map(b => (b.textContent?.trim() ?? '').substring(0, 25)) };
+  // Also try: button with type="submit" inside a messaging form
+  const submitBtn = !sendBtn ? btns.find(b => b.type === 'submit' && b.closest('.msg-form, .msg-overlay, [role="dialog"]')) : null;
+  const btn = sendBtn ?? submitBtn;
+  if (!btn) {
+    // Debug: log all button labels and aria-labels
+    const debugBtns = btns.map(b => ({
+      text: (b.textContent?.trim() ?? '').substring(0, 25),
+      label: b.getAttribute('aria-label')?.substring(0, 25) ?? '',
+      type: b.type,
+    })).filter(b => b.text || b.label);
+    return { found: false, debug: debugBtns.slice(-10) };
+  }
   if (btn.disabled) return { found: true, disabled: true };
   btn.click();
-  return { found: true, clicked: true };
+  return { found: true, clicked: true, text: btn.textContent?.trim()?.substring(0, 20) };
 })()`,
         returnByValue: true,
       }, this.nextId()),
-    ) as { found: boolean; clicked?: boolean; disabled?: boolean; buttons?: string[] } | null;
+    ) as { found: boolean; clicked?: boolean; disabled?: boolean; text?: string; debug?: Array<{ text: string; label: string; type: string }> } | null;
 
-    if (!sendResult?.found) {
-      this.log(`Send button not found. Available: [${sendResult?.buttons?.join(', ')}]`);
-      return { success: false, error: "Send button not found" };
-    }
-    if (sendResult.disabled) {
-      return { success: false, error: "Send button found but disabled" };
+    if (sendResult?.found && sendResult.clicked) {
+      this.log(`Send button clicked: "${sendResult.text}"`);
+      await this.sleep(3000);
+      return { success: true };
     }
 
-    this.log("Send button clicked!");
+    if (sendResult?.disabled) {
+      this.log("Send button found but disabled — message body may be empty");
+      return { success: false, error: "Send button disabled" };
+    }
+
+    // Button not found — log debug info and try Enter key
+    if (sendResult?.debug) {
+      this.log(`Send btn not found. Buttons: ${JSON.stringify(sendResult.debug)}`);
+    }
+
+    this.log("Trying Enter key to send...");
+    await cdpSend(this.ws, "Input.dispatchKeyEvent", {
+      type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13,
+    }, this.nextId());
+    await cdpSend(this.ws, "Input.dispatchKeyEvent", {
+      type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13,
+    }, this.nextId());
     await this.sleep(3000);
 
+    this.log("Enter key sent as send fallback");
     return { success: true };
   }
 
