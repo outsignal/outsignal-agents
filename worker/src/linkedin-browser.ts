@@ -197,7 +197,7 @@ export class LinkedInBrowser {
    */
   private async resolveRecipient(profileUrl: string): Promise<{
     urn: string;
-    urnType: string;
+    memberUrn: string | null;
     name: string | null;
   } | null> {
     const slugMatch = profileUrl.match(/\/in\/([^/?]+)/);
@@ -273,7 +273,7 @@ export class LinkedInBrowser {
    */
   private async fetchVoyagerProfile(publicId: string): Promise<{
     urn: string;
-    urnType: string;
+    memberUrn: string | null;
     name: string | null;
   } | null> {
     const endpoints = [
@@ -295,17 +295,15 @@ export class LinkedInBrowser {
       const urnTypes = [...new Set(allUrns.map(u => u.split(":").slice(0, 3).join(":")))];
       this.log(`Voyager URN types found: ${urnTypes.join(", ")}`);
 
-      // Extract fs_miniProfile URN (required for messaging API)
-      // Also grab fsd_profile as fallback ID source
-      const miniMatch = result.body.match(/urn:li:fs_miniProfile:([A-Za-z0-9_-]+)/);
+      // Extract profile URNs - we need both fsd_profile ID and member URN
       const fsdMatch = result.body.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+      const memberMatch = result.body.match(/urn:li:member:(\d+)/);
+      const miniMatch = result.body.match(/urn:li:fs_miniProfile:([A-Za-z0-9_-]+)/);
       const profileId = miniMatch?.[1] ?? fsdMatch?.[1];
       if (!profileId) {
         this.log("Voyager response has no profile URN, trying next endpoint");
         continue;
       }
-      // Prefer miniProfile URN type for messaging compatibility
-      const urnType = miniMatch ? "fs_miniProfile" : "fsd_profile";
 
       // Extract name and connection info from the response
       let name: string | null = null;
@@ -318,29 +316,18 @@ export class LinkedInBrowser {
         if (firstName || lastName) {
           name = `${firstName} ${lastName}`.trim();
         }
-        // Check connection distance in the included array
         if (Array.isArray(json?.included)) {
           for (const item of json.included) {
             if (item?.firstName && item?.lastName && !name) {
               name = `${item.firstName} ${item.lastName}`.trim();
             }
-            // Look for memberRelationship or distance info
-            if (item?.memberRelationship || item?.distance) {
-              connectionDistance = JSON.stringify({
-                distance: item.distance,
-                memberRelationship: item.memberRelationship,
-              });
-            }
           }
-        }
-        // Also check top-level elements for connection info
-        if (!connectionDistance && profile?.memberRelationship) {
-          connectionDistance = JSON.stringify(profile.memberRelationship);
         }
       } catch { /* extraction is best-effort */ }
 
-      this.log(`Voyager profile resolved: ${urnType}="${profileId}", name="${name}", connection=${connectionDistance}`);
-      return { urn: profileId, urnType, name };
+      const memberUrn = memberMatch?.[1] ?? null;
+      this.log(`Voyager profile resolved: profileId="${profileId}", memberUrn=${memberUrn}, name="${name}"`);
+      return { urn: profileId, memberUrn, name };
     }
 
     this.log("All Voyager profile endpoints failed");
@@ -351,60 +338,75 @@ export class LinkedInBrowser {
    * Send a message via the Voyager messaging API (executed in browser context).
    */
   private async sendMessageViaVoyager(
-    recipientUrn: string,
-    _urnType: string,
+    profileId: string,
+    memberUrn: string,
     messageText: string,
   ): Promise<{ success: boolean; error?: string }> {
-    // Always use fs_miniProfile for messaging — the ID is the same as fsd_profile
-    // but the messaging API only accepts fs_miniProfile URN type
-    const fullUrn = `urn:li:fs_miniProfile:${recipientUrn}`;
+    // Try multiple URN formats — LinkedIn API may accept different ones
+    const urnCandidates = [
+      `urn:li:fs_miniProfile:${profileId}`,
+      `urn:li:fsd_profile:${profileId}`,
+    ];
+    // Add numeric member URN if available (different from profileId)
+    if (memberUrn !== profileId) {
+      urnCandidates.push(`urn:li:member:${memberUrn}`);
+    }
 
-    // Generate tracking IDs matching LinkedIn's expected format (from linkedin-api library)
-    const originToken = crypto.randomUUID();
-    const trackingBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
-    const trackingId = String.fromCharCode(...trackingBytes);
+    for (const fullUrn of urnCandidates) {
+      // Generate tracking IDs matching LinkedIn's expected format (from linkedin-api library)
+      const originToken = crypto.randomUUID();
+      const trackingBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+      const trackingId = String.fromCharCode(...trackingBytes);
 
-    const body = JSON.stringify({
-      keyVersion: "LEGACY_INBOX",
-      conversationCreate: {
-        eventCreate: {
-          originToken,
-          value: {
-            "com.linkedin.voyager.messaging.create.MessageCreate": {
-              attributedBody: {
-                text: messageText,
-                attributes: [],
+      const body = JSON.stringify({
+        keyVersion: "LEGACY_INBOX",
+        conversationCreate: {
+          eventCreate: {
+            originToken,
+            value: {
+              "com.linkedin.voyager.messaging.create.MessageCreate": {
+                attributedBody: {
+                  text: messageText,
+                  attributes: [],
+                },
+                attachments: [],
               },
-              attachments: [],
             },
+            trackingId,
           },
-          trackingId,
+          dedupeByClientGeneratedToken: false,
+          recipients: [fullUrn],
+          subtype: "MEMBER_TO_MEMBER",
         },
-        dedupeByClientGeneratedToken: false,
-        recipients: [fullUrn],
-        subtype: "MEMBER_TO_MEMBER",
-      },
-    });
+      });
 
-    this.log(`Voyager message send to ${fullUrn}`);
+      this.log(`Voyager message send attempt: ${fullUrn}`);
 
-    const result = await this.voyagerFetch(
-      "https://www.linkedin.com/voyager/api/messaging/conversations?action=create",
-      "POST",
-      body,
-    );
+      const result = await this.voyagerFetch(
+        "https://www.linkedin.com/voyager/api/messaging/conversations?action=create",
+        "POST",
+        body,
+      );
 
-    if (!result) {
-      return { success: false, error: "Browser fetch failed" };
+      if (!result) {
+        this.log(`Browser fetch failed for ${fullUrn}`);
+        continue;
+      }
+
+      if (result.status === 200 || result.status === 201) {
+        this.log(`Voyager message sent successfully via ${fullUrn}`);
+        return { success: true };
+      }
+
+      this.log(`Voyager message failed (${fullUrn}): ${result.status} ${result.body.substring(0, 300)}`);
+
+      // If 400 (bad format), try next URN. If 403, might be permissions — try next anyway
+      if (result.status !== 400 && result.status !== 403) {
+        return { success: false, error: `Voyager API ${result.status}: ${result.body.substring(0, 200)}` };
+      }
     }
 
-    if (result.status === 200 || result.status === 201) {
-      this.log("Voyager message sent successfully");
-      return { success: true };
-    }
-
-    this.log(`Voyager message failed: ${result.status} ${result.body.substring(0, 500)}`);
-    return { success: false, error: `Voyager API ${result.status}: ${result.body.substring(0, 200)}` };
+    return { success: false, error: `All URN formats failed for messaging (tried ${urnCandidates.length} formats)` };
   }
 
   // ---------------------------------------------------------------------------
@@ -708,8 +710,8 @@ export class LinkedInBrowser {
           error: `Failed to resolve member URN for: ${profileUrl}`,
         };
       }
-      const { urn: memberId, urnType, name: recipientName } = recipient;
-      this.log(`Resolved: ${recipientName} (${urnType}:${memberId})`);
+      const { urn: profileId, memberUrn, name: recipientName } = recipient;
+      this.log(`Resolved: ${recipientName} (profileId=${profileId}, memberUrn=${memberUrn})`);
 
       // Step 2: Navigate to the profile page (counts as a profile view)
       const landedUrl = await this.navigate(profileUrl);
@@ -718,8 +720,8 @@ export class LinkedInBrowser {
       // Human-like delay after viewing profile
       await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 3: Send message via Voyager messaging API
-      const sendResult = await this.sendMessageViaVoyager(memberId, urnType, message);
+      // Step 3: Send message via Voyager messaging API — try multiple URN formats
+      const sendResult = await this.sendMessageViaVoyager(profileId, memberUrn ?? profileId, message);
       if (!sendResult.success) {
         return {
           success: false,
@@ -729,7 +731,7 @@ export class LinkedInBrowser {
 
       return {
         success: true,
-        details: { memberId, recipientName },
+        details: { profileId, memberUrn, recipientName },
       };
     } catch (error) {
       return { success: false, error: String(error) };
