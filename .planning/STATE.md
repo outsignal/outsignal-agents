@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 7 of 10 (Leads Agent Dashboard)
-Plan: 4 of 4 in current phase (07-04 complete)
+Plan: 1 of TBD in current phase (07-01 complete)
 Status: In progress
-Last activity: 2026-02-27 — Executed 07-04 (EmailBison spike formalization + client fix)
+Last activity: 2026-02-27 — Executed 07-01 (Leads operations layer)
 
 Progress: [░░░░░░░░░░] 0% (v1.1)
 
@@ -44,6 +44,7 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - EmailBison spike: must verify sequence step schema + campaign-lead assignment API before Phase 10 design
 - [Phase 07-leads-agent-dashboard]: getSequenceSteps broken path fixed to /campaigns/campaignId/sequence-steps (confirmed correct via live API probe)
 - [Phase 07-leads-agent-dashboard]: DEPLOY-01 spike doc already complete from research phase — no changes needed, 239 lines covering all required sections
+- [07-01]: operations.ts is single source of truth for all lead pipeline DB queries; agent tools will be thin wrappers; credit-gate on export; icpScoredAt skip guard on scoring
 
 ### Blockers/Concerns
 
@@ -54,5 +55,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 07-04-PLAN.md — EmailBison spike doc verified (DEPLOY-01) + getSequenceSteps path fixed in client.ts
+Stopped at: Completed 07-01-PLAN.md — Leads operations layer (searchPeople, createList, addPeopleToList, getList, getLists, scoreList, exportListToEmailBison)
 Resume file: None

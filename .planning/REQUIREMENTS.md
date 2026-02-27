@@ -13,7 +13,7 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [ ] **LEAD-02**: Admin can create, view, and manage target lists from dashboard chat
 - [ ] **LEAD-03**: Admin can score leads (ICP qualification) from dashboard chat
 - [ ] **LEAD-04**: Admin can export verified leads to EmailBison from dashboard chat
-- [ ] **LEAD-05**: Leads Agent shares operations layer with MCP tools (no logic divergence)
+- [x] **LEAD-05**: Leads Agent shares operations layer with MCP tools (no logic divergence)
 - [ ] **LEAD-06**: All Leads Agent operations logged to AgentRun audit trail
 
 ### Portal Review
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LEAD-02 | Phase 7 | Pending |
 | LEAD-03 | Phase 7 | Pending |
 | LEAD-04 | Phase 7 | Pending |
-| LEAD-05 | Phase 7 | Pending |
+| LEAD-05 | Phase 7 | Complete |
 | LEAD-06 | Phase 7 | Pending |
 | DEPLOY-01 | Phase 7 | Complete |
 | SCHEMA-01 | Phase 8 | Pending |
