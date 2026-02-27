@@ -26,7 +26,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
 **Milestone Goal:** Complete the outbound pipeline loop — admin builds lists via natural language chat, client reviews and approves in a portal, system auto-deploys campaigns to EmailBison on approval.
 
-- [ ] **Phase 7: Leads Agent Dashboard** - Natural language access to search, list build, score, and export via Cmd+J chat
+- [x] **Phase 7: Leads Agent Dashboard** - Natural language access to search, list build, score, and export via Cmd+J chat (completed 2026-02-27)
 - [ ] **Phase 8: Schema + Admin Promotion** - TargetList status lifecycle + admin promote UI unlocks portal
 - [ ] **Phase 9: Client Portal Review + Approvals** - Client approves/rejects leads and copy; notifications fire on action
 - [ ] **Phase 10: Campaign Deploy Service** - EmailBison campaign creation, sequence steps, lead assignment, fire-and-forget execution
@@ -93,7 +93,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 | 4. Search, Filter + List Building | v1.0 | 5/5 | Complete | 2026-02-27 |
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
-| 7. Leads Agent Dashboard | 3/4 | In Progress|  | - |
+| 7. Leads Agent Dashboard | 4/4 | Complete   | 2026-02-27 | - |
 | 8. Schema + Admin Promotion | v1.1 | 0/TBD | Not started | - |
 | 9. Client Portal Review + Approvals | v1.1 | 0/TBD | Not started | - |
 | 10. Campaign Deploy Service | v1.1 | 0/TBD | Not started | - |

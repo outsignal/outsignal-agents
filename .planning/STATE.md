@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-02-27T18:30:58.843Z"
+last_updated: "2026-02-27T18:34:03Z"
 progress:
   total_phases: 2
   completed_phases: 0
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 7 of 10 (Leads Agent Dashboard)
-Plan: 2 of TBD in current phase (07-02 complete)
+Plan: 3 of TBD in current phase (07-03 complete)
 Status: In progress
-Last activity: 2026-02-27 — Executed 07-02 (Leads Agent with 7 tools, runLeadsAgent, updated types)
+Last activity: 2026-02-27 — Executed 07-03 (Orchestrator wiring: delegateToLeads → runLeadsAgent, maxDuration = 300)
 
 Progress: [░░░░░░░░░░] 0% (v1.1)
 
@@ -47,15 +47,17 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [07-01]: operations.ts is single source of truth for all lead pipeline DB queries; agent tools will be thin wrappers; credit-gate on export; icpScoredAt skip guard on scoring
 - [Phase 07-leads-agent-dashboard]: LeadsOutput loosened to action/summary/data for conversational agent pattern
 - [Phase 07-leads-agent-dashboard]: LeadsInput.workspaceSlug made optional; conversationContext field added for chat refinement
+- [07-03]: delegateToLeads limit param removed from inputSchema — Leads Agent handles pagination internally; workspaceSlug made optional in orchestrator tool to match LeadsInput type
+- [07-03]: maxDuration = 300 on chat route — worst-case scoring for large lists can approach 300s
 
 ### Blockers/Concerns
 
 - EmailBison campaign-lead assignment API — RESOLVED (07-04): No assignment endpoint exists; UI-only. Phase 10 (DEPLOY-04) must accept manual campaign assignment or find alternative.
 - EmailBison sequence step schema — RESOLVED (07-04): Full schema verified via live probe. See .planning/spikes/emailbison-api.md.
-- Vercel timeout on deploy: maxDuration = 300 must be set on chat route before first Leads Agent deploy
+- Vercel timeout on deploy: maxDuration = 300 must be set on chat route before first Leads Agent deploy — RESOLVED (07-03): maxDuration = 300 added to src/app/api/chat/route.ts
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 07-02-PLAN.md — Leads Agent (leads.ts with 7 tools, runLeadsAgent, updated types)
+Stopped at: Completed 07-03-PLAN.md — Orchestrator wiring (delegateToLeads → runLeadsAgent, maxDuration = 300)
 Resume file: None
