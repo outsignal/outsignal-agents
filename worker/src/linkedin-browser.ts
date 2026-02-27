@@ -54,6 +54,48 @@ export class LinkedInBrowser {
     return wait(ms);
   }
 
+  /**
+   * Navigate to a URL and wait for the page to finish loading.
+   * Uses Page.loadEventFired to confirm the page is ready.
+   */
+  private async navigate(url: string): Promise<string> {
+    if (!this.ws) throw new Error("Browser not launched");
+
+    // Set up a promise that resolves when load event fires
+    const loadPromise = new Promise<void>((resolve) => {
+      const handler = (event: MessageEvent) => {
+        const msg = JSON.parse(String(event.data));
+        if (msg.method === "Page.loadEventFired") {
+          this.ws?.removeEventListener("message", handler);
+          resolve();
+        }
+      };
+      this.ws!.addEventListener("message", handler);
+      // Timeout after 15s
+      setTimeout(() => {
+        this.ws?.removeEventListener("message", handler);
+        resolve(); // resolve anyway to avoid hanging
+      }, 15_000);
+    });
+
+    await cdpSend(this.ws, "Page.navigate", { url }, this.nextId());
+    await loadPromise;
+
+    // Extra wait for JS to settle
+    await this.sleep(2000);
+
+    // Return the final URL
+    const resp = await cdpSend(
+      this.ws,
+      "Runtime.evaluate",
+      { expression: "window.location.href", returnByValue: true },
+      this.nextId(),
+    );
+    const finalUrl = String(evalValue(resp) ?? "");
+    this.log(`Navigated to ${url} → landed on ${finalUrl}`);
+    return finalUrl;
+  }
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -164,26 +206,9 @@ export class LinkedInBrowser {
 
     try {
       this.log(`Viewing profile: ${profileUrl}`);
-      await cdpSend(
-        this.ws,
-        "Page.navigate",
-        { url: profileUrl },
-        this.nextId(),
-      );
-      await this.sleep(4000 + Math.random() * 2000);
-
-      // Verify we landed on the profile
-      const url = evalValue(
-        await cdpSend(
-          this.ws,
-          "Runtime.evaluate",
-          { expression: "window.location.href", returnByValue: true },
-          this.nextId(),
-        ),
-      ) as string | null;
-      this.log(`Profile view landed on: ${url}`);
-
-      return { success: true, details: { landedUrl: url } };
+      const landedUrl = await this.navigate(profileUrl);
+      await this.sleep(1000 + Math.random() * 2000);
+      return { success: true, details: { landedUrl } };
     } catch (error) {
       return { success: false, error: String(error) };
     }
@@ -198,14 +223,16 @@ export class LinkedInBrowser {
     try {
       this.log(`Sending connection request: ${profileUrl}`);
 
-      // Navigate to profile
-      await cdpSend(
-        this.ws,
-        "Page.navigate",
-        { url: profileUrl },
-        this.nextId(),
-      );
-      await this.sleep(3000 + Math.random() * 2000);
+      // Navigate to profile and wait for full page load
+      const landedUrl = await this.navigate(profileUrl);
+      await this.sleep(1000 + Math.random() * 2000);
+
+      if (!landedUrl.includes("/in/")) {
+        return {
+          success: false,
+          error: `Navigation failed — landed on ${landedUrl} instead of profile`,
+        };
+      }
 
       // Step 1: Try to find and click the Connect button directly
       const connectResult = evalValue(
@@ -352,30 +379,14 @@ export class LinkedInBrowser {
     try {
       this.log(`Sending message to: ${profileUrl}`);
 
-      // Navigate to profile
-      await cdpSend(
-        this.ws,
-        "Page.navigate",
-        { url: profileUrl },
-        this.nextId(),
-      );
-      await this.sleep(4000 + Math.random() * 2000);
+      // Navigate to profile and wait for full page load
+      const landedUrl = await this.navigate(profileUrl);
+      await this.sleep(1000 + Math.random() * 2000);
 
-      // Verify we actually landed on a profile page
-      const navCheck = evalValue(
-        await cdpSend(
-          this.ws,
-          "Runtime.evaluate",
-          { expression: "window.location.href", returnByValue: true },
-          this.nextId(),
-        ),
-      ) as string | null;
-      this.log(`After navigation, URL: ${navCheck}`);
-
-      if (navCheck && !navCheck.includes("/in/")) {
+      if (!landedUrl.includes("/in/")) {
         return {
           success: false,
-          error: `Navigation failed — landed on ${navCheck} instead of profile`,
+          error: `Navigation failed — landed on ${landedUrl} instead of profile`,
         };
       }
 
@@ -509,13 +520,8 @@ export class LinkedInBrowser {
     try {
       this.log(`Checking connection status: ${profileUrl}`);
 
-      await cdpSend(
-        this.ws,
-        "Page.navigate",
-        { url: profileUrl },
-        this.nextId(),
-      );
-      await this.sleep(3000 + Math.random() * 2000);
+      await this.navigate(profileUrl);
+      await this.sleep(1000 + Math.random() * 2000);
 
       const result = evalValue(
         await cdpSend(
