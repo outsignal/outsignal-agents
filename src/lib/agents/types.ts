@@ -64,19 +64,15 @@ export interface ResearchOutput {
 // --- Leads Agent ---
 
 export interface LeadsInput {
-  workspaceSlug: string;
+  workspaceSlug?: string;
   task: string;
-  limit?: number;
-  sources?: string[];
+  conversationContext?: string; // Prior search results or list context for refinement
 }
 
 export interface LeadsOutput {
-  leadsFound: number;
-  leadsImported: number;
-  leadsEnriched: number;
-  duplicatesSkipped: number;
-  sourceSummary: Record<string, number>;
-  topLeads: { name: string; company: string; score: number }[];
+  action: string; // "search" | "create_list" | "add_to_list" | "score" | "export" | "get_list" | "list_lists" | "unknown"
+  summary: string; // Human-readable summary of what was done
+  data?: unknown; // The raw result data from the operation
 }
 
 // --- Writer Agent ---
