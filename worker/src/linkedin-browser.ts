@@ -356,10 +356,23 @@ export class LinkedInBrowser {
           "Runtime.evaluate",
           {
             expression: `(() => {
-  const btn = Array.from(document.querySelectorAll('button')).find(b =>
-    b.textContent?.trim() === 'Message'
-  );
-  if (!btn) return { found: false };
+  // Try aria-label first (most stable)
+  let btn = document.querySelector('button[aria-label*="message" i]');
+  // Exclude "Messages" nav link
+  if (btn && btn.getAttribute('aria-label')?.toLowerCase().includes('messaging')) btn = null;
+  // Fallback: text content (LinkedIn wraps in spans, so normalize whitespace)
+  if (!btn) {
+    btn = Array.from(document.querySelectorAll('button')).find(b => {
+      const t = b.textContent?.replace(/\\s+/g, ' ').trim();
+      return t === 'Message' || t === 'Message ';
+    });
+  }
+  // Fallback: check for the specific profile action button class
+  if (!btn) {
+    btn = document.querySelector('button.pvs-profile-actions__action[aria-label*="message" i]');
+  }
+  const allBtns = Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().substring(0, 30));
+  if (!btn) return { found: false, debug: allBtns };
   btn.click();
   return { found: true };
 })()`,
@@ -367,9 +380,10 @@ export class LinkedInBrowser {
           },
           this.nextId(),
         ),
-      ) as { found: boolean } | null;
+      ) as { found: boolean; debug?: string[] } | null;
 
       if (!msgBtnResult?.found) {
+        this.log("Message button not found. Buttons on page: " + JSON.stringify(msgBtnResult?.debug));
         return {
           success: false,
           error: "Message button not found — may not be connected",
