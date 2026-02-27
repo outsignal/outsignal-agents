@@ -591,6 +591,21 @@ export async function exportListToEmailBison(
     };
   }
 
+  // Check workspace exists and has API token configured
+  const wsRecord = await prisma.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    select: { apiToken: true },
+  });
+  if (!wsRecord) {
+    throw new Error(`Workspace not found: '${workspaceSlug}'`);
+  }
+  if (!wsRecord.apiToken) {
+    throw new Error(
+      `Workspace '${workspaceSlug}' is not connected to EmailBison. ` +
+        `Set the API token in workspace settings to enable export.`,
+    );
+  }
+
   // Get EmailBison client for this workspace
   const client = await getClientForWorkspace(workspaceSlug);
 
