@@ -36,7 +36,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### List Building
 
 - [x] **LIST-01**: User can create named target lists scoped to a workspace
-- [x] **LIST-02**: User can add people to lists from search results (individually or in bulk)
+- [ ] **LIST-02**: User can add people to lists from search results (individually or in bulk)
 - [x] **LIST-03**: User can filter and segment leads by ICP criteria to build lists
 - [x] **LIST-04**: User can view list contents with enrichment completeness summary
 
@@ -44,7 +44,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **EXPORT-01**: User can export a list to an EmailBison campaign (direct API push)
 - [x] **EXPORT-02**: System enforces email verification gate before export (no unverified emails)
-- [x] **EXPORT-03**: User can export a list as CSV for use in other tools
+- [ ] **EXPORT-03**: User can export a list as CSV for use in other tools
 
 ### Provider Integrations
 
@@ -109,12 +109,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEARCH-04 | Phase 4 | Complete |
 | SEARCH-05 | Phase 4 | Complete |
 | LIST-01 | Phase 4 | Complete |
-| LIST-02 | Phase 4 | Complete |
+| LIST-02 | Phase 6 | Pending |
 | LIST-03 | Phase 4 | Complete |
 | LIST-04 | Phase 4 | Complete |
 | EXPORT-01 | Phase 5 | Complete |
 | EXPORT-02 | Phase 5 | Complete |
-| EXPORT-03 | Phase 5 | Complete |
+| EXPORT-03 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 29 total

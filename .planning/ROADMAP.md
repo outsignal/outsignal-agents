@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3.1: API Security + Hardening** - Auth guards on enrichment routes, MCP env var fixes, test infrastructure cleanup (INSERTED — gap closure from v1.0 audit) (completed 2026-02-26)
 - [x] **Phase 4: Search, Filter + List Building** - Full lead search UI and workspace-scoped list management (completed 2026-02-27)
 - [x] **Phase 5: Export + EmailBison Integration** - Verified-only list export to EmailBison campaigns and CSV (completed 2026-02-27)
+- [ ] **Phase 6: MCP List Migration + CSV Download Button** - Rewrite MCP list tools from PersonWorkspace.tags to TargetList model, add CSV download button to list detail page (gap closure from v1.0 audit)
 
 ## Phase Details
 
@@ -107,6 +108,18 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can export a list as a CSV file containing all enriched fields for use in tools outside EmailBison
 **Plans**: TBD
 
+### Phase 6: MCP List Migration + CSV Download Button
+**Goal**: MCP list tools use the same TargetList model as export tools, restoring the agent build-list-then-export workflow, and CSV export is accessible from the UI
+**Depends on**: Phase 5
+**Requirements**: LIST-02, EXPORT-03
+**Gap Closure:** Closes LIST-02 partial, EXPORT-03 partial, MCP list→export integration gap, and MCP build→export flow gap from v1.0 audit
+**Success Criteria** (what must be TRUE):
+  1. MCP `create_list` creates a TargetList row (not PersonWorkspace.tags) and returns the list_id usable by export tools
+  2. MCP `add_to_list` creates TargetListPerson junction rows linking people to the TargetList, visible to export_to_emailbison and export_csv
+  3. MCP `view_list` reads from TargetList/TargetListPerson and returns enrichment summary consistent with the UI list detail page
+  4. List detail page has a "Export CSV" download button that triggers the existing GET /api/lists/[id]/export route
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -120,3 +133,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 | 3.1 API Security + Hardening | 2/2 | Complete | 2026-02-26 |
 | 4. Search, Filter + List Building | 5/5 | Complete   | 2026-02-27 |
 | 5. Export + EmailBison Integration | 3/3 | Complete   | 2026-02-27 |
+| 6. MCP List Migration + CSV Download | 0/0 | Not Started | — |
