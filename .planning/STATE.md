@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
+milestone: v1.0
 milestone_name: Outbound Pipeline
-status: ready_to_plan
-last_updated: "2026-02-27T15:00:00.000Z"
+status: unknown
+last_updated: "2026-02-27T18:25:36.160Z"
 progress:
-  total_phases: 4
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 7 of 10 (Leads Agent Dashboard)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-27 — Roadmap created for v1.1 (4 phases, 21 requirements)
+Plan: 4 of 4 in current phase (07-04 complete)
+Status: In progress
+Last activity: 2026-02-27 — Executed 07-04 (EmailBison spike formalization + client fix)
 
 Progress: [░░░░░░░░░░] 0% (v1.1)
 
@@ -42,15 +42,17 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - Portal auth: getPortalSession() called first in every /api/portal/* route (not just middleware)
 - Deploy dedup: TargetList.status === 'deployed' is the mutex — prevents re-deploy on approval refresh
 - EmailBison spike: must verify sequence step schema + campaign-lead assignment API before Phase 10 design
+- [Phase 07-leads-agent-dashboard]: getSequenceSteps broken path fixed to /campaigns/campaignId/sequence-steps (confirmed correct via live API probe)
+- [Phase 07-leads-agent-dashboard]: DEPLOY-01 spike doc already complete from research phase — no changes needed, 239 lines covering all required sections
 
 ### Blockers/Concerns
 
-- EmailBison campaign-lead assignment API (LOW confidence) — may not exist; Phase 7 spike determines Phase 10 automation level
-- EmailBison sequence step schema (MEDIUM confidence) — endpoint listed in docs but full request body unverified
+- EmailBison campaign-lead assignment API — RESOLVED (07-04): No assignment endpoint exists; UI-only. Phase 10 (DEPLOY-04) must accept manual campaign assignment or find alternative.
+- EmailBison sequence step schema — RESOLVED (07-04): Full schema verified via live probe. See .planning/spikes/emailbison-api.md.
 - Vercel timeout on deploy: maxDuration = 300 must be set on chat route before first Leads Agent deploy
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Roadmap written — ready to plan Phase 7
+Stopped at: Completed 07-04-PLAN.md — EmailBison spike doc verified (DEPLOY-01) + getSequenceSteps path fixed in client.ts
 Resume file: None

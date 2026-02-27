@@ -26,7 +26,7 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### Campaign Deploy
 
-- [ ] **DEPLOY-01**: EmailBison campaign API capabilities discovered via spike (create, assign, sequence steps)
+- [x] **DEPLOY-01**: EmailBison campaign API capabilities discovered via spike (create, assign, sequence steps)
 - [ ] **DEPLOY-02**: System creates new EmailBison campaigns or updates existing ones on approval
 - [ ] **DEPLOY-03**: System adds sequence steps (email copy) to campaigns from approved drafts
 - [ ] **DEPLOY-04**: System assigns leads from approved TargetList to campaign (if API supports)
@@ -77,7 +77,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LEAD-04 | Phase 7 | Pending |
 | LEAD-05 | Phase 7 | Pending |
 | LEAD-06 | Phase 7 | Pending |
-| DEPLOY-01 | Phase 7 | Pending |
+| DEPLOY-01 | Phase 7 | Complete |
 | SCHEMA-01 | Phase 8 | Pending |
 | SCHEMA-02 | Phase 8 | Pending |
 | PORTAL-01 | Phase 9 | Pending |
