@@ -233,16 +233,19 @@ export class LinkedInBrowser {
     const csrfToken = jsessionId.replace(/"/g, "");
 
     // Build the fetch options as a JSON string to inject into eval
-    const fetchOpts: Record<string, unknown> = {
-      method,
-      headers: {
-        "csrf-token": csrfToken,
-        "x-restli-protocol-version": "2.0.0",
-        "accept": "application/vnd.linkedin.normalized+json+2.1",
-      },
+    const headers: Record<string, string> = {
+      "csrf-token": csrfToken,
+      "x-restli-protocol-version": "2.0.0",
+      "x-li-lang": "en_US",
     };
+    // Only set normalized JSON accept for GET (profile) requests
+    // POST requests (messaging) should not include it (matches linkedin-api library)
+    if (method === "GET") {
+      headers["accept"] = "application/vnd.linkedin.normalized+json+2.1";
+    }
+    const fetchOpts: Record<string, unknown> = { method, headers };
     if (body) {
-      (fetchOpts.headers as Record<string, string>)["content-type"] = "application/json; charset=UTF-8";
+      headers["content-type"] = "application/json; charset=UTF-8";
       fetchOpts.body = body;
     }
 
@@ -355,22 +358,29 @@ export class LinkedInBrowser {
     // Always use fs_miniProfile for messaging — the ID is the same as fsd_profile
     // but the messaging API only accepts fs_miniProfile URN type
     const fullUrn = `urn:li:fs_miniProfile:${recipientUrn}`;
+
+    // Generate tracking IDs matching LinkedIn's expected format (from linkedin-api library)
+    const originToken = crypto.randomUUID();
+    const trackingBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+    const trackingId = String.fromCharCode(...trackingBytes);
+
     const body = JSON.stringify({
       keyVersion: "LEGACY_INBOX",
       conversationCreate: {
         eventCreate: {
+          originToken,
           value: {
             "com.linkedin.voyager.messaging.create.MessageCreate": {
-              body: messageText,
-              attachments: [],
               attributedBody: {
                 text: messageText,
                 attributes: [],
               },
-              mediaAttachments: [],
+              attachments: [],
             },
           },
+          trackingId,
         },
+        dedupeByClientGeneratedToken: false,
         recipients: [fullUrn],
         subtype: "MEMBER_TO_MEMBER",
       },
