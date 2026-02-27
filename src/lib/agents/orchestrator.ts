@@ -67,10 +67,18 @@ const delegateToLeads = tool({
     task: z
       .string()
       .describe("What you want the Leads Agent to do. Be specific about search criteria, list names, or export targets."),
+    conversationContext: z
+      .string()
+      .optional()
+      .describe(
+        "Previous search results, list state, or conversation context. " +
+          "Pass when the user is refining a prior result (e.g. 'narrow to London only'). " +
+          "The Leads Agent uses this to avoid restarting from scratch.",
+      ),
   }),
-  execute: async ({ workspaceSlug, task }) => {
+  execute: async ({ workspaceSlug, task, conversationContext }) => {
     try {
-      const result = await runLeadsAgent({ workspaceSlug, task });
+      const result = await runLeadsAgent({ workspaceSlug, task, conversationContext });
       return {
         status: "complete",
         action: result.action,
