@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { runResearchAgent } from "./research";
 import { runWriterAgent } from "./writer";
+import { runLeadsAgent } from "./leads";
 import {
   getAllWorkspaces,
   getWorkspaceDetails,
@@ -55,23 +56,33 @@ const delegateToResearch = tool({
   },
 });
 
-// Placeholder delegation tools for future agents (Iteration 2-4)
-// These return helpful messages explaining the agent isn't built yet.
-
 const delegateToLeads = tool({
   description:
-    "Delegate a task to the Leads Agent. Use this when the user wants to: search for leads, enrich existing leads, source leads from Clay/LeadMagic/Prospeo, or score leads against ICP criteria.",
+    "Delegate a task to the Leads Agent. Use this when the user wants to: search for leads/people, create or manage target lists, score leads against ICP criteria, or export verified leads to EmailBison. The Leads Agent handles all lead pipeline operations via natural language.",
   inputSchema: z.object({
-    workspaceSlug: z.string().describe("Workspace slug"),
-    task: z.string().describe("What you want the Leads Agent to do"),
-    limit: z.number().optional().describe("Max leads to find"),
+    workspaceSlug: z
+      .string()
+      .optional()
+      .describe("Workspace slug (for workspace-scoped operations like scoring and export)"),
+    task: z
+      .string()
+      .describe("What you want the Leads Agent to do. Be specific about search criteria, list names, or export targets."),
   }),
-  execute: async () => {
-    return {
-      status: "not_available",
-      message:
-        "The Leads Agent is not yet implemented. It will be available in Iteration 2 and will support Clay, LeadMagic, Prospeo, and SerperDev integrations.",
-    };
+  execute: async ({ workspaceSlug, task }) => {
+    try {
+      const result = await runLeadsAgent({ workspaceSlug, task });
+      return {
+        status: "complete",
+        action: result.action,
+        summary: result.summary,
+        data: result.data,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Leads Agent failed",
+      };
+    }
   },
 });
 
@@ -468,7 +479,7 @@ You have TWO types of tools:
 ## 1. Delegation Tools (for complex tasks)
 Use these to delegate work to specialist agents:
 - **delegateToResearch**: For website analysis, ICP extraction, company intelligence
-- **delegateToLeads**: For lead sourcing, enrichment, scoring (coming soon)
+- **delegateToLeads**: For searching people, building target lists, scoring against ICP, exporting to EmailBison
 - **delegateToWriter**: For email and LinkedIn copy generation, sequence writing, campaign performance analysis, draft revisions
 - **delegateToCampaign**: For EmailBison campaign management (coming soon)
 
@@ -483,7 +494,10 @@ Use these directly for simple data lookups:
 - "Write an email sequence for X" → Delegate to Writer Agent (creative work)
 - "Write LinkedIn messages for X" → Delegate to Writer Agent (creative work)
 - "Revise the copy for campaign Y" → Delegate to Writer Agent (creative work)
-- "Find 200 leads for X" → Delegate to Leads Agent (multi-source search)
+- "Find CTOs in fintech" → Delegate to Leads Agent (database search + pipeline)
+- "Create a list called Rise Q1" → Delegate to Leads Agent
+- "Score the Rise Q1 list" → Delegate to Leads Agent
+- "Export Rise Q1 to EmailBison" → Delegate to Leads Agent
 
 ## Guidelines:
 - Be concise and action-oriented
@@ -491,7 +505,7 @@ Use these directly for simple data lookups:
 - Monetary values from the database are in pence — divide by 100 for pounds (£)
 - When the user asks about 'this workspace' or 'campaigns', use the current workspace context
 - When a specialist agent returns results, summarize them clearly for the user
-- If a specialist agent is not yet available, explain what it will do and suggest alternatives`;
+- If a specialist agent returns an error, explain what went wrong and suggest alternatives`;
 
 export const orchestratorConfig: AgentConfig = {
   name: "orchestrator",
