@@ -305,9 +305,8 @@ export class LinkedInBrowser {
         continue;
       }
 
-      // Extract name and connection info from the response
+      // Extract name from the response
       let name: string | null = null;
-      let connectionDistance: string | null = null;
       try {
         const json = JSON.parse(result.body);
         const profile = json?.profile ?? json?.elements?.[0] ?? {};
@@ -337,6 +336,111 @@ export class LinkedInBrowser {
   /**
    * Send a message via the Voyager messaging API (executed in browser context).
    */
+  /**
+   * Main message sending orchestrator. Tries multiple approaches:
+   * 1. Find existing conversation → POST to events endpoint
+   * 2. Create new conversation via Voyager API
+   * 3. Fallback to compose URL + DOM approach
+   */
+  private async sendMessageToRecipient(
+    profileId: string,
+    memberUrn: string | null,
+    recipientName: string | null,
+    messageText: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    // Approach 1: Find existing conversation and send via events endpoint
+    const conversationId = await this.findConversation(profileId);
+    if (conversationId) {
+      this.log(`Found existing conversation: ${conversationId}`);
+      const result = await this.sendToConversation(conversationId, messageText);
+      if (result.success) return result;
+      this.log(`Events endpoint failed: ${result.error}, trying compose fallback`);
+    } else {
+      this.log("No existing conversation found, trying compose URL");
+    }
+
+    // Approach 2: Compose URL + DOM approach
+    const composeResult = await this.sendMessageViaCompose(profileId, recipientName, messageText);
+    if (composeResult.success) return composeResult;
+
+    return { success: false, error: `All approaches failed. Last: ${composeResult.error}` };
+  }
+
+  /**
+   * Find an existing conversation with a recipient by their profile ID.
+   */
+  private async findConversation(profileId: string): Promise<string | null> {
+    // Search conversations by participant URN
+    const url = `https://www.linkedin.com/voyager/api/messaging/conversations?q=participants&recipients=List(urn%3Ali%3Afsd_profile%3A${profileId})`;
+    this.log(`Looking for existing conversation with ${profileId}`);
+    const result = await this.voyagerFetch(url);
+    if (!result || result.status !== 200) {
+      this.log(`Conversation search returned ${result?.status ?? 'null'}`);
+      return null;
+    }
+
+    // Extract conversation URN from response
+    const convMatch = result.body.match(/urn:li:fs_conversation:([A-Za-z0-9_-]+)/);
+    if (!convMatch) {
+      // Try alternative pattern
+      const altMatch = result.body.match(/urn:li:fsd_messagingConversation:([A-Za-z0-9_-]+)/);
+      if (altMatch) return altMatch[1];
+      this.log("No conversation URN found in response");
+      return null;
+    }
+
+    return convMatch[1];
+  }
+
+  /**
+   * Send a message to an existing conversation via the events endpoint.
+   * This is a different endpoint than conversations?action=create and may
+   * have different access controls.
+   */
+  private async sendToConversation(
+    conversationId: string,
+    messageText: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const originToken = crypto.randomUUID();
+    const trackingBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+    const trackingId = String.fromCharCode(...trackingBytes);
+
+    const body = JSON.stringify({
+      eventCreate: {
+        originToken,
+        value: {
+          "com.linkedin.voyager.messaging.create.MessageCreate": {
+            attributedBody: {
+              text: messageText,
+              attributes: [],
+            },
+            attachments: [],
+          },
+        },
+        trackingId,
+      },
+      dedupeByClientGeneratedToken: false,
+    });
+
+    this.log(`Sending to conversation ${conversationId}`);
+
+    const result = await this.voyagerFetch(
+      `https://www.linkedin.com/voyager/api/messaging/conversations/${conversationId}/events?action=create`,
+      "POST",
+      body,
+    );
+
+    if (!result) return { success: false, error: "Browser fetch failed" };
+
+    if (result.status === 200 || result.status === 201) {
+      this.log("Message sent via conversation events endpoint");
+      return { success: true };
+    }
+
+    this.log(`Conversation events failed: ${result.status} ${result.body.substring(0, 300)}`);
+    return { success: false, error: `Events API ${result.status}: ${result.body.substring(0, 200)}` };
+  }
+
   /**
    * Send message via the compose URL approach — navigates to LinkedIn's
    * compose page with the recipient URN pre-filled, types the message,
@@ -787,12 +891,12 @@ export class LinkedInBrowser {
       // Human-like delay after viewing profile
       await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 3: Send message via compose URL (LinkedIn's own UI handles the API calls)
-      const sendResult = await this.sendMessageViaCompose(profileId, recipientName, message);
+      // Step 3: Try to send via existing conversation first, then compose fallback
+      const sendResult = await this.sendMessageToRecipient(profileId, memberUrn, recipientName, message);
       if (!sendResult.success) {
         return {
           success: false,
-          error: sendResult.error ?? "Compose messaging failed",
+          error: sendResult.error ?? "Message send failed",
         };
       }
 
