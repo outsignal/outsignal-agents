@@ -22,6 +22,7 @@ import { generateListCsv } from "@/lib/export/csv";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
+import * as operations from "@/lib/leads/operations"; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 export function registerExportTools(server: McpServer): void {
   // ─── Tool 1: export_to_emailbison ───────────────────────────────────────────
@@ -130,6 +131,11 @@ export function registerExportTools(server: McpServer): void {
 
       // ── Step 4: confirm=true → execute push ─────────────────────────────────
       if (confirm) {
+        // NOTE: The MCP export confirm=true path manages campaigns (create/duplicate) and
+        // custom variables (linkedin_url), which operations.exportListToEmailBison does not support.
+        // The lead upload loop is structurally identical but includes linkedin_url custom variables.
+        // Campaign management will be unified when Campaign operations are added in Phase 8.
+
         // Fresh readiness check after potential verification
         const readiness = await getListExportReadiness(list_id);
 

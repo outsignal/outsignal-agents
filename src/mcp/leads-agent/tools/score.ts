@@ -12,6 +12,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { scorePersonIcp } from "@/lib/icp/scorer";
+import * as operations from "@/lib/leads/operations"; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 export function registerScoreTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
@@ -72,6 +73,11 @@ export function registerScoreTools(server: McpServer): void {
     },
     async (params) => {
       const { workspace, limit, confirm } = params;
+
+      // NOTE: batch_score_list operates at workspace level (all unscored people in workspace).
+      // operations.scoreList operates at list level (unscored people in a specific TargetList).
+      // The scoring itself uses the shared scorePersonIcp function.
+      // A workspace-level operations function could be added in a future phase if needed.
 
       // Find unscored people in this workspace
       const unscoredPws = await prisma.personWorkspace.findMany({
