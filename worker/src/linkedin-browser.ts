@@ -207,167 +207,167 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Build Voyager API headers from the current browser session cookies.
+   * Execute a Voyager API call via the browser's fetch (uses browser proxy + cookies).
+   * Returns the parsed response or null on failure.
    */
-  private async getVoyagerHeaders(): Promise<Record<string, string> | null> {
+  private async voyagerFetch(
+    url: string,
+    method: "GET" | "POST" = "GET",
+    body?: string,
+  ): Promise<{ status: number; body: string } | null> {
     if (!this.ws) return null;
 
-    const resp = await cdpSend(
+    // Get CSRF token from cookies
+    const cookieResp = await cdpSend(
       this.ws, "Network.getAllCookies", {}, this.nextId(),
     );
-    const allCookies = (resp?.result?.cookies as CdpCookie[] | undefined) ?? [];
-    const liCookies = allCookies.filter(c => c.domain.includes("linkedin.com"));
-
-    const liAt = liCookies.find(c => c.name === "li_at")?.value;
-    const jsessionId = liCookies.find(c => c.name === "JSESSIONID")?.value;
-
-    if (!liAt || !jsessionId) {
-      this.log("Voyager: missing li_at or JSESSIONID cookie");
+    const allCookies = (cookieResp?.result?.cookies as CdpCookie[] | undefined) ?? [];
+    const jsessionId = allCookies.find(
+      c => c.domain.includes("linkedin.com") && c.name === "JSESSIONID",
+    )?.value;
+    if (!jsessionId) {
+      this.log("Voyager: missing JSESSIONID cookie");
       return null;
     }
-
-    const cookieHeader = liCookies.map(c => `${c.name}=${c.value}`).join("; ");
     const csrfToken = jsessionId.replace(/"/g, "");
 
-    return {
-      "cookie": cookieHeader,
-      "csrf-token": csrfToken,
-      "x-restli-protocol-version": "2.0.0",
-      "accept": "application/vnd.linkedin.normalized+json+2.1",
-      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    // Build the fetch options as a JSON string to inject into eval
+    const fetchOpts: Record<string, unknown> = {
+      method,
+      headers: {
+        "csrf-token": csrfToken,
+        "x-restli-protocol-version": "2.0.0",
+        "accept": "application/vnd.linkedin.normalized+json+2.1",
+      },
     };
+    if (body) {
+      (fetchOpts.headers as Record<string, string>)["content-type"] = "application/json; charset=UTF-8";
+      fetchOpts.body = body;
+    }
+
+    const result = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(async () => {
+  try {
+    const resp = await fetch(${JSON.stringify(url)}, ${JSON.stringify(fetchOpts)});
+    const text = await resp.text();
+    return { status: resp.status, body: text.substring(0, 5000) };
+  } catch (e) {
+    return { status: 0, body: String(e) };
+  }
+})()`,
+        returnByValue: true,
+        awaitPromise: true,
+      }, this.nextId()),
+    ) as { status: number; body: string } | null;
+
+    return result;
   }
 
   /**
-   * Fetch profile data directly from LinkedIn Voyager API using session cookies.
-   * Bypasses headless Chrome detection entirely.
+   * Fetch profile data via Voyager API (executed in browser context for proxy routing).
    */
   private async fetchVoyagerProfile(publicId: string): Promise<{
     urn: string;
     name: string | null;
   } | null> {
-    try {
-      const headers = await this.getVoyagerHeaders();
-      if (!headers) return null;
+    const endpoints = [
+      `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${publicId}`,
+      `https://www.linkedin.com/voyager/api/identity/profiles/${publicId}/profileView`,
+    ];
 
-      // Try multiple Voyager endpoints — LinkedIn deprecates them over time
-      const endpoints = [
-        `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${publicId}`,
-        `https://www.linkedin.com/voyager/api/identity/profiles/${publicId}/profileView`,
-      ];
+    for (const url of endpoints) {
+      this.log(`Voyager profile fetch: ${url.substring(0, 120)}`);
 
-      for (const url of endpoints) {
-        this.log(`Voyager profile fetch: ${url.substring(0, 120)}`);
-
-        const response = await fetch(url, { headers });
-
-        if (!response.ok) {
-          this.log(`Voyager returned ${response.status} for ${url.substring(url.lastIndexOf("/"))}`);
-          continue;
-        }
-
-        const bodyText = await response.text();
-
-        // Extract fsd_profile URN
-        const urnMatch = bodyText.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-        if (!urnMatch) {
-          this.log("Voyager response has no fsd_profile URN, trying next endpoint");
-          continue;
-        }
-
-        // Extract name from the response — try multiple JSON structures
-        let name: string | null = null;
-        try {
-          const json = JSON.parse(bodyText);
-          const profile = json?.profile ?? json?.elements?.[0] ?? {};
-          const firstName = profile?.firstName ?? profile?.localizedFirstName ?? "";
-          const lastName = profile?.lastName ?? profile?.localizedLastName ?? "";
-          if (firstName || lastName) {
-            name = `${firstName} ${lastName}`.trim();
-          }
-          // Fallback: search included array for miniProfile
-          if (!name && Array.isArray(json?.included)) {
-            for (const item of json.included) {
-              if (item?.firstName && item?.lastName) {
-                name = `${item.firstName} ${item.lastName}`.trim();
-                break;
-              }
-            }
-          }
-        } catch { /* name extraction is best-effort */ }
-
-        this.log(`Voyager profile resolved: urn="${urnMatch[1]}", name="${name}"`);
-        return { urn: urnMatch[1], name };
+      const result = await this.voyagerFetch(url);
+      if (!result || result.status !== 200) {
+        this.log(`Voyager returned ${result?.status ?? 'null'} for ${url.substring(url.lastIndexOf("/"))}`);
+        continue;
       }
 
-      this.log("All Voyager profile endpoints failed");
-      return null;
-    } catch (error) {
-      this.log(`Voyager profile fetch failed: ${error}`);
-      return null;
+      // Extract fsd_profile URN
+      const urnMatch = result.body.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+      if (!urnMatch) {
+        this.log("Voyager response has no fsd_profile URN, trying next endpoint");
+        continue;
+      }
+
+      // Extract name from the response
+      let name: string | null = null;
+      try {
+        const json = JSON.parse(result.body);
+        const profile = json?.profile ?? json?.elements?.[0] ?? {};
+        const firstName = profile?.firstName ?? profile?.localizedFirstName ?? "";
+        const lastName = profile?.lastName ?? profile?.localizedLastName ?? "";
+        if (firstName || lastName) {
+          name = `${firstName} ${lastName}`.trim();
+        }
+        if (!name && Array.isArray(json?.included)) {
+          for (const item of json.included) {
+            if (item?.firstName && item?.lastName) {
+              name = `${item.firstName} ${item.lastName}`.trim();
+              break;
+            }
+          }
+        }
+      } catch { /* name extraction is best-effort */ }
+
+      this.log(`Voyager profile resolved: urn="${urnMatch[1]}", name="${name}"`);
+      return { urn: urnMatch[1], name };
     }
+
+    this.log("All Voyager profile endpoints failed");
+    return null;
   }
 
   /**
-   * Send a message via the Voyager messaging API.
-   * Bypasses the compose UI entirely — no DOM interaction needed.
+   * Send a message via the Voyager messaging API (executed in browser context).
    */
   private async sendMessageViaVoyager(
     recipientUrn: string,
     messageText: string,
   ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const headers = await this.getVoyagerHeaders();
-      if (!headers) return { success: false, error: "Missing session cookies" };
-
-      const fullUrn = `urn:li:fsd_profile:${recipientUrn}`;
-      const body = JSON.stringify({
-        keyVersion: "LEGACY_INBOX",
-        conversationCreate: {
-          eventCreate: {
-            value: {
-              "com.linkedin.voyager.messaging.create.MessageCreate": {
-                body: messageText,
-                attachments: [],
-                attributedBody: {
-                  text: messageText,
-                  attributes: [],
-                },
-                mediaAttachments: [],
+    const fullUrn = `urn:li:fsd_profile:${recipientUrn}`;
+    const body = JSON.stringify({
+      keyVersion: "LEGACY_INBOX",
+      conversationCreate: {
+        eventCreate: {
+          value: {
+            "com.linkedin.voyager.messaging.create.MessageCreate": {
+              body: messageText,
+              attachments: [],
+              attributedBody: {
+                text: messageText,
+                attributes: [],
               },
+              mediaAttachments: [],
             },
           },
-          recipients: [fullUrn],
-          subtype: "MEMBER_TO_MEMBER",
         },
-      });
+        recipients: [fullUrn],
+        subtype: "MEMBER_TO_MEMBER",
+      },
+    });
 
-      this.log(`Voyager message send to ${fullUrn}`);
+    this.log(`Voyager message send to ${fullUrn}`);
 
-      const response = await fetch(
-        "https://www.linkedin.com/voyager/api/messaging/conversations?action=create",
-        {
-          method: "POST",
-          headers: {
-            ...headers,
-            "content-type": "application/json; charset=UTF-8",
-          },
-          body,
-        },
-      );
+    const result = await this.voyagerFetch(
+      "https://www.linkedin.com/voyager/api/messaging/conversations?action=create",
+      "POST",
+      body,
+    );
 
-      if (response.ok || response.status === 201) {
-        this.log("Voyager message sent successfully");
-        return { success: true };
-      }
-
-      const errBody = await response.text().catch(() => "");
-      this.log(`Voyager message failed: ${response.status} ${errBody.substring(0, 200)}`);
-      return { success: false, error: `Voyager API ${response.status}: ${errBody.substring(0, 100)}` };
-    } catch (error) {
-      this.log(`Voyager message error: ${error}`);
-      return { success: false, error: String(error) };
+    if (!result) {
+      return { success: false, error: "Browser fetch failed" };
     }
+
+    if (result.status === 200 || result.status === 201) {
+      this.log("Voyager message sent successfully");
+      return { success: true };
+    }
+
+    this.log(`Voyager message failed: ${result.status} ${result.body.substring(0, 200)}`);
+    return { success: false, error: `Voyager API ${result.status}: ${result.body.substring(0, 100)}` };
   }
 
   // ---------------------------------------------------------------------------
