@@ -37,8 +37,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **LIST-01**: User can create named target lists scoped to a workspace
 - [ ] **LIST-02**: User can add people to lists from search results (individually or in bulk)
-- [ ] **LIST-03**: User can filter and segment leads by ICP criteria to build lists
-- [ ] **LIST-04**: User can view list contents with enrichment completeness summary
+- [x] **LIST-03**: User can filter and segment leads by ICP criteria to build lists
+- [x] **LIST-04**: User can view list contents with enrichment completeness summary
 
 ### Export & Integration
 
@@ -110,8 +110,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEARCH-05 | Phase 4 | Complete |
 | LIST-01 | Phase 4 | Complete |
 | LIST-02 | Phase 4 | Pending |
-| LIST-03 | Phase 4 | Pending |
-| LIST-04 | Phase 4 | Pending |
+| LIST-03 | Phase 4 | Complete |
+| LIST-04 | Phase 4 | Complete |
 | EXPORT-01 | Phase 5 | Pending |
 | EXPORT-02 | Phase 5 | Pending |
 | EXPORT-03 | Phase 5 | Pending |

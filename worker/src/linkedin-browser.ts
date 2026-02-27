@@ -55,88 +55,52 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Navigate to a URL and wait for the page to finish loading.
-   * Forces clean navigation via about:blank, waits for Page.loadEventFired,
-   * then polls for profile-specific DOM elements before returning.
+   * Navigate to a URL and wait for the page content to be ready.
+   *
+   * Uses Page.navigate + polling for URL and DOM readiness. LinkedIn is a
+   * heavy SPA so Page.loadEventFired alone is unreliable — we poll until
+   * both the URL and content match expectations.
    */
   private async navigate(url: string): Promise<string> {
     if (!this.ws) throw new Error("Browser not launched");
 
-    // Step 1: Navigate to about:blank first to ensure a clean full navigation
-    await cdpSend(this.ws, "Page.navigate", { url: "about:blank" }, this.nextId());
-    await this.sleep(500);
-
-    // Step 2: Set up load event listener, then navigate to target
-    const loadPromise = new Promise<void>((resolve) => {
-      const handler = (event: MessageEvent) => {
-        try {
-          const msg = JSON.parse(String(event.data));
-          if (msg.method === "Page.loadEventFired") {
-            this.ws?.removeEventListener("message", handler);
-            resolve();
-          }
-        } catch { /* ignore parse errors */ }
-      };
-      this.ws!.addEventListener("message", handler);
-      setTimeout(() => {
-        this.ws?.removeEventListener("message", handler);
-        resolve();
-      }, 15_000);
-    });
-
-    await cdpSend(this.ws, "Page.navigate", { url }, this.nextId());
-    await loadPromise;
-
-    // Step 3: Wait for SPA content to render by polling for real DOM elements
-    // LinkedIn's React app needs time after the HTML shell loads
-    await this.waitForDomReady(url);
-
-    // Step 4: Return the final URL
-    const resp = await cdpSend(
-      this.ws,
-      "Runtime.evaluate",
-      { expression: "window.location.href", returnByValue: true },
-      this.nextId(),
-    );
-    const finalUrl = String(evalValue(resp) ?? "");
-    this.log(`Navigated to ${url} → landed on ${finalUrl}`);
-    return finalUrl;
-  }
-
-  /**
-   * Poll the DOM until profile-specific or page-specific content is present.
-   * LinkedIn is a heavy SPA — Page.loadEventFired fires before React renders.
-   */
-  private async waitForDomReady(url: string, maxWaitMs = 12_000): Promise<void> {
-    if (!this.ws) return;
-
     const isProfileUrl = url.includes("/in/");
-    const startTime = Date.now();
 
-    for (let attempt = 0; attempt < 20; attempt++) {
+    // Step 1: Navigate via Page.navigate
+    const navResp = await cdpSend(this.ws, "Page.navigate", { url }, this.nextId());
+    const navError = (navResp.result as Record<string, unknown> | undefined)?.errorText;
+    if (navError) {
+      this.log(`Navigation error: ${navError}`);
+    }
+
+    // Step 2: Poll until URL is correct and content has loaded
+    // This replaces both Page.loadEventFired and DOM readiness checks
+    const startTime = Date.now();
+    const maxWaitMs = 15_000;
+    let lastUrl = "";
+
+    for (let attempt = 0; attempt < 25; attempt++) {
       if (Date.now() - startTime > maxWaitMs) {
-        this.log(`DOM readiness timeout after ${maxWaitMs}ms`);
+        this.log(`Navigation timeout after ${maxWaitMs}ms. Last URL: ${lastUrl}`);
         break;
       }
 
       const checkExpr = isProfileUrl
         ? `(() => {
-  // Check for profile-specific indicators
-  const profileActions = document.querySelector('.pvs-profile-actions, .pv-top-card-v2-ctas, [class*="profile-action"]');
-  const h1 = document.querySelector('h1');
-  const namePresent = h1 && h1.textContent && h1.textContent.trim().length > 0;
-  const bodyText = document.body?.innerText?.length ?? 0;
-  return {
-    ready: !!(profileActions || (namePresent && bodyText > 500)),
-    hasActions: !!profileActions,
-    hasName: !!namePresent,
-    bodyLength: bodyText,
-    url: window.location.href,
-  };
+  const url = window.location.href;
+  const bodyLen = document.body?.innerText?.length ?? 0;
+  const h1 = document.querySelector('h1')?.textContent?.trim() ?? '';
+  // Profile-specific: look for the profile top card section
+  const hasTopCard = !!document.querySelector('[class*="top-card"], [class*="pv-top-card"], .scaffold-layout__main');
+  // Check we're NOT on the feed
+  const onFeed = url.includes('/feed');
+  const onProfile = url.includes('/in/');
+  return { url, bodyLen, h1: h1.substring(0, 40), hasTopCard, onFeed, onProfile, ready: onProfile && !onFeed && bodyLen > 300 && h1.length > 0 };
 })()`
         : `(() => {
-  const bodyText = document.body?.innerText?.length ?? 0;
-  return { ready: bodyText > 200, bodyLength: bodyText, url: window.location.href };
+  const url = window.location.href;
+  const bodyLen = document.body?.innerText?.length ?? 0;
+  return { url, bodyLen, ready: bodyLen > 200 };
 })()`;
 
       const result = evalValue(
@@ -144,16 +108,28 @@ export class LinkedInBrowser {
           expression: checkExpr,
           returnByValue: true,
         }, this.nextId()),
-      ) as { ready: boolean; hasActions?: boolean; hasName?: boolean; bodyLength: number; url: string } | null;
+      ) as { url: string; bodyLen: number; h1?: string; onFeed?: boolean; onProfile?: boolean; ready: boolean } | null;
+
+      lastUrl = result?.url ?? "";
 
       if (result?.ready) {
-        this.log(`DOM ready after ${Date.now() - startTime}ms (body=${result.bodyLength}, actions=${result.hasActions}, name=${result.hasName}, url=${result.url})`);
-        return;
+        this.log(`Page ready after ${Date.now() - startTime}ms (body=${result.bodyLen}, h1="${result.h1}", url=${result.url})`);
+        // Extra wait for React to finish rendering interactive elements
+        await this.sleep(3000);
+        return result.url;
       }
 
-      this.log(`DOM not ready yet (attempt ${attempt + 1}, body=${result?.bodyLength ?? 0}, url=${result?.url ?? "?"})`);
+      // If we've been redirected to /feed after requesting a profile, log it
+      if (isProfileUrl && result?.onFeed && attempt > 3) {
+        this.log(`Redirected to feed! url=${result.url}, attempt=${attempt}`);
+      }
+
       await this.sleep(600);
     }
+
+    // Return whatever URL we ended up at
+    this.log(`Navigate finished (timeout). Final URL: ${lastUrl}`);
+    return lastUrl;
   }
 
   // ---------------------------------------------------------------------------
@@ -457,6 +433,7 @@ export class LinkedInBrowser {
           "Runtime.evaluate",
           {
             expression: `(() => {
+  const currentUrl = window.location.href;
   // Try aria-label first (most stable)
   let btn = document.querySelector('button[aria-label*="message" i]');
   // Exclude "Messages" nav link
@@ -472,8 +449,11 @@ export class LinkedInBrowser {
   if (!btn) {
     btn = document.querySelector('button.pvs-profile-actions__action[aria-label*="message" i]');
   }
-  const allBtns = Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim().substring(0, 30));
-  if (!btn) return { found: false, debug: allBtns };
+  const allBtns = Array.from(document.querySelectorAll('button'))
+    .slice(0, 15)
+    .map(b => b.textContent?.trim().substring(0, 25));
+  const h1 = document.querySelector('h1')?.textContent?.trim() ?? '';
+  if (!btn) return { found: false, url: currentUrl, h1: h1.substring(0, 40), debug: allBtns };
   btn.click();
   return { found: true };
 })()`,
@@ -481,14 +461,16 @@ export class LinkedInBrowser {
           },
           this.nextId(),
         ),
-      ) as { found: boolean; debug?: string[] } | null;
+      ) as { found: boolean; url?: string; h1?: string; debug?: string[] } | null;
 
       if (!msgBtnResult?.found) {
-        const debugInfo = msgBtnResult?.debug?.join(" | ") ?? "no buttons";
-        this.log("Message button not found. Buttons on page: " + debugInfo);
+        const pageUrl = msgBtnResult?.url ?? "unknown";
+        const pageH1 = msgBtnResult?.h1 ?? "none";
+        const debugBtns = msgBtnResult?.debug?.join(" | ") ?? "no buttons";
+        this.log(`Message button not found. URL: ${pageUrl}, H1: "${pageH1}", Buttons: ${debugBtns}`);
         return {
           success: false,
-          error: `Message button not found. Buttons: [${debugInfo}]`,
+          error: `Message button not found. URL=${pageUrl} H1="${pageH1}" Buttons=[${debugBtns}]`,
         };
       }
 

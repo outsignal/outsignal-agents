@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-02-27T11:28:41.014Z"
+status: active
+last_updated: "2026-02-27T11:29:16Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 04 Search/Filter/List Building — Plans 01 and 03 complete
+**Current focus:** Phase 04 Search/Filter/List Building — Plans 01, 03, and 04 complete
 
 ## Current Position
 
 Phase: 04 (Search/Filter/List Building) — IN PROGRESS
-Plan: 3 of 5 complete (04-01 — foundation; 04-03 — companies search API + UI)
-Status: Phase 04 active — companies search shipped, Plans 02, 04, 05 ready
-Last activity: 2026-02-27 — Completed 04-03 (GET /api/companies/search, CompaniesSearchPage, /companies page)
+Plan: 4 of 5 complete (04-01 — foundation; 04-02 — people search; 04-03 — companies search; 04-04 — list management)
+Status: Phase 04 active — list management shipped, Plan 05 (export) ready
+Last activity: 2026-02-27 — Completed 04-04 (list CRUD API + list index/detail UI with enrichment bars)
 
-Progress: [████░░░░░░] Phase 04 in progress (2/5 plans)
+Progress: [████████░░] Phase 04 in progress (4/5 plans)
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [████░░░░░░] Phase 04 in progress (2/5 plans)
 | Phase 04-search-filter-list-building P01 | 3 | 2 tasks | 4 files |
 | Phase 04-search-filter-list-building P02 | 3 | 2 tasks | 5 files |
 | Phase 04-search-filter-list-building P03 | 2 | 2 tasks | 3 files |
+| Phase 04-search-filter-list-building P04 | 3 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ Recent decisions affecting current work:
 - [Phase 04-02]: filterOptions bundled in search response — single round trip, no extra API call for filter sidebar
 - [Phase 04-02]: AND conditions array for Prisma WHERE — safe composition avoids overwriting OR conditions
 - [Phase 04-02]: People page replaced wholesale server→client — server-side form submit is anti-pattern for instant search
+- [04-04]: Enrichment summary fetches all members in-memory for accuracy at Phase 4 scope (<500 people/list) — acceptable until list sizes grow
+- [04-04]: No import of EnrichmentBadge from Plan 02 — inline InlineEnrichmentBadge defined in list-detail-page.tsx using status.ts (Plan 02 runs in parallel Wave 2)
+- [04-04]: Client-side list name filtering — lists are few enough to filter in-memory after single fetch
 
 ### Pending Todos
 
@@ -139,5 +143,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 04-02-PLAN.md — People search API route (GET /api/people/search) + client search page with filter sidebar, enrichment badges, nuqs URL state
+Stopped at: Completed 04-04-PLAN.md — List management API routes + list index/detail UI with enrichment bars
 Resume file: None
