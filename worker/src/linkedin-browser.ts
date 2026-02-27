@@ -191,6 +191,156 @@ export class LinkedInBrowser {
     }
   }
 
+  /**
+   * Extract the member URN (numeric ID) from the current profile page.
+   * Tries 4 fallback strategies to find it in the DOM.
+   */
+  private async extractMemberUrn(maxWaitMs = 10_000): Promise<string | null> {
+    if (!this.ws) return null;
+    const start = Date.now();
+
+    for (let i = 0; i < 20; i++) {
+      if (Date.now() - start > maxWaitMs) {
+        this.log(`Member URN extraction timed out after ${maxWaitMs}ms`);
+        break;
+      }
+
+      const result = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  // Strategy 1: data-member-id attribute
+  const memberIdEl = document.querySelector('[data-member-id]');
+  if (memberIdEl) {
+    const id = memberIdEl.getAttribute('data-member-id');
+    if (id) return { id, strategy: 'data-member-id' };
+  }
+
+  // Strategy 2: urn:li:fsd_profile:{id} regex on page HTML
+  const html = document.documentElement.innerHTML;
+  const fsdMatch = html.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+  if (fsdMatch) return { id: fsdMatch[1], strategy: 'fsd_profile_regex' };
+
+  // Strategy 3: entityUrn in <code> tags (LinkedIn embeds JSON in code tags)
+  const codeTags = document.querySelectorAll('code');
+  for (const code of codeTags) {
+    const text = code.textContent || '';
+    const urnMatch = text.match(/"entityUrn"\\s*:\\s*"urn:li:(?:fsd_profile|member):([A-Za-z0-9_-]+)"/);
+    if (urnMatch) return { id: urnMatch[1], strategy: 'code_tag_entityUrn' };
+  }
+
+  // Strategy 4: data-entity-urn attribute
+  const entityUrnEl = document.querySelector('[data-entity-urn]');
+  if (entityUrnEl) {
+    const urn = entityUrnEl.getAttribute('data-entity-urn') || '';
+    const match = urn.match(/urn:li:(?:fsd_profile|member):([A-Za-z0-9_-]+)/);
+    if (match) return { id: match[1], strategy: 'data-entity-urn' };
+  }
+
+  return null;
+})()`,
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { id: string; strategy: string } | null;
+
+      if (result?.id) {
+        this.log(`Extracted member URN "${result.id}" via strategy: ${result.strategy}`);
+        return result.id;
+      }
+
+      this.log(`URN poll ${i + 1}: no URN found yet`);
+      await this.sleep(500);
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract the profile name from the current profile page's <h1> tag.
+   * Single-shot eval — profile content should already be loaded by navigate().
+   */
+  private async extractProfileName(): Promise<string | null> {
+    if (!this.ws) return null;
+
+    const result = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(() => {
+  const h1 = document.querySelector('h1');
+  if (!h1) return null;
+  const text = h1.textContent?.trim() ?? '';
+  return text.length > 0 ? text : null;
+})()`,
+        returnByValue: true,
+      }, this.nextId()),
+    ) as string | null;
+
+    if (result) {
+      this.log(`Extracted profile name: "${result}"`);
+    } else {
+      this.log("Could not extract profile name from h1");
+    }
+
+    return result;
+  }
+
+  /**
+   * Wait for a recipient pill/tag to appear in the compose form.
+   * Polls multiple CSS selectors that LinkedIn uses for recipient pills.
+   */
+  private async waitForComposeRecipient(maxWaitMs = 10_000): Promise<string | null> {
+    if (!this.ws) return null;
+    const start = Date.now();
+
+    for (let i = 0; i < 20; i++) {
+      if (Date.now() - start > maxWaitMs) {
+        this.log(`Compose recipient poll timed out after ${maxWaitMs}ms`);
+        break;
+      }
+
+      const result = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  // Strategy 1: element with data-entity-urn containing a span (pill with name)
+  const urnEl = document.querySelector('[data-entity-urn] span');
+  if (urnEl && urnEl.textContent?.trim()) return { name: urnEl.textContent.trim(), strategy: 'data-entity-urn span' };
+
+  // Strategy 2: pill-like classes LinkedIn uses
+  const pill = document.querySelector('.msg-compose-pill, .msg-connections-typeahead__pill, .artdeco-pill');
+  if (pill && pill.textContent?.trim()) return { name: pill.textContent.trim(), strategy: 'pill-class' };
+
+  // Strategy 3: listitem role inside recipient area
+  const listItem = document.querySelector('[role="listitem"]');
+  if (listItem && listItem.textContent?.trim()) return { name: listItem.textContent.trim(), strategy: 'role-listitem' };
+
+  // Strategy 4: pill-like elements near the "To:" label
+  const toLabel = Array.from(document.querySelectorAll('label, span')).find(el =>
+    el.textContent?.trim().toLowerCase() === 'to' || el.textContent?.trim().toLowerCase() === 'to:'
+  );
+  if (toLabel) {
+    const container = toLabel.closest('div');
+    if (container) {
+      const pill = container.querySelector('span[data-entity-urn], button, .artdeco-pill');
+      if (pill && pill.textContent?.trim()) return { name: pill.textContent.trim(), strategy: 'near-to-label' };
+    }
+  }
+
+  return null;
+})()`,
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { name: string; strategy: string } | null;
+
+      if (result?.name) {
+        this.log(`Compose recipient found: "${result.name}" via strategy: ${result.strategy}`);
+        return result.name;
+      }
+
+      this.log(`Recipient poll ${i + 1}: no pill found yet`);
+      await this.sleep(500);
+    }
+
+    return null;
+  }
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -465,10 +615,11 @@ export class LinkedInBrowser {
   /**
    * Send a message to a 1st-degree connection.
    *
-   * Uses LinkedIn's messaging page directly instead of the profile page,
-   * because LinkedIn's SPA doesn't render profile content in headless Chrome.
-   *
-   * Flow: /messaging/ → New message → search recipient → type message → send
+   * Uses URN-based compose URL for reliable recipient targeting:
+   * 1. Navigate to the profile page to extract the member URN
+   * 2. Open /messaging/compose/?recipientUrn=urn:li:fsd_profile:{id}
+   * 3. Verify recipient pill matches profile name
+   * 4. Type and send the message
    */
   async sendMessage(
     profileUrl: string,
@@ -476,152 +627,89 @@ export class LinkedInBrowser {
   ): Promise<ActionResult> {
     if (!this.ws) return { success: false, error: "Browser not launched" };
 
-    // Extract the profile slug (e.g., "april-newman-27713482" from the URL)
-    const slugMatch = profileUrl.match(/\/in\/([^/?]+)/);
-    if (!slugMatch) {
-      return { success: false, error: `Invalid profile URL: ${profileUrl}` };
+    // Validate profile URL
+    if (!profileUrl.includes("/in/")) {
+      return { success: false, error: `Invalid profile URL (missing /in/): ${profileUrl}` };
     }
 
     try {
-      this.log(`Sending message via messaging page to: ${profileUrl}`);
+      this.log(`Sending message via URN compose to: ${profileUrl}`);
 
-      // Step 1: Navigate to LinkedIn messaging
-      const landedUrl = await this.navigate("https://www.linkedin.com/messaging/");
-      this.log(`Messaging page landed: ${landedUrl}`);
+      // Step 1: Navigate to the profile page
+      const landedUrl = await this.navigate(profileUrl);
+      this.log(`Profile page landed: ${landedUrl}`);
 
-      if (!landedUrl.includes("/messaging")) {
-        return { success: false, error: `Failed to reach messaging page — landed on ${landedUrl}` };
-      }
+      // Human-like delay after viewing profile
+      await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 2: Click "Compose" / new message button
-      await this.sleep(2000);
-      const composeResult = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  // Try the compose/pencil button (LinkedIn uses various selectors)
-  let btn = document.querySelector('button[data-control-name="compose"], a[href*="compose"]');
-  if (!btn) {
-    // Try aria-label for compose
-    btn = document.querySelector('button[aria-label*="compose" i], button[aria-label*="new message" i]');
-  }
-  if (!btn) {
-    // Try finding by icon or class
-    btn = document.querySelector('.msg-overlay-bubble-header__control--new-msg, .msg-conversations-container__compose-btn');
-  }
-  if (!btn) {
-    // Broader search for compose-like buttons
-    btn = Array.from(document.querySelectorAll('button, a')).find(el => {
-      const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
-      return label.includes('compose') || label.includes('new message') || label.includes('write a message');
-    });
-  }
-  const title = document.title;
-  const allBtns = Array.from(document.querySelectorAll('button')).slice(0, 15).map(b => {
-    const label = b.getAttribute('aria-label') || b.textContent?.trim() || '';
-    return label.substring(0, 30);
-  });
-  if (!btn) return { found: false, title: title.substring(0, 50), buttons: allBtns };
-  btn.click();
-  return { found: true };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { found: boolean; title?: string; buttons?: string[] } | null;
-
-      if (!composeResult?.found) {
-        this.log(`Compose button not found. Title: ${composeResult?.title}, Buttons: ${composeResult?.buttons?.join(' | ')}`);
+      // Step 2: Extract the member URN from the profile page
+      const memberId = await this.extractMemberUrn();
+      if (!memberId) {
         return {
           success: false,
-          error: `Compose not found. Title="${composeResult?.title}" Buttons=[${composeResult?.buttons?.slice(0, 8).join(' | ')}]`,
+          error: `Failed to extract member URN from profile page: ${profileUrl}`,
         };
       }
 
-      // Step 3: Wait for compose overlay, then type recipient name
-      await this.sleep(2000);
+      // Step 3: Extract profile name for later verification
+      const profileName = await this.extractProfileName();
+      this.log(`Profile name for verification: "${profileName}"`);
 
-      // Extract a searchable name from the profile URL slug
-      // e.g., "april-newman-27713482" → "April Newman"
-      const slug = slugMatch[1];
-      const nameParts = slug.replace(/-\d+$/, "").split("-");
-      const searchName = nameParts
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-      this.log(`Searching for recipient: "${searchName}"`);
+      // Step 4: Navigate to compose URL with recipient URN
+      const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:fsd_profile:${memberId}`;
+      this.log(`Navigating to compose URL: ${composeUrl}`);
+      await this.navigate(composeUrl);
 
-      // Type the name in the recipient search field
-      const searchResult = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  // Find the "To" / recipient input field
-  let input = document.querySelector('input[name="search-term"], input[placeholder*="name" i], input[aria-label*="name" i]');
-  if (!input) {
-    // Try broader selectors
-    input = document.querySelector('.msg-connections-typeahead input, .msg-compose-form input[type="text"]');
-  }
-  if (!input) {
-    // Last resort: any text input in the compose area
-    const inputs = document.querySelectorAll('input[type="text"], input:not([type])');
-    input = Array.from(inputs).find(i => {
-      const label = (i.getAttribute('aria-label') || i.getAttribute('placeholder') || '').toLowerCase();
-      return label.includes('type') || label.includes('name') || label.includes('search') || label.includes('to');
-    });
-  }
-  const allInputs = Array.from(document.querySelectorAll('input')).map(i => ({
-    type: i.type,
-    name: i.name,
-    placeholder: i.placeholder?.substring(0, 30),
-    ariaLabel: i.getAttribute('aria-label')?.substring(0, 30),
-  }));
-  if (!input) return { found: false, inputs: allInputs };
-  input.focus();
-  input.value = '${searchName}';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  return { found: true };
+      // Step 5: Wait for the recipient pill to appear
+      const pillName = await this.waitForComposeRecipient();
+      if (!pillName) {
+        // Diagnose why the pill didn't appear
+        const diagResult = evalValue(
+          await cdpSend(this.ws, "Runtime.evaluate", {
+            expression: `(() => {
+  return {
+    url: window.location.href,
+    title: document.title.substring(0, 80),
+    bodyText: document.body?.innerText?.substring(0, 200) ?? '',
+  };
 })()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { found: boolean; inputs?: Array<{ type: string; name: string; placeholder: string }> } | null;
+            returnByValue: true,
+          }, this.nextId()),
+        ) as { url: string; title: string; bodyText: string } | null;
 
-      if (!searchResult?.found) {
-        this.log(`Recipient input not found. Inputs: ${JSON.stringify(searchResult?.inputs)}`);
+        const currentUrl = diagResult?.url ?? "unknown";
+        if (currentUrl.includes("/messaging/compose")) {
+          return {
+            success: false,
+            error: `Compose loaded but no recipient pill — cannot message this person (memberId=${memberId}, url=${currentUrl})`,
+          };
+        }
         return {
           success: false,
-          error: `Recipient input not found. Inputs: ${JSON.stringify(searchResult?.inputs?.slice(0, 5))}`,
+          error: `Compose redirect failed — landed on ${currentUrl} (title="${diagResult?.title}")`,
         };
       }
 
-      // Step 4: Wait for autocomplete suggestions and click the first match
-      await this.sleep(2000);
+      // Step 6: Name verification — compare pill name to profile name
+      if (profileName) {
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+        const normalizedPill = normalize(pillName);
+        const normalizedProfile = normalize(profileName);
 
-      const selectResult = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  // Look for autocomplete suggestions
-  const suggestions = document.querySelectorAll('[role="option"], [role="listbox"] li, .msg-connections-typeahead__suggestion, .basic-typeahead__selectable');
-  if (suggestions.length === 0) return { found: false, count: 0 };
-  // Click the first suggestion
-  const first = suggestions[0];
-  first.click();
-  return { found: true, count: suggestions.length, name: first.textContent?.trim().substring(0, 50) };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { found: boolean; count: number; name?: string } | null;
+        this.log(`Name verification: pill="${pillName}" (${normalizedPill}) vs profile="${profileName}" (${normalizedProfile})`);
 
-      if (!selectResult?.found) {
-        return {
-          success: false,
-          error: `No autocomplete suggestions found for "${searchName}"`,
-        };
+        if (!normalizedPill.startsWith(normalizedProfile) && !normalizedProfile.startsWith(normalizedPill)) {
+          return {
+            success: false,
+            error: `Recipient mismatch: pill='${pillName}' profile='${profileName}'`,
+          };
+        }
+        this.log("Name verification passed");
+      } else {
+        this.log("Skipping name verification — profile name not extracted");
       }
-      this.log(`Selected recipient: "${selectResult.name}" (${selectResult.count} suggestions)`);
 
-      // Step 5: Wait for message input to appear, then type message using
-      // keyboard simulation (innerHTML doesn't trigger React's state properly)
-      await this.sleep(2000);
-
-      // Focus the message input
+      // Step 7: Focus the message textbox
       const focusResult = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
@@ -642,8 +730,7 @@ export class LinkedInBrowser {
         return { success: false, error: `Message textbox not found (${focusResult?.editableCount ?? 0} editables)` };
       }
 
-      // Type the message character by character using CDP Input.dispatchKeyEvent
-      // This is the most reliable way to trigger React's input handling
+      // Step 8: Type the message character by character using CDP Input.dispatchKeyEvent
       await this.sleep(500);
       for (const char of message) {
         await cdpSend(this.ws, "Input.dispatchKeyEvent", {
@@ -660,12 +747,9 @@ export class LinkedInBrowser {
 
       this.log("Message typed via keyboard events");
 
-      // Step 6: Send the message by pressing Enter
-      // LinkedIn messaging sends on Enter by default — much more reliable
-      // than trying to find the Send button (which is a compound split button)
+      // Step 9: Verify the message was typed
       await this.sleep(1500);
 
-      // Verify the message was typed by checking the textbox content
       const verifyResult = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
@@ -684,7 +768,7 @@ export class LinkedInBrowser {
       }
       this.log(`Message in textbox: "${verifyResult.preview}..." (${verifyResult.textLen} chars)`);
 
-      // Press Enter to send
+      // Step 10: Press Enter to send
       await cdpSend(this.ws, "Input.dispatchKeyEvent", {
         type: "rawKeyDown",
         key: "Enter",
@@ -700,9 +784,9 @@ export class LinkedInBrowser {
         nativeVirtualKeyCode: 13,
       }, this.nextId());
 
+      // Step 11: Verify textbox cleared (message was sent)
       await this.sleep(2000);
 
-      // Verify: check if textbox cleared (message was sent)
       const afterSend = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
@@ -721,7 +805,10 @@ export class LinkedInBrowser {
         this.log(`Textbox still has ${afterSend?.remainingLen} chars after Enter — message may still have sent`);
       }
 
-      return { success: true };
+      return {
+        success: true,
+        details: { memberId, recipientName: pillName },
+      };
     } catch (error) {
       return { success: false, error: String(error) };
     }
