@@ -93,7 +93,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 | 4. Search, Filter + List Building | v1.0 | 5/5 | Complete | 2026-02-27 |
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
-| 7. Leads Agent Dashboard | 4/4 | Complete   | 2026-02-27 | - |
+| 7. Leads Agent Dashboard | 4/4 | Complete    | 2026-02-27 | - |
 | 8. Schema + Admin Promotion | v1.1 | 0/TBD | Not started | - |
 | 9. Client Portal Review + Approvals | v1.1 | 0/TBD | Not started | - |
 | 10. Campaign Deploy Service | v1.1 | 0/TBD | Not started | - |
