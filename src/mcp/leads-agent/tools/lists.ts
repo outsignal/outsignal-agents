@@ -6,8 +6,8 @@
  *
  * Tools registered:
  *   - create_list: Create a named TargetList in a workspace.
- *   - add_to_list: Add people to a TargetList via TargetListPerson.
- *   - view_list: View people in a TargetList with enrichment status.
+ *   - add_to_list: Add people to a TargetList by email address.
+ *   - view_list: View people in a TargetList with enrichment summary + export readiness.
  *
  * CRITICAL: No console.log — stdout is reserved for JSON-RPC protocol messages.
  * Use console.error for logging.
@@ -15,6 +15,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { getListExportReadiness } from "@/lib/export/verification-gate";
 
 export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
@@ -31,8 +32,18 @@ export function registerListTools(server: McpServer): void {
     async (params) => {
       const { name, workspace, description } = params;
 
-      // Validate workspace exists
-      await prisma.workspace.findUniqueOrThrow({ where: { slug: workspace } });
+      // Validate workspace exists (friendly error, not throw)
+      const ws = await prisma.workspace.findUnique({ where: { slug: workspace } });
+      if (!ws) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: Workspace '${workspace}' not found. Use a valid workspace slug.`,
+            },
+          ],
+        };
+      }
 
       const list = await prisma.targetList.create({
         data: {
@@ -42,7 +53,17 @@ export function registerListTools(server: McpServer): void {
         },
       });
 
-      const text = `List '${name}' created (ID: ${list.id}) in workspace '${workspace}'. Use add_to_list with this list_id to add people.`;
+      const text = [
+        `List created successfully.`,
+        ``,
+        `ID: ${list.id}`,
+        `Name: ${list.name}`,
+        `Workspace: ${workspace}`,
+        `Created: ${list.createdAt.toISOString()}`,
+        ``,
+        `Use add_to_list with list_id='${list.id}' to add people.`,
+      ].join("\n");
+
       return { content: [{ type: "text" as const, text }] };
     },
   );
@@ -52,13 +73,15 @@ export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
   server.tool(
     "add_to_list",
-    "Add people to a TargetList by list ID.",
+    "Add people to a TargetList by email address. Resolves each email to a Person record and creates the list membership. Reports any emails not found in the database.",
     {
       list_id: z.string().describe("TargetList ID (from create_list)"),
-      person_ids: z.array(z.string()).describe("Array of Person IDs to add"),
+      emails: z
+        .array(z.string().email())
+        .describe("Email addresses of people to add"),
     },
     async (params) => {
-      const { list_id, person_ids } = params;
+      const { list_id, emails } = params;
 
       // Validate list exists
       const list = await prisma.targetList.findUnique({
@@ -73,38 +96,36 @@ export function registerListTools(server: McpServer): void {
         };
       }
 
-      let addedCount = 0;
-      let skippedCount = 0;
-      const errors: string[] = [];
-
-      for (const personId of person_ids) {
-        try {
-          await prisma.targetListPerson.create({
-            data: { listId: list_id, personId },
+      // Resolve all emails to person IDs in parallel
+      const resolved = await Promise.all(
+        emails.map(async (email) => {
+          const person = await prisma.person.findUnique({
+            where: { email },
+            select: { id: true },
           });
-          addedCount++;
-        } catch (err) {
-          // Unique constraint violation = already in list
-          if (
-            err instanceof Error &&
-            err.message.includes("Unique constraint")
-          ) {
-            skippedCount++;
-            continue;
-          }
-          console.error(`[add_to_list] Error for person ${personId}:`, err);
-          errors.push(
-            `Person ${personId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
+          return { email, personId: person?.id ?? null };
+        }),
+      );
 
-      let text = `Added ${addedCount} people to list '${list.name}'.`;
-      if (skippedCount > 0) {
-        text += ` ${skippedCount} already in list.`;
-      }
-      if (errors.length > 0) {
-        text += `\n\nErrors (${errors.length}):\n${errors.join("\n")}`;
+      const found = resolved.filter(
+        (r): r is { email: string; personId: string } => r.personId !== null,
+      );
+      const notFoundEmails = resolved
+        .filter((r) => r.personId === null)
+        .map((r) => r.email);
+
+      // Bulk insert with skipDuplicates
+      const result = await prisma.targetListPerson.createMany({
+        data: found.map(({ personId }) => ({ listId: list_id, personId })),
+        skipDuplicates: true,
+      });
+
+      const skippedCount = found.length - result.count;
+
+      let text = `Added ${result.count} people to list '${list.name}'.`;
+      if (skippedCount > 0) text += ` ${skippedCount} already in list.`;
+      if (notFoundEmails.length > 0) {
+        text += `\n\nNot found in database (${notFoundEmails.length}):\n${notFoundEmails.join("\n")}`;
       }
 
       return { content: [{ type: "text" as const, text }] };
@@ -116,13 +137,14 @@ export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
   server.tool(
     "view_list",
-    "View people in a TargetList with their enrichment status and ICP score.",
+    "View a TargetList with enrichment summary, export readiness, and paginated member list. Use offset to paginate through large lists.",
     {
       list_id: z.string().describe("TargetList ID to view"),
-      limit: z.number().default(50).describe("Max people to return"),
+      limit: z.number().default(50).describe("Max people to return per page"),
+      offset: z.number().default(0).describe("Offset for pagination"),
     },
     async (params) => {
-      const { list_id, limit } = params;
+      const { list_id, limit, offset } = params;
 
       const list = await prisma.targetList.findUnique({
         where: { id: list_id },
@@ -136,58 +158,95 @@ export function registerListTools(server: McpServer): void {
         };
       }
 
-      const entries = await prisma.targetListPerson.findMany({
-        where: { listId: list_id },
-        take: limit,
-        include: {
-          person: {
-            select: {
-              firstName: true,
-              lastName: true,
-              email: true,
-              company: true,
-              status: true,
-            },
-          },
-        },
-      });
+      // Fetch export readiness using the existing helper
+      const readiness = await getListExportReadiness(list_id);
 
-      // Get ICP scores from PersonWorkspace for this workspace
-      const personIds = entries.map((e) => e.personId);
-      const pws = await prisma.personWorkspace.findMany({
-        where: {
-          personId: { in: personIds },
-          workspace: list.workspaceSlug,
-        },
-        select: { personId: true, icpScore: true },
-      });
-      const icpMap = new Map(pws.map((pw) => [pw.personId, pw.icpScore]));
-
-      const totalCount = await prisma.targetListPerson.count({
-        where: { listId: list_id },
-      });
-
-      if (entries.length === 0) {
+      // Handle empty list
+      if (readiness.totalCount === 0) {
         const text = `0 people in list '${list.name}'. Use add_to_list to add people.`;
         return { content: [{ type: "text" as const, text }] };
       }
 
-      const header = "| Name | Email | Company | ICP Score | Status |";
-      const divider = "|------|-------|---------|-----------|--------|";
+      // Derive export readiness
+      const exportReady =
+        readiness.needsVerificationCount === 0 && readiness.blockedCount === 0;
+      const unverifiedCount = readiness.needsVerificationCount;
+
+      // Build verification status map from readiness arrays
+      const statusMap = new Map<string, "ready" | "unverified" | "blocked">();
+      for (const p of readiness.readyPeople) statusMap.set(p.id, "ready");
+      for (const p of readiness.needsVerificationPeople) statusMap.set(p.id, "unverified");
+      for (const p of readiness.blockedPeople) statusMap.set(p.id, "blocked");
+
+      // Combine all people, apply offset/limit pagination
+      const allPeople = [
+        ...readiness.readyPeople,
+        ...readiness.needsVerificationPeople,
+        ...readiness.blockedPeople,
+      ];
+      const page = allPeople.slice(offset, offset + limit);
+
+      // Build summary header
+      const exportReadyStr = exportReady
+        ? "Yes"
+        : `No — ${unverifiedCount} unverified`;
+
+      const summaryLines = [
+        `List: ${list.name} (${list.workspaceSlug})`,
+        `Total: ${readiness.totalCount} people`,
+        `Export Ready: ${exportReadyStr}`,
+        ``,
+        `Enrichment Coverage:`,
+        `- Company data: ${readiness.enrichmentCoverage.companyDataPct}%`,
+        `- LinkedIn: ${readiness.enrichmentCoverage.linkedinPct}%`,
+        `- Job title: ${readiness.enrichmentCoverage.jobTitlePct}%`,
+        ``,
+        `Verification:`,
+        `- Ready: ${readiness.readyCount}`,
+        `- Needs verification: ${readiness.needsVerificationCount}`,
+        `- Blocked: ${readiness.blockedCount}`,
+      ];
+
+      // Build member table
       const escape = (s: string) => s.replace(/\|/g, "\\|");
-      const rows = entries.map((entry) => {
-        const p = entry.person;
+      const header = "| Name | Email | Company | Enrichment | Verification |";
+      const divider = "|------|-------|---------|------------|--------------|";
+
+      const rows = page.map((person) => {
         const name =
-          [p.firstName, p.lastName].filter(Boolean).join(" ") || "_Unknown_";
-        const company = p.company ?? "_—_";
-        const score = icpMap.get(entry.personId);
-        const scoreStr = score !== null && score !== undefined ? `${score}/100` : "_—_";
-        return `| ${escape(name)} | ${escape(p.email)} | ${escape(company)} | ${scoreStr} | ${escape(p.status)} |`;
+          [person.firstName, person.lastName].filter(Boolean).join(" ") ||
+          "_Unknown_";
+        const company = person.company ?? "_—_";
+        // Derive enrichment status inline
+        const hasLinkedin = !!person.linkedinUrl;
+        const hasDomain = !!person.companyDomain;
+        const enrichment =
+          hasLinkedin && hasDomain
+            ? "full"
+            : hasLinkedin || hasDomain
+              ? "partial"
+              : "missing";
+        const verification = statusMap.get(person.id) ?? "unverified";
+        return `| ${escape(name)} | ${escape(person.email)} | ${escape(company)} | ${enrichment} | ${verification} |`;
       });
 
       const table = [header, divider, ...rows].join("\n");
-      const showing = entries.length < totalCount ? ` (showing ${entries.length})` : "";
-      const text = `${totalCount} people in list '${list.name}'${showing}:\n\n${table}`;
+
+      // Pagination footer (only if not showing all)
+      const paginationLines: string[] = [];
+      if (page.length < readiness.totalCount) {
+        paginationLines.push(
+          ``,
+          `Showing ${offset + 1}-${offset + page.length} of ${readiness.totalCount}`,
+        );
+      }
+
+      const text = [
+        ...summaryLines,
+        ``,
+        table,
+        ...paginationLines,
+      ].join("\n");
 
       return { content: [{ type: "text" as const, text }] };
     },
