@@ -55,81 +55,97 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Navigate to a URL and wait for the page content to be ready.
+   * Navigate to a URL, waiting for the new document context to be created
+   * and the page to finish loading.
    *
-   * Uses Page.navigate + polling for URL and DOM readiness. LinkedIn is a
-   * heavy SPA so Page.loadEventFired alone is unreliable — we poll until
-   * both the URL and content match expectations.
+   * Key insight: Page.navigate updates the URL bar immediately but
+   * Runtime.evaluate can still run in the OLD document context until
+   * Page.frameNavigated fires. We must wait for that event before
+   * polling the DOM.
    */
   private async navigate(url: string): Promise<string> {
     if (!this.ws) throw new Error("Browser not launched");
 
-    const isProfileUrl = url.includes("/in/");
+    // Step 1: Stop any pending loads from previous navigations
+    await cdpSend(this.ws, "Page.stopLoading", {}, this.nextId()).catch(() => {});
 
-    // Step 1: Navigate via Page.navigate
+    // Step 2: Set up listeners for frameNavigated + loadEventFired BEFORE navigating
+    const frameNavigatedPromise = new Promise<string>((resolve) => {
+      const handler = (event: MessageEvent) => {
+        try {
+          const msg = JSON.parse(String(event.data));
+          if (msg.method === "Page.frameNavigated" && msg.params?.frame?.url) {
+            this.ws?.removeEventListener("message", handler);
+            resolve(msg.params.frame.url as string);
+          }
+        } catch { /* ignore parse errors */ }
+      };
+      this.ws!.addEventListener("message", handler);
+      setTimeout(() => {
+        this.ws?.removeEventListener("message", handler);
+        resolve("");
+      }, 15_000);
+    });
+
+    const loadPromise = new Promise<void>((resolve) => {
+      const handler = (event: MessageEvent) => {
+        try {
+          const msg = JSON.parse(String(event.data));
+          if (msg.method === "Page.loadEventFired") {
+            this.ws?.removeEventListener("message", handler);
+            resolve();
+          }
+        } catch { /* ignore parse errors */ }
+      };
+      this.ws!.addEventListener("message", handler);
+      setTimeout(() => {
+        this.ws?.removeEventListener("message", handler);
+        resolve();
+      }, 20_000);
+    });
+
+    // Step 3: Navigate
+    this.log(`Navigating to: ${url}`);
     const navResp = await cdpSend(this.ws, "Page.navigate", { url }, this.nextId());
     const navError = (navResp.result as Record<string, unknown> | undefined)?.errorText;
     if (navError) {
       this.log(`Navigation error: ${navError}`);
     }
 
-    // Step 2: Poll until URL is correct and content has loaded
-    // This replaces both Page.loadEventFired and DOM readiness checks
-    const startTime = Date.now();
-    const maxWaitMs = 15_000;
-    let lastUrl = "";
+    // Step 4: Wait for new document context (Page.frameNavigated)
+    const frameUrl = await frameNavigatedPromise;
+    this.log(`Frame navigated to: ${frameUrl}`);
 
-    for (let attempt = 0; attempt < 25; attempt++) {
-      if (Date.now() - startTime > maxWaitMs) {
-        this.log(`Navigation timeout after ${maxWaitMs}ms. Last URL: ${lastUrl}`);
-        break;
-      }
+    // Step 5: Wait for page load to complete (Page.loadEventFired)
+    await loadPromise;
+    this.log("Page load event fired");
 
-      const checkExpr = isProfileUrl
-        ? `(() => {
+    // Step 6: Extra wait for LinkedIn's React/JS to render content
+    await this.sleep(4000);
+
+    // Step 7: Verify the final URL and DOM state
+    const result = evalValue(
+      await cdpSend(
+        this.ws,
+        "Runtime.evaluate",
+        {
+          expression: `(() => {
   const url = window.location.href;
+  const readyState = document.readyState;
   const bodyLen = document.body?.innerText?.length ?? 0;
   const h1 = document.querySelector('h1')?.textContent?.trim() ?? '';
-  // Profile-specific: look for the profile top card section
-  const hasTopCard = !!document.querySelector('[class*="top-card"], [class*="pv-top-card"], .scaffold-layout__main');
-  // Check we're NOT on the feed
-  const onFeed = url.includes('/feed');
-  const onProfile = url.includes('/in/');
-  return { url, bodyLen, h1: h1.substring(0, 40), hasTopCard, onFeed, onProfile, ready: onProfile && !onFeed && bodyLen > 300 && h1.length > 0 };
-})()`
-        : `(() => {
-  const url = window.location.href;
-  const bodyLen = document.body?.innerText?.length ?? 0;
-  return { url, bodyLen, ready: bodyLen > 200 };
-})()`;
-
-      const result = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: checkExpr,
+  const title = document.title;
+  return { url, readyState, bodyLen, h1: h1.substring(0, 50), title: title.substring(0, 60) };
+})()`,
           returnByValue: true,
-        }, this.nextId()),
-      ) as { url: string; bodyLen: number; h1?: string; onFeed?: boolean; onProfile?: boolean; ready: boolean } | null;
+        },
+        this.nextId(),
+      ),
+    ) as { url: string; readyState: string; bodyLen: number; h1: string; title: string } | null;
 
-      lastUrl = result?.url ?? "";
-
-      if (result?.ready) {
-        this.log(`Page ready after ${Date.now() - startTime}ms (body=${result.bodyLen}, h1="${result.h1}", url=${result.url})`);
-        // Extra wait for React to finish rendering interactive elements
-        await this.sleep(3000);
-        return result.url;
-      }
-
-      // If we've been redirected to /feed after requesting a profile, log it
-      if (isProfileUrl && result?.onFeed && attempt > 3) {
-        this.log(`Redirected to feed! url=${result.url}, attempt=${attempt}`);
-      }
-
-      await this.sleep(600);
-    }
-
-    // Return whatever URL we ended up at
-    this.log(`Navigate finished (timeout). Final URL: ${lastUrl}`);
-    return lastUrl;
+    const finalUrl = result?.url ?? "";
+    this.log(`Landed: url=${finalUrl}, readyState=${result?.readyState}, body=${result?.bodyLen}, h1="${result?.h1}", title="${result?.title}"`);
+    return finalUrl;
   }
 
   // ---------------------------------------------------------------------------
