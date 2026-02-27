@@ -56,35 +56,42 @@ export class LinkedInBrowser {
 
   /**
    * Navigate to a URL and wait for the page to finish loading.
-   * Uses Page.loadEventFired to confirm the page is ready.
+   * Forces clean navigation via about:blank, waits for Page.loadEventFired,
+   * then polls for profile-specific DOM elements before returning.
    */
   private async navigate(url: string): Promise<string> {
     if (!this.ws) throw new Error("Browser not launched");
 
-    // Set up a promise that resolves when load event fires
+    // Step 1: Navigate to about:blank first to ensure a clean full navigation
+    await cdpSend(this.ws, "Page.navigate", { url: "about:blank" }, this.nextId());
+    await this.sleep(500);
+
+    // Step 2: Set up load event listener, then navigate to target
     const loadPromise = new Promise<void>((resolve) => {
       const handler = (event: MessageEvent) => {
-        const msg = JSON.parse(String(event.data));
-        if (msg.method === "Page.loadEventFired") {
-          this.ws?.removeEventListener("message", handler);
-          resolve();
-        }
+        try {
+          const msg = JSON.parse(String(event.data));
+          if (msg.method === "Page.loadEventFired") {
+            this.ws?.removeEventListener("message", handler);
+            resolve();
+          }
+        } catch { /* ignore parse errors */ }
       };
       this.ws!.addEventListener("message", handler);
-      // Timeout after 15s
       setTimeout(() => {
         this.ws?.removeEventListener("message", handler);
-        resolve(); // resolve anyway to avoid hanging
+        resolve();
       }, 15_000);
     });
 
     await cdpSend(this.ws, "Page.navigate", { url }, this.nextId());
     await loadPromise;
 
-    // Extra wait for JS to settle
-    await this.sleep(2000);
+    // Step 3: Wait for SPA content to render by polling for real DOM elements
+    // LinkedIn's React app needs time after the HTML shell loads
+    await this.waitForDomReady(url);
 
-    // Return the final URL
+    // Step 4: Return the final URL
     const resp = await cdpSend(
       this.ws,
       "Runtime.evaluate",
@@ -94,6 +101,59 @@ export class LinkedInBrowser {
     const finalUrl = String(evalValue(resp) ?? "");
     this.log(`Navigated to ${url} → landed on ${finalUrl}`);
     return finalUrl;
+  }
+
+  /**
+   * Poll the DOM until profile-specific or page-specific content is present.
+   * LinkedIn is a heavy SPA — Page.loadEventFired fires before React renders.
+   */
+  private async waitForDomReady(url: string, maxWaitMs = 12_000): Promise<void> {
+    if (!this.ws) return;
+
+    const isProfileUrl = url.includes("/in/");
+    const startTime = Date.now();
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (Date.now() - startTime > maxWaitMs) {
+        this.log(`DOM readiness timeout after ${maxWaitMs}ms`);
+        break;
+      }
+
+      const checkExpr = isProfileUrl
+        ? `(() => {
+  // Check for profile-specific indicators
+  const profileActions = document.querySelector('.pvs-profile-actions, .pv-top-card-v2-ctas, [class*="profile-action"]');
+  const h1 = document.querySelector('h1');
+  const namePresent = h1 && h1.textContent && h1.textContent.trim().length > 0;
+  const bodyText = document.body?.innerText?.length ?? 0;
+  return {
+    ready: !!(profileActions || (namePresent && bodyText > 500)),
+    hasActions: !!profileActions,
+    hasName: !!namePresent,
+    bodyLength: bodyText,
+    url: window.location.href,
+  };
+})()`
+        : `(() => {
+  const bodyText = document.body?.innerText?.length ?? 0;
+  return { ready: bodyText > 200, bodyLength: bodyText, url: window.location.href };
+})()`;
+
+      const result = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: checkExpr,
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { ready: boolean; hasActions?: boolean; hasName?: boolean; bodyLength: number; url: string } | null;
+
+      if (result?.ready) {
+        this.log(`DOM ready after ${Date.now() - startTime}ms (body=${result.bodyLength}, actions=${result.hasActions}, name=${result.hasName}, url=${result.url})`);
+        return;
+      }
+
+      this.log(`DOM not ready yet (attempt ${attempt + 1}, body=${result?.bodyLength ?? 0}, url=${result?.url ?? "?"})`);
+      await this.sleep(600);
+    }
   }
 
   // ---------------------------------------------------------------------------
