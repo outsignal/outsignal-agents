@@ -617,62 +617,103 @@ export class LinkedInBrowser {
       }
       this.log(`Selected recipient: "${selectResult.name}" (${selectResult.count} suggestions)`);
 
-      // Step 5: Wait for message input to appear, then type message
+      // Step 5: Wait for message input to appear, then type message using
+      // keyboard simulation (innerHTML doesn't trigger React's state properly)
       await this.sleep(2000);
 
-      const escaped = message
-        .replace(/\\/g, "\\\\")
-        .replace(/'/g, "\\'")
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r");
-
-      const typeResult = evalValue(
+      // Focus the message input
+      const focusResult = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
   const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) return { found: false };
+  if (!input) {
+    const allEditable = document.querySelectorAll('[contenteditable="true"]');
+    return { found: false, editableCount: allEditable.length };
+  }
   input.focus();
-  input.innerHTML = '<p>${escaped}</p>';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.click();
   return { found: true };
 })()`,
           returnByValue: true,
         }, this.nextId()),
-      ) as { found: boolean } | null;
+      ) as { found: boolean; editableCount?: number } | null;
 
-      if (!typeResult?.found) {
-        return { success: false, error: "Message textbox not found after selecting recipient" };
+      if (!focusResult?.found) {
+        return { success: false, error: `Message textbox not found (${focusResult?.editableCount ?? 0} editables)` };
       }
 
-      // Step 6: Click Send
-      await this.sleep(1000);
+      // Type the message character by character using CDP Input.dispatchKeyEvent
+      // This is the most reliable way to trigger React's input handling
+      await this.sleep(500);
+      for (const char of message) {
+        await cdpSend(this.ws, "Input.dispatchKeyEvent", {
+          type: "keyDown",
+          text: char,
+        }, this.nextId());
+        await cdpSend(this.ws, "Input.dispatchKeyEvent", {
+          type: "keyUp",
+          text: char,
+        }, this.nextId());
+        // Small delay between characters for realism
+        await this.sleep(30 + Math.random() * 50);
+      }
+
+      this.log("Message typed via keyboard events");
+
+      // Step 6: Click Send — wait a moment for React to enable the button
+      await this.sleep(1500);
 
       const sendResult = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
-  // Find Send button in compose form
-  let btn = document.querySelector('button[type="submit"]');
-  if (!btn || !btn.textContent?.toLowerCase().includes('send')) {
-    btn = Array.from(document.querySelectorAll('button')).find(b => {
-      const t = b.textContent?.trim().toLowerCase();
-      return t === 'send' && b.closest('.msg-form, .msg-compose-form, [class*="msg-"]');
-    });
-  }
-  if (!btn) {
-    btn = Array.from(document.querySelectorAll('button')).find(b =>
-      b.textContent?.trim() === 'Send'
-    );
-  }
-  if (!btn) return { found: false };
+  // Find Send button — try multiple approaches
+  const allBtns = Array.from(document.querySelectorAll('button'));
+
+  // 1. Button with aria-label "Send"
+  let btn = allBtns.find(b => b.getAttribute('aria-label')?.toLowerCase() === 'send');
+
+  // 2. Submit button with "Send" text
+  if (!btn) btn = allBtns.find(b => b.type === 'submit' && b.textContent?.trim().toLowerCase().includes('send'));
+
+  // 3. Any button with exact "Send" text inside msg form
+  if (!btn) btn = allBtns.find(b => b.textContent?.trim() === 'Send' && b.closest('[class*="msg-"]'));
+
+  // 4. Any button with "Send" text
+  if (!btn) btn = allBtns.find(b => b.textContent?.trim() === 'Send');
+
+  // 5. Try SVG send icon button (LinkedIn sometimes uses icon-only buttons)
+  if (!btn) btn = allBtns.find(b => b.querySelector('svg use[href*="send"], svg[data-test-icon="send"]'));
+
+  // Debug info
+  const msgFormBtns = allBtns
+    .filter(b => b.closest('[class*="msg-"]'))
+    .map(b => ({
+      text: b.textContent?.trim().substring(0, 20),
+      label: b.getAttribute('aria-label')?.substring(0, 20),
+      type: b.type,
+      disabled: b.disabled,
+      classes: b.className?.substring(0, 40),
+    }));
+
+  if (!btn) return { found: false, msgFormBtns };
+  if (btn.disabled) return { found: true, disabled: true, msgFormBtns };
   btn.click();
-  return { found: true };
+  return { found: true, clicked: true };
 })()`,
           returnByValue: true,
         }, this.nextId()),
-      ) as { found: boolean } | null;
+      ) as { found: boolean; clicked?: boolean; disabled?: boolean; msgFormBtns?: Array<Record<string, unknown>> } | null;
 
       if (!sendResult?.found) {
-        return { success: false, error: "Send button not found in compose form" };
+        const btnInfo = JSON.stringify(sendResult?.msgFormBtns ?? []);
+        this.log(`Send button not found. Msg form buttons: ${btnInfo}`);
+        return { success: false, error: `Send not found. MsgBtns=${btnInfo}` };
+      }
+
+      if (sendResult.disabled) {
+        const btnInfo = JSON.stringify(sendResult.msgFormBtns ?? []);
+        this.log(`Send button found but disabled. Buttons: ${btnInfo}`);
+        return { success: false, error: `Send button disabled. MsgBtns=${btnInfo}` };
       }
 
       await this.sleep(2000);
