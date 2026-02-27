@@ -287,6 +287,11 @@ export class LinkedInBrowser {
         continue;
       }
 
+      // Debug: log all URN types found in the response
+      const allUrns = result.body.match(/urn:li:[a-zA-Z_]+:[A-Za-z0-9_-]+/g) ?? [];
+      const urnTypes = [...new Set(allUrns.map(u => u.split(":").slice(0, 3).join(":")))];
+      this.log(`Voyager URN types found: ${urnTypes.join(", ")}`);
+
       // Extract fs_miniProfile URN (required for messaging API)
       // Also grab fsd_profile as fallback ID source
       const miniMatch = result.body.match(/urn:li:fs_miniProfile:([A-Za-z0-9_-]+)/);
@@ -299,8 +304,9 @@ export class LinkedInBrowser {
       // Prefer miniProfile URN type for messaging compatibility
       const urnType = miniMatch ? "fs_miniProfile" : "fsd_profile";
 
-      // Extract name from the response
+      // Extract name and connection info from the response
       let name: string | null = null;
+      let connectionDistance: string | null = null;
       try {
         const json = JSON.parse(result.body);
         const profile = json?.profile ?? json?.elements?.[0] ?? {};
@@ -309,17 +315,28 @@ export class LinkedInBrowser {
         if (firstName || lastName) {
           name = `${firstName} ${lastName}`.trim();
         }
-        if (!name && Array.isArray(json?.included)) {
+        // Check connection distance in the included array
+        if (Array.isArray(json?.included)) {
           for (const item of json.included) {
-            if (item?.firstName && item?.lastName) {
+            if (item?.firstName && item?.lastName && !name) {
               name = `${item.firstName} ${item.lastName}`.trim();
-              break;
+            }
+            // Look for memberRelationship or distance info
+            if (item?.memberRelationship || item?.distance) {
+              connectionDistance = JSON.stringify({
+                distance: item.distance,
+                memberRelationship: item.memberRelationship,
+              });
             }
           }
         }
-      } catch { /* name extraction is best-effort */ }
+        // Also check top-level elements for connection info
+        if (!connectionDistance && profile?.memberRelationship) {
+          connectionDistance = JSON.stringify(profile.memberRelationship);
+        }
+      } catch { /* extraction is best-effort */ }
 
-      this.log(`Voyager profile resolved: ${urnType}="${profileId}", name="${name}"`);
+      this.log(`Voyager profile resolved: ${urnType}="${profileId}", name="${name}", connection=${connectionDistance}`);
       return { urn: profileId, urnType, name };
     }
 
@@ -376,8 +393,8 @@ export class LinkedInBrowser {
       return { success: true };
     }
 
-    this.log(`Voyager message failed: ${result.status} ${result.body.substring(0, 200)}`);
-    return { success: false, error: `Voyager API ${result.status}: ${result.body.substring(0, 100)}` };
+    this.log(`Voyager message failed: ${result.status} ${result.body.substring(0, 500)}`);
+    return { success: false, error: `Voyager API ${result.status}: ${result.body.substring(0, 200)}` };
   }
 
   // ---------------------------------------------------------------------------
