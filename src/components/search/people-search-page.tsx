@@ -370,11 +370,11 @@ export function PeopleSearchPage() {
 
           {/* Error state */}
           {error && (
-            <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 flex items-center justify-between">
-              <p className="text-red-300 text-sm">Failed to load people: {error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+              <p className="text-red-800 text-sm">Failed to load people: {error}</p>
               <button
                 onClick={() => void fetchData()}
-                className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1.5 rounded"
+                className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded"
               >
                 Retry
               </button>

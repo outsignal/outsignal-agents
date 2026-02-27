@@ -252,7 +252,7 @@ function ChooseStep({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{opt.label}</span>
                   {opt.recommended && (
-                    <span className="rounded-full bg-[#F0FF7A] px-2 py-0.5 text-[10px] font-semibold uppercase leading-none text-black">
+                    <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase leading-none text-brand-foreground">
                       Recommended
                     </span>
                   )}
@@ -356,7 +356,7 @@ function FormStep({
 
         <Button
           type="submit"
-          className="mt-2 w-full bg-[#F0FF7A] text-black hover:bg-[#d9e66e]"
+          className="mt-2 w-full" variant="brand"
         >
           Connect Account
         </Button>
@@ -410,7 +410,7 @@ function ResultStep({
         </div>
         <Button
           onClick={onDone}
-          className="mt-2 bg-[#F0FF7A] text-black hover:bg-[#d9e66e]"
+          className="mt-2" variant="brand"
         >
           Done
         </Button>

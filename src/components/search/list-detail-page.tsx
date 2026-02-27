@@ -292,7 +292,7 @@ export function ListDetailPage({ listId }: Props) {
             <Button
               variant="ghost"
               size="sm"
-              className="text-red-400 hover:text-red-300 hover:bg-red-950"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
               onClick={() => setShowDeleteList(true)}
               disabled={loading && !list}
             >
@@ -425,7 +425,7 @@ export function ListDetailPage({ listId }: Props) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-muted-foreground hover:text-red-300 hover:bg-red-950 text-xs"
+                        className="text-muted-foreground hover:text-red-600 hover:bg-red-50 text-xs"
                         onClick={() => handleRemovePerson(p.id)}
                         disabled={isRemoving}
                       >

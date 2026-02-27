@@ -181,9 +181,9 @@ export function AddToListDropdown({
       <DropdownMenu onOpenChange={(open) => { void handleDropdownOpen(open); }}>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="default"
+            variant="brand"
             size="sm"
-            className="bg-[#F0FF7A] text-gray-900 hover:bg-[#e0ef6a] font-medium gap-1.5"
+            className="gap-1.5"
           >
             {addedFeedback ?? "Add to List"}
             <ChevronDown className="h-3.5 w-3.5" />
@@ -192,22 +192,22 @@ export function AddToListDropdown({
 
         <DropdownMenuContent
           align="end"
-          className="w-64 bg-gray-900 border-gray-700 text-white"
+          className="w-64"
         >
-          <DropdownMenuLabel className="text-xs text-gray-400 font-normal">
+          <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
             Add to List
           </DropdownMenuLabel>
 
           {/* Search filter */}
           <div className="px-2 pb-1">
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-500" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search lists..."
                 value={listSearch}
                 onChange={(e) => setListSearch(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-xs text-white placeholder-gray-500 rounded pl-6 pr-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#F0FF7A]"
+                className="w-full bg-background border border-border text-xs text-foreground placeholder-muted-foreground rounded pl-6 pr-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand"
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
@@ -216,18 +216,18 @@ export function AddToListDropdown({
           {/* Existing lists */}
           <div className="max-h-48 overflow-y-auto">
             {!listsLoaded ? (
-              <div className="px-2 py-3 text-xs text-gray-500 text-center">
+              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
                 Loading lists...
               </div>
             ) : filteredLists.length === 0 ? (
-              <div className="px-2 py-3 text-xs text-gray-500 text-center">
+              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
                 {listSearch ? "No lists match your search" : "No lists yet"}
               </div>
             ) : (
               filteredLists.map((list) => (
                 <DropdownMenuItem
                   key={list.id}
-                  className="cursor-pointer hover:bg-gray-800 focus:bg-gray-800 flex items-center justify-between"
+                  className="cursor-pointer flex items-center justify-between"
                   onSelect={(e) => {
                     e.preventDefault();
                     void handleAddToList(list.id);
@@ -235,22 +235,22 @@ export function AddToListDropdown({
                   disabled={addingToListId === list.id}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm text-white truncate">{list.name}</p>
-                    <p className="text-xs text-gray-500">{list.workspaceSlug}</p>
+                    <p className="text-sm text-foreground truncate">{list.name}</p>
+                    <p className="text-xs text-muted-foreground">{list.workspaceSlug}</p>
                   </div>
                   {addingToListId === list.id && (
-                    <span className="text-xs text-gray-400">Adding...</span>
+                    <span className="text-xs text-muted-foreground">Adding...</span>
                   )}
                 </DropdownMenuItem>
               ))
             )}
           </div>
 
-          <DropdownMenuSeparator className="bg-gray-700" />
+          <DropdownMenuSeparator />
 
           {/* Create new list */}
           <DropdownMenuItem
-            className="cursor-pointer hover:bg-gray-800 focus:bg-gray-800 text-[#F0FF7A]"
+            className="cursor-pointer text-brand-strong"
             onSelect={(e) => {
               e.preventDefault();
               setCreateOpen(true);
@@ -264,15 +264,15 @@ export function AddToListDropdown({
 
       {/* Create new list dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Create New List</DialogTitle>
+            <DialogTitle>Create New List</DialogTitle>
           </DialogHeader>
 
           <form onSubmit={(e) => { void handleCreateList(e); }} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="list-name" className="text-sm text-gray-300">
-                List Name <span className="text-red-400">*</span>
+              <Label htmlFor="list-name" className="text-sm">
+                List Name <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="list-name"
@@ -280,32 +280,24 @@ export function AddToListDropdown({
                 onChange={(e) => setNewListName(e.target.value)}
                 placeholder="e.g. Rise Q2 Prospects"
                 required
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:ring-[#F0FF7A] focus:border-[#F0FF7A]"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="list-workspace" className="text-sm text-gray-300">
-                Workspace <span className="text-red-400">*</span>
+              <Label htmlFor="list-workspace" className="text-sm">
+                Workspace <span className="text-red-500">*</span>
               </Label>
               <Select
                 value={newListWorkspace}
                 onValueChange={setNewListWorkspace}
                 required
               >
-                <SelectTrigger
-                  id="list-workspace"
-                  className="bg-gray-800 border-gray-700 text-white focus:ring-[#F0FF7A]"
-                >
+                <SelectTrigger id="list-workspace">
                   <SelectValue placeholder="Select workspace" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                <SelectContent>
                   {workspaces.map((ws) => (
-                    <SelectItem
-                      key={ws}
-                      value={ws}
-                      className="focus:bg-gray-700 focus:text-white"
-                    >
+                    <SelectItem key={ws} value={ws}>
                       {ws}
                     </SelectItem>
                   ))}
@@ -314,8 +306,8 @@ export function AddToListDropdown({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="list-description" className="text-sm text-gray-300">
-                Description <span className="text-gray-500">(optional)</span>
+              <Label htmlFor="list-description" className="text-sm">
+                Description <span className="text-muted-foreground">(optional)</span>
               </Label>
               <Textarea
                 id="list-description"
@@ -323,12 +315,12 @@ export function AddToListDropdown({
                 onChange={(e) => setNewListDescription(e.target.value)}
                 placeholder="What is this list for?"
                 rows={2}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:ring-[#F0FF7A] focus:border-[#F0FF7A] resize-none"
+                className="resize-none"
               />
             </div>
 
             {createError && (
-              <p className="text-sm text-red-400">{createError}</p>
+              <p className="text-sm text-red-500">{createError}</p>
             )}
 
             <DialogFooter className="gap-2">
@@ -337,14 +329,13 @@ export function AddToListDropdown({
                 variant="ghost"
                 onClick={() => setCreateOpen(false)}
                 disabled={creating}
-                className="text-gray-400 hover:text-white hover:bg-gray-800"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
+                variant="brand"
                 disabled={creating || !newListName.trim() || !newListWorkspace}
-                className="bg-[#F0FF7A] text-gray-900 hover:bg-[#e0ef6a] font-medium"
               >
                 {creating ? "Creating..." : "Create & Add"}
               </Button>
