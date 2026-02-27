@@ -464,6 +464,11 @@ export class LinkedInBrowser {
 
   /**
    * Send a message to a 1st-degree connection.
+   *
+   * Uses LinkedIn's messaging page directly instead of the profile page,
+   * because LinkedIn's SPA doesn't render profile content in headless Chrome.
+   *
+   * Flow: /messaging/ → New message → search recipient → type message → send
    */
   async sendMessage(
     profileUrl: string,
@@ -471,77 +476,150 @@ export class LinkedInBrowser {
   ): Promise<ActionResult> {
     if (!this.ws) return { success: false, error: "Browser not launched" };
 
+    // Extract the profile slug (e.g., "april-newman-27713482" from the URL)
+    const slugMatch = profileUrl.match(/\/in\/([^/?]+)/);
+    if (!slugMatch) {
+      return { success: false, error: `Invalid profile URL: ${profileUrl}` };
+    }
+
     try {
-      this.log(`Sending message to: ${profileUrl}`);
+      this.log(`Sending message via messaging page to: ${profileUrl}`);
 
-      // Navigate to profile and wait for full page load
-      const landedUrl = await this.navigate(profileUrl);
-      await this.sleep(1000 + Math.random() * 2000);
+      // Step 1: Navigate to LinkedIn messaging
+      const landedUrl = await this.navigate("https://www.linkedin.com/messaging/");
+      this.log(`Messaging page landed: ${landedUrl}`);
 
-      if (!landedUrl.includes("/in/")) {
-        return {
-          success: false,
-          error: `Navigation failed — landed on ${landedUrl} instead of profile`,
-        };
+      if (!landedUrl.includes("/messaging")) {
+        return { success: false, error: `Failed to reach messaging page — landed on ${landedUrl}` };
       }
 
-      // Step 1: Click the "Message" button
-      const msgBtnResult = evalValue(
-        await cdpSend(
-          this.ws,
-          "Runtime.evaluate",
-          {
-            expression: `(() => {
-  const currentUrl = window.location.href;
-  // Try aria-label first (most stable)
-  let btn = document.querySelector('button[aria-label*="message" i]');
-  // Exclude "Messages" nav link
-  if (btn && btn.getAttribute('aria-label')?.toLowerCase().includes('messaging')) btn = null;
-  // Fallback: text content (LinkedIn wraps in spans, so normalize whitespace)
+      // Step 2: Click "Compose" / new message button
+      await this.sleep(2000);
+      const composeResult = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  // Try the compose/pencil button (LinkedIn uses various selectors)
+  let btn = document.querySelector('button[data-control-name="compose"], a[href*="compose"]');
   if (!btn) {
-    btn = Array.from(document.querySelectorAll('button')).find(b => {
-      const t = b.textContent?.replace(/\\s+/g, ' ').trim();
-      return t === 'Message' || t === 'Message ';
+    // Try aria-label for compose
+    btn = document.querySelector('button[aria-label*="compose" i], button[aria-label*="new message" i]');
+  }
+  if (!btn) {
+    // Try finding by icon or class
+    btn = document.querySelector('.msg-overlay-bubble-header__control--new-msg, .msg-conversations-container__compose-btn');
+  }
+  if (!btn) {
+    // Broader search for compose-like buttons
+    btn = Array.from(document.querySelectorAll('button, a')).find(el => {
+      const label = (el.getAttribute('aria-label') || el.textContent || '').toLowerCase();
+      return label.includes('compose') || label.includes('new message') || label.includes('write a message');
     });
   }
-  // Fallback: check for the specific profile action button class
-  if (!btn) {
-    btn = document.querySelector('button.pvs-profile-actions__action[aria-label*="message" i]');
-  }
-  const allBtns = Array.from(document.querySelectorAll('button'))
-    .slice(0, 10)
-    .map(b => b.textContent?.trim().substring(0, 20));
-  const h1 = document.querySelector('h1')?.textContent?.trim() ?? '';
   const title = document.title;
-  const htmlSnippet = document.documentElement?.outerHTML?.substring(0, 200) ?? '';
-  if (!btn) return { found: false, url: currentUrl, h1: h1.substring(0, 40), title: title.substring(0, 50), htmlSnippet, debug: allBtns };
+  const allBtns = Array.from(document.querySelectorAll('button')).slice(0, 15).map(b => {
+    const label = b.getAttribute('aria-label') || b.textContent?.trim() || '';
+    return label.substring(0, 30);
+  });
+  if (!btn) return { found: false, title: title.substring(0, 50), buttons: allBtns };
   btn.click();
   return { found: true };
 })()`,
-            returnByValue: true,
-          },
-          this.nextId(),
-        ),
-      ) as { found: boolean; url?: string; h1?: string; title?: string; htmlSnippet?: string; debug?: string[] } | null;
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { found: boolean; title?: string; buttons?: string[] } | null;
 
-      if (!msgBtnResult?.found) {
-        const pageUrl = msgBtnResult?.url ?? "unknown";
-        const pageH1 = msgBtnResult?.h1 ?? "none";
-        const pageTitle = msgBtnResult?.title ?? "none";
-        const htmlSnippet = msgBtnResult?.htmlSnippet ?? "";
-        const debugBtns = msgBtnResult?.debug?.join(" | ") ?? "no buttons";
-        this.log(`Message button not found. URL: ${pageUrl}, Title: "${pageTitle}", H1: "${pageH1}", Buttons: ${debugBtns}`);
+      if (!composeResult?.found) {
+        this.log(`Compose button not found. Title: ${composeResult?.title}, Buttons: ${composeResult?.buttons?.join(' | ')}`);
         return {
           success: false,
-          error: `URL=${pageUrl} Title="${pageTitle}" H1="${pageH1}" HTML=${htmlSnippet}`,
+          error: `Compose not found. Title="${composeResult?.title}" Buttons=[${composeResult?.buttons?.slice(0, 8).join(' | ')}]`,
         };
       }
 
-      // Step 2: Wait for the message overlay
+      // Step 3: Wait for compose overlay, then type recipient name
       await this.sleep(2000);
 
-      // Step 3: Type the message into the contenteditable div
-      // Escape the message for safe injection into a JS string literal
+      // Extract a searchable name from the profile URL slug
+      // e.g., "april-newman-27713482" → "April Newman"
+      const slug = slugMatch[1];
+      const nameParts = slug.replace(/-\d+$/, "").split("-");
+      const searchName = nameParts
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      this.log(`Searching for recipient: "${searchName}"`);
+
+      // Type the name in the recipient search field
+      const searchResult = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  // Find the "To" / recipient input field
+  let input = document.querySelector('input[name="search-term"], input[placeholder*="name" i], input[aria-label*="name" i]');
+  if (!input) {
+    // Try broader selectors
+    input = document.querySelector('.msg-connections-typeahead input, .msg-compose-form input[type="text"]');
+  }
+  if (!input) {
+    // Last resort: any text input in the compose area
+    const inputs = document.querySelectorAll('input[type="text"], input:not([type])');
+    input = Array.from(inputs).find(i => {
+      const label = (i.getAttribute('aria-label') || i.getAttribute('placeholder') || '').toLowerCase();
+      return label.includes('type') || label.includes('name') || label.includes('search') || label.includes('to');
+    });
+  }
+  const allInputs = Array.from(document.querySelectorAll('input')).map(i => ({
+    type: i.type,
+    name: i.name,
+    placeholder: i.placeholder?.substring(0, 30),
+    ariaLabel: i.getAttribute('aria-label')?.substring(0, 30),
+  }));
+  if (!input) return { found: false, inputs: allInputs };
+  input.focus();
+  input.value = '${searchName}';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return { found: true };
+})()`,
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { found: boolean; inputs?: Array<{ type: string; name: string; placeholder: string }> } | null;
+
+      if (!searchResult?.found) {
+        this.log(`Recipient input not found. Inputs: ${JSON.stringify(searchResult?.inputs)}`);
+        return {
+          success: false,
+          error: `Recipient input not found. Inputs: ${JSON.stringify(searchResult?.inputs?.slice(0, 5))}`,
+        };
+      }
+
+      // Step 4: Wait for autocomplete suggestions and click the first match
+      await this.sleep(2000);
+
+      const selectResult = evalValue(
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  // Look for autocomplete suggestions
+  const suggestions = document.querySelectorAll('[role="option"], [role="listbox"] li, .msg-connections-typeahead__suggestion, .basic-typeahead__selectable');
+  if (suggestions.length === 0) return { found: false, count: 0 };
+  // Click the first suggestion
+  const first = suggestions[0];
+  first.click();
+  return { found: true, count: suggestions.length, name: first.textContent?.trim().substring(0, 50) };
+})()`,
+          returnByValue: true,
+        }, this.nextId()),
+      ) as { found: boolean; count: number; name?: string } | null;
+
+      if (!selectResult?.found) {
+        return {
+          success: false,
+          error: `No autocomplete suggestions found for "${searchName}"`,
+        };
+      }
+      this.log(`Selected recipient: "${selectResult.name}" (${selectResult.count} suggestions)`);
+
+      // Step 5: Wait for message input to appear, then type message
+      await this.sleep(2000);
+
       const escaped = message
         .replace(/\\/g, "\\\\")
         .replace(/'/g, "\\'")
@@ -549,11 +627,8 @@ export class LinkedInBrowser {
         .replace(/\r/g, "\\r");
 
       const typeResult = evalValue(
-        await cdpSend(
-          this.ws,
-          "Runtime.evaluate",
-          {
-            expression: `(() => {
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
   const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
   if (!input) return { found: false };
   input.focus();
@@ -561,53 +636,47 @@ export class LinkedInBrowser {
   input.dispatchEvent(new Event('input', { bubbles: true }));
   return { found: true };
 })()`,
-            returnByValue: true,
-          },
-          this.nextId(),
-        ),
+          returnByValue: true,
+        }, this.nextId()),
       ) as { found: boolean } | null;
 
       if (!typeResult?.found) {
-        return { success: false, error: "Message input not found" };
+        return { success: false, error: "Message textbox not found after selecting recipient" };
       }
 
-      // Step 4: Wait a moment, then click Send
+      // Step 6: Click Send
       await this.sleep(1000);
 
       const sendResult = evalValue(
-        await cdpSend(
-          this.ws,
-          "Runtime.evaluate",
-          {
-            expression: `(() => {
-  const btn = Array.from(document.querySelectorAll('button[type="submit"]')).find(b =>
-    b.textContent?.trim().toLowerCase() === 'send'
-  );
-  if (!btn) {
-    const fallback = Array.from(document.querySelectorAll('button')).find(b =>
-      b.textContent?.trim() === 'Send' && b.closest('.msg-form__footer, .msg-form')
-    );
-    if (fallback) { fallback.click(); return { found: true }; }
-    return { found: false };
+        await cdpSend(this.ws, "Runtime.evaluate", {
+          expression: `(() => {
+  // Find Send button in compose form
+  let btn = document.querySelector('button[type="submit"]');
+  if (!btn || !btn.textContent?.toLowerCase().includes('send')) {
+    btn = Array.from(document.querySelectorAll('button')).find(b => {
+      const t = b.textContent?.trim().toLowerCase();
+      return t === 'send' && b.closest('.msg-form, .msg-compose-form, [class*="msg-"]');
+    });
   }
+  if (!btn) {
+    btn = Array.from(document.querySelectorAll('button')).find(b =>
+      b.textContent?.trim() === 'Send'
+    );
+  }
+  if (!btn) return { found: false };
   btn.click();
   return { found: true };
 })()`,
-            returnByValue: true,
-          },
-          this.nextId(),
-        ),
+          returnByValue: true,
+        }, this.nextId()),
       ) as { found: boolean } | null;
 
       if (!sendResult?.found) {
-        return {
-          success: false,
-          error: "Send button not found in message dialog",
-        };
+        return { success: false, error: "Send button not found in compose form" };
       }
 
-      await this.sleep(1500);
-      this.log("Message sent");
+      await this.sleep(2000);
+      this.log("Message sent via messaging compose");
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
