@@ -105,6 +105,7 @@ export interface ScoreListResult {
   skipped: number;
   failed: number;
   results: ScoreResult[];
+  unscoredCount?: number; // Present when confirm=false (dry-run preview)
 }
 
 export interface ExportListResult {
@@ -464,6 +465,7 @@ export async function getLists(params: GetListsParams): Promise<GetListsResult> 
 export async function scoreList(
   listId: string,
   workspaceSlug: string,
+  confirm: boolean = true,
 ): Promise<ScoreListResult> {
   // Check icpCriteriaPrompt is configured — fail fast before scoring (Pitfall 1)
   const workspace = await prisma.workspace.findUnique({
@@ -509,6 +511,17 @@ export async function scoreList(
     } else {
       unscored.push(member.person.id);
     }
+  }
+
+  // Credit-gate: return count without scoring when confirm=false
+  if (!confirm) {
+    return {
+      scored: 0,
+      skipped,
+      failed: 0,
+      results: [],
+      unscoredCount: unscored.length,
+    };
   }
 
   // Score in batches of 5 using Promise.allSettled (conservative to avoid rate limits)
