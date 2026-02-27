@@ -27,6 +27,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 **Milestone Goal:** Complete the outbound pipeline loop — admin builds lists via natural language chat, client reviews and approves in a portal, system auto-deploys campaigns to EmailBison on approval.
 
 - [x] **Phase 7: Leads Agent Dashboard** - Natural language access to search, list build, score, and export via Cmd+J chat (completed 2026-02-27)
+- [ ] **Phase 7.1: Leads Agent Integration Fixes** - MCP operations migration, export error handling, conversationContext wiring, score credit-gate
 - [ ] **Phase 8: Schema + Admin Promotion** - TargetList status lifecycle + admin promote UI unlocks portal
 - [ ] **Phase 9: Client Portal Review + Approvals** - Client approves/rejects leads and copy; notifications fire on action
 - [ ] **Phase 10: Campaign Deploy Service** - EmailBison campaign creation, sequence steps, lead assignment, fire-and-forget execution
@@ -44,6 +45,18 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   4. Admin types "export Rise Q1 to EmailBison" and the export runs through the verification gate and confirms success or reports why leads were excluded
   5. EmailBison API surface is documented in a spike note: sequence step schema and campaign-lead assignment endpoint are verified as present or absent against the live white-label instance
   6. Every Leads Agent action (search, list create, score, export) appears as an AgentRun record in the audit trail
+**Plans**: TBD
+
+### Phase 7.1: Leads Agent Integration Fixes
+**Goal**: Close integration gaps from Phase 7 audit — MCP tools share the operations layer, export errors are actionable, conversational refinement works end-to-end, and scoring has a code-level credit gate
+**Depends on**: Phase 7
+**Requirements**: LEAD-04, LEAD-05
+**Gap Closure**: Closes gaps from v1.1 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. All MCP tools in `src/mcp/leads-agent/tools/` call `operations.ts` functions instead of inline Prisma queries — zero divergent implementations
+  2. Export via agent returns an actionable error when workspace exists but apiToken is missing (not "Workspace not found")
+  3. Orchestrator's `delegateToLeads` schema includes `conversationContext` and passes it to `runLeadsAgent` — multi-turn "narrow to London" follow-ups refine previous results
+  4. `scoreList` in operations.ts has a code-level confirm gate (returns count without scoring when `confirm: false`) matching the MCP equivalent
 **Plans**: TBD
 
 ### Phase 8: Schema + Admin Promotion
@@ -93,7 +106,8 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 | 4. Search, Filter + List Building | v1.0 | 5/5 | Complete | 2026-02-27 |
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
-| 7. Leads Agent Dashboard | 4/4 | Complete    | 2026-02-27 | - |
+| 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
+| 7.1 Leads Agent Integration Fixes | v1.1 | 0/TBD | Not started | - |
 | 8. Schema + Admin Promotion | v1.1 | 0/TBD | Not started | - |
 | 9. Client Portal Review + Approvals | v1.1 | 0/TBD | Not started | - |
 | 10. Campaign Deploy Service | v1.1 | 0/TBD | Not started | - |
