@@ -6,6 +6,11 @@ import type {
   SenderEmail,
   Tag,
   SequenceStep,
+  CreateCampaignParams,
+  CreateLeadParams,
+  CustomVariable,
+  CreateLeadResult,
+  CampaignCreateResult,
 } from "./types";
 
 class EmailBisonApiError extends Error {
@@ -115,6 +120,73 @@ export class EmailBisonClient {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async createCampaign(params: CreateCampaignParams): Promise<CampaignCreateResult> {
+    const res = await this.request<{ data: CampaignCreateResult }>('/campaigns', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: params.name,
+        type: params.type ?? 'outbound',
+        max_emails_per_day: params.maxEmailsPerDay ?? 1000,
+        max_new_leads_per_day: params.maxNewLeadsPerDay ?? 100,
+        plain_text: params.plainText ?? true,
+      }),
+      revalidate: 0,
+    });
+    return res.data;
+  }
+
+  // Note: name param is IGNORED by API — always produces "Copy of {original}"
+  async duplicateCampaign(templateCampaignId: number): Promise<CampaignCreateResult> {
+    const res = await this.request<{ data: CampaignCreateResult }>(
+      `/campaigns/${templateCampaignId}/duplicate`,
+      { method: 'POST', body: JSON.stringify({}), revalidate: 0 }
+    );
+    return res.data;
+  }
+
+  async createLead(params: CreateLeadParams): Promise<CreateLeadResult> {
+    const body: Record<string, unknown> = {
+      email: params.email,
+    };
+    if (params.firstName) body.first_name = params.firstName;
+    if (params.lastName) body.last_name = params.lastName;
+    if (params.jobTitle) body.title = params.jobTitle;
+    if (params.company) body.company = params.company;
+    if (params.phone) body.phone = params.phone;
+    if (params.customVariables?.length) {
+      body.custom_variables = params.customVariables;
+    }
+    const res = await this.request<{ data: CreateLeadResult }>('/leads', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      revalidate: 0,
+    });
+    return res.data;
+  }
+
+  async getCustomVariables(): Promise<CustomVariable[]> {
+    return this.getAllPages<CustomVariable>('/custom-variables');
+  }
+
+  async createCustomVariable(name: string): Promise<CustomVariable> {
+    const res = await this.request<{ data: CustomVariable }>('/custom-variables', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+      revalidate: 0,
+    });
+    return res.data;
+  }
+
+  async ensureCustomVariables(names: string[]): Promise<void> {
+    const existing = await this.getCustomVariables();
+    const existingNames = new Set(existing.map(v => v.name));
+    for (const name of names) {
+      if (!existingNames.has(name)) {
+        await this.createCustomVariable(name);
+      }
     }
   }
 }
