@@ -147,6 +147,44 @@ export interface SequenceStep {
   delay_days?: number;
 }
 
+export interface CreateCampaignParams {
+  name: string;
+  type?: 'outbound' | 'inbound';
+  maxEmailsPerDay?: number;
+  maxNewLeadsPerDay?: number;
+  plainText?: boolean;
+}
+
+export interface CreateLeadParams {
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  jobTitle?: string;
+  company?: string;
+  phone?: string;
+  customVariables?: { name: string; value: string }[];
+}
+
+export interface CustomVariable {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface CreateLeadResult {
+  id: number;
+  email: string;
+  status: string;
+}
+
+export interface CampaignCreateResult {
+  id: number;
+  uuid: string;
+  name: string;
+  status: string;
+  sequence_id: number | null;
+}
+
 export interface WebhookPayload {
   event:
     | "EMAIL_SENT"
