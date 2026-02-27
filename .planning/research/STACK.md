@@ -1,340 +1,416 @@
 # Stack Research
 
-**Domain:** Self-hosted lead enrichment pipeline (Clay replacement)
-**Researched:** 2026-02-26
-**Confidence:** MEDIUM — External API pricing/limits sourced from training data (August 2025 cutoff); verify current pricing at each provider's pricing page before committing. All codebase integration patterns are HIGH confidence from direct source inspection.
+**Domain:** Outbound Pipeline v1.1 — Leads Agent Dashboard Integration, Client Portal Review UI, Smart Campaign Deployment
+**Researched:** 2026-02-27
+**Confidence:** HIGH — all findings verified against live codebase, installed packages at exact versions, and established patterns from v1.0
 
 ---
 
-## Context: What We're Adding
+## Key Finding: No New Dependencies Required
 
-The existing stack (Next.js 16, Prisma 6, PostgreSQL/Neon, Vercel AI SDK, Firecrawl, Claude) stays 100% unchanged. This document covers only the **new libraries and APIs** needed for:
+The existing stack covers all three new feature areas. Every new capability is an extension of already-installed packages at their current versions. Zero `npm install` calls needed for v1.1.
 
-1. Multi-source email finding (Prospeo, LeadMagic, FindyMail)
-2. Company/person data enrichment (AI Ark)
-3. Web-based lead qualification (Firecrawl + Claude Haiku — already integrated)
-4. Lead search/filter UI data layer (Prisma already handles this)
-5. Waterfall orchestration logic (pure TypeScript, no new runtime deps needed)
-
-The pattern follows what a LinkedIn-validated lead gen agency uses: Prospeo + AI Ark for list building, Firecrawl + Haiku for qualification, LeadMagic/FindyMail for email verification, own DB as master record.
+This is the defining characteristic of this milestone: the work is in **wiring and extending**, not in adding libraries. The codebase already has AI SDK for agent runners, Zod for tool schemas, Prisma for DB, an EmailBison client with campaign/lead creation methods, portal auth middleware with session management, and streaming chat infrastructure. All three features slot into existing seams.
 
 ---
 
-## Recommended Stack
+## Existing Stack (Installed, Verified)
 
-### Core Technologies (Existing — No Changes)
+Exact versions confirmed from `/Users/jjay/programs/outsignal-agents/package.json` and `node_modules/*/package.json`:
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Next.js | 16.1.6 | API routes for enrichment pipeline | Already deployed, no migration cost |
-| Prisma | 6.19.2 | ORM, dedup checks, upsert logic | Already has Person + Company models with indexes |
-| `@ai-sdk/anthropic` | 3.0.46 | Claude for normalization + qualification | Already wired, Haiku available on same API key |
-| `@mendable/firecrawl-js` | 4.13.2 | Website scraping for qualification | Already integrated, `scrapeUrl()` and `crawlWebsite()` ready |
-| Zod | 4.3.6 | Schema validation for API responses | Already used throughout |
-
-### New Enrichment Provider Libraries
-
-No npm packages needed for most providers — they expose plain REST APIs. Use `fetch()` with typed wrappers in `src/lib/enrichment/`. This is the correct pattern: thin, typed HTTP clients, not SDK lock-in.
-
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `p-limit` | ^6.0.0 | Concurrency control for parallel enrichment | Required — without it, parallel waterfall calls will hit rate limits immediately |
-| `p-retry` | ^6.0.0 | Retry with exponential backoff for flaky API calls | Required — enrichment APIs return 429s under load; naive retries without backoff burn credits |
-| `bottleneck` | ^2.19.5 | Rate limiter with token bucket algorithm | Alternative to `p-limit` if you need per-provider rate limiting windows (e.g., "max 10 req/s to Prospeo") |
-
-**Recommendation:** Use `p-limit` for concurrency + `p-retry` for retries. Skip `bottleneck` unless rate limit windows become a real problem — it adds complexity.
-
-**Confidence:** HIGH — these are the standard Node.js concurrency primitives, stable for years.
-
-### Development Tools (No Changes)
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| Vitest 4.0.18 | Unit tests for enrichment pipeline | Already configured. Write tests for waterfall logic with mocked API responses |
-| TypeScript 5.x | Type safety for provider response shapes | Define strict types for each provider's response schema |
+| Package | Exact Version | Role in v1.1 |
+|---------|--------------|--------------|
+| `ai` | 6.0.97 | `streamText` for chat route, `generateText` + `stepCountIs` for agent runner, `tool()` for tool definitions |
+| `@ai-sdk/anthropic` | 3.0.46 | Claude model adapter — Opus 4 for Leads Agent (complex reasoning), Sonnet 4 for orchestrator (routing) |
+| `@ai-sdk/react` | 3.0.99 | `useChat` hook — dashboard Cmd+J chat, no changes needed |
+| `next` | 16.1.6 | App Router pages for portal lead list + content review |
+| `prisma` + `@prisma/client` | 6.19.2 | Schema extensions for portal approval state + campaign deploy tracking |
+| `zod` | 4.3.6 | Tool input schemas for Leads Agent tools (same pattern as research/writer agents) |
+| `nuqs` | 2.8.8 | URL state for portal lead list filters (already used in admin people/companies pages) |
+| `radix-ui` | 1.4.3 | UI primitives via shadcn components — existing components cover portal UI needs |
+| `lucide-react` | 0.575.0 | Icons — already covers approval UI needs (CheckCircle, XCircle, Clock) |
 
 ---
 
-## Enrichment Provider Stack
+## Feature 1: Leads Agent Dashboard Integration
 
-### Provider 1: Prospeo — Email Finding from LinkedIn URLs
+### What It Is
 
-**Role in waterfall:** Step 1 for email finding when you have a LinkedIn URL. Highest accuracy for LinkedIn-to-email resolution.
+Wire `src/lib/agents/leads.ts` (a new file) into the orchestrator, replacing the existing `delegateToLeads` stub in `src/lib/agents/orchestrator.ts` (line 61-76) that currently returns `"not_available"`.
 
-**What it does:**
-- Email Finder: find email from first name + last name + domain
-- LinkedIn Email Finder: find email from LinkedIn profile URL (best use case)
-- Bulk email finding via list upload
-- Email verification (deliverability check)
+### Architecture
 
-**API Pattern:**
+The pattern is already proven across two agents. Leads Agent follows the exact same structure as `writer.ts` and `research.ts`:
+
 ```typescript
-// POST https://api.prospeo.io/linkedin-email-finder
-// Header: X-KEY: {api_key}
-// Body: { "url": "https://linkedin.com/in/johndoe" }
+// src/lib/agents/leads.ts
+import { tool } from "ai";           // ai@6.0.97 — already installed
+import { z } from "zod";             // zod@4.3.6 — already installed
+import { runAgent } from "./runner"; // existing generic runner
+import type { AgentConfig, LeadsInput, LeadsOutput } from "./types"; // types already defined
 
-// Response (confirmed valid):
-// { "error": false, "email": { "value": "john@company.com", "confidence": 95 } }
+const leadsTools = {
+  searchPeople: tool({ ... }),       // wraps existing Prisma queries
+  enrichPerson: tool({ ... }),       // wraps existing enrichment waterfall
+  buildTargetList: tool({ ... }),    // wraps existing TargetList operations
+  exportToEmailBison: tool({ ... }), // wraps existing export logic
+};
+
+export async function runLeadsAgent(input: LeadsInput): Promise<LeadsOutput> {
+  return runAgent<LeadsOutput>(leadsConfig, buildLeadsMessage(input), {
+    triggeredBy: "orchestrator",
+    workspaceSlug: input.workspaceSlug,
+  }).then(r => r.output);
+}
 ```
 
-**Pricing (MEDIUM confidence — verify at prospeo.io/pricing):**
-- Free: 75 credits/month
-- Starter: ~$39/mo for 1,000 credits
-- Growth: ~$99/mo for 5,000 credits
-- Scale: ~$199/mo for 15,000 credits
-- 1 LinkedIn email find = 1 credit
-- Email verification = separate credits (cheaper)
-- No per-seat fees — API key based
+### Types Already Defined
 
-**Rate limits (LOW confidence — not officially documented publicly):**
-- Likely 10-30 req/s based on community reports; use `p-limit(5)` to be safe
+`LeadsInput` and `LeadsOutput` are already in `src/lib/agents/types.ts` (lines 65-80):
 
-**When to use Prospeo:**
-- You have a LinkedIn URL → use LinkedIn Email Finder
-- You have name + domain → use Email Finder
-- First provider in email finding waterfall
-
-**Confidence:** MEDIUM — API interface and general pricing tier confirmed from multiple agency reports; exact credit costs need verification at prospeo.io.
-
----
-
-### Provider 2: LeadMagic — Email Verification + B2B Email Finding
-
-**Role in waterfall:** Email verification step (called after Prospeo finds an email), and fallback email finder if Prospeo returns nothing.
-
-**What it does:**
-- Email validation: verify deliverability, MX check, disposable detection
-- B2B email finder: find business emails from name + domain
-- Mobile finder
-- Company enrichment (headcount, industry, description)
-- LinkedIn profile enrichment
-
-**API Pattern:**
 ```typescript
-// POST https://api.leadmagic.io/email-validate
-// Header: X-BLOBR-KEY: {api_key}  (LeadMagic uses X-BLOBR-KEY header)
-// Body: { "email": "john@company.com" }
+export interface LeadsInput {
+  workspaceSlug: string;
+  task: string;
+  limit?: number;
+  sources?: string[];
+}
 
-// Response:
-// { "status": "valid", "disposable": false, "mx_found": true, "smtp_check": true }
+export interface LeadsOutput {
+  leadsFound: number;
+  leadsImported: number;
+  leadsEnriched: number;
+  duplicatesSkipped: number;
+  sourceSummary: Record<string, number>;
+  topLeads: { name: string; company: string; score: number }[];
+}
 ```
 
-**Pricing (MEDIUM confidence — verify at leadmagic.io/pricing):**
-- Pay-as-you-go credit model
-- Email validation: ~$0.005/credit (very cheap)
-- Email finding: ~$0.05/credit
-- No monthly minimum; buy credits in blocks
-- Credits do not expire
+No type changes needed.
 
-**Rate limits:** Not officially published. Implement 5 req/s limit.
+### Orchestrator Integration
 
-**When to use LeadMagic:**
-- Verify an email found by Prospeo before sending (cheap insurance against bounces)
-- Fallback email finder if Prospeo has no result and no LinkedIn URL
-- Company enrichment (headcount, description) as an alternative to AI Ark for simpler data
+`src/lib/agents/orchestrator.ts` already has the delegation tool stub at line 61. The `execute` body (currently returns `{ status: "not_available", message: "..." }`) is replaced with a call to `runLeadsAgent`:
 
-**Confidence:** MEDIUM — Multiple agency workflows validate this role; pricing model confirmed from multiple sources.
-
----
-
-### Provider 3: FindyMail — High-Accuracy Email Finding
-
-**Role in waterfall:** Second fallback email finder if both Prospeo and LeadMagic email finders come up empty. Known for high verification accuracy (claimed 95%+ catch-all handling).
-
-**What it does:**
-- Email finding from name + domain
-- Email verification
-- Bulk finding
-- Claims superior catch-all domain handling vs. competitors
-
-**API Pattern:**
 ```typescript
-// GET https://app.findymail.com/api/search?name={name}&domain={domain}
-// Header: Authorization: Bearer {api_key}
+// Before (stub)
+execute: async () => {
+  return { status: "not_available", message: "The Leads Agent is not yet implemented..." };
+},
 
-// Response:
-// { "email": "john@company.com", "score": 95, "found": true }
+// After (live)
+execute: async ({ workspaceSlug, task, limit }) => {
+  try {
+    const result = await runLeadsAgent({ workspaceSlug, task, limit });
+    return { status: "complete", ...result };
+  } catch (error) {
+    return { status: "failed", error: error instanceof Error ? error.message : "Leads Agent failed" };
+  }
+},
 ```
 
-**Pricing (LOW confidence — verify at findymail.com/pricing):**
-- Free: 10 searches/day
-- Starter: ~$49/mo for 1,000 searches
-- Growth: ~$99/mo for 3,000 searches
-- Credits don't roll over on some plans
+### Model Selection
 
-**When to use FindyMail:**
-- Third-level fallback in email finding waterfall
-- Particularly useful for domains that report as "catch-all" to other providers
+Use `claude-opus-4-20250514` for the Leads Agent. Leads operations (multi-step search, enrich-if-needed, score, list-build) involve sequential decision-making across tool calls that benefits from Opus-level reasoning. Sonnet is reserved for the orchestrator (routing/dispatching only).
 
-**Confidence:** LOW — Pricing and API shape from training data only. Verify before integrating. The STATE.md confirms it was identified as a candidate, so it's worth evaluating.
+Both model IDs are already in the `AgentConfig.model` union type in `types.ts` (line 8).
+
+### Files for Feature 1
+
+| File | Action | What Changes |
+|------|--------|-------------|
+| `src/lib/agents/leads.ts` | CREATE | New agent — leadsTools, leadsConfig, runLeadsAgent(), buildLeadsMessage() |
+| `src/lib/agents/orchestrator.ts` | MODIFY | Replace stub execute body; add `runLeadsAgent` import |
+| `src/lib/agents/types.ts` | NO CHANGE | LeadsInput + LeadsOutput already defined |
 
 ---
 
-### Provider 4: AI Ark — Company and Person Data Enrichment
+## Feature 2: Client Portal Lead List + Content Review UI
 
-**Role in waterfall:** Primary company enrichment source. Provides headcount, industry, description, LinkedIn URLs, tech stack, funding data from domain alone. This is the Clay replacement for data enrichment (not email finding).
+### What It Is
 
-**What it does:**
-- Company lookup by domain: name, headcount, industry, description, LinkedIn, funding, tech stack
-- Person lookup by LinkedIn URL or email: job title, company, location, LinkedIn data
-- Bulk company enrichment
-- Industry classification
+New pages at `/portal/[workspaceSlug]/leads` and `/portal/[workspaceSlug]/content` that let authenticated portal clients view their ICP lead sample and approve/reject Writer Agent drafts. Binary approval only (whole list or batch, not per-item — confirmed in PROJECT.md out-of-scope).
 
-**API Pattern:**
+### Portal Auth Infrastructure (Already Built)
+
+The auth infrastructure is complete. Nothing new needed:
+
+```
+middleware.ts         — rewrites portal.outsignal.ai/* to /portal/*, enforces portal session
+portal-auth.ts        — JWT verification (Node runtime)
+portal-auth-edge.ts   — JWT verification (Edge runtime, used in middleware)
+portal-session.ts     — getPortalSession() helper for server components
+/api/portal/login     — magic link send
+/api/portal/verify    — magic link verify + cookie set
+/api/portal/logout    — cookie clear
+```
+
+The portal pages (`src/app/portal/`) do not exist yet — that is the gap. The middleware already routes and authenticates. The pages need to be created.
+
+### Portal Page Structure
+
+```
+src/app/portal/
+  login/
+    page.tsx                        — Magic link email entry form (already has /api/portal/login)
+  [workspaceSlug]/
+    page.tsx                        — Dashboard: links to leads + content
+    leads/
+      page.tsx                      — ICP lead sample table + approve/reject
+    content/
+      page.tsx                      — Writer drafts grouped by campaign + approve/reject
+```
+
+All pages use `getPortalSession()` to get `workspaceSlug` and scope DB queries.
+
+### Approval State (New Prisma Model)
+
+The `EmailDraft.status` field already has `'approved'` as a valid state (schema line 284: `"draft | review | approved | deployed"`). Content approval updates that field.
+
+For lead list approval, a new `PortalApproval` model is cleaner than adding columns to `TargetList`, because:
+- A list can be re-submitted after rejection (creates a new approval record — immutable history)
+- We need approver email + timestamp for audit
+- Avoids polluting `TargetList` with portal-specific state
+
+```prisma
+model PortalApproval {
+  id            String   @id @default(cuid())
+  workspaceSlug String
+  entityType    String   // "leads_list" | "content_batch"
+  entityId      String   // TargetList.id for leads_list; campaignName for content_batch
+  status        String   @default("pending") // "pending" | "approved" | "rejected"
+  approvedBy    String?  // client email from portal session
+  feedback      String?  // rejection reason or notes (required on rejection)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceSlug, entityType])
+  @@index([entityId])
+}
+```
+
+### Portal API Routes
+
+All portal API routes validate that `session.workspaceSlug === params.workspaceSlug`. No extra auth layer needed — the middleware already verified the session.
+
+| Route | Method | What It Does |
+|-------|--------|-------------|
+| `/api/portal/[workspaceSlug]/leads` | GET | Returns ICP-filtered people for this workspace (top 50-100 by icpScore desc) |
+| `/api/portal/[workspaceSlug]/drafts` | GET | Returns EmailDraft records grouped by campaignName where status in ['draft','review','approved'] |
+| `/api/portal/[workspaceSlug]/approve` | POST | Creates PortalApproval record; on content approval triggers campaign deployment |
+
+### UI Components (All Installed)
+
+The portal UI is simple approval surfaces. No new component library needed:
+
+- `Card`, `Table`, `Badge`, `Button`, `Tabs` — already installed via shadcn/radix-ui
+- `CheckCircle2`, `XCircle`, `Clock` — from lucide-react@0.575.0 (already installed)
+- `nuqs` — URL state for filter persistence on lead list (already used in admin)
+
+### Files for Feature 2
+
+| File | Action | What Changes |
+|------|--------|-------------|
+| `src/app/portal/login/page.tsx` | CREATE | Magic link email entry form |
+| `src/app/portal/[workspaceSlug]/page.tsx` | CREATE | Portal dashboard (links to leads + content) |
+| `src/app/portal/[workspaceSlug]/leads/page.tsx` | CREATE | Lead sample table with approve/reject |
+| `src/app/portal/[workspaceSlug]/content/page.tsx` | CREATE | Draft preview grouped by campaign with approve/reject |
+| `src/app/api/portal/[workspaceSlug]/leads/route.ts` | CREATE | GET scoped people query |
+| `src/app/api/portal/[workspaceSlug]/drafts/route.ts` | CREATE | GET scoped drafts query |
+| `src/app/api/portal/[workspaceSlug]/approve/route.ts` | CREATE | POST approval action |
+| `prisma/schema.prisma` | MODIFY | Add PortalApproval model |
+
+---
+
+## Feature 3: Smart Campaign Deployment to EmailBison
+
+### What It Is
+
+On portal content approval (or admin trigger), auto-create a new EmailBison campaign, add approved `EmailDraft` sequence steps, and assign leads from an approved `TargetList`.
+
+### What the EmailBison Client Already Has
+
+Verified by reading `src/lib/emailbison/client.ts`:
+
+| Method | Status | What It Does |
+|--------|--------|-------------|
+| `createCampaign(params)` | EXISTS (line 126) | Creates campaign, returns `{ id, sequence_id }` |
+| `duplicateCampaign(templateId)` | EXISTS (line 142) | Clones campaign structure |
+| `createLead(params)` | EXISTS (line 150) | Creates lead record in EmailBison |
+| `getCustomVariables()` | EXISTS (line 170) | Lists custom variables |
+| `createCustomVariable(name)` | EXISTS (line 174) | Creates custom variable |
+| `ensureCustomVariables(names[])` | EXISTS (line 183) | Idempotent variable setup |
+
+### What's Missing From EmailBisonClient
+
+Three methods need to be added to `src/lib/emailbison/client.ts`:
+
+**1. Add lead to campaign** — EmailBison API: `POST /campaigns/{campaignId}/leads`
+
 ```typescript
-// POST https://api.aiark.com/company/enrich  (verify exact endpoint)
-// Header: Authorization: Bearer {api_key}
-// Body: { "domain": "acme.com" }
-
-// Response shape (example):
-// {
-//   "name": "Acme Corp",
-//   "industry": "Software",
-//   "headcount": 250,
-//   "description": "...",
-//   "linkedin_url": "https://linkedin.com/company/acme",
-//   "tech_stack": ["Salesforce", "HubSpot"],
-//   "year_founded": 2015
-// }
+async addLeadToCampaign(campaignId: number, leadId: number): Promise<void> {
+  await this.request(`/campaigns/${campaignId}/leads`, {
+    method: 'POST',
+    body: JSON.stringify({ lead_id: leadId }),
+    revalidate: 0,
+  });
+}
 ```
 
-**Pricing (LOW confidence — AI Ark is newer; verify at aiark.com or their docs):**
-- Credit-based model, similar to Prospeo
-- Reported in agency communities as cheaper than equivalent Clay enrichment tables
-- Estimated $0.02-0.05 per company enrichment
-- Person enrichment typically slightly more expensive
+**2. Create sequence step** — EmailBison API: `POST /campaigns/sequence-steps`
 
-**When to use AI Ark:**
-- Enrich company records: fill headcount, industry, description, tech stack
-- Enrich person records when LinkedIn URL available: fill job title, company name
-- Before qualifying a prospect with Firecrawl (to decide if worth scraping)
-
-**Confidence:** LOW — API endpoint shape and pricing from training data and community reports only. AI Ark is the least-documented of these providers. Verify their API docs at aiark.com before implementing. Their API shape may differ significantly from the example above.
-
----
-
-### Provider 5: Firecrawl — Qualification Web Scraping (Already Integrated)
-
-**Role in waterfall:** Prospect website qualification. After basic enrichment, scrape the prospect's website to determine ICP fit before sending.
-
-**Current integration:** `src/lib/firecrawl/client.ts` — `crawlWebsite()` and `scrapeUrl()` already work. Reuse directly in the enrichment pipeline without changes.
-
-**API:** `@mendable/firecrawl-js` 4.13.2 already installed.
-
-**Pricing (MEDIUM confidence — verify at firecrawl.dev/pricing):**
-- Free: 500 credits/month
-- Hobby: $16/mo for 3,000 credits
-- Standard: $83/mo for 100,000 credits
-- 1 page scrape = 1 credit
-- Crawl job counts each page
-
-**For qualification use case:**
-- Scrape 1-3 pages per prospect (`scrapeUrl()` not full `crawlWebsite()`)
-- Target homepage + about page only for qualification signal
-- This costs 1-3 credits per prospect
-- Budget: 10,000 prospects at 2 pages = 20,000 credits → ~$17 on Hobby plan
-
-**When to use Firecrawl in enrichment:**
-- Only on Tier 1/2 prospects (companies that pass domain-level enrichment filter)
-- Use `scrapeUrl()` on homepage, feed markdown to Claude Haiku for ICP classification
-- Claude Haiku analysis costs ~$0.0004 per prospect (negligible)
-
-**Confidence:** HIGH — Already integrated and working. Pricing MEDIUM.
-
----
-
-## Claude Models for AI-Powered Steps
-
-This project already uses Claude via `@ai-sdk/anthropic`. No new API keys or setup needed.
-
-| Model | Use Case | Cost (MEDIUM confidence) | Why |
-|-------|----------|--------------------------|-----|
-| `claude-haiku-4-5-20251001` | ICP qualification from scraped content, industry classification, field normalization | ~$0.0004/prospect | Cheapest, fast enough for classification tasks |
-| `claude-sonnet-4-20250514` | Complex normalization, data quality decisions, ambiguous industry classification | ~$0.003/prospect | Use only when Haiku output is insufficient |
-| `claude-opus-4-20250514` | Do not use in enrichment pipeline | — | Too expensive for bulk processing |
-
-**Pattern for qualification:**
 ```typescript
-// Already used in research.ts — reuse this exact pattern
-const result = await generateText({
-  model: anthropic("claude-haiku-4-5-20251001"),
-  system: ICP_CLASSIFICATION_PROMPT,
-  messages: [{ role: "user", content: scrapedMarkdown }],
-});
+async createSequenceStep(params: CreateSequenceStepParams): Promise<SequenceStepCreateResult> {
+  const res = await this.request<{ data: SequenceStepCreateResult }>('/campaigns/sequence-steps', {
+    method: 'POST',
+    body: JSON.stringify({
+      campaign_id: params.campaignId,
+      subject: params.subject,
+      body: params.body,
+      delay_days: params.delayDays,
+      position: params.position,
+    }),
+    revalidate: 0,
+  });
+  return res.data;
+}
 ```
 
-**Confidence:** HIGH — Model IDs confirmed from existing `types.ts` in codebase.
+**3. Update sequence step** — EmailBison API: `PATCH /campaigns/sequence-steps/{id}`
+
+```typescript
+async updateSequenceStep(stepId: number, params: Partial<CreateSequenceStepParams>): Promise<SequenceStepCreateResult> {
+  const res = await this.request<{ data: SequenceStepCreateResult }>(`/campaigns/sequence-steps/${stepId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(params),
+    revalidate: 0,
+  });
+  return res.data;
+}
+```
+
+### Type Additions for `src/lib/emailbison/types.ts`
+
+```typescript
+export interface CreateSequenceStepParams {
+  campaignId: number;
+  subject?: string;  // null/undefined for LinkedIn steps
+  body: string;
+  delayDays: number;
+  position: number;
+}
+
+export interface SequenceStepCreateResult {
+  id: number;
+  campaign_id: number;
+  position: number;
+  subject?: string;
+  body?: string;
+  delay_days?: number;
+}
+```
+
+### Deployment Order
+
+Always in this sequence — creating steps before assigning leads ensures leads enter the sequence immediately:
+
+```
+1. createCampaign({ name, type: 'outbound', plainText: true })
+   → returns { id: campaignId, sequence_id }
+
+2. ensureCustomVariables(['firstName', 'company', 'title', ...])
+   → idempotent, safe to call every time
+
+3. For each EmailDraft (ordered by sequenceStep ASC):
+   createSequenceStep({ campaignId, subject, body, delayDays, position })
+   → marks EmailDraft.status = 'deployed'
+
+4. For each Person in approved TargetList:
+   createLead({ email, firstName, lastName, jobTitle, company, ... })
+   → returns { id: leadId }
+   addLeadToCampaign(campaignId, leadId)
+   → sequential, not parallel (rate limit protection)
+
+5. Update CampaignDeploy record to { status: 'complete', leadsDeployed, stepsDeployed }
+```
+
+### Rate Limit Handling
+
+The existing `RateLimitError` in the client handles 429s with `retryAfter`. For bulk lead assignment, use sequential processing with `for...of` + `await` — not `Promise.all()`. At 100-500 leads per campaign, sequential processing takes 30-120 seconds, well within Vercel's 5-minute function timeout.
+
+No queue library needed. No Redis. No background worker at this scale.
+
+### Deploy Tracking (New Prisma Model)
+
+Track campaign deployment state for idempotency and UI status display:
+
+```prisma
+model CampaignDeploy {
+  id                   String   @id @default(cuid())
+  workspaceSlug        String
+  campaignName         String   // matches EmailDraft.campaignName grouping
+  emailBisonCampaignId Int
+  status               String   @default("pending") // "pending" | "deploying" | "complete" | "failed"
+  leadsDeployed        Int      @default(0)
+  stepsDeployed        Int      @default(0)
+  error                String?
+  triggeredBy          String?  // "portal_approval" | "admin" | "agent"
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([workspaceSlug, campaignName])
+}
+```
+
+Check for existing `CampaignDeploy` records before deploying to prevent double-deployment on page refresh or approval re-click.
+
+### Files for Feature 3
+
+| File | Action | What Changes |
+|------|--------|-------------|
+| `src/lib/emailbison/client.ts` | MODIFY | Add `addLeadToCampaign()`, `createSequenceStep()`, `updateSequenceStep()` |
+| `src/lib/emailbison/types.ts` | MODIFY | Add `CreateSequenceStepParams`, `SequenceStepCreateResult` |
+| `src/app/api/portal/[workspaceSlug]/deploy/route.ts` | CREATE | POST endpoint — orchestrates full deployment sequence |
+| `prisma/schema.prisma` | MODIFY | Add CampaignDeploy model |
 
 ---
 
-## Waterfall Architecture (No New Libraries)
+## Schema Changes (Complete)
 
-The waterfall enrichment pattern is implemented as plain TypeScript with `p-limit` for concurrency. No workflow engine needed at this scale.
+Both new models added to `prisma/schema.prisma`. Deploy with `npx prisma db push` — consistent with all 7 v1.0 phases (no migration files).
 
+```prisma
+model PortalApproval {
+  id            String   @id @default(cuid())
+  workspaceSlug String
+  entityType    String   // "leads_list" | "content_batch"
+  entityId      String   // TargetList.id or campaignName
+  status        String   @default("pending") // "pending" | "approved" | "rejected"
+  approvedBy    String?  // client email from portal session
+  feedback      String?  // rejection reason or notes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceSlug, entityType])
+  @@index([entityId])
+}
+
+model CampaignDeploy {
+  id                   String   @id @default(cuid())
+  workspaceSlug        String
+  campaignName         String
+  emailBisonCampaignId Int
+  status               String   @default("pending") // "pending" | "deploying" | "complete" | "failed"
+  leadsDeployed        Int      @default(0)
+  stepsDeployed        Int      @default(0)
+  error                String?
+  triggeredBy          String?  // "portal_approval" | "admin" | "agent"
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([workspaceSlug, campaignName])
+}
 ```
-Input: email OR (name + domain) OR LinkedIn URL
-         │
-         ▼
-Step 1: Dedup Check (Prisma local DB)
-  → Person already enriched? SKIP (save credits)
-  → Not enriched? CONTINUE
-         │
-         ▼
-Step 2: AI Ark Company Enrichment (if domain known)
-  → Fills: headcount, industry, description, tech stack, founding year
-  → On failure: continue with what we have
-         │
-         ▼
-Step 3: Email Finding Waterfall
-  → Prospeo LinkedIn Email Finder (if LinkedIn URL available)
-  → Prospeo Email Finder (if name + domain available)
-  → LeadMagic Email Finder (if Prospeo empty)
-  → FindyMail (if both above empty)
-  → Give up, mark as "email_not_found"
-         │
-         ▼
-Step 4: Email Verification (LeadMagic validate)
-  → Mark as verified/invalid
-  → Skip unverified emails from outreach lists
-         │
-         ▼
-Step 5: ICP Qualification (Firecrawl + Haiku)
-  → Only run if: company passes basic filter (headcount, industry)
-  → Scrape 1-2 pages, feed to Haiku, classify fit score
-  → Score 1-10 stored on Person.enrichmentData
-         │
-         ▼
-Step 6: Upsert to Prisma DB
-  → Use existing enrichPerson() / enrichCompany() patterns
-  → Log to AgentRun for audit trail
-```
-
-**Confidence:** HIGH — This maps directly to the existing agent runner pattern in `src/lib/agents/runner.ts`.
-
----
-
-## Installation
-
-```bash
-# New dependencies only — everything else is already installed
-npm install p-limit p-retry
-```
-
-No other npm packages are required. All enrichment providers are called via `fetch()` with typed wrappers.
-
----
-
-## Alternatives Considered
-
-| Recommended | Alternative | Why Not |
-|-------------|-------------|---------|
-| `p-limit` + `p-retry` | `bottleneck` | Bottleneck is more powerful but adds complexity not needed at this scale. p-limit is simpler and sufficient. |
-| `p-limit` + `p-retry` | `bull`/`bullmq` queue | Queue adds Redis dependency and operational overhead. At <100 enrichments/trigger, synchronous waterfall in a Next.js route handler or agent is fine. Add queuing only if batch sizes exceed 500+ and Vercel function timeouts become a problem. |
-| Plain `fetch()` clients | Provider SDKs (if any exist) | Provider SDKs for these smaller services are often poorly maintained. Thin typed `fetch()` wrappers give full control and are easier to test/mock. |
-| Firecrawl for qualification | SerpDev / Google search | Firecrawl already integrated, already paid for. SerpDev adds another API key and cost. Use Firecrawl first; add SerpDev only if you need signal-based data (job postings, news) rather than website content. |
-| Claude Haiku for classification | OpenAI GPT-4o-mini | Already have Anthropic key. Haiku is comparable in quality and cost for classification tasks. No reason to add a second LLM provider. |
-| Prospeo as primary email finder | Hunter.io | Hunter is more expensive per credit and less accurate on LinkedIn-first workflows. Prospeo has better LinkedIn URL resolution. |
-| LeadMagic for verification | NeverBounce, ZeroBounce | LeadMagic combines finding + verification in one API, avoiding two vendors. |
 
 ---
 
@@ -342,77 +418,51 @@ No other npm packages are required. All enrichment providers are called via `fet
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Clay for any enrichment step | $300+/mo, we're building this to cancel it | Prospeo + AI Ark + LeadMagic pipeline |
-| Hunter.io | More expensive than Prospeo per credit, weaker on LinkedIn-to-email | Prospeo LinkedIn Email Finder |
-| Apollo.io API | $99-149/mo minimum, credit model is restrictive, contact data quality inconsistent | Prospeo + AI Ark (cheaper, more control) |
-| ZoomInfo API | Enterprise pricing ($15k+/yr), massive overkill | AI Ark for company data |
-| BullMQ / Redis queue | Adds infrastructure dependency not justified at current scale | p-limit for concurrency control within Vercel function timeouts |
-| GPT-4o or Claude Opus for bulk classification | 10-50x more expensive than Haiku for same classification result | Claude Haiku 4.5 |
-| Browser automation (Playwright/Puppeteer) for scraping | Violates LinkedIn ToS, fragile, expensive to maintain | Firecrawl for websites, Prospeo for LinkedIn data |
-| Full enrichment on every import | Costs money every time; most records already have data | Always check Prisma DB first (dedup-first pattern) |
-
----
-
-## Cost Model (Per 1,000 Prospects)
-
-These are estimates. Verify all prices before committing.
-
-| Step | Provider | Est. Cost/1k | Notes |
-|------|----------|-------------|-------|
-| Company enrichment | AI Ark | $20-50 | Skip if company already enriched |
-| Email finding | Prospeo | $40-100 | Only on records without email |
-| Email verification | LeadMagic | $5-10 | Cheap; run on all found emails |
-| ICP qualification | Firecrawl + Haiku | $2-5 | Only on filtered prospects |
-| **Total** | | **~$67-165/1k** | vs. Clay at ~$300+/mo flat |
-
-**Dedup-first savings:** If 60% of records are already enriched (we have 14k+ records), actual cost per new import batch drops proportionally.
-
-**Confidence:** LOW — These numbers are estimates assembled from training data. Do a 100-record test run with each provider to establish real cost-per-record before scaling.
-
----
-
-## Provider Priority Summary
-
-For the waterfall, apply this sequence strictly:
-
-1. **Always check local DB first** — free, instant, protects API budgets
-2. **AI Ark** — company enrichment (headcount, industry) before email finding, used for pre-filtering
-3. **Prospeo** — email finding (LinkedIn URL path preferred, name+domain as fallback)
-4. **LeadMagic** — email verification on all found emails; fallback finder if Prospeo fails
-5. **FindyMail** — last resort email finder for difficult domains
-6. **Firecrawl + Haiku** — ICP qualification, only after basic enrichment confirms prospect is in target segment
+| New queue/job library (BullMQ, Inngest, Trigger.dev) | Overkill for 100-500 lead batch upload; adds Redis or SaaS dependency; Vercel 5-min timeout is sufficient | `for...of` loop in serverless route, progress tracked on `CampaignDeploy.leadsDeployed` |
+| `Promise.all()` for lead assignment | EmailBison will 429 on parallel lead creation; existing `RateLimitError` would surface as partial failures | Sequential `for...of` with `await` |
+| New UI component library for portal | Portal is a simple approve/reject surface; adding another library bloats bundle | Existing shadcn/radix components already cover all needed elements |
+| Per-lead approve/reject in portal | Explicitly out of scope in PROJECT.md | Binary `PortalApproval` (approved/rejected on whole list or batch) |
+| Separate database for portal data | Portal is workspace-scoped in same Neon DB — no separation needed | Same Prisma client, same DB, `workspaceSlug` scoping |
+| Polling for deploy status | Adds WebSocket/SSE complexity not warranted for an admin-triggered operation | Show deploy status from `CampaignDeploy` record on page load; refresh to update |
 
 ---
 
 ## Version Compatibility
 
-All new libraries work with the existing stack. No conflicts expected.
+| Package A | Compatible With | Notes |
+|-----------|-----------------|-------|
+| `ai@6.0.97` | `@ai-sdk/anthropic@3.0.46` | Major versions aligned (AI SDK v3 adapter for AI SDK v6 core). Never upgrade independently — upgrade both together or neither. |
+| `ai@6.0.97` | `next@16.1.6` | `toUIMessageStreamResponse()` works in Next.js App Router route handlers. Tested in existing chat route. |
+| `zod@4.3.6` | `ai@6.0.97` | AI SDK uses `inputSchema` field (not `parameters`) for tool definitions. Already correct throughout codebase — do not change the pattern. |
+| `prisma@6.19.2` | `next@16.1.6` | Prisma client works in server components and API routes. Always use singleton from `src/lib/db.ts`, not `new PrismaClient()`. |
+| `@ai-sdk/react@3.0.99` | `react@19.2.3` | `useChat` hook is React 19 compatible. No changes to chat UI required. |
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `p-limit@6` | Node.js 18+, TypeScript 5 | ESM-only; use `import` not `require` |
-| `p-retry@6` | Node.js 18+, TypeScript 5 | ESM-only; same |
-| Provider REST APIs | Any runtime with `fetch()` | Next.js 16 has native fetch; no polyfill needed |
+---
 
-**ESM note:** `p-limit` v6 and `p-retry` v6 are ESM-only packages. Next.js 16 handles this correctly. Do not use `require()` for these.
+## Installation
 
-**Confidence:** MEDIUM — ESM compatibility of these packages confirmed from their GitHub repos; Next.js 16 ESM handling confirmed from codebase inspection.
+```bash
+# No new packages required for v1.1 features.
+# All three features use only existing installed dependencies.
+
+# After schema changes:
+npx prisma db push
+```
 
 ---
 
 ## Sources
 
-- Codebase inspection: `/Users/jjay/programs/outsignal-agents/src/lib/firecrawl/client.ts` — Firecrawl integration confirmed HIGH
-- Codebase inspection: `/Users/jjay/programs/outsignal-agents/src/lib/agents/types.ts` — Claude model IDs confirmed HIGH
-- Codebase inspection: `/Users/jjay/programs/outsignal-agents/src/lib/agents/runner.ts` — Agent runner pattern HIGH
-- Codebase inspection: `/Users/jjay/programs/outsignal-agents/package.json` — Exact installed versions HIGH
-- Codebase inspection: `/Users/jjay/programs/outsignal-agents/prisma/schema.prisma` — Data models HIGH
-- STATE.md context: FindyMail, SerperDev, AI Ark, LeadMagic, Prospeo all named as candidates HIGH (source of truth for intended stack)
-- PROJECT.md: Confirmed waterfall strategy, dedup-first pattern, Clay cancellation goal HIGH
-- Provider API patterns, pricing: Training data (August 2025 cutoff) — MEDIUM/LOW per provider; verify before implementation
-- p-limit / p-retry ESM compatibility: npm registry + package GitHub repos — MEDIUM
+- Live codebase: `src/lib/agents/orchestrator.ts` — `delegateToLeads` stub confirmed at line 61-76 — HIGH confidence
+- Live codebase: `src/lib/agents/types.ts` — `LeadsInput`, `LeadsOutput` types confirmed at lines 65-80 — HIGH confidence
+- Live codebase: `src/lib/emailbison/client.ts` — existing methods confirmed, missing methods identified — HIGH confidence
+- Live codebase: `prisma/schema.prisma` — `EmailDraft.status` values `'approved'`+`'deployed'` confirmed at line 284 — HIGH confidence
+- Live codebase: `src/middleware.ts` — portal routing + auth infrastructure confirmed complete — HIGH confidence
+- Live codebase: `package.json` + `node_modules/*/package.json` — all exact versions verified — HIGH confidence
+- Live codebase: `src/app/api/chat/route.ts` — `streamText` + `orchestratorTools` integration pattern confirmed — HIGH confidence
+- PROJECT.md: binary list approval confirmed out-of-scope for per-lead, `db push` as the established deploy pattern — HIGH confidence
 
 ---
 
-*Stack research for: outsignal-agents lead enrichment pipeline (Clay replacement)*
-*Researched: 2026-02-26*
+*Stack research for: Outsignal v1.1 — Outbound Pipeline (Leads Agent + Portal Review + Smart Campaign Deploy)*
+*Researched: 2026-02-27*

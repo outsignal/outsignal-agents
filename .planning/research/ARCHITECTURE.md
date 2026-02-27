@@ -1,537 +1,684 @@
 # Architecture Research
 
-**Domain:** Multi-source lead enrichment pipeline (Clay replacement)
-**Researched:** 2026-02-26
-**Confidence:** HIGH (based on existing codebase analysis + established patterns in enrichment tooling)
+**Domain:** Outbound Pipeline v1.1 — Leads Agent Dashboard + Client Portal Review + Smart Campaign Deploy
+**Researched:** 2026-02-27
+**Confidence:** HIGH (based on direct codebase inspection of all relevant files)
 
 ---
 
-## Standard Architecture
-
-### System Overview
+## Existing Architecture (What We're Building On)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Trigger Layer                                    │
-│   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
-│   │  Chat / Agent │  │  API Route   │  │  CLI / Scheduled Job     │  │
-│   │  (orchestrator)│  │  (ad-hoc)   │  │  (bulk enrichment)       │  │
-│   └──────┬───────┘  └──────┬───────┘  └───────────┬──────────────┘  │
-│          │                 │                       │                 │
-├──────────┴─────────────────┴───────────────────────┴─────────────────┤
-│                   Enrichment Orchestration Layer                      │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                  EnrichmentPipeline                             │  │
-│  │  1. Dedup check (local DB first)                               │  │
-│  │  2. Waterfall across providers (cheapest → most expensive)     │  │
-│  │  3. Merge results (field-level precedence rules)               │  │
-│  │  4. AI normalization (Claude Haiku)                            │  │
-│  │  5. Persist to Person/Company + log provenance                 │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                                                                       │
-├───────────────────────────────────────────────────────────────────────┤
-│                    Provider Abstraction Layer                          │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────────────┐  │
-│  │ Prospeo   │  │  AI Ark   │  │ LeadMagic │  │ Firecrawl+Claude  │  │
-│  │ (email    │  │ (company/ │  │ (email    │  │ (web scrape +     │  │
-│  │  finding) │  │  person)  │  │  verify)  │  │  AI extraction)   │  │
-│  └───────────┘  └───────────┘  └───────────┘  └───────────────────┘  │
-│                 Each provider: EnrichmentProvider interface            │
-├───────────────────────────────────────────────────────────────────────┤
-│                       Data Layer                                       │
-│  ┌──────────────────┐  ┌───────────────────┐  ┌─────────────────┐    │
-│  │ Person / Company │  │ EnrichmentRun log │  │  Provider cache  │    │
-│  │ (canonical store)│  │ (provenance audit)│  │  (avoid repeat)  │    │
-│  └──────────────────┘  └───────────────────┘  └─────────────────┘    │
-└───────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  CLIENTS (browsers)                                              │
+│  admin.outsignal.ai              portal.outsignal.ai            │
+└────────────┬─────────────────────────────┬───────────────────────┘
+             │                             │ (middleware rewrites)
+             ▼                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Next.js 16 App Router                                           │
+│  ┌──────────────────────┐   ┌─────────────────────────────────┐ │
+│  │  (admin) route group │   │  (portal) route group           │ │
+│  │  AppShell + sidebar  │   │  /portal/* server components    │ │
+│  │  Cmd+J chat overlay  │   │  Auth: portal_session cookie    │ │
+│  │  Auth: admin cookie  │   │  Pages: /, /linkedin            │ │
+│  └──────────┬───────────┘   └─────────────────────────────────┘ │
+│             │                                                    │
+│  ┌──────────▼──────────────────────────────────────────────────┐│
+│  │  POST /api/chat → orchestrator.ts (Sonnet 4, 12 steps)     ││
+│  │  delegateToResearch ✓  delegateToWriter ✓                   ││
+│  │  delegateToLeads ✗ (stub)  delegateToCampaign ✗ (stub)     ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  Agent Runners — src/lib/agents/                                 │
+│  ┌───────────────┐  ┌───────────────┐  ┌──────────┐  ┌───────┐  │
+│  │ research.ts   │  │ writer.ts     │  │leads.ts  │  │campaign│ │
+│  │ Opus 4, 8 steps│  │ Opus 4, 10 steps│  │(stub)  │  │(stub) │ │
+│  └───────────────┘  └───────────────┘  └──────────┘  └───────┘  │
+│                                                                  │
+│  runner.ts — AgentRun audit trail, generateText wrapper          │
+└─────────────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Data Layer — PostgreSQL (Neon) via Prisma 6                     │
+│  Person, Company, TargetList, TargetListPerson                   │
+│  EmailDraft (status: draft|review|approved|deployed)             │
+│  AgentRun, WebsiteAnalysis, KnowledgeDocument                    │
+└─────────────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  External Services                                               │
+│  EmailBison API (app.outsignal.ai/api) — EmailBisonClient        │
+│    createCampaign, duplicateCampaign, createLead                 │
+│    getSequenceSteps, ensureCustomVariables                       │
+│  Enrichment: Prospeo → AI Ark → LeadMagic → FindyMail waterfall  │
+│  Firecrawl (website crawl/scrape/ICP scoring)                    │
+│  Anthropic API (Opus 4, Sonnet 4, Haiku)                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
-
-### Component Responsibilities
-
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| `EnrichmentPipeline` | Orchestrates dedup check, waterfall, merge, persist | `src/lib/enrichment/pipeline.ts` — pure function, composable |
-| `EnrichmentProvider` interface | Common contract all providers implement | TypeScript interface in `src/lib/enrichment/types.ts` |
-| Provider adapters (Prospeo, AI Ark, etc.) | Translate provider API → normalized output | `src/lib/enrichment/providers/prospeo.ts` etc. |
-| Dedup checker | Query Person/Company by email/domain before API calls | Inline in pipeline, uses Prisma |
-| Field merger | Merge multi-source results with precedence rules | Pure utility in `src/lib/enrichment/merge.ts` |
-| AI normalizer | Industry classification, title standardization, company name cleanup | Haiku tool call in `src/lib/enrichment/normalize-ai.ts` |
-| Provenance logger | Track which source provided which field, when, and at what cost | `EnrichmentRun` DB model |
-| Leads Agent | AI agent that drives enrichment on behalf of users via chat | `src/lib/agents/leads.ts` (follows existing runner pattern) |
 
 ---
 
-## Recommended Project Structure
+## System Overview After v1.1
 
 ```
-src/lib/enrichment/
-├── pipeline.ts           # Core waterfall orchestrator
-├── types.ts              # EnrichmentProvider interface, EnrichmentResult, etc.
-├── merge.ts              # Field-level merging + precedence logic
-├── normalize-ai.ts       # Claude Haiku normalization (industry, title, company name)
-├── dedup.ts              # Local DB lookup before external API calls
-├── providers/
-│   ├── prospeo.ts        # Email finding (cheapest person source)
-│   ├── aiark.ts          # Company + person enrichment (depth)
-│   ├── leadmagic.ts      # Email verification (last step before export)
-│   └── firecrawl.ts      # Website scrape → AI extraction (qualification)
-└── index.ts              # Public API: enrichPerson(), enrichCompany(), enrichBatch()
-
-src/app/api/enrichment/
-├── person/route.ts       # POST /api/enrichment/person (triggers pipeline for one)
-├── company/route.ts      # POST /api/enrichment/company
-└── batch/route.ts        # POST /api/enrichment/batch (bulk, async via queue)
-
-prisma/schema.prisma      # Add: EnrichmentRun model (provenance + cost tracking)
+┌─────────────────────────────────────────────────────────────────┐
+│  ADMIN DASHBOARD (Cmd+J chat)                                    │
+│                                                                  │
+│  "Find 50 SaaS leads for Rise, write copy, deploy campaign"      │
+│      ↓                                                           │
+│  Orchestrator → delegateToLeads → Leads Agent                    │
+│    searchPeople → enrichPerson → scorePerson → addToList         │
+│    Creates: TargetList (status: building → pending_review)       │
+│      ↓                                                           │
+│  Orchestrator → delegateToWriter → Writer Agent                  │
+│    Generates: EmailDraft[] (status: draft → review)             │
+│      ↓                                                           │
+│  Admin promotes list to pending_review + drafts to review        │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CLIENT PORTAL (portal.outsignal.ai)                             │
+│                                                                  │
+│  /portal/review/leads — shows TargetList sample + enrichment     │
+│    Client: [Approve] or [Request Changes]                        │
+│    → POST /api/portal/review/leads/[id]/approve                  │
+│    → TargetList.status = 'approved'                              │
+│                                                                  │
+│  /portal/review/copy — shows EmailDraft[] in 'review' status     │
+│    Client: [Approve] or [Request Changes]                        │
+│    → POST /api/portal/review/copy/[name]/approve                 │
+│    → EmailDraft[].status = 'approved'                            │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ (both approved)
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CAMPAIGN DEPLOY SERVICE                                         │
+│  src/lib/campaign-deploy/deploy.ts                               │
+│                                                                  │
+│  1. Verify approvals (or admin bypass)                           │
+│  2. EmailBisonClient.createCampaign()                            │
+│  3. EmailBisonClient.addSequenceStep() per EmailDraft            │
+│  4. EmailBisonClient.createLead() per verified person            │
+│  5. EmailBisonClient.assignLeadToCampaign() per lead             │
+│  6. Update: TargetList.status = 'deployed'                       │
+│  7. Update: EmailDraft[].status = 'deployed'                     │
+│  8. Log: AgentRun { agent: 'campaign-deploy', ... }              │
+└─────────────────────────────────────────────────────────────────┘
 ```
-
-### Structure Rationale
-
-- **`src/lib/enrichment/`** — All enrichment logic lives here, not in agents or API routes. Agents and routes call the pipeline; they don't implement it.
-- **`providers/` subfolder** — Each provider is isolated. Adding a new source means adding one file and registering it in `pipeline.ts`. No other files change.
-- **Separate API routes for enrichment** — Keep these distinct from the existing `/api/people/enrich` (Clay inbound webhook) to avoid confusion. New routes are outbound-triggered enrichment; old routes remain for Clay fallback inbound.
-- **Provenance in DB** — Essential for cost tracking and debugging. You need to know which API found which field to avoid re-running the same source.
 
 ---
 
-## Architectural Patterns
+## Component Map: New vs Modified
 
-### Pattern 1: Waterfall Enrichment (Cheapest-First)
+| Component | Status | Location | Notes |
+|-----------|--------|----------|-------|
+| `leads.ts` | **NEW** | `src/lib/agents/leads.ts` | Full Leads Agent: search, enrich, score, list ops |
+| `campaign-deploy/deploy.ts` | **NEW** | `src/lib/campaign-deploy/deploy.ts` | Deploy orchestration service |
+| `campaign-deploy/sequence-builder.ts` | **NEW** | `src/lib/campaign-deploy/sequence-builder.ts` | EmailDraft → EB sequence step converter |
+| `/portal/review/leads/page.tsx` | **NEW** | `src/app/(portal)/portal/review/leads/page.tsx` | Read-only lead list preview |
+| `/portal/review/copy/page.tsx` | **NEW** | `src/app/(portal)/portal/review/copy/page.tsx` | Read-only draft copy preview |
+| `/api/portal/review/leads/[id]/approve` | **NEW** | `src/app/api/portal/review/leads/[id]/approve/route.ts` | Portal approval endpoint |
+| `/api/portal/review/leads/[id]/reject` | **NEW** | `src/app/api/portal/review/leads/[id]/reject/route.ts` | Portal reject with feedback |
+| `/api/portal/review/copy/[name]/approve` | **NEW** | `src/app/api/portal/review/copy/[name]/approve/route.ts` | Copy approval endpoint |
+| `/api/portal/review/copy/[name]/reject` | **NEW** | `src/app/api/portal/review/copy/[name]/reject/route.ts` | Copy reject with feedback |
+| `/api/lists/[id]/deploy` | **NEW** | `src/app/api/lists/[id]/deploy/route.ts` | Admin-triggered manual deploy |
+| `EmailBisonClient` | **MODIFY** | `src/lib/emailbison/client.ts` | Add `addSequenceStep()`, `assignLeadToCampaign()` |
+| `orchestrator.ts` | **MODIFY** | `src/lib/agents/orchestrator.ts` | Wire stubs to real `runLeadsAgent()` / `runCampaignAgent()` |
+| `types.ts` | **MODIFY** | `src/lib/agents/types.ts` | Extend LeadsInput/Output if needed (already skeleton-typed) |
+| `portal/layout.tsx` | **MODIFY** | `src/app/(portal)/layout.tsx` | Add "Review" nav link |
+| `schema.prisma` | **MODIFY** | `prisma/schema.prisma` | Add `status` field to `TargetList` |
+| `middleware.ts` | **NO CHANGE** | `src/middleware.ts` | `/api/portal/` already in PUBLIC_API_PREFIXES |
 
-**What:** Try sources in order from cheapest to most expensive. Stop when you have enough data. Only escalate to the next source when the current one returns insufficient results.
+---
 
-**When to use:** Always, for cost control. Every field has a "sufficient" threshold — if you have email, name, title, and company, you probably don't need AI Ark's deeper enrichment.
+## Detailed Integration Points
 
-**Trade-offs:**
-- Pro: Minimizes API spend dramatically (typically 60-80% cost reduction vs. hitting all sources)
-- Pro: Naturally handles provider outages — next source fills the gap
-- Con: Slightly slower than parallel (mitigated by async queue for bulk)
-- Con: Requires defining "sufficiency" rules per field
+### 1. Leads Agent Runner
 
-**Example:**
+**What changes where:**
+
+The `delegateToLeads` tool in `orchestrator.ts` is currently a stub returning `{ status: "not_available" }`. Replace the `execute` function body with a call to `runLeadsAgent()`, following the exact pattern used by `delegateToResearch`:
+
 ```typescript
-// src/lib/enrichment/pipeline.ts
-export async function enrichPerson(
-  email: string,
-  options: EnrichmentOptions = {}
-): Promise<EnrichmentResult> {
-  // Step 1: Dedup — check if we already have this person with sufficient data
-  const existing = await dedup.checkPerson(email);
-  if (existing && isSufficient(existing, options.requiredFields)) {
-    return { source: 'cache', data: existing, cost: 0 };
+// orchestrator.ts — current stub execute:
+execute: async () => {
+  return { status: "not_available", message: "..." };
+}
+
+// Replace with:
+execute: async ({ workspaceSlug, task, limit }) => {
+  try {
+    const result = await runLeadsAgent({ workspaceSlug, task, limit });
+    return { status: "complete", ...result };
+  } catch (error) {
+    return { status: "failed", error: error instanceof Error ? error.message : "Leads Agent failed" };
+  }
+}
+```
+
+**Tools the Leads Agent needs** (operate on existing Prisma models — zero schema changes needed for Phase 1):
+
+```
+searchPeople(query, filters)      → Person[] from local DB (14k+ dataset)
+enrichPerson(email)               → trigger waterfall enrichment via existing /api/people/enrich logic
+scorePerson(personId, workspaceSlug) → ICP score using existing scorer
+createList(name, workspaceSlug)   → TargetList.create()
+addToList(listId, personIds[])    → TargetListPerson.createMany()
+getList(listId)                   → TargetList with members + enrichment summary
+```
+
+All these tools touch models that already exist. The agent produces `TargetList` + `TargetListPerson` records — the same data the v1.0 UI list builder creates.
+
+### 2. Schema Change (TargetList Status)
+
+`TargetList` needs a `status` field to track the portal review lifecycle:
+
+```prisma
+model TargetList {
+  id            String   @id @default(cuid())
+  name          String
+  workspaceSlug String
+  description   String?
+  status        String   @default("building")
+  // building | pending_review | approved | rejected | deployed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  people TargetListPerson[]
+  @@index([workspaceSlug])
+}
+```
+
+`EmailDraft.status` already has the correct values (`draft | review | approved | deployed`). No schema change needed there — the Writer Agent saves drafts in `draft` status; admin promotes them to `review` manually before exposing to portal.
+
+### 3. Portal Review Pages
+
+Both pages are read-only server components. They use `getPortalSession()` to scope to the workspace — same pattern as the existing `/portal/page.tsx`:
+
+```typescript
+// /portal/review/leads/page.tsx — structure
+export default async function LeadsReviewPage() {
+  const { workspaceSlug } = await getPortalSession();
+
+  // Find the pending_review list for this workspace
+  const list = await prisma.targetList.findFirst({
+    where: { workspaceSlug, status: "pending_review" },
+    include: { people: { include: { person: true }, take: 100 } },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  // Render sample: company, title, name (no email shown to client)
+  // Approve/Reject buttons fire POST to /api/portal/review/leads/[id]/approve
+}
+```
+
+Client sees: list name, count, sample rows (company + title + name), enrichment summary (% with email, LinkedIn, etc.). No email addresses shown — client is approving the targeting, not the data.
+
+### 4. Portal Approval API Routes
+
+These live under `/api/portal/` which is already in `PUBLIC_API_PREFIXES` in middleware (passes through without admin auth). The route handlers verify the portal session themselves:
+
+```typescript
+// /api/portal/review/leads/[id]/approve/route.ts
+export async function POST(_req: Request, context: RouteContext) {
+  const { workspaceSlug } = await getPortalSession();  // throws → 500 if no session
+  const { id } = await context.params;
+
+  const list = await prisma.targetList.findUnique({ where: { id } });
+  // Ownership check — critical security boundary
+  if (!list || list.workspaceSlug !== workspaceSlug) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const result: Partial<PersonEnrichmentData> = existing ?? {};
-  const runLog: ProviderAttempt[] = [];
+  await prisma.targetList.update({ where: { id }, data: { status: "approved" } });
 
-  // Step 2: Waterfall — cheapest first
-  const waterfall: EnrichmentProvider[] = [
-    providers.prospeo,    // email finding — cheap, fast
-    providers.aiark,      // company + person depth — medium cost
-    providers.firecrawl,  // website scrape — use for qualification only
-    providers.leadmagic,  // email verification — always last before export
-  ];
-
-  for (const provider of waterfall) {
-    if (isSufficient(result, options.requiredFields)) break;
-
-    const attempt = await provider.enrich(email, result);
-    runLog.push(attempt);
-    merge(result, attempt.data); // field-level merge, existing wins on conflict
+  // Check if copy is also approved — trigger deploy if so
+  const approvedDrafts = await prisma.emailDraft.count({
+    where: { workspaceSlug, status: "approved" }
+  });
+  if (approvedDrafts > 0) {
+    // Fire-and-forget — don't block the response
+    void deployCampaign(workspaceSlug, id);
   }
 
-  // Step 3: AI normalization — always run after waterfall
-  const normalized = await normalizeWithAI(result);
+  return NextResponse.json({ ok: true });
+}
+```
 
-  // Step 4: Persist
-  await persistEnrichment(email, normalized, runLog);
+### 5. EmailBisonClient Extensions
 
-  return { source: 'pipeline', data: normalized, attempts: runLog };
+Two methods need to be added to `src/lib/emailbison/client.ts`. The client's `request<T>()` pattern is well-established — these follow the exact same shape:
+
+```typescript
+// Add to EmailBisonClient:
+
+async addSequenceStep(campaignId: number, step: {
+  subject?: string;
+  body: string;
+  delay_days: number;
+  position: number;
+}): Promise<SequenceStep> {
+  const res = await this.request<{ data: SequenceStep }>(
+    `/campaigns/sequence-steps`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ campaign_id: campaignId, ...step }),
+      revalidate: 0,
+    }
+  );
+  return res.data;
+}
+
+async assignLeadToCampaign(campaignId: number, leadId: number): Promise<void> {
+  await this.request<unknown>(
+    `/campaigns/${campaignId}/leads`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ lead_id: leadId }),
+      revalidate: 0,
+    }
+  );
+}
+```
+
+Note: The EmailBison API for `addSequenceStep` and `assignLeadToCampaign` endpoint shapes are MEDIUM confidence — they follow common REST patterns but should be verified against the EmailBison API docs during implementation. The existing `createCampaign` and `createLead` methods provide the pattern to follow.
+
+### 6. Deploy Service
+
+```typescript
+// src/lib/campaign-deploy/deploy.ts
+export async function deployCampaign(
+  workspaceSlug: string,
+  listId: string,
+  campaignNameOverride?: string
+): Promise<void> {
+  // 1. Load list + people (verified email only)
+  const list = await prisma.targetList.findUnique({
+    where: { id: listId },
+    include: { people: { include: { person: true } } },
+  });
+
+  // 2. Load approved drafts for workspace
+  const drafts = await prisma.emailDraft.findMany({
+    where: { workspaceSlug, status: "approved" },
+    orderBy: [{ campaignName: "asc" }, { sequenceStep: "asc" }],
+  });
+
+  // Group drafts by campaign name — deploy one campaign per unique name
+  const campaignGroups = groupBy(drafts, d => d.campaignName);
+
+  for (const [campaignName, steps] of Object.entries(campaignGroups)) {
+    const client = await getClientForWorkspace(workspaceSlug);
+
+    // 3. Create campaign in EmailBison
+    const campaign = await client.createCampaign({ name: campaignName });
+
+    // 4. Add sequence steps
+    for (const draft of steps) {
+      await client.addSequenceStep(campaign.id, {
+        subject: draft.subjectLine ?? undefined,
+        body: draft.bodyText,
+        delay_days: draft.delayDays,
+        position: draft.sequenceStep,
+      });
+    }
+
+    // 5. Add leads (email verified only — hard gate)
+    for (const tlp of list.people) {
+      if (!tlp.person.email) continue; // skip unverified
+      const lead = await client.createLead({
+        email: tlp.person.email,
+        firstName: tlp.person.firstName ?? undefined,
+        lastName: tlp.person.lastName ?? undefined,
+        jobTitle: tlp.person.jobTitle ?? undefined,
+        company: tlp.person.company ?? undefined,
+      });
+      await client.assignLeadToCampaign(campaign.id, lead.id);
+    }
+
+    // 6. Update draft statuses
+    await prisma.emailDraft.updateMany({
+      where: { workspaceSlug, campaignName, status: "approved" },
+      data: { status: "deployed" },
+    });
+  }
+
+  // 7. Update list status
+  await prisma.targetList.update({
+    where: { id: listId },
+    data: { status: "deployed" },
+  });
 }
 ```
 
 ---
 
-### Pattern 2: Provider Abstraction Interface
+## Data Flows
 
-**What:** All enrichment providers implement a common `EnrichmentProvider` interface. The pipeline doesn't know (or care) which specific API it's calling.
+### Admin Pipeline (Cmd+J Chat → Approved List + Copy)
 
-**When to use:** From day one. Enforces consistency, makes providers swappable, enables easy addition of new sources.
+```
+User: "Find 50 UK SaaS leads for Rise and write 3-step email sequence"
+    ↓
+POST /api/chat (streamText, orchestrator, 12 steps)
+    ↓
+delegateToLeads { workspaceSlug: "rise", task: "...", limit: 50 }
+    ↓
+runLeadsAgent() → runner.ts creates AgentRun { agent: "leads" }
+    ↓
+Leads Agent tools: searchPeople → enrichPerson → scorePerson → createList → addToList
+    ↓
+TargetList { status: "building" } + TargetListPerson[] created in DB
+    ↓
+delegateToWriter { workspaceSlug: "rise", task: "3-step email for SaaS leads" }
+    ↓
+runWriterAgent() → runner.ts creates AgentRun { agent: "writer" }
+    ↓
+Writer Agent: getWorkspaceIntelligence → searchKnowledgeBase → saveDraft × 3
+    ↓
+EmailDraft[] { status: "draft" } created in DB
+    ↓
+Admin: PATCH /api/lists/[id] sets TargetList.status → "pending_review"
+Admin: PATCH /api/drafts sets EmailDraft[].status → "review"
+```
 
-**Trade-offs:**
-- Pro: New provider = one new file, zero changes to pipeline
-- Pro: Easy to mock in tests
-- Con: Some providers return wildly different data shapes — normalization happens inside the adapter
+### Client Portal Approval Flow
 
-**Example:**
-```typescript
-// src/lib/enrichment/types.ts
+```
+Client visits portal.outsignal.ai
+    ↓ middleware rewrites → /portal/*
+portal_session cookie → getPortalSession() → { workspaceSlug }
+    ↓
+/portal/review/leads — server component fetches TargetList { status: "pending_review" }
+Shows: list name, count, sample rows (company + title + name), enrichment summary
+    ↓
+[Approve] → POST /api/portal/review/leads/[id]/approve
+  → verify list.workspaceSlug === session.workspaceSlug (ownership check)
+  → TargetList.status = "approved"
+  → if EmailDraft.status === "approved" exists → void deployCampaign()
+    ↓
+/portal/review/copy — server component fetches EmailDraft[] { status: "review" }
+Shows: campaign name, step 1/2/3 subject + body (read-only)
+    ↓
+[Approve] → POST /api/portal/review/copy/[campaignName]/approve
+  → verify drafts.workspaceSlug === session.workspaceSlug
+  → EmailDraft[].status = "approved"
+  → if TargetList.status === "approved" exists → void deployCampaign()
+```
 
-export interface PersonEnrichmentData {
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  jobTitle?: string;
-  company?: string;
-  companyDomain?: string;
-  linkedinUrl?: string;
-  location?: string;
-  phone?: string;
-  industry?: string;
-  seniority?: string;
-  emailVerified?: boolean;
-  emailConfidence?: number;   // 0-100
-  [key: string]: unknown;     // provider-specific extras go to enrichmentData
-}
+### Deploy Flow
 
-export interface ProviderAttempt {
-  provider: string;
-  success: boolean;
-  fieldsAdded: string[];
-  creditsUsed: number;
-  durationMs: number;
-  error?: string;
-}
-
-export interface EnrichmentProvider {
-  name: string;
-  priority: number;             // lower = runs earlier in waterfall
-  canEnrichPerson: boolean;
-  canEnrichCompany: boolean;
-  enrich(
-    identifier: string,         // email for person, domain for company
-    existing: Partial<PersonEnrichmentData>
-  ): Promise<ProviderAttempt & { data: Partial<PersonEnrichmentData> }>;
-}
+```
+deployCampaign(workspaceSlug, listId)
+    ↓
+Load TargetList + people (email verified only)
+Load EmailDraft[] { status: "approved", workspaceSlug }
+    ↓
+Group drafts by campaignName
+    ↓
+For each campaign group:
+  EmailBisonClient.createCampaign({ name, type: "outbound" })
+    → returns { id: campaignId }
+      ↓
+  For each EmailDraft (sorted by sequenceStep):
+    EmailBisonClient.addSequenceStep(campaignId, { subject, body, delay_days })
+      ↓
+  For each TargetListPerson (email verified only):
+    EmailBisonClient.createLead(person) → returns { id: leadId }
+    EmailBisonClient.assignLeadToCampaign(campaignId, leadId)
+      ↓
+prisma.emailDraft.updateMany → status: "deployed"
+prisma.targetList.update → status: "deployed"
+AgentRun.create { agent: "campaign-deploy", triggeredBy: "portal-approval" }
 ```
 
 ---
 
-### Pattern 3: Field-Level Merge with Precedence
+## Build Order (Dependency-Driven)
 
-**What:** When multiple providers return the same field, apply explicit precedence rules rather than overwriting. Some fields should "first write wins" (e.g., email from Prospeo is authoritative). Others should "highest confidence wins" (e.g., email verification score from LeadMagic should always overwrite).
+Dependencies flow left-to-right: each phase unblocks the next.
 
-**When to use:** Any time two providers return overlapping fields.
+```
+Phase 1          Phase 2          Phase 3          Phase 4
+Leads Agent  →   Schema +     →   Portal Review →  Deploy Service
+(no deps)        Promotion UI     Pages + APIs     + EB Client ext.
+                 (needs schema)   (needs schema,   (needs approved
+                                  portal auth)     list + copy)
+```
 
-**Trade-offs:**
-- Pro: Data quality improves — you keep the best value per field, not just the last one
-- Pro: Prevents cheap/low-quality source from corrupting high-quality data
-- Con: Rules need to be defined and maintained
+### Phase 1: Leads Agent Runner
 
-**Example:**
+**Files:** `src/lib/agents/leads.ts` (new), `src/lib/agents/orchestrator.ts` (modify wire stub)
+
+**Why first:** No external dependencies. Produces the TargetList data that everything else consumes. Can be tested via Cmd+J chat immediately. The orchestrator stub is already wired — just replace the execute body.
+
+**Test:** Open Cmd+J, say "Find 20 SaaS companies in the UK for Rise and create a list called 'UK SaaS Jan'"
+
+### Phase 2: Schema Migration + Admin Promotion UI
+
+**Files:** `prisma/schema.prisma` (add TargetList.status), `src/app/(admin)/lists/[id]/page.tsx` (add promote buttons)
+
+**Why second:** Portal review pages can't function without TargetList.status. Admin promotion UI lets you move lists from `building` → `pending_review` and drafts from `draft` → `review`. Must exist before Phase 3 can be tested.
+
+**Action:** `npx prisma db push` after schema change (consistent with existing db push approach per PROJECT.md)
+
+### Phase 3: Client Portal Review Pages + APIs
+
+**Files:**
+- `src/app/(portal)/portal/review/leads/page.tsx` (new)
+- `src/app/(portal)/portal/review/copy/page.tsx` (new)
+- `src/app/api/portal/review/leads/[id]/approve/route.ts` (new)
+- `src/app/api/portal/review/leads/[id]/reject/route.ts` (new)
+- `src/app/api/portal/review/copy/[name]/approve/route.ts` (new)
+- `src/app/api/portal/review/copy/[name]/reject/route.ts` (new)
+- `src/app/(portal)/layout.tsx` (modify: add "Review" nav link)
+
+**Why third:** Needs Phase 2 schema for status field. Portal pages are simple server components — no complex state, just DB reads + button actions. Deploy is fire-and-forget in the approval handlers (Phase 4 delivers it, but approval endpoints can stub the call for now).
+
+### Phase 4: EmailBisonClient Extensions + Deploy Service
+
+**Files:**
+- `src/lib/emailbison/client.ts` (modify: add addSequenceStep, assignLeadToCampaign)
+- `src/lib/campaign-deploy/deploy.ts` (new)
+- `src/lib/campaign-deploy/sequence-builder.ts` (new)
+- `src/app/api/lists/[id]/deploy/route.ts` (new: admin manual deploy)
+- Wire deploy into portal approval handlers from Phase 3
+
+**Why fourth:** Deploy requires approved data from Phases 2+3. Also requires EmailBisonClient extensions — these are new HTTP endpoints and their exact shape needs verification against EmailBison API docs before writing.
+
+### Phase 5: Campaign Agent Runner (Optional Enhancement)
+
+**Files:** `src/lib/agents/campaign.ts` (new), `orchestrator.ts` (modify wire delegateToCampaign)
+
+**Why last:** The full pipeline works without it (deploy can be triggered via portal approval or admin button). Campaign Agent is a convenience layer for chat-driven deployment. Low priority, high effort.
+
+---
+
+## Architectural Patterns to Follow
+
+### Pattern: Agent Runner Convention
+
+All agents follow the exact same shape. leads.ts must match research.ts and writer.ts:
+
 ```typescript
-// src/lib/enrichment/merge.ts
-
-const PRECEDENCE: Record<string, 'first' | 'last' | 'highest-confidence'> = {
-  email: 'first',                // trust initial source
-  emailVerified: 'last',         // LeadMagic runs last, always authoritative
-  emailConfidence: 'last',       // same
-  firstName: 'first',            // don't overwrite good data with guesses
-  lastName: 'first',
-  jobTitle: 'first',             // first good title wins
-  company: 'first',
-  companyDomain: 'first',
-  linkedinUrl: 'first',
-  phone: 'first',
-  location: 'last',              // more recent location data preferred
-  industry: 'last',              // AI normalization runs last, most accurate
-  seniority: 'last',             // same
+const leadsConfig: AgentConfig = {
+  name: "leads",
+  model: "claude-opus-4-20250514",  // Opus — complex reasoning, multi-tool chains
+  systemPrompt: LEADS_SYSTEM_PROMPT,
+  tools: leadsTools,
+  maxSteps: 15,  // Higher than research/writer — enrichment = many tool calls
 };
 
-export function merge(
-  base: Partial<PersonEnrichmentData>,
-  incoming: Partial<PersonEnrichmentData>
-): void {
-  for (const [key, value] of Object.entries(incoming)) {
-    if (value === null || value === undefined || value === '') continue;
-
-    const rule = PRECEDENCE[key] ?? 'first'; // default: don't overwrite
-
-    if (rule === 'first' && base[key] != null) continue;
-    if (rule === 'last') {
-      base[key] = value;
-    } else if (rule === 'first' && base[key] == null) {
-      base[key] = value;
-    }
-    // 'highest-confidence' would compare numeric scores
-  }
-}
-```
-
----
-
-### Pattern 4: Provenance Tracking (EnrichmentRun)
-
-**What:** Every enrichment operation is logged to the DB with: which providers were tried, which fields each added, credits consumed, duration, and final state. This makes the system auditable and cost-trackable.
-
-**When to use:** From day one. Without this, you cannot answer "why does this person have this data?" or "how much did enriching 500 people cost?"
-
-**Trade-offs:**
-- Pro: Full audit trail, cost tracking, debugging support
-- Pro: Enables "re-enrich if stale" logic based on enrichedAt timestamp
-- Con: Extra DB write per enrichment (acceptable — runs are infrequent compared to reads)
-
-**Example schema addition:**
-```prisma
-model EnrichmentRun {
-  id           String   @id @default(cuid())
-  entityType   String   // "person" | "company"
-  entityId     String   // Person.id or Company.id
-  triggeredBy  String   // "pipeline" | "agent" | "manual" | "api"
-  providers    String   // JSON: ProviderAttempt[]
-  fieldsAdded  String   // JSON: string[] of field names that changed
-  totalCredits Int      @default(0)
-  durationMs   Int?
-  status       String   @default("complete") // complete | partial | failed
-  createdAt    DateTime @default(now())
-
-  @@index([entityType, entityId])
-  @@index([createdAt])
-}
-```
-
----
-
-### Pattern 5: AI Normalization as Final Pass
-
-**What:** After the waterfall produces raw data, run a Claude Haiku call to normalize messy outputs: classify industry into standard categories, standardize job titles to seniority tiers, clean up company names, derive missing fields where inferable.
-
-**When to use:** After every enrichment run, before persisting. This replaces what Clay's "AI column" was doing.
-
-**Trade-offs:**
-- Pro: All data ends up in consistent shape regardless of which provider sourced it
-- Pro: Haiku is cheap (sub-penny per call)
-- Pro: Normalizing once at write-time means reads are always clean
-- Con: Adds latency (300-800ms per call) — acceptable for individual enrichment, batched for bulk
-
-**Example:**
-```typescript
-// src/lib/enrichment/normalize-ai.ts
-export async function normalizeWithAI(
-  data: Partial<PersonEnrichmentData>
-): Promise<Partial<PersonEnrichmentData>> {
-  const result = await generateText({
-    model: anthropic('claude-haiku-4-5-20251001'),
-    system: NORMALIZATION_PROMPT,
-    messages: [{
-      role: 'user',
-      content: JSON.stringify(data)
-    }],
+export async function runLeadsAgent(input: LeadsInput): Promise<LeadsOutput> {
+  const result = await runAgent<LeadsOutput>(leadsConfig, buildLeadsMessage(input), {
+    triggeredBy: "orchestrator",
+    workspaceSlug: input.workspaceSlug,
   });
-  // parse JSON from result.text, merge back into data
-  return { ...data, ...parseNormalized(result.text) };
+  return result.output;
+}
+```
+
+The `runAgent()` in `runner.ts` handles: AgentRun create → generateText → steps extraction → AgentRun update. All agents get audit trails for free by using it.
+
+### Pattern: Portal Auth in API Routes
+
+`/api/portal/*` routes are marked as public in middleware (no admin cookie check). The route handlers must verify the portal session and enforce workspace ownership:
+
+```typescript
+export async function POST(_req: Request, context: RouteContext) {
+  // 1. Verify portal session (throws if none)
+  const { workspaceSlug } = await getPortalSession();
+
+  // 2. Load resource and verify ownership
+  const { id } = await context.params;
+  const list = await prisma.targetList.findUnique({ where: { id } });
+
+  if (!list || list.workspaceSlug !== workspaceSlug) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // 3. Perform action
+  await prisma.targetList.update({ where: { id }, data: { status: "approved" } });
+
+  return NextResponse.json({ ok: true });
+}
+```
+
+Never trust the ID in the URL without verifying workspace ownership. Client A must never be able to approve Client B's list.
+
+### Pattern: Fire-and-Forget Deploy
+
+Campaign deploy involves many sequential EmailBison API calls (up to 200+ for a full list). This must not block the portal approval response. The Vercel Hobby function timeout is 10s; deploy will take 60-300s for a real list.
+
+```typescript
+// In approval route — return immediately, deploy runs async
+await prisma.targetList.update({ where: { id }, data: { status: "approved" } });
+
+// Check if copy is ready
+const readyCopy = await prisma.emailDraft.count({ where: { workspaceSlug, status: "approved" } });
+if (readyCopy > 0) {
+  void deployCampaign(workspaceSlug, id);  // fire and forget
 }
 
-// NORMALIZATION_PROMPT tells Haiku to:
-// - Map industry to one of: SaaS, Agencies, E-commerce, Manufacturing, Finance, etc.
-// - Map jobTitle to seniority: C-Suite, VP, Director, Manager, IC
-// - Clean company name (remove Inc., Ltd., LLC unless meaningful)
-// - Derive location if city/state/country are separate fields
-// - Output ONLY changed fields as JSON
+return NextResponse.json({ ok: true });  // client gets this immediately
 ```
+
+Deploy status is trackable via AgentRun records (admin can check the runs log). Consider a simple deploy status indicator in the admin list detail page.
+
+### Pattern: Hard Email Verification Gate
+
+Inherited from v1.0 — never send unverified emails to EmailBison. In the deploy service, always filter:
+
+```typescript
+const eligiblePeople = list.people.filter(tlp => {
+  const p = tlp.person;
+  return p.email && p.email.trim() !== '';
+  // Additional: could check enrichmentData.emailVerified === true
+});
+```
+
+This is consistent with the existing CSV export gate in `/api/lists/[id]/export/route.ts`.
 
 ---
 
-## Data Flow
+## Anti-Patterns to Avoid
 
-### Single Person Enrichment
+### Anti-Pattern 1: Blocking Portal Response on Deploy
 
-```
-API Route / Agent Tool
-    ↓ enrichPerson(email)
-EnrichmentPipeline
-    ↓ dedup check (prisma.person.findUnique)
-    ├─ FOUND + sufficient → return cached data (cost: $0)
-    └─ MISSING or stale →
-        ↓ waterfall: Prospeo → AI Ark → Firecrawl → LeadMagic
-        ↓ each provider: HTTP call → normalize response → merge into result
-        ↓ AI normalization (Haiku): clean industry/title/company
-        ↓ persist: person.upsert + company.upsert + enrichmentRun.create
-        ↓ return EnrichmentResult { data, attempts, cost }
-```
+**What people do:** Await the full `deployCampaign()` call inside the approval API route.
 
-### Bulk Enrichment (List Building)
+**Why it's wrong:** A list of 100 people = 100+ EmailBison API calls, sequential. At 100-300ms each, that's 10-30s. Vercel Hobby times out at 10s. Client sees a network error.
 
-```
-Leads Agent or API route
-    ↓ enrichBatch(emails[], options)
-    ↓ split into chunks of 10 (rate limit safety)
-    ↓ for each chunk: parallel enrichPerson() calls
-    ↓ aggregate results + cost summary
-    ↓ return BatchResult { enriched, cached, failed, totalCost }
-```
+**Do this instead:** Return the approval response immediately. Fire deploy with `void deployCampaign()`. Use AgentRun status to expose deploy progress in admin.
 
-### Qualification Flow (ICP fit check)
+### Anti-Pattern 2: Skipping Workspace Ownership Check
 
-```
-List of enriched people
-    ↓ filter: has companyDomain
-    ↓ for each person: firecrawl.scrapeUrl(website)
-    ↓ claude-haiku: classify ICP fit (YES/MAYBE/NO) against workspace ICP criteria
-    ↓ store: person.enrichmentData.icpFit + icpFitReason
-    ↓ segment into lists by fit tier
-```
+**What people do:** Trust the `listId` or `campaignName` in the URL without verifying it belongs to the session's workspace.
 
-### Key Data Flows
+**Why it's wrong:** A logged-in portal client could approve another client's leads list by guessing IDs (CUID collision is low but the security principle is wrong either way).
 
-1. **Dedup saves money:** The pipeline reads before it writes. If Person already has email + title + company + LinkedIn, the waterfall short-circuits entirely. Given 14,563 existing people, this is the single biggest cost control lever.
+**Do this instead:** Always: `findUnique({ where: { id } })` then `if (list.workspaceSlug !== workspaceSlug) return 404`. Every portal API route follows this pattern.
 
-2. **Waterfall stops early:** Most leads only need 1-2 providers. Prospeo finds the email; AI Ark fills in company data. LeadMagic (email verification) only runs right before export to EmailBison — not during general enrichment.
+### Anti-Pattern 3: Overcomplicating Portal UX
 
-3. **Normalization decoupled from sourcing:** The AI normalization step is a separate pass, not embedded in any provider. This means you can re-normalize existing data independently of re-enriching it.
+**What people do:** Build per-lead approve/reject, inline editing, comment threading on individual copy steps.
 
-4. **Company enrichment backfills people:** When a Company record is enriched (domain → industry, headcount), the pipeline can batch-update all Person records with that `companyDomain` to inherit the `vertical` and `industry`. This is already partially done in the current Clay endpoint.
+**Why it's wrong:** Per-PROJECT.md, portal approval is binary (whole list, whole copy batch). Complexity adds build time and noise. Clients approve the work product, not edit it.
+
+**Do this instead:** Read-only sample view with enrichment summary. Two actions: Approve (whole list) or Request Changes (textarea → stored as feedback on reject). Admin acts on the feedback, re-submits.
+
+### Anti-Pattern 4: Multiple Deploy Triggers Racing
+
+**What people do:** Trigger deploy from both the leads approval and the copy approval without deduplication.
+
+**Why it's wrong:** If both approval routes fire deploy simultaneously, you create two campaigns in EmailBison with the same name and duplicate all the leads.
+
+**Do this instead:** Only one trigger fires deploy. Convention: leads approval triggers deploy if copy is already approved. Copy approval triggers deploy if leads are already approved. Since portal review is sequential (leads first, then copy), the natural order prevents races. If concurrent access is a concern, use a TargetList.status check as a mutex (`deployed` prevents re-deploy).
+
+### Anti-Pattern 5: Embedding EmailBison API Calls Directly in Agent Tools
+
+**What people do:** Put `EmailBisonClient.createCampaign()` calls directly inside the Campaign Agent's tool `execute` functions.
+
+**Why it's wrong:** Deploy logic becomes untestable without an agent context. Can't call deploy from portal approval or admin button without running a full agent.
+
+**Do this instead:** Campaign deploy is a service (`src/lib/campaign-deploy/deploy.ts`) that the Campaign Agent tools call. The agent is a thin wrapper. Same pattern as how Writer Agent calls `prisma.emailDraft.create()` directly — the agent is a driver, not the implementation.
 
 ---
 
-## Integration Points
+## Integration Points Summary
 
 ### External Services
 
 | Service | Integration Pattern | Notes |
 |---------|---------------------|-------|
-| Prospeo | REST API — POST with email, returns email + confidence + name | Use for primary email finding/verification on new leads |
-| AI Ark | REST API — company lookup by domain, person lookup by email | Best depth for company data (headcount, description, industry) |
-| LeadMagic | REST API — email verification endpoint | Run last, right before EmailBison export |
-| Firecrawl | Already integrated (`src/lib/firecrawl/client.ts`) | Reuse for prospect qualification scraping |
-| Claude Haiku | Vercel AI SDK — already integrated | Normalization + ICP classification; Haiku keeps cost low |
+| EmailBison API | `EmailBisonClient` (existing) | Add `addSequenceStep()` + `assignLeadToCampaign()` — endpoint shapes need verification against EB API docs (MEDIUM confidence) |
+| Enrichment providers | Existing waterfall in `EnrichmentJob` / `EnrichmentLog` pattern | Leads Agent tools reuse same logic, called as tool wrappers |
+| Anthropic API | `runner.ts` + `generateText()` (existing) | leads.ts uses same pattern — Opus 4, 15 steps |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| Leads Agent ↔ EnrichmentPipeline | Direct function call | Agent calls `enrichPerson()` / `enrichBatch()` as a tool |
-| EnrichmentPipeline ↔ Providers | Function call (each provider is a module) | No HTTP between internal components |
-| EnrichmentPipeline ↔ DB | Prisma — same pattern as rest of codebase | Person, Company, EnrichmentRun models |
-| API Routes ↔ EnrichmentPipeline | Direct import — `enrichPerson()` from `src/lib/enrichment` | Routes are thin; all logic in pipeline |
-| Chat Orchestrator ↔ Leads Agent | Existing `delegateToLeads` tool pattern | Leads Agent follows exact same runner.ts pattern as Research Agent |
-
----
-
-## Suggested Build Order
-
-This order respects dependencies — each phase delivers usable value and unblocks the next.
-
-### Phase 1: Foundation (unblocks everything)
-1. `EnrichmentProvider` interface + types (`src/lib/enrichment/types.ts`)
-2. `merge.ts` — field-level merge with precedence
-3. `dedup.ts` — check existing Person/Company before calling APIs
-4. `EnrichmentRun` Prisma model + migration
-5. Basic `pipeline.ts` — dedup + single provider + persist
-
-**Why first:** No enrichment feature works without these. Define the contract before implementing providers.
-
-### Phase 2: Provider Adapters (run in parallel once Phase 1 done)
-- Prospeo adapter — email finding
-- AI Ark adapter — company + person depth
-- LeadMagic adapter — email verification
-- Wire all three into waterfall in `pipeline.ts`
-
-**Why here:** Provider adapters are independent of each other. Once the interface is defined, all three can be written simultaneously.
-
-### Phase 3: AI Normalization
-- `normalize-ai.ts` — Haiku normalization pass
-- Wire into pipeline as final step
-- Write normalization prompt (industry taxonomy, title seniority map)
-
-**Why third:** Normalization depends on providers being wired — you need data to normalize. Also needs the industry/title taxonomy to be defined upfront.
-
-### Phase 4: Leads Agent
-- `src/lib/agents/leads.ts` — follows existing `research.ts` pattern exactly
-- Tools: `enrichPerson`, `enrichBatch`, `searchPeople`, `createList`, `exportToEmailBison`
-- Wire into orchestrator's `delegateToLeads` (currently a stub)
-
-**Why fourth:** Agents are the user-facing layer. Pipeline must work before the agent can use it.
-
-### Phase 5: Lead Search + List Building UI
-- `/api/people/search` route — filter by company, vertical, enrichment status, score
-- Lead search page component
-- List builder page — save searches as named lists, export
-
-**Why last:** UI work needs the data to be good first. Showing un-enriched, un-normalized data in a search UI creates bad UX.
-
----
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Hitting All Providers in Parallel
-
-**What people do:** Run Prospeo + AI Ark + LeadMagic simultaneously for every lead.
-
-**Why it's wrong:** You pay for all three even when the first one is sufficient. For a batch of 1,000 leads, this might triple your API spend. Parallel execution is also harder to debug when one provider returns bad data.
-
-**Do this instead:** Waterfall — sequential with early exit. Only parallelize the final batch of leads where multiple are fully enriched and being sent to EmailBison for verification.
-
----
-
-### Anti-Pattern 2: Storing Raw Provider Responses Verbatim
-
-**What people do:** Dump the entire API response JSON into `enrichmentData` and query it later.
-
-**Why it's wrong:** Every provider returns different field names. `"title"` vs `"job_title"` vs `"position"`. Querying across providers becomes impossible. You can't filter by job title if it's buried in different JSON keys per person.
-
-**Do this instead:** Normalize all provider outputs to the `PersonEnrichmentData` shape immediately in the provider adapter. Only put genuinely novel/extra fields into `enrichmentData`.
-
----
-
-### Anti-Pattern 3: Enriching on Every Request
-
-**What people do:** Enrich a person every time they appear in a search result or list.
-
-**Why it's wrong:** For 14k+ people, this burns credits re-enriching people who were enriched yesterday.
-
-**Do this instead:** Treat enrichment as a batch operation with staleness rules. Re-enrich only when: (a) triggered explicitly, (b) record is older than N days and missing key fields, or (c) person enters a new campaign. Cache `enrichedAt` on Person and check it in `dedup.ts`.
-
----
-
-### Anti-Pattern 4: Running Email Verification Too Early
-
-**What people do:** Verify emails at enrichment time, for every lead.
-
-**Why it's wrong:** Email verification (LeadMagic) has a per-verification cost. Many enriched leads will never make it into a campaign — they'll be filtered out by ICP score, headcount, or vertical. Verifying them is waste.
-
-**Do this instead:** Run verification as the final step before EmailBison export only, not during general enrichment. Gate it on: "this lead is in a finalized list being sent to campaign."
-
----
-
-### Anti-Pattern 5: Embedding Provider Logic in Agent Tools
-
-**What people do:** Put `fetch('https://api.prospeo.com/...')` calls directly inside an agent tool.
-
-**Why it's wrong:** Agents are orchestrators, not executors. If you hardwire provider calls into tools, you can't reuse the same logic from an API route, a CLI script, or a batch job. You also can't test providers independently.
-
-**Do this instead:** Agent tools call `enrichPerson()` from `src/lib/enrichment`. The pipeline handles provider selection. Agents stay thin.
+| Chat UI → Orchestrator | POST `/api/chat` (streaming, existing) | No change needed |
+| Orchestrator → Leads Agent | `runLeadsAgent()` (replace stub) | Wire in `orchestrator.ts` |
+| Orchestrator → Campaign Agent | `runCampaignAgent()` (replace stub) | Phase 5 only |
+| Portal → Approval API | POST `/api/portal/review/*/approve` | Session cookie = workspace scope |
+| Approval API → Deploy Service | Direct function call, `void` (fire-and-forget) | Don't await |
+| Deploy Service → EmailBison | `EmailBisonClient` methods | Rate limit 429 handling already exists in client |
+| Admin UI → Deploy | POST `/api/lists/[id]/deploy` | Admin bypass — no approval status check needed |
 
 ---
 
 ## Scaling Considerations
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| Current (14k people, 6 workspaces) | Synchronous enrichment is fine. No queue needed. Pipeline runs in-request for single records, batch loops for bulk. |
-| 100k people, 20 workspaces | Add background job pattern. Bulk enrichment should be async (POST to kick off, poll for status). Vercel has 5-minute serverless limit — long batches need chunking. |
-| 500k+ people | Add a proper queue (BullMQ + Redis, or Trigger.dev). Rate limiting per provider becomes critical. Consider a dedicated enrichment worker. |
+| Scale | Architecture Notes |
+|-------|-------------------|
+| Current (6 workspaces, 50-200 leads/campaign) | Sequential deploy in-process is fine. Fire-and-forget with Vercel background processing. |
+| 20+ workspaces, 500+ leads/campaign | Sequential deploy will hit Vercel function timeouts. Adopt `EnrichmentJob` queue pattern — already exists in schema, batch by 50 leads per job chunk. |
+| 50+ concurrent deploys | Deploy needs background worker (Railway or Vercel Cron chunking). `EnrichmentJob` model + `resumeAt` field already supports this pattern — reuse for `CampaignDeployJob`. |
 
-### Scaling Priorities
-
-1. **First bottleneck:** Vercel's 300-second function timeout during bulk enrichment. Fix: chunk batches into 50-person groups, either loop with short sleeps or use a background task pattern.
-
-2. **Second bottleneck:** Provider rate limits (Prospeo, AI Ark both have per-minute caps). Fix: implement per-provider rate limit tracking with a simple in-memory counter or Redis if available.
+The `EnrichmentJob` model (with `chunkSize`, `processedCount`, `resumeAt`) is the right template for scaling campaign deploy if sequential in-process stops working.
 
 ---
 
 ## Sources
 
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents` (HIGH confidence — direct inspection)
-- Existing enrichment endpoint: `src/app/api/people/enrich/route.ts` (HIGH — shows current field alias + upsert pattern to extend)
-- Agent architecture: `src/lib/agents/runner.ts`, `types.ts`, `research.ts` (HIGH — defines the exact pattern the Leads Agent must follow)
-- Project requirements: `.planning/PROJECT.md` — confirms provider choices (Prospeo, AI Ark, LeadMagic, Firecrawl) and constraints (waterfall, dedup-first, pluggable)
-- Cold email framework: `/tmp/cold-email-engine-framework.md` — confirms scoring model (1-10 signal overlap), list sizes (3k-7.5k), qualification tiers
-- DB schema: `prisma/schema.prisma` — shows existing Person/Company models to extend, AgentRun pattern to replicate for EnrichmentRun
-- Waterfall enrichment pattern: Training knowledge on multi-source data pipeline architecture (MEDIUM — well-established pattern in B2B data industry, consistent with validated agency approach described in PROJECT.md)
-- Provider integration patterns: Training knowledge on Prospeo, AI Ark, LeadMagic APIs (MEDIUM — verify specific endpoint shapes against each provider's official docs during implementation)
+- `src/lib/agents/orchestrator.ts` — current delegation stubs, tool shapes (HIGH)
+- `src/lib/agents/runner.ts` — AgentRun pattern all agents must follow (HIGH)
+- `src/lib/agents/research.ts`, `writer.ts`, `types.ts` — established agent conventions (HIGH)
+- `src/lib/emailbison/client.ts` — existing EmailBison API capabilities + what's missing (HIGH)
+- `prisma/schema.prisma` — full data model including TargetList, EmailDraft, AgentRun (HIGH)
+- `src/middleware.ts` — auth boundaries, `/api/portal/` public passthrough (HIGH)
+- `src/app/(portal)/portal/page.tsx` — portal server component pattern, getPortalSession() usage (HIGH)
+- `src/app/api/lists/[id]/export/route.ts` — email verification gate to replicate in deploy (HIGH)
+- `.planning/PROJECT.md` — requirements, constraints, out-of-scope items (HIGH)
+- EmailBison sequence step + lead assignment API endpoints — not inspected directly (MEDIUM — verify endpoint shapes during Phase 4)
 
 ---
 
-*Architecture research for: Multi-source lead enrichment pipeline (Clay replacement)*
-*Researched: 2026-02-26*
+*Architecture research for: Outsignal v1.1 Outbound Pipeline (Leads Agent + Portal Review + Campaign Deploy)*
+*Researched: 2026-02-27*
