@@ -87,6 +87,7 @@ model Person {
   updatedAt      DateTime @updatedAt
 
   workspaces     PersonWorkspace[]
+  lists          TargetListPerson[]
 
   @@index([source])
   @@index([status])
@@ -332,6 +333,33 @@ model DailyCostTotal {
   totalUsd  Float    @default(0)
   breakdown String?  // JSON — per-provider breakdown { prospeo: 1.23, leadmagic: 0.45 }
   updatedAt DateTime @updatedAt
+}
+
+model TargetList {
+  id            String   @id @default(cuid())
+  name          String
+  workspaceSlug String
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  people TargetListPerson[]
+
+  @@index([workspaceSlug])
+}
+
+model TargetListPerson {
+  id       String   @id @default(cuid())
+  listId   String
+  personId String
+  addedAt  DateTime @default(now())
+
+  list   TargetList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  person Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, personId])
+  @@index([listId])
+  @@index([personId])
 }
 
 // --- LinkedIn Sequencer ---
