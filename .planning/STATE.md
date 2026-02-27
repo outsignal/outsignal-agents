@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-27T12:59:02Z"
+last_updated: "2026-02-27T13:03:00Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 05 Export + EmailBison Integration — 1 of 3 plans complete
+**Current focus:** Phase 05 Export + EmailBison Integration — 2 of 3 plans complete
 
 ## Current Position
 
 Phase: 05 (Export + EmailBison Integration) — IN PROGRESS
-Plan: 1 of 3 complete (05-01 — verification gate + CSV export)
-Status: Phase 05 in progress — 05-01 shipped
-Last activity: 2026-02-27 — Completed 05-01 (verification gate, CSV generation, GET /api/lists/[id]/export)
+Plan: 2 of 3 complete (05-02 — EmailBison client extensions)
+Status: Phase 05 in progress — 05-01 + 05-02 shipped
+Last activity: 2026-02-27 — Completed 05-02 (createCampaign, duplicateCampaign, createLead, ensureCustomVariables, getCustomVariables, createCustomVariable)
 
-Progress: [██████████] Phase 05 plan 1 of 3 complete
+Progress: [████████████████████] Phase 05 plan 2 of 3 complete
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██████████] Phase 05 plan 1 of 3 complete
 | Phase 04-search-filter-list-building P04 | 3 | 2 tasks | 7 files |
 | Phase 04-search-filter-list-building P05 | 3 | 2 tasks | 4 files |
 | Phase 05-export-emailbison-integration P01 | 3 | 2 tasks | 3 files |
+| Phase 05-export-emailbison-integration P02 | 1 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,9 @@ Recent decisions affecting current work:
 - [05-01]: Company records fetched in single batch query (findMany with domain array) then Map-indexed for O(1) lookup during CSV row building
 - [05-01]: Enrichment headers sorted alphabetically for deterministic CSV column order
 - [05-01]: CSV route uses new Response() not NextResponse — no JSON helpers needed for CSV response
+- [05-02]: duplicateCampaign ignores name param — API always produces "Copy of {original}"; documented in code comment
+- [05-02]: createLead uses conditional field inclusion (truthy check) — avoids sending null/undefined to EmailBison API
+- [05-02]: ensureCustomVariables is idempotent via Set-based diff — safe to call multiple times with no side effects
 
 ### Pending Todos
 
@@ -156,5 +160,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 05-01-PLAN.md — Verification gate, CSV export utility, GET /api/lists/[id]/export endpoint
+Stopped at: Completed 05-02-PLAN.md — EmailBisonClient extended with 6 new methods (createCampaign, duplicateCampaign, createLead, getCustomVariables, createCustomVariable, ensureCustomVariables)
 Resume file: None
