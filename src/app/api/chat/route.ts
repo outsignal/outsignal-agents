@@ -5,6 +5,8 @@ import {
   orchestratorConfig,
 } from "@/lib/agents/orchestrator";
 
+export const maxDuration = 300; // 5 minutes — Leads Agent scoring can take 60-300s for large lists
+
 interface ChatContext {
   pathname?: string;
   workspaceSlug?: string;
