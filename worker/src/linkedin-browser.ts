@@ -197,6 +197,7 @@ export class LinkedInBrowser {
    */
   private async resolveRecipient(profileUrl: string): Promise<{
     urn: string;
+    urnType: string;
     name: string | null;
   } | null> {
     const slugMatch = profileUrl.match(/\/in\/([^/?]+)/);
@@ -269,6 +270,7 @@ export class LinkedInBrowser {
    */
   private async fetchVoyagerProfile(publicId: string): Promise<{
     urn: string;
+    urnType: string;
     name: string | null;
   } | null> {
     const endpoints = [
@@ -285,12 +287,17 @@ export class LinkedInBrowser {
         continue;
       }
 
-      // Extract fsd_profile URN
-      const urnMatch = result.body.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-      if (!urnMatch) {
-        this.log("Voyager response has no fsd_profile URN, trying next endpoint");
+      // Extract fs_miniProfile URN (required for messaging API)
+      // Also grab fsd_profile as fallback ID source
+      const miniMatch = result.body.match(/urn:li:fs_miniProfile:([A-Za-z0-9_-]+)/);
+      const fsdMatch = result.body.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+      const profileId = miniMatch?.[1] ?? fsdMatch?.[1];
+      if (!profileId) {
+        this.log("Voyager response has no profile URN, trying next endpoint");
         continue;
       }
+      // Prefer miniProfile URN type for messaging compatibility
+      const urnType = miniMatch ? "fs_miniProfile" : "fsd_profile";
 
       // Extract name from the response
       let name: string | null = null;
@@ -312,8 +319,8 @@ export class LinkedInBrowser {
         }
       } catch { /* name extraction is best-effort */ }
 
-      this.log(`Voyager profile resolved: urn="${urnMatch[1]}", name="${name}"`);
-      return { urn: urnMatch[1], name };
+      this.log(`Voyager profile resolved: ${urnType}="${profileId}", name="${name}"`);
+      return { urn: profileId, urnType, name };
     }
 
     this.log("All Voyager profile endpoints failed");
@@ -325,9 +332,10 @@ export class LinkedInBrowser {
    */
   private async sendMessageViaVoyager(
     recipientUrn: string,
+    urnType: string,
     messageText: string,
   ): Promise<{ success: boolean; error?: string }> {
-    const fullUrn = `urn:li:fsd_profile:${recipientUrn}`;
+    const fullUrn = `urn:li:${urnType}:${recipientUrn}`;
     const body = JSON.stringify({
       keyVersion: "LEGACY_INBOX",
       conversationCreate: {
@@ -671,8 +679,8 @@ export class LinkedInBrowser {
           error: `Failed to resolve member URN for: ${profileUrl}`,
         };
       }
-      const { urn: memberId, name: recipientName } = recipient;
-      this.log(`Resolved: ${recipientName} (${memberId})`);
+      const { urn: memberId, urnType, name: recipientName } = recipient;
+      this.log(`Resolved: ${recipientName} (${urnType}:${memberId})`);
 
       // Step 2: Navigate to the profile page (counts as a profile view)
       const landedUrl = await this.navigate(profileUrl);
@@ -682,7 +690,7 @@ export class LinkedInBrowser {
       await this.sleep(1000 + Math.random() * 2000);
 
       // Step 3: Send message via Voyager messaging API
-      const sendResult = await this.sendMessageViaVoyager(memberId, message);
+      const sendResult = await this.sendMessageViaVoyager(memberId, urnType, message);
       if (!sendResult.success) {
         return {
           success: false,
