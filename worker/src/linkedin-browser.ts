@@ -192,65 +192,101 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Extract the member URN (numeric ID) from the current profile page.
-   * Tries 4 fallback strategies to find it in the DOM.
+   * Extract the member URN by intercepting Voyager API network responses.
+   *
+   * Must be called BEFORE navigating to the profile page — returns a promise
+   * that resolves once the Voyager profile API response arrives with the URN.
+   * Falls back to DOM-based extraction if network interception fails.
    */
-  private async extractMemberUrn(maxWaitMs = 10_000): Promise<string | null> {
+  private extractMemberUrnFromNetwork(timeoutMs = 15_000): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (!this.ws) { resolve(null); return; }
+
+      let resolved = false;
+      const ws = this.ws;
+
+      const timer = setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        ws.removeEventListener("message", handler);
+        this.log(`Voyager URN interception timed out after ${timeoutMs}ms`);
+        resolve(null);
+      }, timeoutMs);
+
+      const handler = async (event: MessageEvent) => {
+        if (resolved) return;
+        try {
+          const msg = JSON.parse(String(event.data));
+          if (msg.method !== "Network.responseReceived") return;
+
+          const url: string = msg.params?.response?.url ?? "";
+          const mimeType: string = msg.params?.response?.mimeType ?? "";
+
+          // Match Voyager profile API responses
+          if (!url.includes("/voyager/api/identity/")) return;
+          if (!mimeType.includes("json")) return;
+          if (!url.includes("profileView") && !url.includes("dash/profiles")) return;
+
+          this.log(`Voyager API response detected: ${url.substring(0, 120)}`);
+
+          // Get the response body
+          const bodyResp = await cdpSend(ws, "Network.getResponseBody", {
+            requestId: msg.params.requestId,
+          }, this.nextId());
+
+          let bodyText = (bodyResp?.result?.body as string) ?? "";
+          if (bodyResp?.result?.base64Encoded) {
+            bodyText = Buffer.from(bodyText, "base64").toString("utf-8");
+          }
+
+          // Extract fsd_profile URN from response JSON
+          const match = bodyText.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+          if (match && !resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            ws.removeEventListener("message", handler);
+            this.log(`Extracted URN from Voyager API: "${match[1]}"`);
+            resolve(match[1]);
+          }
+        } catch { /* ignore parse errors on non-matching messages */ }
+      };
+
+      ws.addEventListener("message", handler);
+    });
+  }
+
+  /**
+   * Fallback: extract member URN from DOM (works when LinkedIn renders fully).
+   */
+  private async extractMemberUrnFromDom(maxWaitMs = 5_000): Promise<string | null> {
     if (!this.ws) return null;
     const start = Date.now();
 
-    for (let i = 0; i < 20; i++) {
-      if (Date.now() - start > maxWaitMs) {
-        this.log(`Member URN extraction timed out after ${maxWaitMs}ms`);
-        break;
-      }
+    for (let i = 0; i < 10; i++) {
+      if (Date.now() - start > maxWaitMs) break;
 
       const result = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
-  // Strategy 1: data-member-id attribute
-  const memberIdEl = document.querySelector('[data-member-id]');
-  if (memberIdEl) {
-    const id = memberIdEl.getAttribute('data-member-id');
-    if (id) return { id, strategy: 'data-member-id' };
-  }
-
-  // Strategy 2: urn:li:fsd_profile:{id} regex on page HTML
+  const el = document.querySelector('[data-member-id]');
+  if (el) { const id = el.getAttribute('data-member-id'); if (id) return { id, s: 'data-member-id' }; }
   const html = document.documentElement.innerHTML;
-  const fsdMatch = html.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-  if (fsdMatch) return { id: fsdMatch[1], strategy: 'fsd_profile_regex' };
-
-  // Strategy 3: entityUrn in <code> tags (LinkedIn embeds JSON in code tags)
-  const codeTags = document.querySelectorAll('code');
-  for (const code of codeTags) {
-    const text = code.textContent || '';
-    const urnMatch = text.match(/"entityUrn"\\s*:\\s*"urn:li:(?:fsd_profile|member):([A-Za-z0-9_-]+)"/);
-    if (urnMatch) return { id: urnMatch[1], strategy: 'code_tag_entityUrn' };
-  }
-
-  // Strategy 4: data-entity-urn attribute
-  const entityUrnEl = document.querySelector('[data-entity-urn]');
-  if (entityUrnEl) {
-    const urn = entityUrnEl.getAttribute('data-entity-urn') || '';
-    const match = urn.match(/urn:li:(?:fsd_profile|member):([A-Za-z0-9_-]+)/);
-    if (match) return { id: match[1], strategy: 'data-entity-urn' };
-  }
-
+  const m = html.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+  if (m) return { id: m[1], s: 'fsd_regex' };
+  const el2 = document.querySelector('[data-entity-urn]');
+  if (el2) { const u = el2.getAttribute('data-entity-urn') || ''; const m2 = u.match(/urn:li:(?:fsd_profile|member):([A-Za-z0-9_-]+)/); if (m2) return { id: m2[1], s: 'data-entity-urn' }; }
   return null;
 })()`,
           returnByValue: true,
         }, this.nextId()),
-      ) as { id: string; strategy: string } | null;
+      ) as { id: string; s: string } | null;
 
       if (result?.id) {
-        this.log(`Extracted member URN "${result.id}" via strategy: ${result.strategy}`);
+        this.log(`Extracted URN from DOM via ${result.s}: "${result.id}"`);
         return result.id;
       }
-
-      this.log(`URN poll ${i + 1}: no URN found yet`);
       await this.sleep(500);
     }
-
     return null;
   }
 
@@ -635,15 +671,22 @@ export class LinkedInBrowser {
     try {
       this.log(`Sending message via URN compose to: ${profileUrl}`);
 
-      // Step 1: Navigate to the profile page
+      // Step 1: Start Voyager network listener BEFORE navigating
+      const urnPromise = this.extractMemberUrnFromNetwork();
+
+      // Step 2: Navigate to the profile page
       const landedUrl = await this.navigate(profileUrl);
       this.log(`Profile page landed: ${landedUrl}`);
 
       // Human-like delay after viewing profile
       await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 2: Extract the member URN from the profile page
-      const memberId = await this.extractMemberUrn();
+      // Step 3: Await URN from network interception, fall back to DOM
+      let memberId = await urnPromise;
+      if (!memberId) {
+        this.log("Voyager interception failed, trying DOM fallback");
+        memberId = await this.extractMemberUrnFromDom();
+      }
       if (!memberId) {
         return {
           success: false,
@@ -651,16 +694,16 @@ export class LinkedInBrowser {
         };
       }
 
-      // Step 3: Extract profile name for later verification
+      // Step 4: Extract profile name for later verification
       const profileName = await this.extractProfileName();
       this.log(`Profile name for verification: "${profileName}"`);
 
-      // Step 4: Navigate to compose URL with recipient URN
+      // Step 5: Navigate to compose URL with recipient URN
       const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:fsd_profile:${memberId}`;
       this.log(`Navigating to compose URL: ${composeUrl}`);
       await this.navigate(composeUrl);
 
-      // Step 5: Wait for the recipient pill to appear
+      // Step 6: Wait for the recipient pill to appear
       const pillName = await this.waitForComposeRecipient();
       if (!pillName) {
         // Diagnose why the pill didn't appear
@@ -690,7 +733,7 @@ export class LinkedInBrowser {
         };
       }
 
-      // Step 6: Name verification — compare pill name to profile name
+      // Step 7: Name verification — compare pill name to profile name
       if (profileName) {
         const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
         const normalizedPill = normalize(pillName);
@@ -709,7 +752,7 @@ export class LinkedInBrowser {
         this.log("Skipping name verification — profile name not extracted");
       }
 
-      // Step 7: Focus the message textbox
+      // Step 8: Focus the message textbox
       const focusResult = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
@@ -730,7 +773,7 @@ export class LinkedInBrowser {
         return { success: false, error: `Message textbox not found (${focusResult?.editableCount ?? 0} editables)` };
       }
 
-      // Step 8: Type the message character by character using CDP Input.dispatchKeyEvent
+      // Step 9: Type the message character by character using CDP Input.dispatchKeyEvent
       await this.sleep(500);
       for (const char of message) {
         await cdpSend(this.ws, "Input.dispatchKeyEvent", {
@@ -747,7 +790,7 @@ export class LinkedInBrowser {
 
       this.log("Message typed via keyboard events");
 
-      // Step 9: Verify the message was typed
+      // Step 10: Verify the message was typed
       await this.sleep(1500);
 
       const verifyResult = evalValue(
@@ -768,7 +811,7 @@ export class LinkedInBrowser {
       }
       this.log(`Message in textbox: "${verifyResult.preview}..." (${verifyResult.textLen} chars)`);
 
-      // Step 10: Press Enter to send
+      // Step 11: Press Enter to send
       await cdpSend(this.ws, "Input.dispatchKeyEvent", {
         type: "rawKeyDown",
         key: "Enter",
@@ -784,7 +827,7 @@ export class LinkedInBrowser {
         nativeVirtualKeyCode: 13,
       }, this.nextId());
 
-      // Step 11: Verify textbox cleared (message was sent)
+      // Step 12: Verify textbox cleared (message was sent)
       await this.sleep(2000);
 
       const afterSend = evalValue(
