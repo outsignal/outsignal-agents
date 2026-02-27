@@ -18,9 +18,9 @@ interface ScheduleConfig {
 
 const DEFAULT_CONFIG: ScheduleConfig = {
   timezone: "Europe/London",
-  startHour: 8,
-  endHour: 18,
-  activeDays: [1, 2, 3, 4, 5], // Mon-Fri
+  startHour: 0,
+  endHour: 24,
+  activeDays: [0, 1, 2, 3, 4, 5, 6], // All days — TEMP for testing
 };
 
 /**
