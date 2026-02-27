@@ -660,67 +660,64 @@ export class LinkedInBrowser {
 
       this.log("Message typed via keyboard events");
 
-      // Step 6: Send the message by pressing Enter
-      // LinkedIn messaging sends on Enter by default — much more reliable
-      // than trying to find the Send button (which is a compound split button)
+      // Step 6: Click Send — wait a moment for React to enable the button
       await this.sleep(1500);
 
-      // Verify the message was typed by checking the textbox content
-      const verifyResult = evalValue(
+      const sendResult = evalValue(
         await cdpSend(this.ws, "Runtime.evaluate", {
           expression: `(() => {
-  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) return { found: false };
-  const text = input.textContent?.trim() ?? '';
-  return { found: true, hasText: text.length > 0, textLen: text.length, preview: text.substring(0, 30) };
+  // Find Send button — try multiple approaches
+  const allBtns = Array.from(document.querySelectorAll('button'));
+
+  // 1. Button with aria-label "Send"
+  let btn = allBtns.find(b => b.getAttribute('aria-label')?.toLowerCase() === 'send');
+
+  // 2. Submit button with "Send" text
+  if (!btn) btn = allBtns.find(b => b.type === 'submit' && b.textContent?.trim().toLowerCase().includes('send'));
+
+  // 3. Any button with exact "Send" text inside msg form
+  if (!btn) btn = allBtns.find(b => b.textContent?.trim() === 'Send' && b.closest('[class*="msg-"]'));
+
+  // 4. Any button with "Send" text
+  if (!btn) btn = allBtns.find(b => b.textContent?.trim() === 'Send');
+
+  // 5. Try SVG send icon button (LinkedIn sometimes uses icon-only buttons)
+  if (!btn) btn = allBtns.find(b => b.querySelector('svg use[href*="send"], svg[data-test-icon="send"]'));
+
+  // Debug info
+  const msgFormBtns = allBtns
+    .filter(b => b.closest('[class*="msg-"]'))
+    .map(b => ({
+      text: b.textContent?.trim().substring(0, 20),
+      label: b.getAttribute('aria-label')?.substring(0, 20),
+      type: b.type,
+      disabled: b.disabled,
+      classes: b.className?.substring(0, 40),
+    }));
+
+  if (!btn) return { found: false, msgFormBtns };
+  if (btn.disabled) return { found: true, disabled: true, msgFormBtns };
+  btn.click();
+  return { found: true, clicked: true };
 })()`,
           returnByValue: true,
         }, this.nextId()),
-      ) as { found: boolean; hasText?: boolean; textLen?: number; preview?: string } | null;
+      ) as { found: boolean; clicked?: boolean; disabled?: boolean; msgFormBtns?: Array<Record<string, unknown>> } | null;
 
-      if (!verifyResult?.found || !verifyResult?.hasText) {
-        this.log(`Message not in textbox. Result: ${JSON.stringify(verifyResult)}`);
-        return { success: false, error: `Message not typed (textLen=${verifyResult?.textLen ?? 0})` };
+      if (!sendResult?.found) {
+        const btnInfo = JSON.stringify(sendResult?.msgFormBtns ?? []);
+        this.log(`Send button not found. Msg form buttons: ${btnInfo}`);
+        return { success: false, error: `Send not found. MsgBtns=${btnInfo}` };
       }
-      this.log(`Message in textbox: "${verifyResult.preview}..." (${verifyResult.textLen} chars)`);
 
-      // Press Enter to send
-      await cdpSend(this.ws, "Input.dispatchKeyEvent", {
-        type: "rawKeyDown",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13,
-      }, this.nextId());
-      await cdpSend(this.ws, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13,
-      }, this.nextId());
+      if (sendResult.disabled) {
+        const btnInfo = JSON.stringify(sendResult.msgFormBtns ?? []);
+        this.log(`Send button found but disabled. Buttons: ${btnInfo}`);
+        return { success: false, error: `Send button disabled. MsgBtns=${btnInfo}` };
+      }
 
       await this.sleep(2000);
-
-      // Verify: check if textbox cleared (message was sent)
-      const afterSend = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  const input = document.querySelector('div[role="textbox"][contenteditable="true"]');
-  if (!input) return { cleared: true };
-  const text = input.textContent?.trim() ?? '';
-  return { cleared: text.length === 0, remainingLen: text.length };
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { cleared: boolean; remainingLen?: number } | null;
-
-      if (afterSend?.cleared) {
-        this.log("Message sent (textbox cleared)");
-      } else {
-        this.log(`Textbox still has ${afterSend?.remainingLen} chars after Enter — message may still have sent`);
-      }
-
+      this.log("Message sent via messaging compose");
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
