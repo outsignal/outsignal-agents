@@ -53,7 +53,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 **Requirements**: LEAD-04, LEAD-05
 **Gap Closure**: Closes gaps from v1.1 milestone audit
 **Success Criteria** (what must be TRUE):
-  1. All MCP tools in `src/mcp/leads-agent/tools/` call `operations.ts` functions instead of inline Prisma queries — zero divergent implementations
+  1. MCP tools with direct operations equivalents (search_people, create_list, add_to_list, view_list) call `operations.ts` functions instead of inline Prisma queries. Accepted exclusions: batch_score_list (workspace-level scope, no operations equivalent — deferred to Phase 8) and export_to_emailbison confirm path (campaign management, no operations equivalent — deferred to Phase 8). Both use shared scoring/verification functions.
   2. Export via agent returns an actionable error when workspace exists but apiToken is missing (not "Workspace not found")
   3. Orchestrator's `delegateToLeads` schema includes `conversationContext` and passes it to `runLeadsAgent` — multi-turn "narrow to London" follow-ups refine previous results
   4. `scoreList` in operations.ts has a code-level confirm gate (returns count without scoring when `confirm: false`) matching the MCP equivalent
@@ -65,7 +65,7 @@ Plans:
 ### Phase 8: Campaign Entity + Writer Integration
 **Goal**: Campaign becomes a first-class entity in Outsignal that owns leads (TargetList) AND content (email + LinkedIn sequences). Admin creates campaigns, generates content via writer agent, reviews and iterates via Cmd+J, and promotes to client review — all through natural language chat. Writer agent also generates suggested responses to incoming replies, surfaced in Slack notifications and available for refinement via Cmd+J.
 **Depends on**: Phase 7 (Leads Agent tools exist), Writer agent (exists, needs wiring to campaign context)
-**Requirements**: CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, WRITER-01, WRITER-02, WRITER-03, WRITER-04, WRITER-05, WRITER-06, WRITER-07
+**Requirements**: CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, WRITER-01, WRITER-02, WRITER-03, WRITER-04, WRITER-05, WRITER-06, WRITER-07, WRITER-08, WRITER-09
 **Success Criteria** (what must be TRUE):
   1. Campaign model exists in Prisma with status lifecycle (draft → internal_review → pending_approval → approved → deployed → active → paused → completed), channel selection, separate lead/content approval fields, and deployment tracking
   2. Admin types "create a campaign for Rise using the fintech CTO list, email + LinkedIn" in Cmd+J and a Campaign record is created with the TargetList linked and channels set
@@ -76,6 +76,8 @@ Plans:
   7. Campaign CRUD API routes exist at `/api/campaigns/*` with workspace ownership enforcement
   8. When a reply webhook fires (LEAD_REPLIED, LEAD_INTERESTED), the writer agent generates a suggested response using conversation history, workspace context, and knowledge base — included in the Slack notification as a "Suggested Response" block
   9. Admin can refine a reply suggestion via Cmd+J: "draft a response to John's reply" or "make that response more casual" — conversational iteration on reply drafts
+  10. Knowledge base search uses pgvector embeddings (cosine similarity) instead of keyword matching — all existing documents re-embedded during migration
+  11. searchKnowledgeBase tool is available to all agents (writer, leads, research, campaign) as a shared utility, not writer-exclusive
 **Plans**: TBD
 
 ### Phase 9: Client Portal Campaign Approval

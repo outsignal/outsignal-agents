@@ -13,7 +13,7 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [x] **LEAD-02**: Admin can create, view, and manage target lists from dashboard chat
 - [x] **LEAD-03**: Admin can score leads (ICP qualification) from dashboard chat
 - [x] **LEAD-04**: Admin can export verified leads to EmailBison from dashboard chat
-- [x] **LEAD-05**: Leads Agent shares operations layer with MCP tools (no logic divergence)
+- [x] **LEAD-05**: Leads Agent shares operations layer with MCP tools (no logic divergence). Scope: search, list CRUD, list scoring. Excluded: workspace-level batch scoring and campaign management in MCP export (deferred to Phase 8 campaign entity).
 - [x] **LEAD-06**: All Leads Agent operations logged to AgentRun audit trail
 
 ### Campaign Entity
@@ -33,6 +33,8 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [ ] **WRITER-05**: Writer ingests knowledge base best practices (46 docs) for email + LinkedIn copywriting
 - [ ] **WRITER-06**: On reply webhook (LEAD_REPLIED, LEAD_INTERESTED), writer generates a suggested response using conversation history, workspace context, and knowledge base — included in Slack notification
 - [ ] **WRITER-07**: Admin can refine reply suggestions via Cmd+J ("draft a response to John's reply", "make it more casual") — conversational iteration
+- [ ] **WRITER-08**: Knowledge base uses vector embeddings (pgvector on Neon) for semantic search — replaces keyword matching; all 46+ docs re-embedded on migration
+- [ ] **WRITER-09**: searchKnowledgeBase is a shared tool available to all agents (writer, leads, research, campaign) — not writer-only
 
 ### Portal Review
 
@@ -127,6 +129,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WRITER-05 | Phase 8 | Pending |
 | WRITER-06 | Phase 8 | Pending |
 | WRITER-07 | Phase 8 | Pending |
+| WRITER-08 | Phase 8 | Pending |
+| WRITER-09 | Phase 8 | Pending |
 | PORTAL-01 | Phase 9 | Pending |
 | PORTAL-02 | Phase 9 | Pending |
 | PORTAL-03 | Phase 9 | Pending |
@@ -145,8 +149,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NOTIF-03 | Phase 10 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 36 total (7 complete, 29 pending)
-- Mapped to phases: 36
+- v1.1 requirements: 38 total (7 complete, 31 pending)
+- Mapped to phases: 38
 - Unmapped: 0
 
 ---
