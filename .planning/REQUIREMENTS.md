@@ -30,12 +30,12 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **SEARCH-01**: User can search people by name, email, company, or job title
 - [ ] **SEARCH-02**: User can filter people by vertical, enrichment status, workspace, and company
 - [ ] **SEARCH-03**: User can search companies by name, domain, or vertical
-- [ ] **SEARCH-04**: User can view enrichment status indicators (enriched/partial/missing) on each record
+- [x] **SEARCH-04**: User can view enrichment status indicators (enriched/partial/missing) on each record
 - [ ] **SEARCH-05**: User can paginate through large result sets (14k+ people, 17k+ companies)
 
 ### List Building
 
-- [ ] **LIST-01**: User can create named target lists scoped to a workspace
+- [x] **LIST-01**: User can create named target lists scoped to a workspace
 - [ ] **LIST-02**: User can add people to lists from search results (individually or in bulk)
 - [ ] **LIST-03**: User can filter and segment leads by ICP criteria to build lists
 - [ ] **LIST-04**: User can view list contents with enrichment completeness summary
@@ -106,9 +106,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEARCH-01 | Phase 4 | Pending |
 | SEARCH-02 | Phase 4 | Pending |
 | SEARCH-03 | Phase 4 | Pending |
-| SEARCH-04 | Phase 4 | Pending |
+| SEARCH-04 | Phase 4 | Complete |
 | SEARCH-05 | Phase 4 | Pending |
-| LIST-01 | Phase 4 | Pending |
+| LIST-01 | Phase 4 | Complete |
 | LIST-02 | Phase 4 | Pending |
 | LIST-03 | Phase 4 | Pending |
 | LIST-04 | Phase 4 | Pending |

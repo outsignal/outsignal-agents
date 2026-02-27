@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-02-26T23:05:21.898Z"
+status: active
+last_updated: "2026-02-27T11:22:33Z"
 progress:
   total_phases: 4
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 1
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 03.1 API Security Hardening — Plan 01 complete
+**Current focus:** Phase 04 Search/Filter/List Building — Plan 01 complete
 
 ## Current Position
 
-Phase: 03.1 (API Security Hardening) — COMPLETE
-Plan: 2 of 2 complete (03.1-02 — test infrastructure gap closure: dailyCostTotal mock, DAILY_CAP_HIT tests, TS fix)
-Status: Phase 03.1 complete — all plans done; test coverage and TS hygiene closed
-Last activity: 2026-02-26 — Completed 03.1-02 (test infra: dailyCostTotal mock, DAILY_CAP_HIT tests, TS2322 fix)
+Phase: 04 (Search/Filter/List Building) — IN PROGRESS
+Plan: 1 of 5 complete (04-01 — foundation: TargetList schema, nuqs, enrichment status utility)
+Status: Phase 04 active — foundation complete, Plans 02-05 ready to execute
+Last activity: 2026-02-27 — Completed 04-01 (TargetList schema, nuqs install, enrichment status utility, NuqsAdapter layout)
 
-Progress: [██████████] Phase 03.1 complete (2/2 plans)
+Progress: [██░░░░░░░░] Phase 04 in progress (1/5 plans)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [██████████] Phase 03.1 complete (2/2 plans)
 | Phase 03-icp-qualification-leads-agent P02 | 2 | 2 tasks | 3 files |
 | Phase 03-icp-qualification-leads-agent P03 | 3 | 2 tasks | 8 files |
 | Phase 03.1-api-security-hardening P01 | 2 | 2 tasks | 4 files |
+| Phase 04-search-filter-list-building P01 | 3 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,10 @@ Recent decisions affecting current work:
 - [03.1-01]: Fail closed when CRON_SECRET not configured — rejects all requests, logs warning to console
 - [03.1-01]: Buffer length check before timingSafeEqual — prevents ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH throw
 - [03.1-01]: Generic 401 {"error":"Unauthorized"} response — no auth mechanism details exposed to callers
+- [04-01]: db push (not migrate dev) for TargetList schema — consistent with 01-01 pattern, no migration history required
+- [04-01]: NuqsAdapter placed inside TooltipProvider wrapping AppShell — scopes URL state to (admin)/ routes only
+- [04-01]: Enrichment status derived from field presence (not stored column) — no backfill migration needed for 14,563+ existing person records
+- [04-01]: ENRICHMENT_COLORS uses teal-green/brand-yellow/red for full/partial/missing — matches brand palette (#F0FF7A)
 
 ### Pending Todos
 
@@ -125,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-26
-Stopped at: Completed 03.1-02-PLAN.md — test infrastructure gap closure (dailyCostTotal mock, DAILY_CAP_HIT tests, TS2322 fix) — Phase 03.1 complete
+Last session: 2026-02-27
+Stopped at: Completed 04-01-PLAN.md — Phase 4 foundation: TargetList schema, nuqs install, enrichment status utility, NuqsAdapter layout
 Resume file: None
