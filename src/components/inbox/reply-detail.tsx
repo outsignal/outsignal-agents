@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DOMPurify from "dompurify";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { Reply } from "@/lib/emailbison/types";
@@ -134,7 +135,7 @@ export function InboxReplyDetail({ reply }: InboxReplyDetailProps) {
                 {reply.html_body ? (
                   <div
                     className="prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: reply.html_body }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(reply.html_body) }}
                   />
                 ) : reply.text_body ? (
                   <pre className="whitespace-pre-wrap text-sm font-sans">

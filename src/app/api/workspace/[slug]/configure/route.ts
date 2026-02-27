@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 
+// Strip sensitive fields before returning workspace data
+function stripSensitiveFields<T extends Record<string, unknown>>(workspace: T): Omit<T, "apiToken" | "linkedinPasswordNote"> {
+  const { apiToken, linkedinPasswordNote, ...safe } = workspace as Record<string, unknown>;
+  return safe as Omit<T, "apiToken" | "linkedinPasswordNote">;
+}
+
 // All updatable workspace fields (excluding id, slug, createdAt, updatedAt)
 const ALLOWED_FIELDS = [
   "name",
@@ -46,7 +52,7 @@ export async function GET(
   // Try DB first
   const dbWorkspace = await prisma.workspace.findUnique({ where: { slug } });
   if (dbWorkspace) {
-    return NextResponse.json(dbWorkspace);
+    return NextResponse.json(stripSensitiveFields(dbWorkspace));
   }
 
   // Fall back to env config
@@ -56,7 +62,6 @@ export async function GET(
       slug: envWorkspace.slug,
       name: envWorkspace.name,
       vertical: envWorkspace.vertical ?? null,
-      apiToken: envWorkspace.apiToken,
       status: envWorkspace.status,
       source: "env",
     });
@@ -104,7 +109,7 @@ export async function PATCH(
       where: { slug },
       data: updateData,
     });
-    return NextResponse.json(updated);
+    return NextResponse.json(stripSensitiveFields(updated));
   }
 
   // No DB record — upsert: seed from env config then apply updates
@@ -124,5 +129,5 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(created);
+  return NextResponse.json(stripSensitiveFields(created));
 }
