@@ -150,7 +150,7 @@ export function AddToListDropdown({
         throw new Error(err.error ?? `HTTP ${createRes.status}`);
       }
 
-      const newList = (await createRes.json()) as { id: string };
+      const { list: newList } = (await createRes.json()) as { list: { id: string } };
 
       // 2. Add selected people
       const body = selectAllFilters
