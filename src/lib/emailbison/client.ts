@@ -110,7 +110,7 @@ export class EmailBisonClient {
 
   async getSequenceSteps(campaignId: number): Promise<SequenceStep[]> {
     return this.getAllPages<SequenceStep>(
-      `/campaigns/sequence-steps?campaign_id=${campaignId}`,
+      `/campaigns/${campaignId}/sequence-steps`,
     );
   }
 
