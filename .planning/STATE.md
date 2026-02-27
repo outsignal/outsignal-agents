@@ -6,9 +6,9 @@ status: active
 last_updated: "2026-02-27T11:29:16Z"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 04 Search/Filter/List Building — Plans 01, 03, and 04 complete
+**Current focus:** Phase 04 Search/Filter/List Building — ALL 5 plans COMPLETE
 
 ## Current Position
 
-Phase: 04 (Search/Filter/List Building) — IN PROGRESS
-Plan: 4 of 5 complete (04-01 — foundation; 04-02 — people search; 04-03 — companies search; 04-04 — list management)
-Status: Phase 04 active — list management shipped, Plan 05 (export) ready
-Last activity: 2026-02-27 — Completed 04-04 (list CRUD API + list index/detail UI with enrichment bars)
+Phase: 04 (Search/Filter/List Building) — COMPLETE
+Plan: 5 of 5 complete (04-01 — foundation; 04-02 — people search; 04-03 — companies search; 04-04 — list management; 04-05 — bulk selection + list building)
+Status: Phase 04 complete — all plans shipped
+Last activity: 2026-02-27 — Completed 04-05 (bulk checkbox selection, Add to List dropdown, sidebar nav updates)
 
-Progress: [████████░░] Phase 04 in progress (4/5 plans)
+Progress: [██████████] Phase 04 complete (5/5 plans)
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████████░░] Phase 04 in progress (4/5 plans)
 | Phase 04-search-filter-list-building P02 | 3 | 2 tasks | 5 files |
 | Phase 04-search-filter-list-building P03 | 2 | 2 tasks | 3 files |
 | Phase 04-search-filter-list-building P04 | 3 | 2 tasks | 7 files |
+| Phase 04-search-filter-list-building P05 | 3 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,11 @@ Recent decisions affecting current work:
 - [04-04]: Enrichment summary fetches all members in-memory for accuracy at Phase 4 scope (<500 people/list) — acceptable until list sizes grow
 - [04-04]: No import of EnrichmentBadge from Plan 02 — inline InlineEnrichmentBadge defined in list-detail-page.tsx using status.ts (Plan 02 runs in parallel Wave 2)
 - [04-04]: Client-side list name filtering — lists are few enough to filter in-memory after single fetch
+- [04-05]: Selection state in useState not nuqs — ephemeral UI state should not be bookmarkable or URL-polluting
+- [04-05]: filterKey string derived from URL params triggers useEffect to clear selection when filters change
+- [04-05]: Fetch-on-open pattern for list loading — avoids unnecessary GET /api/lists when user never clicks Add to List
+- [04-05]: selectAllMatching sends currentFilterParams object to API instead of individual IDs — enables server-side bulk ops
+- [04-05]: isActive uses startsWith for /lists/* and /companies/* — child routes highlight parent nav item correctly
 
 ### Pending Todos
 
@@ -143,5 +149,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 04-04-PLAN.md — List management API routes + list index/detail UI with enrichment bars
+Stopped at: Completed 04-05-PLAN.md — Bulk selection, Add to List dropdown, sidebar nav updates (Phase 04 complete)
 Resume file: None
