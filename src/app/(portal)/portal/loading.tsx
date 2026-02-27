@@ -1,8 +1,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function AdminLoading() {
+export default function PortalLoading() {
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="space-y-2">
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-72" />
@@ -12,7 +12,7 @@ export default function AdminLoading() {
           <Skeleton key={i} className="h-24 rounded-lg" />
         ))}
       </div>
-      <Skeleton className="h-64 rounded-lg" />
+      <Skeleton className="h-48 rounded-lg" />
     </div>
   );
 }

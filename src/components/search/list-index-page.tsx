@@ -47,7 +47,7 @@ function EnrichmentBars({
   peopleCount: number;
 }) {
   if (peopleCount === 0) {
-    return <span className="text-xs text-zinc-500">No people</span>;
+    return <span className="text-xs text-muted-foreground">No people</span>;
   }
 
   const bars = [
@@ -62,19 +62,18 @@ function EnrichmentBars({
         const pct = Math.round((value / peopleCount) * 100);
         return (
           <div key={label} className="flex items-center gap-1.5">
-            <span className="text-[10px] text-zinc-400 w-10 shrink-0">
+            <span className="text-[10px] text-muted-foreground w-10 shrink-0">
               {label}
             </span>
-            <div className="flex-1 h-1.5 rounded-full bg-zinc-800">
+            <div className="flex-1 h-1.5 rounded-full bg-muted">
               <div
-                className="h-1.5 rounded-full"
+                className="h-1.5 rounded-full bg-brand"
                 style={{
                   width: `${pct}%`,
-                  backgroundColor: "#F0FF7A",
                 }}
               />
             </div>
-            <span className="text-[10px] text-zinc-400 w-7 text-right shrink-0">
+            <span className="text-[10px] text-muted-foreground w-7 text-right shrink-0">
               {pct}%
             </span>
           </div>
@@ -145,8 +144,8 @@ export function ListIndexPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Target Lists</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Target Lists</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Named lists of prospects ready for export
           </p>
         </div>
@@ -158,50 +157,50 @@ export function ListIndexPage() {
           placeholder="Search lists by name..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-500"
+          className="border-border text-foreground placeholder:text-muted-foreground"
         />
       </div>
 
       {/* Table */}
-      <div className="border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-zinc-800 hover:bg-transparent">
-              <TableHead className="text-zinc-400">Name</TableHead>
-              <TableHead className="text-zinc-400">Workspace</TableHead>
-              <TableHead className="text-zinc-400 text-right">People</TableHead>
-              <TableHead className="text-zinc-400">Enrichment</TableHead>
-              <TableHead className="text-zinc-400">Created</TableHead>
-              <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="text-muted-foreground">Name</TableHead>
+              <TableHead className="text-muted-foreground">Workspace</TableHead>
+              <TableHead className="text-muted-foreground text-right">People</TableHead>
+              <TableHead className="text-muted-foreground">Enrichment</TableHead>
+              <TableHead className="text-muted-foreground">Created</TableHead>
+              <TableHead className="text-muted-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i} className="border-zinc-800">
+                <TableRow key={i} className="border-border">
                   <TableCell>
-                    <Skeleton className="h-4 w-32 bg-zinc-800" />
+                    <Skeleton className="h-4 w-32 bg-muted" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-20 bg-zinc-800" />
+                    <Skeleton className="h-4 w-20 bg-muted" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-10 bg-zinc-800" />
+                    <Skeleton className="h-4 w-10 bg-muted" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-10 w-28 bg-zinc-800" />
+                    <Skeleton className="h-10 w-28 bg-muted" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-24 bg-zinc-800" />
+                    <Skeleton className="h-4 w-24 bg-muted" />
                   </TableCell>
                   <TableCell />
                 </TableRow>
               ))
             ) : filteredLists.length === 0 ? (
-              <TableRow className="border-zinc-800">
+              <TableRow className="border-border">
                 <TableCell
                   colSpan={6}
-                  className="text-center text-zinc-500 py-12"
+                  className="text-center text-muted-foreground py-12"
                 >
                   {searchQuery
                     ? `No lists matching "${searchQuery}"`
@@ -212,13 +211,13 @@ export function ListIndexPage() {
               filteredLists.map((list) => (
                 <TableRow
                   key={list.id}
-                  className="border-zinc-800 hover:bg-zinc-900 cursor-pointer"
+                  className="border-border hover:bg-muted/50 cursor-pointer"
                   onClick={() => router.push(`/lists/${list.id}`)}
                 >
-                  <TableCell className="font-medium text-white">
+                  <TableCell className="font-medium text-foreground">
                     {list.name}
                     {list.description && (
-                      <p className="text-xs text-zinc-500 mt-0.5 font-normal">
+                      <p className="text-xs text-muted-foreground mt-0.5 font-normal">
                         {list.description}
                       </p>
                     )}
@@ -226,12 +225,12 @@ export function ListIndexPage() {
                   <TableCell>
                     <Badge
                       variant="outline"
-                      className="border-zinc-700 text-zinc-300 text-xs"
+                      className="border-border text-foreground text-xs"
                     >
                       {list.workspaceSlug}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right text-zinc-300">
+                  <TableCell className="text-right text-foreground">
                     {list.peopleCount.toLocaleString()}
                   </TableCell>
                   <TableCell>
@@ -240,7 +239,7 @@ export function ListIndexPage() {
                       peopleCount={list.peopleCount}
                     />
                   </TableCell>
-                  <TableCell className="text-zinc-400 text-sm">
+                  <TableCell className="text-muted-foreground text-sm">
                     {formatDate(list.createdAt)}
                   </TableCell>
                   <TableCell className="text-right">
@@ -268,10 +267,10 @@ export function ListIndexPage() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
       >
-        <DialogContent className="bg-zinc-900 border-zinc-700">
+        <DialogContent className="bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-white">Delete List</DialogTitle>
-            <DialogDescription className="text-zinc-400">
+            <DialogTitle className="text-foreground">Delete List</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               Delete list &quot;{deleteTarget?.name}&quot;? People will remain
               in the database — only the list container will be removed.
             </DialogDescription>
@@ -281,7 +280,7 @@ export function ListIndexPage() {
               variant="ghost"
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
-              className="text-zinc-300 hover:text-white"
+              className="text-foreground hover:text-foreground"
             >
               Cancel
             </Button>

@@ -47,7 +47,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
 
   return (
     <aside className="flex h-screen w-64 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex h-16 items-center px-6 border-b border-sidebar-border text-white">
+      <div className="flex h-14 items-center px-6 border-b border-sidebar-border/50 text-white">
         <OutsignalLogo className="h-7 w-auto" />
       </div>
 
@@ -63,10 +63,10 @@ export function Sidebar({ workspaces }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
                   isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-brand"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground border-l-2 border-transparent",
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -77,6 +77,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
         </nav>
 
         <div className="mt-6">
+          <div className="h-px bg-sidebar-border mx-3 mb-4" />
           <p className="px-3 text-xs font-medium text-sidebar-foreground/50 uppercase tracking-wider mb-2">
             Workspaces
           </p>

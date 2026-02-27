@@ -16,11 +16,11 @@ import {
 } from "@/components/ui/table";
 import { CopyLinkButton } from "@/components/proposals/copy-link-button";
 
-const statusStyles: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800",
-  sent: "bg-blue-100 text-blue-800",
-  viewed: "bg-amber-100 text-amber-800",
-  completed: "bg-emerald-100 text-emerald-800",
+const statusVariant: Record<string, "secondary" | "brand" | "warning" | "success"> = {
+  draft: "secondary",
+  sent: "brand",
+  viewed: "warning",
+  completed: "success",
 };
 
 export default async function OnboardingInvitesPage() {
@@ -70,7 +70,8 @@ export default async function OnboardingInvitesPage() {
                     </TableCell>
                     <TableCell>
                       <Badge
-                        className={`text-xs ${statusStyles[invite.status] ?? ""}`}
+                        variant={statusVariant[invite.status] ?? "secondary"}
+                        className="text-xs"
                       >
                         {invite.status}
                       </Badge>

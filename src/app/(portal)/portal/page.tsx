@@ -65,7 +65,7 @@ export default async function PortalDashboardPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-heading font-bold">{workspace.name}</h1>
         <p className="text-sm text-muted-foreground mt-1">Campaign performance overview</p>

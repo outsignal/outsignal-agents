@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -37,49 +40,66 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-8">
-        <div className="text-center">
-          <OutsignalLogo className="h-8 w-auto text-foreground mx-auto" />
-          <h1 className="mt-6 text-xl font-heading font-bold">Admin Dashboard</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to access the admin dashboard
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1.5">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter admin password"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              autoFocus
+    <div
+      className="min-h-screen bg-background flex items-center justify-center px-4"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle, oklch(0.9 0 0) 1px, transparent 1px)",
+        backgroundSize: "24px 24px",
+      }}
+    >
+      <Card className="w-full max-w-sm overflow-hidden">
+        <div className="h-1 bg-brand rounded-t-lg" />
+        <CardContent className="pt-8 pb-8 space-y-8">
+          <div className="text-center">
+            <OutsignalLogo
+              className="h-8 w-auto text-foreground mx-auto"
+              iconColor="currentColor"
             />
+            <h1 className="mt-6 text-xl font-heading font-semibold tracking-tight">
+              Admin Dashboard
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Sign in to access the admin dashboard
+            </p>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md py-2 px-4 text-sm font-semibold transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "#F0FF7A", color: "#18181b" }}
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
-      </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium mb-1.5"
+              >
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter admin password"
+                autoFocus
+              />
+            </div>
+
+            <Button
+              type="submit"
+              variant="brand"
+              disabled={loading}
+              className="w-full"
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

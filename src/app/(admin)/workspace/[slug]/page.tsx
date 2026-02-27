@@ -69,11 +69,11 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
     0,
   );
 
-  const statusColors: Record<string, string> = {
-    active: "bg-emerald-100 text-emerald-800",
-    paused: "bg-yellow-100 text-yellow-800",
-    draft: "bg-gray-100 text-gray-800",
-    completed: "bg-blue-100 text-blue-800",
+  const statusVariant: Record<string, "success" | "warning" | "secondary" | "brand"> = {
+    active: "success",
+    paused: "warning",
+    draft: "secondary",
+    completed: "brand",
   };
 
   return (
@@ -174,7 +174,8 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
                           </TableCell>
                           <TableCell>
                             <Badge
-                              className={`text-xs ${statusColors[campaign.status] ?? ""}`}
+                              variant={statusVariant[campaign.status] ?? "secondary"}
+                              className="text-xs"
                             >
                               {campaign.status}
                             </Badge>
@@ -238,8 +239,8 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant="secondary"
-                            className={`text-xs ${reply.folder === "Bounced" ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}`}
+                            variant={reply.folder === "Bounced" ? "destructive" : "success"}
+                            className="text-xs"
                           >
                             {reply.type}
                           </Badge>
@@ -308,7 +309,7 @@ function PendingWorkspaceView({
           details.vertical ? `Vertical: ${details.vertical}` : "Pending setup"
         }
         actions={
-          <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-800">
+          <Badge variant="warning" className="text-xs">
             {details.status === "pending_emailbison"
               ? "Pending Email Bison"
               : details.status}

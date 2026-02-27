@@ -114,7 +114,7 @@ export default async function SettingsPage() {
                       </TableCell>
                       <TableCell>
                         {ws.connected ? (
-                          <Badge className="text-xs bg-brand text-brand-foreground">
+                          <Badge variant="success" className="text-xs">
                             Connected
                           </Badge>
                         ) : ws.hasApiToken ? (
@@ -131,7 +131,7 @@ export default async function SettingsPage() {
                       </TableCell>
                       <TableCell>
                         {dbInfo?.slackChannelId ? (
-                          <Badge className="text-xs bg-emerald-100 text-emerald-800">
+                          <Badge variant="success" className="text-xs">
                             Connected
                           </Badge>
                         ) : (

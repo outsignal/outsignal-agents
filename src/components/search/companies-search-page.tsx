@@ -62,7 +62,7 @@ function CompanyEnrichmentBadge({ company }: {
         className="inline-block w-2 h-2 rounded-full flex-shrink-0"
         style={{ backgroundColor: color }}
       />
-      <span className="text-xs text-gray-400">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </span>
   );
 }
@@ -138,13 +138,13 @@ export function CompaniesSearchPage() {
   const totalPages = data ? Math.ceil(data.total / data.pageSize) : 0;
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 min-h-screen">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-4">
+      <div className="border-b border-border px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-white">Companies</h1>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <h1 className="text-lg font-semibold text-foreground">Companies</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
               {data
                 ? `${data.total.toLocaleString()} companies`
                 : "Loading..."}
@@ -158,17 +158,17 @@ export function CompaniesSearchPage() {
             placeholder="Search by name, domain, or industry..."
             value={params.q}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full max-w-lg rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+            className="w-full max-w-lg rounded-md border border-border px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-border focus:outline-none focus:ring-1 focus:ring-brand"
           />
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar filters */}
-        <aside className="w-56 border-r border-gray-800 bg-gray-900 overflow-y-auto flex-shrink-0 p-4 space-y-6">
+        <aside className="w-56 border-r border-border bg-muted/30 overflow-y-auto flex-shrink-0 p-4 space-y-6">
           {/* Enrichment status filter */}
           <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Enrichment
             </h3>
             <div className="space-y-1.5">
@@ -178,8 +178,8 @@ export function CompaniesSearchPage() {
                   onClick={() => handleEnrichmentChange(status)}
                   className={`flex items-center gap-2 w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
                     params.enrichment === status
-                      ? "bg-gray-700 text-white"
-                      : "text-gray-400 hover:text-white hover:bg-gray-800"
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                 >
                   <span
@@ -195,7 +195,7 @@ export function CompaniesSearchPage() {
           {/* Vertical / Industry filter */}
           {allIndustries.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                 Vertical
               </h3>
               <div className="space-y-1.5 max-h-80 overflow-y-auto">
@@ -205,15 +205,15 @@ export function CompaniesSearchPage() {
                     onClick={() => handleVerticalToggle(industry)}
                     className={`flex items-center gap-2 w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
                       params.vertical.includes(industry)
-                        ? "bg-gray-700 text-white"
-                        : "text-gray-400 hover:text-white hover:bg-gray-800"
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
                     }`}
                   >
                     <span
                       className={`inline-block w-3 h-3 rounded border flex-shrink-0 transition-colors ${
                         params.vertical.includes(industry)
                           ? "bg-brand border-brand"
-                          : "border-gray-600"
+                          : "border-border"
                       }`}
                     />
                     <span className="truncate">{industry}</span>
@@ -228,7 +228,7 @@ export function CompaniesSearchPage() {
             <div>
               <button
                 onClick={() => setParams({ q: "", vertical: [], enrichment: "", page: 1 })}
-                className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                className="text-xs text-muted-foreground hover:text-red-400 transition-colors"
               >
                 Clear all filters
               </button>
@@ -242,11 +242,11 @@ export function CompaniesSearchPage() {
           {(params.vertical.length > 0 || params.enrichment) && (
             <div className="flex flex-wrap gap-2 px-6 pt-4">
               {params.enrichment && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-gray-800 border border-gray-700 px-2.5 py-1 text-xs text-gray-300">
+                <span className="inline-flex items-center gap-1 rounded-full bg-secondary border border-border px-2.5 py-1 text-xs text-foreground">
                   Enrichment: {ENRICHMENT_LABELS[params.enrichment as EnrichmentStatus]}
                   <button
                     onClick={() => setParams({ enrichment: "", page: 1 })}
-                    className="ml-1 text-gray-500 hover:text-white"
+                    className="ml-1 text-muted-foreground hover:text-foreground"
                   >
                     x
                   </button>
@@ -255,12 +255,12 @@ export function CompaniesSearchPage() {
               {params.vertical.map((v) => (
                 <span
                   key={v}
-                  className="inline-flex items-center gap-1 rounded-full bg-gray-800 border border-gray-700 px-2.5 py-1 text-xs text-gray-300"
+                  className="inline-flex items-center gap-1 rounded-full bg-secondary border border-border px-2.5 py-1 text-xs text-foreground"
                 >
                   {v}
                   <button
                     onClick={() => handleVerticalToggle(v)}
-                    className="ml-1 text-gray-500 hover:text-white"
+                    className="ml-1 text-muted-foreground hover:text-foreground"
                   >
                     x
                   </button>
@@ -271,53 +271,53 @@ export function CompaniesSearchPage() {
 
           <div className="px-6 py-4">
             {error && (
-              <div className="rounded-md bg-red-900/20 border border-red-800 p-4 text-sm text-red-400 mb-4">
+              <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-600 mb-4">
                 {error}
               </div>
             )}
 
             {/* Table */}
-            <div className="rounded-md border border-gray-800 overflow-hidden">
+            <div className="rounded-md border border-border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-800 hover:bg-transparent">
-                    <TableHead className="text-gray-400 bg-gray-900">Name</TableHead>
-                    <TableHead className="text-gray-400 bg-gray-900">Domain</TableHead>
-                    <TableHead className="text-gray-400 bg-gray-900">Industry</TableHead>
-                    <TableHead className="text-gray-400 bg-gray-900 text-right">Headcount</TableHead>
-                    <TableHead className="text-gray-400 bg-gray-900">Location</TableHead>
-                    <TableHead className="text-gray-400 bg-gray-900 text-right">Founded</TableHead>
-                    <TableHead className="text-gray-400 bg-gray-900">Enrichment</TableHead>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground bg-muted">Name</TableHead>
+                    <TableHead className="text-muted-foreground bg-muted">Domain</TableHead>
+                    <TableHead className="text-muted-foreground bg-muted">Industry</TableHead>
+                    <TableHead className="text-muted-foreground bg-muted text-right">Headcount</TableHead>
+                    <TableHead className="text-muted-foreground bg-muted">Location</TableHead>
+                    <TableHead className="text-muted-foreground bg-muted text-right">Founded</TableHead>
+                    <TableHead className="text-muted-foreground bg-muted">Enrichment</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading
                     ? Array.from({ length: 10 }).map((_, i) => (
-                        <TableRow key={i} className="border-gray-800">
-                          <TableCell><Skeleton className="h-4 w-32 bg-gray-800" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-28 bg-gray-800" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24 bg-gray-800" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-12 bg-gray-800 ml-auto" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-20 bg-gray-800" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-10 bg-gray-800 ml-auto" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-16 bg-gray-800" /></TableCell>
+                        <TableRow key={i} className="border-border">
+                          <TableCell><Skeleton className="h-4 w-32 bg-muted" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-28 bg-muted" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24 bg-muted" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-12 bg-muted ml-auto" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20 bg-muted" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-10 bg-muted ml-auto" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-16 bg-muted" /></TableCell>
                         </TableRow>
                       ))
                     : data?.companies.map((company) => (
                         <TableRow
                           key={company.id}
-                          className="border-gray-800 hover:bg-gray-900/50"
+                          className="border-border hover:bg-muted/50"
                         >
-                          <TableCell className="font-medium text-white text-sm">
+                          <TableCell className="font-medium text-foreground text-sm">
                             {company.name}
                           </TableCell>
-                          <TableCell className="text-gray-400 text-sm">
+                          <TableCell className="text-muted-foreground text-sm">
                             {company.website ? (
                               <a
                                 href={company.website}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:text-white transition-colors"
+                                className="hover:text-foreground transition-colors"
                               >
                                 {company.domain}
                               </a>
@@ -325,19 +325,19 @@ export function CompaniesSearchPage() {
                               company.domain
                             )}
                           </TableCell>
-                          <TableCell className="text-gray-400 text-sm">
-                            {company.industry ?? <span className="text-gray-600">—</span>}
+                          <TableCell className="text-muted-foreground text-sm">
+                            {company.industry ?? <span className="text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="text-gray-400 text-sm text-right">
+                          <TableCell className="text-muted-foreground text-sm text-right">
                             {company.headcount != null
                               ? company.headcount.toLocaleString()
-                              : <span className="text-gray-600">—</span>}
+                              : <span className="text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="text-gray-400 text-sm">
-                            {company.location ?? <span className="text-gray-600">—</span>}
+                          <TableCell className="text-muted-foreground text-sm">
+                            {company.location ?? <span className="text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="text-gray-400 text-sm text-right">
-                            {company.yearFounded ?? <span className="text-gray-600">—</span>}
+                          <TableCell className="text-muted-foreground text-sm text-right">
+                            {company.yearFounded ?? <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell>
                             <CompanyEnrichmentBadge company={company} />
@@ -346,10 +346,10 @@ export function CompaniesSearchPage() {
                       ))}
 
                   {!loading && data?.companies.length === 0 && (
-                    <TableRow className="border-gray-800">
+                    <TableRow className="border-border">
                       <TableCell
                         colSpan={7}
-                        className="text-center py-12 text-gray-500 text-sm"
+                        className="text-center py-12 text-muted-foreground text-sm"
                       >
                         No companies found. Try adjusting your search or filters.
                       </TableCell>
@@ -362,7 +362,7 @@ export function CompaniesSearchPage() {
             {/* Pagination */}
             {!loading && totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   Page {data?.page} of {totalPages} &mdash;{" "}
                   {data?.total.toLocaleString()} companies
                 </p>
@@ -370,14 +370,14 @@ export function CompaniesSearchPage() {
                   <button
                     onClick={() => setParams({ page: params.page - 1 })}
                     disabled={params.page <= 1}
-                    className="inline-flex h-8 items-center justify-center rounded-md border border-gray-700 bg-gray-900 px-3 text-sm text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-secondary px-3 text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setParams({ page: params.page + 1 })}
                     disabled={params.page >= totalPages}
-                    className="inline-flex h-8 items-center justify-center rounded-md border border-gray-700 bg-gray-900 px-3 text-sm text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-secondary px-3 text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     Next
                   </button>

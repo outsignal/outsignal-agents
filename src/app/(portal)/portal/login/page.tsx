@@ -3,6 +3,9 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -58,45 +61,59 @@ function LoginForm() {
         <label htmlFor="email" className="block text-sm font-medium mb-1.5">
           Email address
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@company.com"
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
-      <button
+      <Button
         type="submit"
+        variant="brand"
         disabled={loading}
-        className="w-full rounded-md py-2 px-4 text-sm font-semibold transition-colors disabled:opacity-50"
-        style={{ backgroundColor: "#F0FF7A", color: "#18181b" }}
+        className="w-full"
       >
         {loading ? "Sending..." : "Send Login Link"}
-      </button>
+      </Button>
     </form>
   );
 }
 
 export default function PortalLoginPage() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-8">
-        <div className="text-center">
-          <OutsignalLogo className="h-8 w-auto text-foreground mx-auto" />
-          <h1 className="mt-6 text-xl font-heading font-bold">Client Portal</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to view your campaign performance
-          </p>
-        </div>
+    <div
+      className="min-h-screen bg-background flex items-center justify-center px-4"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle, oklch(0.9 0 0) 1px, transparent 1px)",
+        backgroundSize: "24px 24px",
+      }}
+    >
+      <Card className="w-full max-w-sm overflow-hidden">
+        <div className="h-1 bg-brand rounded-t-lg" />
+        <CardContent className="pt-8 pb-8 space-y-8">
+          <div className="text-center">
+            <OutsignalLogo
+              className="h-8 w-auto text-foreground mx-auto"
+              iconColor="currentColor"
+            />
+            <h1 className="mt-6 text-xl font-heading font-semibold tracking-tight">
+              Client Portal
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Sign in to view your campaign performance
+            </p>
+          </div>
 
-        <Suspense>
-          <LoginForm />
-        </Suspense>
-      </div>
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </CardContent>
+      </Card>
     </div>
   );
 }

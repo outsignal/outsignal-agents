@@ -25,10 +25,8 @@ export function InboxReplyDetail({ reply }: InboxReplyDetailProps) {
     minute: "2-digit",
   });
 
-  const typeBadgeClass =
-    reply.type === "Bounced"
-      ? "bg-red-100 text-red-800"
-      : "bg-emerald-100 text-emerald-800";
+  const typeBadgeVariant =
+    reply.type === "Bounced" ? "destructive" as const : "success" as const;
 
   return (
     <>
@@ -63,7 +61,7 @@ export function InboxReplyDetail({ reply }: InboxReplyDetailProps) {
           {reply.primary_to_email_address}
         </TableCell>
         <TableCell>
-          <Badge variant="secondary" className={`text-xs ${typeBadgeClass}`}>
+          <Badge variant={typeBadgeVariant} className="text-xs">
             {reply.type}
           </Badge>
         </TableCell>

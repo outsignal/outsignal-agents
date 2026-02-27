@@ -31,7 +31,7 @@ interface CostData {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CHART_COLORS = ["#F0FF7A", "#4ECDC4", "#FF6B6B", "#45B7D1", "#96E6A1", "#FFB347", "#C3A6FF"];
+const CHART_COLORS = ["oklch(0.95 0.15 110)", "#4ECDC4", "#FF6B6B", "#45B7D1", "#96E6A1", "#FFB347", "#C3A6FF"];
 
 function fmt(usd: number): string {
   return `$${usd.toFixed(4)}`;
@@ -65,24 +65,23 @@ function SummaryCard({
   accent?: boolean;
 }) {
   return (
-    <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-      <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{label}</p>
+    <div className="bg-card rounded-lg p-4 border border-border">
+      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
       <p
-        className="text-2xl font-bold"
-        style={accent ? { color: "#F0FF7A" } : undefined}
+        className={`text-2xl font-bold ${accent ? "text-brand-strong" : ""}`}
       >
         {value}
       </p>
-      {detail && <p className="text-xs text-gray-500 mt-1">{detail}</p>}
+      {detail && <p className="text-xs text-muted-foreground mt-1">{detail}</p>}
     </div>
   );
 }
 
 function SkeletonCard() {
   return (
-    <div className="bg-gray-900 rounded-lg p-4 border border-gray-800 animate-pulse">
-      <div className="h-3 bg-gray-700 rounded w-24 mb-3" />
-      <div className="h-7 bg-gray-700 rounded w-32" />
+    <div className="bg-card rounded-lg p-4 border border-border animate-pulse">
+      <div className="h-3 bg-muted rounded w-24 mb-3" />
+      <div className="h-7 bg-muted rounded w-32" />
     </div>
   );
 }
@@ -127,34 +126,34 @@ export default function EnrichmentCostsPage() {
     : 0;
 
   return (
-    <div className="bg-gray-950 min-h-screen text-white">
+    <div>
       {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-5">
+      <div className="border-b border-border px-6 py-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold">Enrichment Costs</h1>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <h1 className="text-xl font-semibold text-foreground">Enrichment Costs</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
               API spend by provider and workspace
             </p>
           </div>
           {/* Date range */}
           <div className="flex items-center gap-3">
-            <label className="text-xs text-gray-400 uppercase tracking-wide">From</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wide">From</label>
             <input
               type="date"
               value={from}
               max={to}
               onChange={(e) => setFrom(e.target.value)}
-              className="bg-gray-900 border border-gray-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#F0FF7A]"
+              className="border border-border text-foreground text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand"
             />
-            <label className="text-xs text-gray-400 uppercase tracking-wide">To</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wide">To</label>
             <input
               type="date"
               value={to}
               min={from}
               max={todayStr()}
               onChange={(e) => setTo(e.target.value)}
-              className="bg-gray-900 border border-gray-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#F0FF7A]"
+              className="border border-border text-foreground text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand"
             />
           </div>
         </div>
@@ -186,23 +185,23 @@ export default function EnrichmentCostsPage() {
           ) : data ? (
             <>
               {/* Today's spend with cap */}
-              <div className="bg-gray-900 rounded-lg p-4 border border-gray-800 col-span-2 lg:col-span-1">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">
+              <div className="bg-card rounded-lg p-4 border border-border col-span-2 lg:col-span-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
                   Today&apos;s Spend
                 </p>
-                <p className="text-2xl font-bold" style={{ color: data.capHit ? "#FF6B6B" : "#F0FF7A" }}>
+                <p className={`text-2xl font-bold ${data.capHit ? "" : "text-brand-strong"}`} style={data.capHit ? { color: "#FF6B6B" } : undefined}>
                   {fmtShort(data.todaySpend)}
                 </p>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-xs text-muted-foreground mb-2">
                   of {fmtShort(data.dailyCap)} cap
                 </p>
                 {/* Progress bar */}
-                <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all"
+                    className={`h-full rounded-full transition-all ${data.capHit ? "" : "bg-brand"}`}
                     style={{
                       width: `${spendPct}%`,
-                      backgroundColor: data.capHit ? "#FF6B6B" : "#F0FF7A",
+                      ...(data.capHit ? { backgroundColor: "#FF6B6B" } : {}),
                     }}
                   />
                 </div>
@@ -219,8 +218,8 @@ export default function EnrichmentCostsPage() {
                 value={totalCalls.toLocaleString()}
                 detail={`${data.byProvider.length} providers`}
               />
-              <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">
+              <div className="bg-card rounded-lg p-4 border border-border">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
                   Cap Status
                 </p>
                 <p
@@ -229,7 +228,7 @@ export default function EnrichmentCostsPage() {
                 >
                   {data.capHit ? "Cap Hit" : "Active"}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {fmtShort(data.dailyCap)} / day limit
                 </p>
               </div>
@@ -240,12 +239,12 @@ export default function EnrichmentCostsPage() {
         {/* Provider + Workspace charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Provider Breakdown — PieChart */}
-          <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-            <h2 className="text-sm font-semibold text-gray-200 mb-4">
+          <div className="bg-card rounded-lg p-4 border border-border">
+            <h2 className="text-sm font-semibold text-foreground mb-4">
               Provider Breakdown
             </h2>
             {loading ? (
-              <div className="h-64 bg-gray-800 rounded animate-pulse" />
+              <div className="h-64 bg-muted rounded animate-pulse" />
             ) : data && data.byProvider.length > 0 ? (
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
@@ -271,15 +270,15 @@ export default function EnrichmentCostsPage() {
                   <Tooltip
                     formatter={(value: number | undefined) => [fmt(value ?? 0), "Spend"]}
                     contentStyle={{
-                      backgroundColor: "#111827",
-                      border: "1px solid #374151",
+                      backgroundColor: "white",
+                      border: "1px solid oklch(0.92 0 0)",
                       borderRadius: "6px",
-                      color: "#fff",
+                      color: "oklch(0 0 0)",
                     }}
                   />
                   <Legend
                     formatter={(value) => (
-                      <span style={{ color: "#9ca3af", fontSize: "12px" }}>
+                      <span style={{ color: "oklch(0.45 0 0)", fontSize: "12px" }}>
                         {value}
                       </span>
                     )}
@@ -287,19 +286,19 @@ export default function EnrichmentCostsPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+              <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
                 No provider data in this period
               </div>
             )}
           </div>
 
           {/* Workspace Breakdown — Horizontal BarChart */}
-          <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-            <h2 className="text-sm font-semibold text-gray-200 mb-4">
+          <div className="bg-card rounded-lg p-4 border border-border">
+            <h2 className="text-sm font-semibold text-foreground mb-4">
               Workspace Breakdown
             </h2>
             {loading ? (
-              <div className="h-64 bg-gray-800 rounded animate-pulse" />
+              <div className="h-64 bg-muted rounded animate-pulse" />
             ) : data && data.byWorkspace.length > 0 ? (
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart
@@ -307,10 +306,10 @@ export default function EnrichmentCostsPage() {
                   layout="vertical"
                   margin={{ top: 0, right: 16, bottom: 0, left: 40 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0 0)" horizontal={false} />
                   <XAxis
                     type="number"
-                    tick={{ fill: "#9ca3af", fontSize: 11 }}
+                    tick={{ fill: "oklch(0.45 0 0)", fontSize: 11 }}
                     tickFormatter={(v: number) => fmtShort(v)}
                     axisLine={false}
                     tickLine={false}
@@ -318,7 +317,7 @@ export default function EnrichmentCostsPage() {
                   <YAxis
                     type="category"
                     dataKey="workspace"
-                    tick={{ fill: "#9ca3af", fontSize: 11 }}
+                    tick={{ fill: "oklch(0.45 0 0)", fontSize: 11 }}
                     width={70}
                     axisLine={false}
                     tickLine={false}
@@ -326,18 +325,18 @@ export default function EnrichmentCostsPage() {
                   <Tooltip
                     formatter={(value: number | undefined) => [fmt(value ?? 0), "Spend"]}
                     contentStyle={{
-                      backgroundColor: "#111827",
-                      border: "1px solid #374151",
+                      backgroundColor: "white",
+                      border: "1px solid oklch(0.92 0 0)",
                       borderRadius: "6px",
-                      color: "#fff",
+                      color: "oklch(0 0 0)",
                     }}
-                    cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                    cursor={{ fill: "rgba(0,0,0,0.05)" }}
                   />
-                  <Bar dataKey="totalUsd" fill="#F0FF7A" radius={[0, 3, 3, 0]} />
+                  <Bar dataKey="totalUsd" fill="oklch(0.95 0.15 110)" radius={[0, 3, 3, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+              <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
                 No workspace data in this period
               </div>
             )}
@@ -345,28 +344,28 @@ export default function EnrichmentCostsPage() {
         </div>
 
         {/* Daily trend */}
-        <div className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-200 mb-4">
+        <div className="bg-card rounded-lg p-4 border border-border">
+          <h2 className="text-sm font-semibold text-foreground mb-4">
             Daily Spend Trend
           </h2>
           {loading ? (
-            <div className="h-64 bg-gray-800 rounded animate-pulse" />
+            <div className="h-64 bg-muted rounded animate-pulse" />
           ) : data && data.byDate.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart
                 data={data.byDate}
                 margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0 0)" vertical={false} />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: "#9ca3af", fontSize: 11 }}
+                  tick={{ fill: "oklch(0.45 0 0)", fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={(v: string) => v.slice(5)} // "MM-DD"
                 />
                 <YAxis
-                  tick={{ fill: "#9ca3af", fontSize: 11 }}
+                  tick={{ fill: "oklch(0.45 0 0)", fontSize: 11 }}
                   tickFormatter={(v: number) => fmtShort(v)}
                   axisLine={false}
                   tickLine={false}
@@ -375,12 +374,12 @@ export default function EnrichmentCostsPage() {
                 <Tooltip
                   formatter={(value: number | undefined) => [fmt(value ?? 0), "Spend"]}
                   contentStyle={{
-                    backgroundColor: "#111827",
-                    border: "1px solid #374151",
+                    backgroundColor: "white",
+                    border: "1px solid oklch(0.92 0 0)",
                     borderRadius: "6px",
-                    color: "#fff",
+                    color: "oklch(0 0 0)",
                   }}
-                  cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                  cursor={{ fill: "rgba(0,0,0,0.05)" }}
                 />
                 {data && (
                   <ReferenceLine
@@ -395,11 +394,11 @@ export default function EnrichmentCostsPage() {
                     }}
                   />
                 )}
-                <Bar dataKey="totalUsd" fill="#F0FF7A" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="totalUsd" fill="oklch(0.95 0.15 110)" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
               No daily data in this period
             </div>
           )}
@@ -407,15 +406,15 @@ export default function EnrichmentCostsPage() {
 
         {/* Provider detail table */}
         {!loading && data && data.byProvider.length > 0 && (
-          <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-800">
-              <h2 className="text-sm font-semibold text-gray-200">
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <h2 className="text-sm font-semibold text-foreground">
                 Provider Detail
               </h2>
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-800 text-xs text-gray-400 uppercase tracking-wide">
+                <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
                   <th className="text-left px-4 py-2">Provider</th>
                   <th className="text-right px-4 py-2">Calls</th>
                   <th className="text-right px-4 py-2">Total Spend</th>
@@ -426,7 +425,7 @@ export default function EnrichmentCostsPage() {
                 {data.byProvider.map((row, i) => (
                   <tr
                     key={row.provider}
-                    className="border-b border-gray-800/50 hover:bg-gray-800/30"
+                    className="border-b border-border/50 hover:bg-muted/30"
                   >
                     <td className="px-4 py-3 flex items-center gap-2">
                       <span
@@ -437,13 +436,13 @@ export default function EnrichmentCostsPage() {
                       />
                       <span className="capitalize">{row.provider}</span>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-300">
+                    <td className="px-4 py-3 text-right text-muted-foreground">
                       {row.callCount.toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-300">
+                    <td className="px-4 py-3 text-right text-muted-foreground">
                       {fmt(row.totalUsd)}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-400 text-xs">
+                    <td className="px-4 py-3 text-right text-muted-foreground text-xs">
                       {row.callCount > 0 ? fmt(row.totalUsd / row.callCount) : "$0.0000"}
                     </td>
                   </tr>

@@ -99,20 +99,19 @@ function SummaryBar({
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-zinc-400 w-20 shrink-0">{label}</span>
-      <div className="flex-1 h-2.5 rounded-full bg-zinc-800 max-w-xs">
+      <span className="text-sm text-muted-foreground w-20 shrink-0">{label}</span>
+      <div className="flex-1 h-2.5 rounded-full bg-muted max-w-xs">
         <div
-          className="h-2.5 rounded-full transition-all"
+          className="h-2.5 rounded-full transition-all bg-brand"
           style={{
             width: `${pct}%`,
-            backgroundColor: "#F0FF7A",
           }}
         />
       </div>
-      <span className="text-sm text-zinc-300 w-10 text-right shrink-0">
+      <span className="text-sm text-foreground w-10 text-right shrink-0">
         {pct}%
       </span>
-      <span className="text-xs text-zinc-500 shrink-0">
+      <span className="text-xs text-muted-foreground shrink-0">
         ({value} / {total})
       </span>
     </div>
@@ -233,10 +232,10 @@ export function ListDetailPage({ listId }: Props) {
   if (notFound) {
     return (
       <div className="p-6">
-        <Link href="/lists" className="text-sm text-zinc-400 hover:text-white">
+        <Link href="/lists" className="text-sm text-muted-foreground hover:text-foreground">
           &larr; Back to Lists
         </Link>
-        <div className="mt-12 text-center text-zinc-500">List not found.</div>
+        <div className="mt-12 text-center text-muted-foreground">List not found.</div>
       </div>
     );
   }
@@ -255,28 +254,28 @@ export function ListDetailPage({ listId }: Props) {
         <div className="space-y-1">
           <Link
             href="/lists"
-            className="text-sm text-zinc-400 hover:text-white"
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
             &larr; Back to Lists
           </Link>
           {loading && !list ? (
-            <Skeleton className="h-8 w-48 bg-zinc-800 mt-2" />
+            <Skeleton className="h-8 w-48 bg-muted mt-2" />
           ) : (
             <div className="flex items-center gap-3 mt-2">
-              <h1 className="text-2xl font-bold text-white">{list?.name}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{list?.name}</h1>
               <Badge
                 variant="outline"
-                className="border-zinc-700 text-zinc-300"
+                className="border-border text-foreground"
               >
                 {list?.workspaceSlug}
               </Badge>
-              <span className="text-sm text-zinc-400">
+              <span className="text-sm text-muted-foreground">
                 {total.toLocaleString()} people
               </span>
             </div>
           )}
           {list?.description && (
-            <p className="text-sm text-zinc-400">{list.description}</p>
+            <p className="text-sm text-muted-foreground">{list.description}</p>
           )}
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -284,7 +283,7 @@ export function ListDetailPage({ listId }: Props) {
             <Button
               variant="outline"
               size="sm"
-              className="border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800"
+              className="border-border text-foreground hover:text-foreground hover:bg-muted"
               onClick={handleExportCsv}
               disabled={exportLoading || (loading && !list)}
             >
@@ -308,17 +307,17 @@ export function ListDetailPage({ listId }: Props) {
 
       {/* Enrichment summary bars */}
       {(summary || (loading && !data)) && (
-        <div className="border border-zinc-800 rounded-lg p-4 space-y-2.5 bg-zinc-950">
-          <h2 className="text-sm font-semibold text-zinc-300 mb-3">
+        <div className="border border-border rounded-lg p-4 space-y-2.5 bg-card">
+          <h2 className="text-sm font-semibold text-foreground mb-3">
             Enrichment Coverage
           </h2>
           {loading && !data ? (
             <div className="space-y-2">
               {["Email", "LinkedIn", "Company"].map((label) => (
                 <div key={label} className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-400 w-20">{label}</span>
-                  <Skeleton className="flex-1 h-2.5 bg-zinc-800 max-w-xs" />
-                  <Skeleton className="h-4 w-10 bg-zinc-800" />
+                  <span className="text-sm text-muted-foreground w-20">{label}</span>
+                  <Skeleton className="flex-1 h-2.5 bg-muted max-w-xs" />
+                  <Skeleton className="h-4 w-10 bg-muted" />
                 </div>
               ))}
             </div>
@@ -347,35 +346,35 @@ export function ListDetailPage({ listId }: Props) {
       )}
 
       {/* People table */}
-      <div className="border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-zinc-800 hover:bg-transparent">
-              <TableHead className="text-zinc-400">Name</TableHead>
-              <TableHead className="text-zinc-400">Email</TableHead>
-              <TableHead className="text-zinc-400">Company</TableHead>
-              <TableHead className="text-zinc-400">Title</TableHead>
-              <TableHead className="text-zinc-400">Vertical</TableHead>
-              <TableHead className="text-zinc-400">Enrichment</TableHead>
-              <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="text-muted-foreground">Name</TableHead>
+              <TableHead className="text-muted-foreground">Email</TableHead>
+              <TableHead className="text-muted-foreground">Company</TableHead>
+              <TableHead className="text-muted-foreground">Title</TableHead>
+              <TableHead className="text-muted-foreground">Vertical</TableHead>
+              <TableHead className="text-muted-foreground">Enrichment</TableHead>
+              <TableHead className="text-muted-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && people.length === 0 ? (
               Array.from({ length: 10 }).map((_, i) => (
-                <TableRow key={i} className="border-zinc-800">
+                <TableRow key={i} className="border-border">
                   {Array.from({ length: 7 }).map((_, j) => (
                     <TableCell key={j}>
-                      <Skeleton className="h-4 w-full bg-zinc-800" />
+                      <Skeleton className="h-4 w-full bg-muted" />
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : people.length === 0 ? (
-              <TableRow className="border-zinc-800">
+              <TableRow className="border-border">
                 <TableCell
                   colSpan={7}
-                  className="text-center text-zinc-500 py-12"
+                  className="text-center text-muted-foreground py-12"
                 >
                   No people in this list yet.
                 </TableCell>
@@ -388,35 +387,35 @@ export function ListDetailPage({ listId }: Props) {
                 const isRemoving = removingPersonId === p.id;
 
                 return (
-                  <TableRow key={entry.id} className="border-zinc-800 hover:bg-zinc-900">
-                    <TableCell className="text-white">
+                  <TableRow key={entry.id} className="border-border hover:bg-muted/50">
+                    <TableCell className="text-foreground">
                       {fullName || (
-                        <span className="text-zinc-500 italic">Unknown</span>
+                        <span className="text-muted-foreground italic">Unknown</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-zinc-300 text-sm font-mono">
+                    <TableCell className="text-muted-foreground text-sm font-mono">
                       {p.email}
                     </TableCell>
-                    <TableCell className="text-zinc-300 text-sm">
+                    <TableCell className="text-muted-foreground text-sm">
                       {p.company ?? (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-zinc-300 text-sm">
+                    <TableCell className="text-muted-foreground text-sm">
                       {p.jobTitle ?? (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {p.vertical ? (
                         <Badge
                           variant="outline"
-                          className="border-zinc-700 text-zinc-300 text-xs"
+                          className="border-border text-foreground text-xs"
                         >
                           {p.vertical}
                         </Badge>
                       ) : (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -426,7 +425,7 @@ export function ListDetailPage({ listId }: Props) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-zinc-400 hover:text-red-300 hover:bg-red-950 text-xs"
+                        className="text-muted-foreground hover:text-red-300 hover:bg-red-950 text-xs"
                         onClick={() => handleRemovePerson(p.id)}
                         disabled={isRemoving}
                       >
@@ -443,7 +442,7 @@ export function ListDetailPage({ listId }: Props) {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-zinc-400">
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
             Showing {((page - 1) * pageSize + 1).toLocaleString()}–
             {Math.min(page * pageSize, total).toLocaleString()} of{" "}
@@ -455,7 +454,7 @@ export function ListDetailPage({ listId }: Props) {
               size="sm"
               onClick={() => setPage((p) => p - 1)}
               disabled={page <= 1 || loading}
-              className="text-zinc-300 hover:text-white"
+              className="text-foreground hover:text-foreground"
             >
               Previous
             </Button>
@@ -467,7 +466,7 @@ export function ListDetailPage({ listId }: Props) {
               size="sm"
               onClick={() => setPage((p) => p + 1)}
               disabled={page >= totalPages || loading}
-              className="text-zinc-300 hover:text-white"
+              className="text-foreground hover:text-foreground"
             >
               Next
             </Button>
@@ -477,10 +476,10 @@ export function ListDetailPage({ listId }: Props) {
 
       {/* Delete list confirmation */}
       <Dialog open={showDeleteList} onOpenChange={setShowDeleteList}>
-        <DialogContent className="bg-zinc-900 border-zinc-700">
+        <DialogContent className="bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-white">Delete List</DialogTitle>
-            <DialogDescription className="text-zinc-400">
+            <DialogTitle className="text-foreground">Delete List</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               Delete list &quot;{list?.name}&quot;? People will remain in the
               database — only the list container and its memberships will be
               removed.
@@ -491,7 +490,7 @@ export function ListDetailPage({ listId }: Props) {
               variant="ghost"
               onClick={() => setShowDeleteList(false)}
               disabled={deletingList}
-              className="text-zinc-300 hover:text-white"
+              className="text-foreground hover:text-foreground"
             >
               Cancel
             </Button>

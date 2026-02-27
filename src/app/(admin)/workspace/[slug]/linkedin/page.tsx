@@ -31,19 +31,19 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
 
   if (!workspace) notFound();
 
-  const healthColors: Record<string, string> = {
-    healthy: "bg-emerald-100 text-emerald-800",
-    warning: "bg-yellow-100 text-yellow-800",
-    paused: "bg-orange-100 text-orange-800",
-    blocked: "bg-red-100 text-red-800",
-    session_expired: "bg-red-100 text-red-800",
+  const healthVariant: Record<string, "success" | "warning" | "destructive"> = {
+    healthy: "success",
+    warning: "warning",
+    paused: "warning",
+    blocked: "destructive",
+    session_expired: "destructive",
   };
 
-  const statusColors: Record<string, string> = {
-    setup: "bg-gray-100 text-gray-800",
-    active: "bg-emerald-100 text-emerald-800",
-    paused: "bg-yellow-100 text-yellow-800",
-    disabled: "bg-red-100 text-red-800",
+  const statusVariant: Record<string, "secondary" | "success" | "warning" | "destructive"> = {
+    setup: "secondary",
+    active: "success",
+    paused: "warning",
+    disabled: "destructive",
   };
 
   return (
@@ -90,14 +90,16 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
                     </TableCell>
                     <TableCell>
                       <Badge
-                        className={`text-xs ${statusColors[sender.status] ?? ""}`}
+                        variant={statusVariant[sender.status] ?? "secondary"}
+                        className="text-xs"
                       >
                         {sender.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge
-                        className={`text-xs ${healthColors[sender.healthStatus] ?? ""}`}
+                        variant={healthVariant[sender.healthStatus] ?? "secondary"}
+                        className="text-xs"
                       >
                         {sender.healthStatus}
                       </Badge>

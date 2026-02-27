@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
 import { LogoutButton } from "@/components/portal/logout-button";
+import { PortalNav } from "@/components/portal/portal-nav";
 
 export default function PortalLayout({
   children,
@@ -9,26 +10,13 @@ export default function PortalLayout({
 }) {
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
+      <header className="border-b shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-8">
             <Link href="/portal">
-              <OutsignalLogo className="h-7 w-auto text-foreground" />
+              <OutsignalLogo className="h-7 w-auto text-foreground" iconColor="currentColor" />
             </Link>
-            <nav className="flex items-center gap-6">
-              <Link
-                href="/portal"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/portal/linkedin"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                LinkedIn
-              </Link>
-            </nav>
+            <PortalNav />
           </div>
           <LogoutButton />
         </div>

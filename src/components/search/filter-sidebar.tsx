@@ -52,7 +52,7 @@ export function FilterSidebar({
       {/* Vertical filter */}
       {verticals.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Vertical
           </h3>
           <div className="space-y-1.5">
@@ -67,11 +67,11 @@ export function FilterSidebar({
                     type="checkbox"
                     checked={checked}
                     onChange={() => onVerticalToggle(vertical)}
-                    className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-[#F0FF7A] accent-[#F0FF7A] cursor-pointer"
+                    className="w-3.5 h-3.5 rounded border-border bg-background text-brand accent-brand cursor-pointer"
                   />
                   <span
                     className={`text-sm truncate ${
-                      checked ? "text-white" : "text-gray-400 group-hover:text-gray-300"
+                      checked ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                     }`}
                   >
                     {vertical}
@@ -83,11 +83,11 @@ export function FilterSidebar({
         </div>
       )}
 
-      <div className="border-t border-gray-800" />
+      <div className="border-t border-border" />
 
       {/* Enrichment status filter */}
       <div>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           Enrichment
         </h3>
         <div className="space-y-1.5">
@@ -104,7 +104,7 @@ export function FilterSidebar({
                   value={opt.value}
                   checked={isSelected}
                   onChange={() => onEnrichmentChange(opt.value)}
-                  className="w-3.5 h-3.5 border-gray-600 bg-gray-800 accent-[#F0FF7A] cursor-pointer"
+                  className="w-3.5 h-3.5 border-border bg-background accent-brand cursor-pointer"
                 />
                 <span className="flex items-center gap-1.5">
                   {opt.value && (
@@ -115,7 +115,7 @@ export function FilterSidebar({
                   )}
                   <span
                     className={`text-sm ${
-                      isSelected ? "text-white" : "text-gray-400 group-hover:text-gray-300"
+                      isSelected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                     }`}
                   >
                     {opt.label}
@@ -127,18 +127,18 @@ export function FilterSidebar({
         </div>
       </div>
 
-      <div className="border-t border-gray-800" />
+      <div className="border-t border-border" />
 
       {/* Workspace filter */}
       {workspaces.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Workspace
           </h3>
           <select
             value={selectedWorkspace}
             onChange={(e) => onWorkspaceChange(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 text-sm text-white rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#F0FF7A] appearance-none cursor-pointer"
+            className="w-full bg-background border border-border text-sm text-foreground rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand appearance-none cursor-pointer"
           >
             <option value="">All workspaces</option>
             {workspaces.map((ws) => (
@@ -150,11 +150,11 @@ export function FilterSidebar({
         </div>
       )}
 
-      <div className="border-t border-gray-800" />
+      <div className="border-t border-border" />
 
       {/* Company sub-filter */}
       <div>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           Company
         </h3>
         <input
@@ -165,7 +165,7 @@ export function FilterSidebar({
             debouncedCompanyChange(e.target.value);
           }}
           placeholder="Filter by company..."
-          className="w-full bg-gray-800 border border-gray-700 text-sm text-white placeholder-gray-500 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#F0FF7A]"
+          className="w-full bg-background border border-border text-sm text-foreground placeholder-muted-foreground rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand"
         />
       </div>
     </aside>

@@ -50,27 +50,27 @@ function SkeletonRows() {
   return (
     <>
       {Array.from({ length: 8 }).map((_, i) => (
-        <TableRow key={i} className="border-gray-800">
+        <TableRow key={i} className="border-border">
           <TableCell className="w-10">
-            <div className="h-4 w-4 bg-gray-700 rounded animate-pulse" />
+            <div className="h-4 w-4 bg-muted rounded animate-pulse" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-gray-700 rounded animate-pulse w-28" />
+            <div className="h-3.5 bg-muted rounded animate-pulse w-28" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-gray-700 rounded animate-pulse w-40" />
+            <div className="h-3.5 bg-muted rounded animate-pulse w-40" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-gray-700 rounded animate-pulse w-32" />
+            <div className="h-3.5 bg-muted rounded animate-pulse w-32" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-gray-700 rounded animate-pulse w-28" />
+            <div className="h-3.5 bg-muted rounded animate-pulse w-28" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-gray-700 rounded animate-pulse w-20" />
+            <div className="h-3.5 bg-muted rounded animate-pulse w-20" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-gray-700 rounded animate-pulse w-16" />
+            <div className="h-3.5 bg-muted rounded animate-pulse w-16" />
           </TableCell>
         </TableRow>
       ))}
@@ -88,11 +88,11 @@ function FilterChip({
   onRemove: () => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-800 border border-gray-700 text-xs text-gray-300 rounded-full">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary border border-border text-xs text-foreground rounded-full">
       {label}
       <button
         onClick={onRemove}
-        className="text-gray-500 hover:text-white ml-0.5 leading-none"
+        className="text-muted-foreground hover:text-foreground ml-0.5 leading-none"
         aria-label={`Remove ${label} filter`}
       >
         ×
@@ -291,12 +291,12 @@ export function PeopleSearchPage() {
   const showBulkBar = selectedIds.size > 0 || selectAllMatching;
 
   return (
-    <div className="bg-gray-950 min-h-screen text-white">
+    <div>
       {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-5">
+      <div className="border-b border-border px-6 py-5">
         <div>
-          <h1 className="text-xl font-semibold">People</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-xl font-semibold text-foreground">People</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {data
               ? `${data.total.toLocaleString()} people${loading ? " (refreshing…)" : ""}`
               : loading
@@ -330,13 +330,13 @@ export function PeopleSearchPage() {
         <div className="flex-1 min-w-0 space-y-4">
           {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               type="text"
               placeholder="Search name, email, company, title…"
               defaultValue={params.q}
               onChange={(e) => debouncedSetQ(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 text-sm text-white placeholder-gray-500 rounded-md pl-9 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-[#F0FF7A]"
+              className="w-full border border-border text-sm text-foreground placeholder-muted-foreground rounded-md pl-9 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-brand"
             />
           </div>
 
@@ -361,7 +361,7 @@ export function PeopleSearchPage() {
                     page: 1,
                   })
                 }
-                className="text-xs text-gray-500 hover:text-gray-300 underline underline-offset-2 px-1"
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 px-1"
               >
                 Clear all
               </button>
@@ -383,13 +383,13 @@ export function PeopleSearchPage() {
 
           {/* Select all matching banner */}
           {allCurrentPageSelected && !selectAllMatching && data && data.total > (data.pageSize) && (
-            <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
-              <span className="text-gray-300">
+            <div className="bg-muted border border-border rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+              <span className="text-foreground">
                 All {currentPageIds.length} people on this page are selected.
               </span>
               <button
                 onClick={() => setSelectAllMatching(true)}
-                className="text-[#F0FF7A] hover:text-white font-medium ml-3 whitespace-nowrap"
+                className="text-brand-strong hover:text-foreground font-medium ml-3 whitespace-nowrap"
               >
                 Select all {data.total.toLocaleString()} matching people
               </button>
@@ -398,13 +398,13 @@ export function PeopleSearchPage() {
 
           {/* "All matching selected" confirmation banner */}
           {selectAllMatching && data && (
-            <div className="bg-[#F0FF7A]/10 border border-[#F0FF7A]/30 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
-              <span className="text-[#F0FF7A]">
+            <div className="bg-brand/10 border border-brand/30 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+              <span className="text-brand-strong">
                 All {data.total.toLocaleString()} matching people are selected.
               </span>
               <button
                 onClick={handleClearSelection}
-                className="text-gray-400 hover:text-white underline underline-offset-2 ml-3"
+                className="text-muted-foreground hover:text-foreground underline underline-offset-2 ml-3"
               >
                 Clear selection
               </button>
@@ -412,35 +412,35 @@ export function PeopleSearchPage() {
           )}
 
           {/* Results table */}
-          <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800 hover:bg-transparent">
+                <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="w-10 py-3">
                     <Checkbox
                       checked={selectAllMatching || (allCurrentPageSelected && currentPageIds.length > 0)}
                       data-state={someCurrentPageSelected ? "indeterminate" : undefined}
                       onCheckedChange={(checked) => handleHeaderCheckbox(!!checked)}
                       aria-label="Select all on page"
-                      className="border-gray-600 data-[state=checked]:bg-[#F0FF7A] data-[state=checked]:border-[#F0FF7A] data-[state=checked]:text-gray-900"
+                      className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-brand-foreground"
                     />
                   </TableHead>
-                  <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
+                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
                     Name
                   </TableHead>
-                  <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
+                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
                     Email
                   </TableHead>
-                  <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
+                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
                     Company
                   </TableHead>
-                  <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
+                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
                     Title
                   </TableHead>
-                  <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
+                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
                     Vertical
                   </TableHead>
-                  <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
+                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
                     Enrichment
                   </TableHead>
                 </TableRow>
@@ -449,10 +449,10 @@ export function PeopleSearchPage() {
                 {loading ? (
                   <SkeletonRows />
                 ) : !data || data.people.length === 0 ? (
-                  <TableRow className="border-gray-800">
+                  <TableRow className="border-border">
                     <TableCell
                       colSpan={7}
-                      className="text-center py-12 text-gray-500 text-sm"
+                      className="text-center py-12 text-muted-foreground text-sm"
                     >
                       No people found matching your search
                     </TableCell>
@@ -463,7 +463,7 @@ export function PeopleSearchPage() {
                     return (
                       <TableRow
                         key={person.id}
-                        className={`border-gray-800 hover:bg-gray-800/50 cursor-pointer ${isSelected ? "bg-gray-800/30" : ""}`}
+                        className={`border-border hover:bg-muted/50 cursor-pointer ${isSelected ? "bg-muted/30" : ""}`}
                         onClick={() => handleRowCheckbox(person.id, !isSelected)}
                       >
                         <TableCell
@@ -476,32 +476,32 @@ export function PeopleSearchPage() {
                               handleRowCheckbox(person.id, !!checked)
                             }
                             aria-label={`Select ${person.email}`}
-                            className="border-gray-600 data-[state=checked]:bg-[#F0FF7A] data-[state=checked]:border-[#F0FF7A] data-[state=checked]:text-gray-900"
+                            className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-brand-foreground"
                           />
                         </TableCell>
-                        <TableCell className="py-2 font-medium text-sm text-white">
+                        <TableCell className="py-2 font-medium text-sm text-foreground">
                           {[person.firstName, person.lastName]
                             .filter(Boolean)
                             .join(" ") || (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="py-2 text-sm text-gray-300">
+                        <TableCell className="py-2 text-sm text-muted-foreground">
                           {person.email}
                         </TableCell>
-                        <TableCell className="py-2 text-sm text-gray-300">
+                        <TableCell className="py-2 text-sm text-muted-foreground">
                           {person.company ?? (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="py-2 text-sm text-gray-400">
+                        <TableCell className="py-2 text-sm text-muted-foreground">
                           {person.jobTitle ?? (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="py-2 text-sm text-gray-400">
+                        <TableCell className="py-2 text-sm text-muted-foreground">
                           {person.vertical ?? (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
                         <TableCell className="py-2">
@@ -518,7 +518,7 @@ export function PeopleSearchPage() {
           {/* Pagination */}
           {!loading && data && data.total > 0 && (
             <div className="flex items-center justify-between text-sm">
-              <p className="text-gray-400 text-xs">
+              <p className="text-muted-foreground text-xs">
                 Showing {startRow.toLocaleString()}–{endRow.toLocaleString()} of{" "}
                 {data.total.toLocaleString()} results
               </p>
@@ -526,17 +526,17 @@ export function PeopleSearchPage() {
                 <button
                   onClick={() => void setParams({ page: params.page - 1 })}
                   disabled={params.page <= 1}
-                  className="px-3 py-1.5 text-xs rounded border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-xs rounded border border-border bg-secondary text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted-foreground">
                   Page {params.page} of {totalPages}
                 </span>
                 <button
                   onClick={() => void setParams({ page: params.page + 1 })}
                   disabled={params.page >= totalPages}
-                  className="px-3 py-1.5 text-xs rounded border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-xs rounded border border-border bg-secondary text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
