@@ -71,33 +71,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LEAD-01 | — | Pending |
-| LEAD-02 | — | Pending |
-| LEAD-03 | — | Pending |
-| LEAD-04 | — | Pending |
-| LEAD-05 | — | Pending |
-| LEAD-06 | — | Pending |
-| PORTAL-01 | — | Pending |
-| PORTAL-02 | — | Pending |
-| PORTAL-03 | — | Pending |
-| PORTAL-04 | — | Pending |
-| PORTAL-05 | — | Pending |
-| DEPLOY-01 | — | Pending |
-| DEPLOY-02 | — | Pending |
-| DEPLOY-03 | — | Pending |
-| DEPLOY-04 | — | Pending |
-| DEPLOY-05 | — | Pending |
-| DEPLOY-06 | — | Pending |
-| NOTIF-01 | — | Pending |
-| NOTIF-02 | — | Pending |
-| SCHEMA-01 | — | Pending |
-| SCHEMA-02 | — | Pending |
+| LEAD-01 | Phase 7 | Pending |
+| LEAD-02 | Phase 7 | Pending |
+| LEAD-03 | Phase 7 | Pending |
+| LEAD-04 | Phase 7 | Pending |
+| LEAD-05 | Phase 7 | Pending |
+| LEAD-06 | Phase 7 | Pending |
+| DEPLOY-01 | Phase 7 | Pending |
+| SCHEMA-01 | Phase 8 | Pending |
+| SCHEMA-02 | Phase 8 | Pending |
+| PORTAL-01 | Phase 9 | Pending |
+| PORTAL-02 | Phase 9 | Pending |
+| PORTAL-03 | Phase 9 | Pending |
+| PORTAL-04 | Phase 9 | Pending |
+| PORTAL-05 | Phase 9 | Pending |
+| NOTIF-01 | Phase 9 | Pending |
+| NOTIF-02 | Phase 9 | Pending |
+| DEPLOY-02 | Phase 10 | Pending |
+| DEPLOY-03 | Phase 10 | Pending |
+| DEPLOY-04 | Phase 10 | Pending |
+| DEPLOY-05 | Phase 10 | Pending |
+| DEPLOY-06 | Phase 10 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 21 total
-- Mapped to phases: 0
-- Unmapped: 21 ⚠️
+- Mapped to phases: 21
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-27*
-*Last updated: 2026-02-27 after initial definition*
+*Last updated: 2026-02-27 after roadmap creation*
