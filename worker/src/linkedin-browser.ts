@@ -192,102 +192,117 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Extract the member URN by intercepting Voyager API network responses.
+   * Resolve the member URN/ID for a profile using multiple strategies.
    *
-   * Must be called BEFORE navigating to the profile page — returns a promise
-   * that resolves once the Voyager profile API response arrives with the URN.
-   * Falls back to DOM-based extraction if network interception fails.
+   * Returns { urn, urnType, name } where urn is the ID to use in the compose
+   * URL and urnType is 'fsd_profile' or 'member' (determines URL format).
+   *
+   * Strategy order:
+   * 1. Direct Voyager API fetch (most reliable — bypasses headless detection)
+   * 2. Numeric ID from URL slug (instant, no network — covers most profiles)
    */
-  private extractMemberUrnFromNetwork(timeoutMs = 15_000): Promise<string | null> {
-    return new Promise((resolve) => {
-      if (!this.ws) { resolve(null); return; }
+  private async resolveRecipient(profileUrl: string): Promise<{
+    urn: string;
+    urnType: "fsd_profile" | "member";
+    name: string | null;
+  } | null> {
+    // Extract the public identifier (slug) from the URL
+    const slugMatch = profileUrl.match(/\/in\/([^/?]+)/);
+    if (!slugMatch) return null;
+    const publicId = slugMatch[1].replace(/\/$/, "");
 
-      let resolved = false;
-      const ws = this.ws;
+    // Strategy 1: Direct Voyager API fetch using session cookies
+    const voyagerResult = await this.fetchVoyagerProfile(publicId);
+    if (voyagerResult) return voyagerResult;
 
-      const timer = setTimeout(() => {
-        if (resolved) return;
-        resolved = true;
-        ws.removeEventListener("message", handler);
-        this.log(`Voyager URN interception timed out after ${timeoutMs}ms`);
-        resolve(null);
-      }, timeoutMs);
+    // Strategy 2: Numeric suffix from URL slug (e.g., "april-newman-27713482" → 27713482)
+    const numericMatch = publicId.match(/-(\d{5,})$/);
+    if (numericMatch) {
+      const numericId = numericMatch[1];
+      this.log(`Using numeric member ID from URL slug: ${numericId}`);
+      return { urn: numericId, urnType: "member", name: null };
+    }
 
-      const handler = async (event: MessageEvent) => {
-        if (resolved) return;
-        try {
-          const msg = JSON.parse(String(event.data));
-          if (msg.method !== "Network.responseReceived") return;
-
-          const url: string = msg.params?.response?.url ?? "";
-          const mimeType: string = msg.params?.response?.mimeType ?? "";
-
-          // Match Voyager profile API responses
-          if (!url.includes("/voyager/api/identity/")) return;
-          if (!mimeType.includes("json")) return;
-          if (!url.includes("profileView") && !url.includes("dash/profiles")) return;
-
-          this.log(`Voyager API response detected: ${url.substring(0, 120)}`);
-
-          // Get the response body
-          const bodyResp = await cdpSend(ws, "Network.getResponseBody", {
-            requestId: msg.params.requestId,
-          }, this.nextId());
-
-          let bodyText = (bodyResp?.result?.body as string) ?? "";
-          if (bodyResp?.result?.base64Encoded) {
-            bodyText = Buffer.from(bodyText, "base64").toString("utf-8");
-          }
-
-          // Extract fsd_profile URN from response JSON
-          const match = bodyText.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-          if (match && !resolved) {
-            resolved = true;
-            clearTimeout(timer);
-            ws.removeEventListener("message", handler);
-            this.log(`Extracted URN from Voyager API: "${match[1]}"`);
-            resolve(match[1]);
-          }
-        } catch { /* ignore parse errors on non-matching messages */ }
-      };
-
-      ws.addEventListener("message", handler);
-    });
+    this.log("All URN resolution strategies failed");
+    return null;
   }
 
   /**
-   * Fallback: extract member URN from DOM (works when LinkedIn renders fully).
+   * Fetch profile data directly from LinkedIn Voyager API using session cookies.
+   * Bypasses headless Chrome detection entirely.
    */
-  private async extractMemberUrnFromDom(maxWaitMs = 5_000): Promise<string | null> {
+  private async fetchVoyagerProfile(publicId: string): Promise<{
+    urn: string;
+    urnType: "fsd_profile";
+    name: string | null;
+  } | null> {
     if (!this.ws) return null;
-    const start = Date.now();
 
-    for (let i = 0; i < 10; i++) {
-      if (Date.now() - start > maxWaitMs) break;
+    try {
+      // Get cookies from the browser session
+      const resp = await cdpSend(
+        this.ws, "Network.getAllCookies", {}, this.nextId(),
+      );
+      const allCookies = (resp?.result?.cookies as CdpCookie[] | undefined) ?? [];
+      const liCookies = allCookies.filter(c => c.domain.includes("linkedin.com"));
 
-      const result = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  const el = document.querySelector('[data-member-id]');
-  if (el) { const id = el.getAttribute('data-member-id'); if (id) return { id, s: 'data-member-id' }; }
-  const html = document.documentElement.innerHTML;
-  const m = html.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-  if (m) return { id: m[1], s: 'fsd_regex' };
-  const el2 = document.querySelector('[data-entity-urn]');
-  if (el2) { const u = el2.getAttribute('data-entity-urn') || ''; const m2 = u.match(/urn:li:(?:fsd_profile|member):([A-Za-z0-9_-]+)/); if (m2) return { id: m2[1], s: 'data-entity-urn' }; }
-  return null;
-})()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { id: string; s: string } | null;
+      const liAt = liCookies.find(c => c.name === "li_at")?.value;
+      const jsessionId = liCookies.find(c => c.name === "JSESSIONID")?.value;
 
-      if (result?.id) {
-        this.log(`Extracted URN from DOM via ${result.s}: "${result.id}"`);
-        return result.id;
+      if (!liAt || !jsessionId) {
+        this.log("Voyager fetch: missing li_at or JSESSIONID cookie");
+        return null;
       }
-      await this.sleep(500);
+
+      // Build cookie header
+      const cookieHeader = liCookies.map(c => `${c.name}=${c.value}`).join("; ");
+      // CSRF token is the JSESSIONID value without quotes
+      const csrfToken = jsessionId.replace(/"/g, "");
+
+      const url = `https://www.linkedin.com/voyager/api/identity/profiles/${publicId}/profileView`;
+      this.log(`Voyager API fetch: ${url}`);
+
+      const response = await fetch(url, {
+        headers: {
+          "cookie": cookieHeader,
+          "csrf-token": csrfToken,
+          "x-restli-protocol-version": "2.0.0",
+          "accept": "application/vnd.linkedin.normalized+json+2.1",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+      });
+
+      if (!response.ok) {
+        this.log(`Voyager API returned ${response.status}`);
+        return null;
+      }
+
+      const bodyText = await response.text();
+
+      // Extract fsd_profile URN
+      const urnMatch = bodyText.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
+      if (!urnMatch) {
+        this.log("Voyager response has no fsd_profile URN");
+        return null;
+      }
+
+      // Try to extract name from the response
+      let name: string | null = null;
+      try {
+        const json = JSON.parse(bodyText);
+        const firstName = json?.profile?.firstName ?? "";
+        const lastName = json?.profile?.lastName ?? "";
+        if (firstName || lastName) {
+          name = `${firstName} ${lastName}`.trim();
+        }
+      } catch { /* name extraction is best-effort */ }
+
+      this.log(`Voyager API resolved: urn="${urnMatch[1]}", name="${name}"`);
+      return { urn: urnMatch[1], urnType: "fsd_profile", name };
+    } catch (error) {
+      this.log(`Voyager API fetch failed: ${error}`);
+      return null;
     }
-    return null;
   }
 
   /**
@@ -671,35 +686,29 @@ export class LinkedInBrowser {
     try {
       this.log(`Sending message via URN compose to: ${profileUrl}`);
 
-      // Step 1: Start Voyager network listener BEFORE navigating
-      const urnPromise = this.extractMemberUrnFromNetwork();
+      // Step 1: Resolve the recipient URN (Voyager API fetch, then URL slug fallback)
+      const recipient = await this.resolveRecipient(profileUrl);
+      if (!recipient) {
+        return {
+          success: false,
+          error: `Failed to resolve member URN for: ${profileUrl}`,
+        };
+      }
+      const { urn: memberId, urnType, name: voyagerName } = recipient;
 
-      // Step 2: Navigate to the profile page
+      // Step 2: Navigate to the profile page (counts as a profile view)
       const landedUrl = await this.navigate(profileUrl);
       this.log(`Profile page landed: ${landedUrl}`);
 
       // Human-like delay after viewing profile
       await this.sleep(1000 + Math.random() * 2000);
 
-      // Step 3: Await URN from network interception, fall back to DOM
-      let memberId = await urnPromise;
-      if (!memberId) {
-        this.log("Voyager interception failed, trying DOM fallback");
-        memberId = await this.extractMemberUrnFromDom();
-      }
-      if (!memberId) {
-        return {
-          success: false,
-          error: `Failed to extract member URN from profile page: ${profileUrl}`,
-        };
-      }
-
-      // Step 4: Extract profile name for later verification
-      const profileName = await this.extractProfileName();
+      // Step 3: Use profile name from Voyager if available, else try DOM
+      const profileName = voyagerName ?? await this.extractProfileName();
       this.log(`Profile name for verification: "${profileName}"`);
 
-      // Step 5: Navigate to compose URL with recipient URN
-      const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:fsd_profile:${memberId}`;
+      // Step 4: Navigate to compose URL with recipient URN
+      const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn:li:${urnType}:${memberId}`;
       this.log(`Navigating to compose URL: ${composeUrl}`);
       await this.navigate(composeUrl);
 
