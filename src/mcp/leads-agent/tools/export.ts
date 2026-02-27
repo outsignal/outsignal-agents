@@ -2,7 +2,8 @@
  * Export tools for the Outsignal Leads Agent MCP server.
  *
  * Tools registered:
- *   - export_to_emailbison: Export a list to EmailBison after verifying all emails.
+ *   - export_to_emailbison: Export a TargetList to EmailBison after pre-export summary and verification.
+ *   - export_csv: Generate a CSV for a TargetList and optionally write to disk.
  *
  * Hard export gate: ALL emails must have "valid" status before export is allowed.
  * Any email with a non-valid status blocks the entire export.
@@ -14,209 +15,362 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import {
-  verifyEmail,
-  getVerificationStatus,
-} from "@/lib/verification/leadmagic";
-
-/**
- * Parse a JSON tags string into a string array.
- */
-function parseTags(tags: string | null): string[] {
-  if (!tags) return [];
-  try {
-    const parsed = JSON.parse(tags);
-    return Array.isArray(parsed) ? (parsed as string[]) : [];
-  } catch {
-    return [];
-  }
-}
+  getListExportReadiness,
+  verifyAndFilter,
+} from "@/lib/export/verification-gate";
+import { generateListCsv } from "@/lib/export/csv";
+import { EmailBisonClient } from "@/lib/emailbison/client";
+import { writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
 
 export function registerExportTools(server: McpServer): void {
+  // ─── Tool 1: export_to_emailbison ───────────────────────────────────────────
   server.tool(
     "export_to_emailbison",
-    "Export a list to EmailBison. Verifies ALL emails first — blocks if any email is not 'valid'. Call without confirm to see pre-export summary.",
+    [
+      "Export a TargetList to an EmailBison campaign.",
+      "Call without confirm to see a pre-export summary (lead count, verification status, enrichment coverage).",
+      "Set verify_unverified=true to verify unverified emails first.",
+      "Set confirm=true to execute the push after reviewing the summary.",
+    ].join(" "),
     {
-      list_name: z.string().describe("Name of the list to export"),
+      list_id: z.string().describe("TargetList ID to export"),
       workspace: z.string().describe("Workspace slug"),
-      campaign_id: z
-        .string()
+      template_campaign_id: z
+        .number()
         .optional()
-        .describe("EmailBison campaign ID (if known)"),
+        .describe(
+          "If provided, duplicate this campaign (inherits email sequence). If omitted, create a new campaign.",
+        ),
       confirm: z
         .boolean()
         .default(false)
         .describe(
-          "Set to true to verify and export. First call without confirm to see summary.",
+          "Set true to execute the push after reviewing the pre-export summary.",
+        ),
+      verify_unverified: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Set true to trigger email verification for unverified people before export.",
         ),
     },
     async (params) => {
-      const { list_name, workspace, campaign_id, confirm } = params;
+      const { list_id, workspace, template_campaign_id, confirm, verify_unverified } =
+        params;
 
-      // Find all people in the list (same query as view_list)
-      const pws = await prisma.personWorkspace.findMany({
-        where: {
-          workspace,
-          tags: { contains: `"${list_name}"` },
-        },
-        include: {
-          person: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              company: true,
-              jobTitle: true,
-              companyDomain: true,
-              linkedinUrl: true,
-              status: true,
-            },
-          },
-        },
+      // ── Step 1: Look up TargetList ──────────────────────────────────────────
+      const list = await prisma.targetList.findUnique({
+        where: { id: list_id },
+        select: { id: true, name: true },
       });
-
-      // Double-check tag membership (contains could match substrings)
-      const people = pws
-        .filter((pw) => parseTags(pw.tags).includes(list_name))
-        .map((pw) => pw.person);
-
-      const total = people.length;
-
-      if (total === 0) {
+      if (!list) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `List '${list_name}' is empty. No people to export.`,
+              text: `Error: TargetList with ID '${list_id}' not found.`,
             },
           ],
         };
       }
 
-      if (!confirm) {
-        // Pre-export summary: check cached verification status for each person
-        let readyCount = 0;
-        let needsVerificationCount = 0;
-        let blockedCount = 0;
+      // ── Step 2: Look up or create Workspace ─────────────────────────────────
+      let ws = await prisma.workspace.findUnique({ where: { slug: workspace } });
+      let workspaceCreatedMessage = "";
+      if (!ws) {
+        // LOCKED CONTEXT.md DECISION: Agent creates workspace if it does not exist.
+        ws = await prisma.workspace.create({
+          data: { slug: workspace, name: workspace },
+        });
+        workspaceCreatedMessage = `\n> Workspace '${workspace}' was created. Note: You need to configure its apiToken before pushing leads to EmailBison.\n`;
+      }
 
-        for (const person of people) {
-          const verStatus = await getVerificationStatus(person.id);
-          if (verStatus === null) {
-            needsVerificationCount++;
-          } else if (verStatus.isExportable) {
-            readyCount++;
-          } else {
-            blockedCount++;
-          }
+      // ── Step 3: verify_unverified=true → trigger verification ───────────────
+      if (verify_unverified) {
+        const readiness = await getListExportReadiness(list_id);
+        if (readiness.needsVerificationCount === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No unverified emails. Set confirm=true to export.",
+              },
+            ],
+          };
         }
 
-        const estimatedCost = (needsVerificationCount * 0.05).toFixed(2);
+        const { verified, excluded } = await verifyAndFilter(
+          readiness.needsVerificationPeople.map((p) => ({
+            id: p.id,
+            email: p.email,
+          })),
+        );
+
+        const excludedLines =
+          excluded.length > 0
+            ? excluded.map((e) => `  - ${e.email}: ${e.status}`).join("\n")
+            : "  (none)";
+
+        const updatedCount = readiness.readyCount + verified.length;
 
         const text = [
-          `List '${list_name}': ${total} people`,
-          `- Ready (verified): ${readyCount}`,
-          `- Needs verification: ${needsVerificationCount}`,
-          `- Blocked (invalid/catch-all): ${blockedCount}`,
+          "## Verification Complete",
           "",
-          `Estimated verification cost: ~$${estimatedCost}`,
-          "Set confirm=true to verify and export.",
+          `- Verified as valid: ${verified.length}`,
+          `- Excluded (invalid/catch-all): ${excluded.length}`,
+          ...(excluded.length > 0 ? [excludedLines] : []),
+          "",
+          `Updated export count: ${updatedCount} people`,
+          "Set confirm=true to push.",
         ].join("\n");
 
         return { content: [{ type: "text" as const, text }] };
       }
 
-      // Verify all unverified emails
-      const verificationResults: Map<
-        string,
-        { status: string; isExportable: boolean }
-      > = new Map();
+      // ── Step 4: confirm=true → execute push ─────────────────────────────────
+      if (confirm) {
+        // Fresh readiness check after potential verification
+        const readiness = await getListExportReadiness(list_id);
 
-      for (const person of people) {
-        const cached = await getVerificationStatus(person.id);
-        if (cached !== null) {
-          verificationResults.set(person.id, cached);
-        } else {
-          // Call LeadMagic to verify
+        if (readiness.needsVerificationCount > 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Export blocked: ${readiness.needsVerificationCount} emails still unverified. Set verify_unverified=true first.`,
+              },
+            ],
+          };
+        }
+
+        const exportable = readiness.readyPeople;
+        if (exportable.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No exportable leads in this list.",
+              },
+            ],
+          };
+        }
+
+        // Re-fetch workspace to get apiToken
+        const wsWithToken = await prisma.workspace.findUnique({
+          where: { slug: workspace },
+        });
+        if (!wsWithToken?.apiToken) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Workspace has no EmailBison API token. Configure it before pushing.`,
+              },
+            ],
+          };
+        }
+
+        const client = new EmailBisonClient(wsWithToken.apiToken);
+
+        // Generate campaign name: workspace_list_date (underscores)
+        const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const safeName = (s: string) => s.replace(/\s+/g, "_");
+        const campaignName = `${safeName(ws.name)}_${safeName(list.name)}_${dateStr}`;
+
+        // Create or duplicate campaign
+        const campaign = template_campaign_id
+          ? await client.duplicateCampaign(template_campaign_id)
+          : await client.createCampaign({ name: campaignName });
+
+        // Ensure custom variables exist before pushing leads
+        await client.ensureCustomVariables(["linkedin_url"]);
+
+        // Push each lead individually
+        let successCount = 0;
+        let failCount = 0;
+        for (const person of exportable) {
           try {
-            const result = await verifyEmail(person.email, person.id);
-            verificationResults.set(person.id, {
-              status: result.status,
-              isExportable: result.isExportable,
+            await client.createLead({
+              firstName: person.firstName ?? undefined,
+              lastName: person.lastName ?? undefined,
+              email: person.email,
+              jobTitle: person.jobTitle ?? undefined,
+              company: person.company ?? undefined,
+              phone: person.phone ?? undefined,
+              customVariables: person.linkedinUrl
+                ? [{ name: "linkedin_url", value: person.linkedinUrl }]
+                : undefined,
             });
+            successCount++;
           } catch (err) {
             console.error(
-              `[export_to_emailbison] Failed to verify ${person.email}:`,
+              `[export_to_emailbison] Failed to push lead ${person.email}:`,
               err,
             );
-            verificationResults.set(person.id, {
-              status: "unknown",
-              isExportable: false,
-            });
+            failCount++;
           }
         }
-      }
 
-      // Check for any blocked emails
-      const blocked = people.filter((p) => {
-        const result = verificationResults.get(p.id);
-        return !result?.isExportable;
-      });
+        const totalExportable = exportable.length;
+        const campaignNote = template_campaign_id
+          ? `Note: Campaign was duplicated from #${template_campaign_id} — email sequence inherited.`
+          : "Note: Campaign was created fresh — you need to set up the email sequence.";
 
-      if (blocked.length > 0) {
-        const blockedList = blocked
-          .map((p) => {
-            const result = verificationResults.get(p.id);
-            return `- ${p.email}: ${result?.status ?? "unknown"}`;
-          })
-          .join("\n");
-
-        const text = [
-          `Export blocked: ${blocked.length} emails are not valid.`,
+        const lines = [
+          "## Export Complete",
           "",
-          blockedList,
+          `**Campaign:** ${campaign.name} (ID: ${campaign.id})`,
+          `**Leads pushed:** ${successCount}/${totalExportable}`,
+          ...(failCount > 0 ? [`**Failed:** ${failCount} (see server logs)`] : []),
           "",
-          "Remove blocked people from the list or re-verify.",
-        ].join("\n");
+          "### Next Steps",
+          "1. Go to EmailBison: https://app.outsignal.ai",
+          `2. Open campaign "${campaign.name}"`,
+          `3. Import the ${successCount} leads from the workspace lead pool into this campaign`,
+          "4. Configure email sequence (if new campaign) or verify sequence (if duplicated)",
+          "5. Activate campaign when ready",
+          "",
+          campaignNote,
+        ];
 
-        return { content: [{ type: "text" as const, text }] };
-      }
-
-      // All emails valid — generate export data
-      const csvHeader = "name,email,company,job_title,linkedin_url,campaign_id";
-      const csvRows = people.map((p) => {
-        const name = [p.firstName, p.lastName].filter(Boolean).join(" ");
-        const campaignValue = campaign_id ?? "";
-        // Escape CSV values
-        const escape = (s: string | null) => {
-          if (!s) return "";
-          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-            return `"${s.replace(/"/g, '""')}"`;
-          }
-          return s;
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
         };
-        return [
-          escape(name),
-          escape(p.email),
-          escape(p.company),
-          escape(p.jobTitle),
-          escape(p.linkedinUrl),
-          escape(campaignValue),
-        ].join(",");
-      });
+      }
 
-      const csvData = [csvHeader, ...csvRows].join("\n");
+      // ── Step 5: Default (confirm=false, verify_unverified=false) → summary ──
+      if (ws.apiToken == null || ws.apiToken === "") {
+        const infoText = [
+          workspaceCreatedMessage,
+          `Workspace '${ws.name}' has no EmailBison API token configured. Set the apiToken in the database before pushing leads.`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        return { content: [{ type: "text" as const, text: infoText }] };
+      }
 
-      const text = [
-        `All ${total} emails verified as valid.`,
-        `EmailBison push endpoint integration coming in Phase 5.`,
+      const readiness = await getListExportReadiness(list_id);
+      const {
+        totalCount,
+        readyCount,
+        needsVerificationCount,
+        blockedCount,
+        verifiedEmailPct,
+        verticalBreakdown,
+        enrichmentCoverage,
+      } = readiness;
+
+      // Generate campaign name for the summary
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const safeName = (s: string) => s.replace(/\s+/g, "_");
+      const campaignName = `${safeName(ws.name)}_${safeName(list.name)}_${dateStr}`;
+      const campaignDesc = template_campaign_id
+        ? `${campaignName} (duplicated from #${template_campaign_id} — inherits email sequence)`
+        : `${campaignName} (new — no email sequence)`;
+
+      // Build vertical breakdown lines
+      const verticalLines = Object.entries(verticalBreakdown)
+        .map(([v, c]) => `- ${v}: ${c}`)
+        .join("\n");
+
+      // Build footer guidance
+      let footer = "";
+      if (needsVerificationCount > 0) {
+        footer = `\u26A0 Some emails are unverified. Set verify_unverified=true to verify them first, or set confirm=true to export only the ${readyCount} verified leads (excluding ${blockedCount + needsVerificationCount} unready).`;
+      } else if (blockedCount > 0) {
+        footer = `\u2139 ${blockedCount} leads will be auto-excluded (invalid/catch-all emails). ${readyCount} leads will be pushed.`;
+      } else {
+        footer = `\u2713 All emails verified. Set confirm=true to push.`;
+      }
+
+      const estimatedCost = (needsVerificationCount * 0.05).toFixed(2);
+
+      const lines = [
+        workspaceCreatedMessage,
+        "## Pre-Export Summary",
         "",
-        "Export data:",
-        "```csv",
-        csvData,
-        "```",
-      ].join("\n");
+        `**List:** ${list.name} (${totalCount} people)`,
+        `**Workspace:** ${ws.name} (${ws.slug})`,
+        `**Campaign:** ${campaignDesc}`,
+        "",
+        "### Email Verification",
+        `- Ready (verified valid): ${readyCount} (${verifiedEmailPct}%)`,
+        `- Needs verification: ${needsVerificationCount}`,
+        `- Blocked (invalid/catch-all): ${blockedCount}`,
+        "",
+        "### Enrichment Coverage",
+        `- Company data: ${enrichmentCoverage.companyDataPct}%`,
+        `- LinkedIn profiles: ${enrichmentCoverage.linkedinPct}%`,
+        `- Job titles: ${enrichmentCoverage.jobTitlePct}%`,
+        "",
+        "### Vertical Breakdown",
+        verticalLines,
+        "",
+        "### Estimated Verification Cost",
+        `~$${estimatedCost} (${needsVerificationCount} emails x $0.05/each)`,
+        "",
+        "---",
+        footer,
+      ]
+        .filter((l) => l !== undefined)
+        .join("\n");
 
-      return { content: [{ type: "text" as const, text }] };
+      return { content: [{ type: "text" as const, text: lines }] };
+    },
+  );
+
+  // ─── Tool 2: export_csv ─────────────────────────────────────────────────────
+  server.tool(
+    "export_csv",
+    "Generate a CSV file for all exportable members of a TargetList. Enforces the verification gate (all emails must be verified). Optionally writes the CSV to disk at ./exports/{filename}.",
+    {
+      list_id: z.string().describe("TargetList ID to export"),
+      save_to_disk: z
+        .boolean()
+        .default(false)
+        .describe(
+          "If true, write the CSV to ./exports/{filename} on the server filesystem.",
+        ),
+    },
+    async (params) => {
+      const { list_id, save_to_disk } = params;
+
+      let result: { csv: string; filename: string; count: number };
+      try {
+        result = await generateListCsv(list_id);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error during CSV generation.";
+        return {
+          content: [{ type: "text" as const, text: message }],
+        };
+      }
+
+      const { csv, filename, count } = result;
+
+      if (save_to_disk) {
+        const exportsDir = join(process.cwd(), "exports");
+        mkdirSync(exportsDir, { recursive: true });
+        writeFileSync(join(exportsDir, filename), csv, "utf-8");
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `CSV exported: ./exports/${filename} (${count} people, ${csv.length} bytes)\n\nAlso available via API: GET /api/lists/${list_id}/export`,
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `CSV generated: ${filename} (${count} people)\n\nDownload via API: GET /api/lists/${list_id}/export\n\nOr set save_to_disk=true to write to ./exports/${filename}`,
+          },
+        ],
+      };
     },
   );
 }
