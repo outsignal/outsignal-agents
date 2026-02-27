@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v1.1
 milestone_name: Outbound Pipeline
-status: unknown
-last_updated: "2026-02-27T18:38:14.364Z"
+status: in_progress
+last_updated: "2026-02-27T21:30:00.000Z"
 progress:
-  total_phases: 2
+  total_phases: 5
   completed_phases: 1
-  total_plans: 4
+  total_plans: 6
   completed_plans: 5
 ---
 
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v1.1 Phase 7 — Leads Agent Dashboard
+**Current focus:** v1.1 — Phases 7.1-10 (Outbound Pipeline)
 
 ## Current Position
 
-Phase: 7 of 10 (Leads Agent Dashboard)
-Plan: 3 of TBD in current phase (07-03 complete)
-Status: In progress
-Last activity: 2026-02-27 — Executed 07-03 (Orchestrator wiring: delegateToLeads → runLeadsAgent, maxDuration = 300)
+Phase: 7.1 of 10 (Leads Agent Integration Fixes — in progress)
+Plan: 1 of 2 in current phase (Plan 01 complete, Plan 02 next)
+Status: In Progress
+Last activity: 2026-02-27 — Executed Plan 01: three integration fixes (apiToken check, conversationContext wiring, scoreList confirm gate)
 
-Progress: [░░░░░░░░░░] 0% (v1.1)
+Progress: [██░░░░░░░░] 20% (v1.1 — Phase 7 complete, 7.1-10 remaining)
 
 ## Accumulated Context
 
@@ -37,27 +37,38 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 
 **v1.1 scoping (2026-02-27):**
 - Leads Agent: AI SDK tool() wrappers backed by shared operations.ts — never bridge MCP types
-- Client portal: binary approve/reject at list level only (per-lead confirmed out of scope)
-- Deploy: fire-and-forget, returns immediately; CampaignDeploy model tracks background status
+- Client portal: separate lead + content approvals per campaign (not binary list-level)
+- Deploy: fire-and-forget on dual approval (both leads + content approved), auto-triggered
 - Portal auth: getPortalSession() called first in every /api/portal/* route (not just middleware)
-- Deploy dedup: TargetList.status === 'deployed' is the mutex — prevents re-deploy on approval refresh
-- EmailBison spike: must verify sequence step schema + campaign-lead assignment API before Phase 10 design
-- [Phase 07-leads-agent-dashboard]: getSequenceSteps broken path fixed to /campaigns/campaignId/sequence-steps (confirmed correct via live API probe)
-- [Phase 07-leads-agent-dashboard]: DEPLOY-01 spike doc already complete from research phase — no changes needed, 239 lines covering all required sections
+- Deploy dedup: Campaign.status === 'deployed' is the mutex — prevents re-deploy on approval refresh
+- EmailBison spike: sequence step schema verified, no campaign-lead assignment endpoint (405)
+- Campaign is first-class entity in Outsignal — owns TargetList (leads) + email/LinkedIn sequences (content)
+- Writer agent has two modes: proactive (campaign sequences) and reactive (reply suggestions)
+- Writer style rules: no em dashes, no AI/robotic tone, natural simple language, clear offering, avoid spam triggers
+- Writer interaction is conversational — admin reviews + iterates via Cmd+J
+- Reply suggestions surfaced in Slack notifications on LEAD_REPLIED / LEAD_INTERESTED webhooks
+- Unified inbox deferred to v1.3, payment integration deferred to future milestone
+- Onboarding → agent pipeline: manual CLI trigger for now, automated in v1.2
+
+**Phase 7 decisions (2026-02-27):**
 - [07-01]: operations.ts is single source of truth for all lead pipeline DB queries; agent tools will be thin wrappers; credit-gate on export; icpScoredAt skip guard on scoring
-- [Phase 07-leads-agent-dashboard]: LeadsOutput loosened to action/summary/data for conversational agent pattern
-- [Phase 07-leads-agent-dashboard]: LeadsInput.workspaceSlug made optional; conversationContext field added for chat refinement
-- [07-03]: delegateToLeads limit param removed from inputSchema — Leads Agent handles pagination internally; workspaceSlug made optional in orchestrator tool to match LeadsInput type
+- [07-03]: delegateToLeads limit param removed from inputSchema — Leads Agent handles pagination internally; workspaceSlug made optional
 - [07-03]: maxDuration = 300 on chat route — worst-case scoring for large lists can approach 300s
+- [07-04]: getSequenceSteps broken path fixed to /campaigns/campaignId/sequence-steps (confirmed correct via live API probe)
+
+**Phase 7.1 decisions (2026-02-27):**
+- [07.1-01]: apiToken check placed at call site in exportListToEmailBison, not in getClientForWorkspace — avoids changing shared utility used by many other tools
+- [07.1-01]: conversationContext gap was only in orchestrator schema; leads.ts already handled it — one-file fix
+- [07.1-01]: scoreList confirm defaults to true — backward-compatible, existing agent wrapper unchanged
 
 ### Blockers/Concerns
 
-- EmailBison campaign-lead assignment API — RESOLVED (07-04): No assignment endpoint exists; UI-only. Phase 10 (DEPLOY-04) must accept manual campaign assignment or find alternative.
+- EmailBison campaign-lead assignment API — RESOLVED (07-04): No assignment endpoint exists; UI-only. Phase 10 must accept manual campaign assignment or find alternative. User has contacted EmailBison support.
 - EmailBison sequence step schema — RESOLVED (07-04): Full schema verified via live probe. See .planning/spikes/emailbison-api.md.
-- Vercel timeout on deploy: maxDuration = 300 must be set on chat route before first Leads Agent deploy — RESOLVED (07-03): maxDuration = 300 added to src/app/api/chat/route.ts
+- Vercel timeout — RESOLVED (07-03): maxDuration = 300 added to src/app/api/chat/route.ts
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 07-03-PLAN.md — Orchestrator wiring (delegateToLeads → runLeadsAgent, maxDuration = 300)
+Stopped at: Completed 07.1-01-PLAN.md (3 fixes: apiToken check, conversationContext wiring, scoreList confirm gate). Plan 02 (MCP migration) is next.
 Resume file: None

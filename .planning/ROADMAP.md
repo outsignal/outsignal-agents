@@ -63,9 +63,9 @@ Plans:
 - [ ] 07.1-02-PLAN.md — MCP tools migration to operations layer
 
 ### Phase 8: Campaign Entity + Writer Integration
-**Goal**: Campaign becomes a first-class entity in Outsignal that owns leads (TargetList) AND content (email + LinkedIn sequences). Admin creates campaigns, generates content via writer agent, reviews and iterates via Cmd+J, and promotes to client review — all through natural language chat.
+**Goal**: Campaign becomes a first-class entity in Outsignal that owns leads (TargetList) AND content (email + LinkedIn sequences). Admin creates campaigns, generates content via writer agent, reviews and iterates via Cmd+J, and promotes to client review — all through natural language chat. Writer agent also generates suggested responses to incoming replies, surfaced in Slack notifications and available for refinement via Cmd+J.
 **Depends on**: Phase 7 (Leads Agent tools exist), Writer agent (exists, needs wiring to campaign context)
-**Requirements**: CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, WRITER-01, WRITER-02
+**Requirements**: CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, WRITER-01, WRITER-02, WRITER-03, WRITER-04, WRITER-05, WRITER-06, WRITER-07
 **Success Criteria** (what must be TRUE):
   1. Campaign model exists in Prisma with status lifecycle (draft → internal_review → pending_approval → approved → deployed → active → paused → completed), channel selection, separate lead/content approval fields, and deployment tracking
   2. Admin types "create a campaign for Rise using the fintech CTO list, email + LinkedIn" in Cmd+J and a Campaign record is created with the TargetList linked and channels set
@@ -74,6 +74,8 @@ Plans:
   5. Admin can review content in chat, give feedback ("too formal, simplify the CTA"), and the writer iterates — conversational back-and-forth
   6. Admin types "push this campaign for client approval" and Campaign.status transitions to pending_approval, triggering a client notification (email + Slack)
   7. Campaign CRUD API routes exist at `/api/campaigns/*` with workspace ownership enforcement
+  8. When a reply webhook fires (LEAD_REPLIED, LEAD_INTERESTED), the writer agent generates a suggested response using conversation history, workspace context, and knowledge base — included in the Slack notification as a "Suggested Response" block
+  9. Admin can refine a reply suggestion via Cmd+J: "draft a response to John's reply" or "make that response more casual" — conversational iteration on reply drafts
 **Plans**: TBD
 
 ### Phase 9: Client Portal Campaign Approval
@@ -117,7 +119,7 @@ Plans:
 | 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
-| 7.1 Leads Agent Integration Fixes | v1.1 | 0/2 | Planned | - |
+| 7.1 Leads Agent Integration Fixes | 1/2 | In Progress|  | - |
 | 8. Campaign Entity + Writer Integration | v1.1 | 0/TBD | Not started | - |
 | 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
