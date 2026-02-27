@@ -13,6 +13,8 @@ import {
   ClipboardList,
   ChevronRight,
   Linkedin,
+  Building2,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +35,8 @@ interface SidebarProps {
 const mainNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/people", label: "People", icon: Users },
+  { href: "/companies", label: "Companies", icon: Building2 },
+  { href: "/lists", label: "Lists", icon: ListChecks },
   { href: "/onboard", label: "Proposals", icon: UserPlus },
   { href: "/onboarding", label: "Onboarding", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -50,7 +54,10 @@ export function Sidebar({ workspaces }: SidebarProps) {
       <ScrollArea className="flex-1 px-3 py-4">
         <nav className="space-y-1">
           {mainNav.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}

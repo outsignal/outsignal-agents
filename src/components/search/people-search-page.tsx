@@ -12,8 +12,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FilterSidebar } from "./filter-sidebar";
 import { EnrichmentBadge } from "./enrichment-badge";
+import { BulkActionBar } from "./bulk-action-bar";
+import { AddToListDropdown } from "./add-to-list-dropdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +51,9 @@ function SkeletonRows() {
     <>
       {Array.from({ length: 8 }).map((_, i) => (
         <TableRow key={i} className="border-gray-800">
+          <TableCell className="w-10">
+            <div className="h-4 w-4 bg-gray-700 rounded animate-pulse" />
+          </TableCell>
           <TableCell>
             <div className="h-3.5 bg-gray-700 rounded animate-pulse w-28" />
           </TableCell>
@@ -126,6 +132,28 @@ export function PeopleSearchPage() {
   // Track if we've loaded filter options at least once
   const filterOptionsLoaded = useRef(false);
 
+  // ─── Selection state (ephemeral UI state, not in URL) ─────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+
+  // Clear selection when filters/search change
+  const filterKey = [
+    params.q,
+    params.vertical.join(","),
+    params.enrichment,
+    params.workspace,
+    params.company,
+  ].join("|");
+
+  const prevFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (prevFilterKey.current !== filterKey) {
+      setSelectedIds(new Set());
+      setSelectAllMatching(false);
+      prevFilterKey.current = filterKey;
+    }
+  }, [filterKey]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -172,6 +200,62 @@ export function PeopleSearchPage() {
   const startRow = data ? (params.page - 1) * data.pageSize + 1 : 0;
   const endRow = data ? Math.min(params.page * data.pageSize, data.total) : 0;
 
+  // ─── Selection helpers ────────────────────────────────────────────────────
+
+  const currentPageIds = data?.people.map((p) => p.id) ?? [];
+  const allCurrentPageSelected =
+    currentPageIds.length > 0 &&
+    currentPageIds.every((id) => selectedIds.has(id));
+  const someCurrentPageSelected =
+    currentPageIds.some((id) => selectedIds.has(id)) && !allCurrentPageSelected;
+
+  const handleHeaderCheckbox = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        currentPageIds.forEach((id) => next.add(id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        currentPageIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setSelectAllMatching(false);
+    }
+  };
+
+  const handleRowCheckbox = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+        setSelectAllMatching(false);
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+    setSelectAllMatching(false);
+  };
+
+  const handleAddComplete = () => {
+    handleClearSelection();
+  };
+
+  // Current filter params for "select all matching" mode
+  const currentFilterParams: Record<string, unknown> = {};
+  if (params.q) currentFilterParams.q = params.q;
+  if (params.vertical.length > 0) currentFilterParams.vertical = params.vertical;
+  if (params.enrichment) currentFilterParams.enrichment = params.enrichment;
+  if (params.workspace) currentFilterParams.workspace = params.workspace;
+  if (params.company) currentFilterParams.company = params.company;
+
   // Active filter chips — shown above results
   const activeChips: Array<{ label: string; onRemove: () => void }> = [];
   params.vertical.forEach((v) => {
@@ -203,6 +287,8 @@ export function PeopleSearchPage() {
       onRemove: () => void setParams({ company: "", page: 1 }),
     });
   }
+
+  const showBulkBar = selectedIds.size > 0 || selectAllMatching;
 
   return (
     <div className="bg-gray-950 min-h-screen text-white">
@@ -295,11 +381,50 @@ export function PeopleSearchPage() {
             </div>
           )}
 
+          {/* Select all matching banner */}
+          {allCurrentPageSelected && !selectAllMatching && data && data.total > (data.pageSize) && (
+            <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+              <span className="text-gray-300">
+                All {currentPageIds.length} people on this page are selected.
+              </span>
+              <button
+                onClick={() => setSelectAllMatching(true)}
+                className="text-[#F0FF7A] hover:text-white font-medium ml-3 whitespace-nowrap"
+              >
+                Select all {data.total.toLocaleString()} matching people
+              </button>
+            </div>
+          )}
+
+          {/* "All matching selected" confirmation banner */}
+          {selectAllMatching && data && (
+            <div className="bg-[#F0FF7A]/10 border border-[#F0FF7A]/30 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+              <span className="text-[#F0FF7A]">
+                All {data.total.toLocaleString()} matching people are selected.
+              </span>
+              <button
+                onClick={handleClearSelection}
+                className="text-gray-400 hover:text-white underline underline-offset-2 ml-3"
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
+
           {/* Results table */}
           <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="border-gray-800 hover:bg-transparent">
+                  <TableHead className="w-10 py-3">
+                    <Checkbox
+                      checked={selectAllMatching || (allCurrentPageSelected && currentPageIds.length > 0)}
+                      data-state={someCurrentPageSelected ? "indeterminate" : undefined}
+                      onCheckedChange={(checked) => handleHeaderCheckbox(!!checked)}
+                      aria-label="Select all on page"
+                      className="border-gray-600 data-[state=checked]:bg-[#F0FF7A] data-[state=checked]:border-[#F0FF7A] data-[state=checked]:text-gray-900"
+                    />
+                  </TableHead>
                   <TableHead className="text-xs text-gray-400 uppercase tracking-wide font-medium py-3">
                     Name
                   </TableHead>
@@ -326,48 +451,65 @@ export function PeopleSearchPage() {
                 ) : !data || data.people.length === 0 ? (
                   <TableRow className="border-gray-800">
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="text-center py-12 text-gray-500 text-sm"
                     >
                       No people found matching your search
                     </TableCell>
                   </TableRow>
                 ) : (
-                  data.people.map((person) => (
-                    <TableRow
-                      key={person.id}
-                      className="border-gray-800 hover:bg-gray-800/50"
-                    >
-                      <TableCell className="py-2 font-medium text-sm text-white">
-                        {[person.firstName, person.lastName]
-                          .filter(Boolean)
-                          .join(" ") || (
-                          <span className="text-gray-600">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-2 text-sm text-gray-300">
-                        {person.email}
-                      </TableCell>
-                      <TableCell className="py-2 text-sm text-gray-300">
-                        {person.company ?? (
-                          <span className="text-gray-600">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-2 text-sm text-gray-400">
-                        {person.jobTitle ?? (
-                          <span className="text-gray-600">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-2 text-sm text-gray-400">
-                        {person.vertical ?? (
-                          <span className="text-gray-600">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-2">
-                        <EnrichmentBadge person={person} />
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  data.people.map((person) => {
+                    const isSelected = selectAllMatching || selectedIds.has(person.id);
+                    return (
+                      <TableRow
+                        key={person.id}
+                        className={`border-gray-800 hover:bg-gray-800/50 cursor-pointer ${isSelected ? "bg-gray-800/30" : ""}`}
+                        onClick={() => handleRowCheckbox(person.id, !isSelected)}
+                      >
+                        <TableCell
+                          className="py-2 w-10"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(checked) =>
+                              handleRowCheckbox(person.id, !!checked)
+                            }
+                            aria-label={`Select ${person.email}`}
+                            className="border-gray-600 data-[state=checked]:bg-[#F0FF7A] data-[state=checked]:border-[#F0FF7A] data-[state=checked]:text-gray-900"
+                          />
+                        </TableCell>
+                        <TableCell className="py-2 font-medium text-sm text-white">
+                          {[person.firstName, person.lastName]
+                            .filter(Boolean)
+                            .join(" ") || (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2 text-sm text-gray-300">
+                          {person.email}
+                        </TableCell>
+                        <TableCell className="py-2 text-sm text-gray-300">
+                          {person.company ?? (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2 text-sm text-gray-400">
+                          {person.jobTitle ?? (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2 text-sm text-gray-400">
+                          {person.vertical ?? (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <EnrichmentBadge person={person} />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -403,6 +545,23 @@ export function PeopleSearchPage() {
           )}
         </div>
       </div>
+
+      {/* Bulk action bar — renders outside the scrollable content, fixed to bottom */}
+      {showBulkBar && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          selectAllMatching={selectAllMatching}
+          totalMatching={data?.total ?? 0}
+          onClearSelection={handleClearSelection}
+        >
+          <AddToListDropdown
+            selectedPersonIds={[...selectedIds]}
+            selectAllFilters={selectAllMatching ? currentFilterParams : null}
+            workspaces={filterOptions.workspaces}
+            onComplete={handleAddComplete}
+          />
+        </BulkActionBar>
+      )}
     </div>
   );
 }
