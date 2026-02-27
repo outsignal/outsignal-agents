@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Engine
 status: complete
-last_updated: "2026-02-27T14:00:00.000Z"
+last_updated: "2026-02-27T14:05:18Z"
 progress:
   total_phases: 7
   completed_phases: 7
-  total_plans: 22
-  completed_plans: 22
+  total_plans: 23
+  completed_plans: 23
 ---
 
 # Project State
@@ -24,13 +24,18 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 Milestone: v1.0 Lead Engine — SHIPPED 2026-02-27
 Status: Complete (29/29 requirements, 7/7 phases, 12 tech debt items non-blocking)
-Last activity: 2026-02-27 — Milestone archived, tagged
+Last activity: 2026-02-27 — Executed 06-01: MCP list tools rewrite + CSV button fix
 
 ## Accumulated Context
 
 ### Decisions
 
 v1.0 decisions archived in PROJECT.md Key Decisions table.
+
+**06-01 (2026-02-27):**
+- Email-based add_to_list: resolve emails to personIds in parallel then bulk insert with createMany+skipDuplicates
+- view_list uses getListExportReadiness helper for enrichment coverage + verification status in one call
+- CSV download uses fetch+blob URL pattern with Content-Disposition filename extraction (no toast library)
 
 ### Blockers/Concerns
 
@@ -41,5 +46,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: v1.0 milestone archived and tagged
+Stopped at: Completed 06-mcp-list-migration-csv-button/06-01-PLAN.md
 Resume file: None
