@@ -68,6 +68,21 @@ function isAdminPageRoute(pathname: string): boolean {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const hostname = req.headers.get("host") ?? "";
+
+  // ── Portal subdomain routing ───────────────────────────────────
+  // portal.outsignal.ai/login → /portal/login
+  // portal.outsignal.ai/      → redirect to /portal/login
+  if (hostname.startsWith("portal.")) {
+    if (pathname === "/") {
+      const url = new URL("/portal/login", req.url);
+      return NextResponse.redirect(url);
+    }
+    if (!pathname.startsWith("/portal") && !pathname.startsWith("/api/portal")) {
+      const url = new URL(`/portal${pathname}`, req.url);
+      return NextResponse.rewrite(url);
+    }
+  }
 
   // ── Portal auth (unchanged) ──────────────────────────────────────
   if (pathname.startsWith("/portal")) {
@@ -154,7 +169,8 @@ function redirectToAdminLogin(req: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    // Portal routes
+    // Portal routes (subdomain + path)
+    "/login",
     "/portal/:path*",
     // Admin pages (root + named sections)
     "/",
