@@ -43,8 +43,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Export & Integration
 
 - [ ] **EXPORT-01**: User can export a list to an EmailBison campaign (direct API push)
-- [ ] **EXPORT-02**: System enforces email verification gate before export (no unverified emails)
-- [ ] **EXPORT-03**: User can export a list as CSV for use in other tools
+- [x] **EXPORT-02**: System enforces email verification gate before export (no unverified emails)
+- [x] **EXPORT-03**: User can export a list as CSV for use in other tools
 
 ### Provider Integrations
 
@@ -113,8 +113,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | LIST-03 | Phase 4 | Complete |
 | LIST-04 | Phase 4 | Complete |
 | EXPORT-01 | Phase 5 | Pending |
-| EXPORT-02 | Phase 5 | Pending |
-| EXPORT-03 | Phase 5 | Pending |
+| EXPORT-02 | Phase 5 | Complete |
+| EXPORT-03 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 29 total

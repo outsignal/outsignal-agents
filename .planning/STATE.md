@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-27T11:41:59.223Z"
+last_updated: "2026-02-27T12:59:02Z"
 progress:
   total_phases: 5
-  completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
+  completed_phases: 4
+  total_plans: 22
+  completed_plans: 20
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 04 Search/Filter/List Building — ALL 5 plans COMPLETE
+**Current focus:** Phase 05 Export + EmailBison Integration — 1 of 3 plans complete
 
 ## Current Position
 
-Phase: 04 (Search/Filter/List Building) — COMPLETE
-Plan: 5 of 5 complete (04-01 — foundation; 04-02 — people search; 04-03 — companies search; 04-04 — list management; 04-05 — bulk selection + list building)
-Status: Phase 04 complete — all plans shipped
-Last activity: 2026-02-27 — Completed 04-05 (bulk checkbox selection, Add to List dropdown, sidebar nav updates)
+Phase: 05 (Export + EmailBison Integration) — IN PROGRESS
+Plan: 1 of 3 complete (05-01 — verification gate + CSV export)
+Status: Phase 05 in progress — 05-01 shipped
+Last activity: 2026-02-27 — Completed 05-01 (verification gate, CSV generation, GET /api/lists/[id]/export)
 
-Progress: [██████████] Phase 04 complete (5/5 plans)
+Progress: [██████████] Phase 05 plan 1 of 3 complete
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [██████████] Phase 04 complete (5/5 plans)
 | Phase 04-search-filter-list-building P03 | 2 | 2 tasks | 3 files |
 | Phase 04-search-filter-list-building P04 | 3 | 2 tasks | 7 files |
 | Phase 04-search-filter-list-building P05 | 3 | 2 tasks | 4 files |
+| Phase 05-export-emailbison-integration P01 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,12 @@ Recent decisions affecting current work:
 - [04-05]: Fetch-on-open pattern for list loading — avoids unnecessary GET /api/lists when user never clicks Add to List
 - [04-05]: selectAllMatching sends currentFilterParams object to API instead of individual IDs — enables server-side bulk ops
 - [04-05]: isActive uses startsWith for /lists/* and /companies/* — child routes highlight parent nav item correctly
+- [05-01]: Verification gate throws on needsVerificationCount > 0 (hard block); auto-excludes blocked people silently per CONTEXT.md design
+- [05-01]: enrichmentData flattening uses Array.isArray() check first for Clay [{name,value}] format, then object branch for company/provider data
+- [05-01]: Person enrichment wins over Company enrichment on key collision (person data more specific than company-level)
+- [05-01]: Company records fetched in single batch query (findMany with domain array) then Map-indexed for O(1) lookup during CSV row building
+- [05-01]: Enrichment headers sorted alphabetically for deterministic CSV column order
+- [05-01]: CSV route uses new Response() not NextResponse — no JSON helpers needed for CSV response
 
 ### Pending Todos
 
@@ -144,10 +151,10 @@ None yet.
 
 - [Phase 2]: AI Ark API shape implemented defensively (LOW confidence) — X-TOKEN auth header may be wrong; monitor 401/403 in logs
 - [Phase 2]: FindyMail API shape is MEDIUM confidence — implemented defensively with .passthrough() and fallback extraction; monitor rawResponse logs in production
-- [Phase 5]: EmailBison campaign lead push endpoint not yet confirmed — research before Phase 5 planning
+- [Phase 5]: EmailBison has no "add leads to campaign" REST endpoint — leads pushed to workspace pool only; campaign assignment requires UI step (confirmed from live API testing in 05-RESEARCH.md)
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 04-05-PLAN.md — Bulk selection, Add to List dropdown, sidebar nav updates (Phase 04 complete)
+Stopped at: Completed 05-01-PLAN.md — Verification gate, CSV export utility, GET /api/lists/[id]/export endpoint
 Resume file: None
