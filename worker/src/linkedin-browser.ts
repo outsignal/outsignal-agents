@@ -337,127 +337,25 @@ export class LinkedInBrowser {
    * Send a message via the Voyager messaging API (executed in browser context).
    */
   /**
-   * Main message sending orchestrator. Tries multiple approaches:
-   * 1. Find existing conversation → POST to events endpoint
-   * 2. Create new conversation via Voyager API
-   * 3. Fallback to compose URL + DOM approach
+   * Send message via the messaging UI:
+   * 1. Navigate to /messaging/
+   * 2. Click "Compose message" button
+   * 3. Type recipient name in the To field
+   * 4. Select from autocomplete dropdown
+   * 5. Type the message
+   * 6. Click send
    */
   private async sendMessageToRecipient(
-    profileId: string,
-    memberUrn: string | null,
-    recipientName: string | null,
-    messageText: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    // Approach 1: Find existing conversation and send via events endpoint
-    const conversationId = await this.findConversation(profileId);
-    if (conversationId) {
-      this.log(`Found existing conversation: ${conversationId}`);
-      const result = await this.sendToConversation(conversationId, messageText);
-      if (result.success) return result;
-      this.log(`Events endpoint failed: ${result.error}, trying compose fallback`);
-    } else {
-      this.log("No existing conversation found, trying compose URL");
-    }
-
-    // Approach 2: Compose URL + DOM approach
-    const composeResult = await this.sendMessageViaCompose(profileId, recipientName, messageText);
-    if (composeResult.success) return composeResult;
-
-    return { success: false, error: `All approaches failed. Last: ${composeResult.error}` };
-  }
-
-  /**
-   * Find an existing conversation with a recipient by their profile ID.
-   */
-  private async findConversation(profileId: string): Promise<string | null> {
-    // Search conversations by participant URN
-    const url = `https://www.linkedin.com/voyager/api/messaging/conversations?q=participants&recipients=List(urn%3Ali%3Afsd_profile%3A${profileId})`;
-    this.log(`Looking for existing conversation with ${profileId}`);
-    const result = await this.voyagerFetch(url);
-    if (!result || result.status !== 200) {
-      this.log(`Conversation search returned ${result?.status ?? 'null'}`);
-      return null;
-    }
-
-    // Extract conversation URN from response
-    const convMatch = result.body.match(/urn:li:fs_conversation:([A-Za-z0-9_-]+)/);
-    if (!convMatch) {
-      // Try alternative pattern
-      const altMatch = result.body.match(/urn:li:fsd_messagingConversation:([A-Za-z0-9_-]+)/);
-      if (altMatch) return altMatch[1];
-      this.log("No conversation URN found in response");
-      return null;
-    }
-
-    return convMatch[1];
-  }
-
-  /**
-   * Send a message to an existing conversation via the events endpoint.
-   * This is a different endpoint than conversations?action=create and may
-   * have different access controls.
-   */
-  private async sendToConversation(
-    conversationId: string,
-    messageText: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    const originToken = crypto.randomUUID();
-    const trackingBytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
-    const trackingId = String.fromCharCode(...trackingBytes);
-
-    const body = JSON.stringify({
-      eventCreate: {
-        originToken,
-        value: {
-          "com.linkedin.voyager.messaging.create.MessageCreate": {
-            attributedBody: {
-              text: messageText,
-              attributes: [],
-            },
-            attachments: [],
-          },
-        },
-        trackingId,
-      },
-      dedupeByClientGeneratedToken: false,
-    });
-
-    this.log(`Sending to conversation ${conversationId}`);
-
-    const result = await this.voyagerFetch(
-      `https://www.linkedin.com/voyager/api/messaging/conversations/${conversationId}/events?action=create`,
-      "POST",
-      body,
-    );
-
-    if (!result) return { success: false, error: "Browser fetch failed" };
-
-    if (result.status === 200 || result.status === 201) {
-      this.log("Message sent via conversation events endpoint");
-      return { success: true };
-    }
-
-    this.log(`Conversation events failed: ${result.status} ${result.body.substring(0, 300)}`);
-    return { success: false, error: `Events API ${result.status}: ${result.body.substring(0, 200)}` };
-  }
-
-  /**
-   * Send message via the compose URL approach — navigates to LinkedIn's
-   * compose page with the recipient URN pre-filled, types the message,
-   * and clicks send. This works because LinkedIn's own JS handles the
-   * Voyager API calls internally.
-   */
-  private async sendMessageViaCompose(
-    profileId: string,
+    _profileId: string,
+    _memberUrn: string | null,
     recipientName: string | null,
     messageText: string,
   ): Promise<{ success: boolean; error?: string }> {
     if (!this.ws) return { success: false, error: "Browser not launched" };
+    if (!recipientName) return { success: false, error: "Recipient name required for compose approach" };
 
-    // Navigate to compose page with recipient URN pre-filled
-    const composeUrl = `https://www.linkedin.com/messaging/compose/?recipientUrn=urn%3Ali%3Afsd_profile%3A${profileId}`;
-    this.log(`Navigating to compose: ${composeUrl}`);
-
+    // Step 1: Navigate to the messaging page
+    this.log("Navigating to messaging page");
     await cdpSend(this.ws, "Page.navigate", { url: "about:blank" }, this.nextId());
     await this.waitForEvent("Page.loadEventFired", 5_000);
     await this.sleep(500);
@@ -466,85 +364,157 @@ export class LinkedInBrowser {
     this.ws.send(JSON.stringify({
       id: this.nextId(),
       method: "Page.navigate",
-      params: { url: composeUrl },
+      params: { url: "https://www.linkedin.com/messaging/" },
     }));
     await loadPromise;
-    this.log("Compose page loaded");
+    await this.sleep(3000);
 
-    // Wait for the compose form to render (poll for message input)
-    let inputFound = false;
-    for (let i = 0; i < 20; i++) {
-      await this.sleep(1000);
-      const check = evalValue(
-        await cdpSend(this.ws, "Runtime.evaluate", {
-          expression: `(() => {
-  const msgInput = document.querySelector('.msg-form__contenteditable, [role="textbox"][contenteditable="true"], .msg-form__message-texteditable');
-  const pills = document.querySelectorAll('.msg-compose__recipient-item, .artdeco-pill, [data-artdeco-is-focused]');
-  const url = window.location.href;
-  return {
-    hasInput: !!msgInput,
-    pillCount: pills.length,
-    pillTexts: Array.from(pills).slice(0, 3).map(p => p.textContent?.trim()?.substring(0, 30) ?? ''),
-    url: url.substring(0, 100),
-    bodyLen: document.body?.innerText?.length ?? 0,
-  };
+    // Step 2: Click the "Compose message" button
+    this.log("Looking for Compose message button...");
+    const composeBtn = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(() => {
+  const btns = Array.from(document.querySelectorAll('button'));
+  const btn = btns.find(b => {
+    const text = b.textContent?.trim().toLowerCase() ?? '';
+    const label = (b.getAttribute('aria-label') ?? '').toLowerCase();
+    return text.includes('compose') || label.includes('compose') || label.includes('new message');
+  });
+  if (!btn) return { found: false, allBtns: btns.slice(0, 10).map(b => (b.textContent?.trim() ?? '').substring(0, 25)) };
+  btn.click();
+  return { found: true, text: btn.textContent?.trim()?.substring(0, 30) };
 })()`,
-          returnByValue: true,
-        }, this.nextId()),
-      ) as { hasInput: boolean; pillCount: number; pillTexts: string[]; url: string; bodyLen: number } | null;
+        returnByValue: true,
+      }, this.nextId()),
+    ) as { found: boolean; text?: string; allBtns?: string[] } | null;
 
-      this.log(`Compose poll ${i + 1}: input=${check?.hasInput}, pills=${check?.pillCount}, pillTexts=[${check?.pillTexts?.join(', ')}], body=${check?.bodyLen}`);
-
-      if (check?.hasInput) {
-        inputFound = true;
-        // Verify the recipient pill is the right person
-        if (recipientName && check.pillCount > 0) {
-          const nameLower = recipientName.toLowerCase().split(" ")[0];
-          const anyMatch = check.pillTexts.some(t => t.toLowerCase().includes(nameLower));
-          if (!anyMatch) {
-            this.log(`WARNING: Recipient pill doesn't match expected name "${recipientName}": [${check.pillTexts.join(', ')}]`);
-          }
-        }
-        break;
-      }
+    if (!composeBtn?.found) {
+      this.log(`Compose button not found. Buttons: [${composeBtn?.allBtns?.join(', ')}]`);
+      return { success: false, error: "Compose message button not found" };
     }
+    this.log(`Clicked compose button: "${composeBtn.text}"`);
+    await this.sleep(2000);
 
-    if (!inputFound) {
-      return { success: false, error: "Compose form did not render (no message input found)" };
+    // Step 3: Find the To/recipient input field and type the name
+    this.log(`Typing recipient name: ${recipientName}`);
+    const toField = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(() => {
+  // Look for the To input in the compose overlay
+  const inputs = document.querySelectorAll('input[type="text"], input:not([type]), [role="combobox"]');
+  // The To field is usually the first input in the compose overlay, or has placeholder about "Type a name"
+  for (const inp of inputs) {
+    const ph = (inp.getAttribute('placeholder') ?? '').toLowerCase();
+    const label = (inp.getAttribute('aria-label') ?? '').toLowerCase();
+    if (ph.includes('name') || ph.includes('recipient') || ph.includes('to') || label.includes('name') || label.includes('recipient') || label.includes('to:')) {
+      inp.focus();
+      inp.click();
+      return { found: true, tag: inp.tagName, placeholder: ph.substring(0, 40) };
     }
+  }
+  // Fallback: try the first text input in a modal/overlay
+  const overlay = document.querySelector('[role="dialog"], .msg-overlay-conversation-bubble, .msg-compose');
+  if (overlay) {
+    const inp = overlay.querySelector('input');
+    if (inp) {
+      inp.focus();
+      inp.click();
+      return { found: true, tag: inp.tagName, placeholder: (inp.getAttribute('placeholder') ?? '').substring(0, 40), fallback: true };
+    }
+  }
+  return { found: false, inputCount: inputs.length };
+})()`,
+        returnByValue: true,
+      }, this.nextId()),
+    ) as { found: boolean; tag?: string; placeholder?: string; fallback?: boolean; inputCount?: number } | null;
 
-    // Focus the message input and type the message
-    this.log("Typing message...");
+    if (!toField?.found) {
+      this.log(`To field not found (${toField?.inputCount} inputs on page)`);
+      return { success: false, error: "Recipient input field not found in compose dialog" };
+    }
+    this.log(`Found To field: ${toField.tag} placeholder="${toField.placeholder}" fallback=${toField.fallback ?? false}`);
+    await this.sleep(500);
+
+    // Type the recipient name to trigger autocomplete
+    await cdpSend(this.ws, "Input.insertText", { text: recipientName }, this.nextId());
+    await this.sleep(2000); // Wait for autocomplete to populate
+
+    // Step 4: Select the first matching result from autocomplete
+    const selectResult = evalValue(
+      await cdpSend(this.ws, "Runtime.evaluate", {
+        expression: `(() => {
+  // Look for autocomplete dropdown items
+  const listItems = document.querySelectorAll('[role="option"], [role="listbox"] li, .basic-typeahead__triggered-content li, .msg-connections-typeahead__search-result');
+  if (listItems.length === 0) {
+    return { found: false, reason: 'no autocomplete items' };
+  }
+  // Click the first result
+  const first = listItems[0];
+  const name = first.textContent?.trim()?.substring(0, 50) ?? '';
+  first.click();
+  return { found: true, name, count: listItems.length };
+})()`,
+        returnByValue: true,
+      }, this.nextId()),
+    ) as { found: boolean; name?: string; count?: number; reason?: string } | null;
+
+    if (!selectResult?.found) {
+      this.log(`Autocomplete selection failed: ${selectResult?.reason}`);
+      // Try pressing Enter as fallback (selects first result)
+      await cdpSend(this.ws, "Input.dispatchKeyEvent", {
+        type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13,
+      }, this.nextId());
+      await cdpSend(this.ws, "Input.dispatchKeyEvent", {
+        type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13,
+      }, this.nextId());
+      await this.sleep(1000);
+      this.log("Pressed Enter as autocomplete fallback");
+    } else {
+      this.log(`Selected recipient: "${selectResult.name}" (from ${selectResult.count} results)`);
+    }
+    await this.sleep(1000);
+
+    // Step 5: Focus the message body input and type the message
+    this.log("Focusing message body...");
     await cdpSend(this.ws, "Runtime.evaluate", {
       expression: `(() => {
-  const input = document.querySelector('.msg-form__contenteditable, [role="textbox"][contenteditable="true"], .msg-form__message-texteditable');
-  if (input) {
-    input.focus();
-    input.click();
+  // Look for the message body input (contenteditable div)
+  const inputs = document.querySelectorAll('.msg-form__contenteditable, [role="textbox"][contenteditable="true"], .msg-form__message-texteditable, [aria-label*="message" i][contenteditable]');
+  for (const inp of inputs) {
+    inp.focus();
+    inp.click();
+    return true;
   }
+  return false;
 })()`,
       returnByValue: true,
     }, this.nextId());
     await this.sleep(500);
 
-    // Type using Input.insertText (reliable for contenteditable)
+    // Type the message
+    this.log("Typing message...");
     await cdpSend(this.ws, "Input.insertText", { text: messageText }, this.nextId());
     await this.sleep(1000);
 
-    // Click the send button
+    // Step 6: Click the send button
     const sendResult = evalValue(
       await cdpSend(this.ws, "Runtime.evaluate", {
         expression: `(() => {
-  // Look for the Send button in the compose form
   const btns = Array.from(document.querySelectorAll('button'));
+  // Look for Send button — must be inside a compose/messaging form, not nav
   const sendBtn = btns.find(b => {
     const text = b.textContent?.trim().toLowerCase() ?? '';
-    const label = b.getAttribute('aria-label')?.toLowerCase() ?? '';
-    return text === 'send' || label.includes('send');
+    const label = (b.getAttribute('aria-label') ?? '').toLowerCase();
+    // Check it's in a messaging context (not the main nav)
+    const inMsgForm = b.closest('.msg-form, .msg-overlay, [role="dialog"], .msg-compose');
+    return (text === 'send' || label.includes('send message')) && inMsgForm;
   });
-  if (!sendBtn) return { found: false, buttons: btns.slice(-5).map(b => b.textContent?.trim()?.substring(0, 20) ?? '') };
-  if (sendBtn.disabled) return { found: true, disabled: true };
-  sendBtn.click();
+  // Broader fallback: any Send button
+  const fallbackBtn = !sendBtn ? btns.find(b => b.textContent?.trim().toLowerCase() === 'send') : null;
+  const btn = sendBtn ?? fallbackBtn;
+  if (!btn) return { found: false, buttons: btns.filter(b => b.textContent?.trim()).slice(-8).map(b => (b.textContent?.trim() ?? '').substring(0, 25)) };
+  if (btn.disabled) return { found: true, disabled: true };
+  btn.click();
   return { found: true, clicked: true };
 })()`,
         returnByValue: true,
@@ -552,30 +522,15 @@ export class LinkedInBrowser {
     ) as { found: boolean; clicked?: boolean; disabled?: boolean; buttons?: string[] } | null;
 
     if (!sendResult?.found) {
-      this.log(`Send button not found. Available buttons: [${sendResult?.buttons?.join(', ')}]`);
-      return { success: false, error: "Send button not found on compose page" };
+      this.log(`Send button not found. Available: [${sendResult?.buttons?.join(', ')}]`);
+      return { success: false, error: "Send button not found" };
     }
     if (sendResult.disabled) {
       return { success: false, error: "Send button found but disabled" };
     }
 
-    this.log("Send button clicked, waiting for confirmation...");
+    this.log("Send button clicked!");
     await this.sleep(3000);
-
-    // Verify the message was sent (compose form should clear or navigate)
-    const afterSend = evalValue(
-      await cdpSend(this.ws, "Runtime.evaluate", {
-        expression: `(() => {
-  const url = window.location.href;
-  const input = document.querySelector('.msg-form__contenteditable, [role="textbox"][contenteditable="true"]');
-  const inputText = input?.textContent?.trim() ?? '';
-  return { url: url.substring(0, 120), inputEmpty: inputText.length === 0 };
-})()`,
-        returnByValue: true,
-      }, this.nextId()),
-    ) as { url: string; inputEmpty: boolean } | null;
-
-    this.log(`After send: url=${afterSend?.url}, inputEmpty=${afterSend?.inputEmpty}`);
 
     return { success: true };
   }
