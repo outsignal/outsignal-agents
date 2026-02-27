@@ -16,6 +16,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getListExportReadiness } from "@/lib/export/verification-gate";
+import * as operations from "@/lib/leads/operations";
 
 export function registerListTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
@@ -45,12 +46,10 @@ export function registerListTools(server: McpServer): void {
         };
       }
 
-      const list = await prisma.targetList.create({
-        data: {
-          name,
-          workspaceSlug: workspace,
-          description: description ?? null,
-        },
+      const list = await operations.createList({
+        name,
+        workspaceSlug: workspace,
+        description,
       });
 
       const text = [
@@ -96,7 +95,7 @@ export function registerListTools(server: McpServer): void {
         };
       }
 
-      // Resolve all emails to person IDs in parallel
+      // Resolve all emails to person IDs in parallel (input translation: emails → IDs)
       const resolved = await Promise.all(
         emails.map(async (email) => {
           const person = await prisma.person.findUnique({
@@ -114,16 +113,13 @@ export function registerListTools(server: McpServer): void {
         .filter((r) => r.personId === null)
         .map((r) => r.email);
 
-      // Bulk insert with skipDuplicates
-      const result = await prisma.targetListPerson.createMany({
-        data: found.map(({ personId }) => ({ listId: list_id, personId })),
-        skipDuplicates: true,
-      });
+      const result = await operations.addPeopleToList(
+        list_id,
+        found.map(f => f.personId),
+      );
 
-      const skippedCount = found.length - result.count;
-
-      let text = `Added ${result.count} people to list '${list.name}'.`;
-      if (skippedCount > 0) text += ` ${skippedCount} already in list.`;
+      let text = `Added ${result.added} people to list '${list.name}'.`;
+      if (result.alreadyInList > 0) text += ` ${result.alreadyInList} already in list.`;
       if (notFoundEmails.length > 0) {
         text += `\n\nNot found in database (${notFoundEmails.length}):\n${notFoundEmails.join("\n")}`;
       }
@@ -146,11 +142,8 @@ export function registerListTools(server: McpServer): void {
     async (params) => {
       const { list_id, limit, offset } = params;
 
-      const list = await prisma.targetList.findUnique({
-        where: { id: list_id },
-        select: { id: true, name: true, workspaceSlug: true },
-      });
-      if (!list) {
+      const listDetail = await operations.getList(list_id);
+      if (!listDetail) {
         return {
           content: [
             { type: "text" as const, text: `Error: TargetList '${list_id}' not found.` },
@@ -158,14 +151,14 @@ export function registerListTools(server: McpServer): void {
         };
       }
 
-      // Fetch export readiness using the existing helper
-      const readiness = await getListExportReadiness(list_id);
-
-      // Handle empty list
-      if (readiness.totalCount === 0) {
-        const text = `0 people in list '${list.name}'. Use add_to_list to add people.`;
+      if (listDetail.peopleCount === 0) {
+        const text = `0 people in list '${listDetail.name}'. Use add_to_list to add people.`;
         return { content: [{ type: "text" as const, text }] };
       }
+
+      // Use getListExportReadiness for enrichment/verification data
+      // (operations.getList provides member data; readiness provides export-gate metadata)
+      const readiness = await getListExportReadiness(list_id);
 
       // Derive export readiness
       const exportReady =
@@ -192,7 +185,7 @@ export function registerListTools(server: McpServer): void {
         : `No — ${unverifiedCount} unverified`;
 
       const summaryLines = [
-        `List: ${list.name} (${list.workspaceSlug})`,
+        `List: ${listDetail.name} (${listDetail.workspaceSlug})`,
         `Total: ${readiness.totalCount} people`,
         `Export Ready: ${exportReadyStr}`,
         ``,
