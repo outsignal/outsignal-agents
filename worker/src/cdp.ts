@@ -308,8 +308,8 @@ export async function initCdp(
     source: ANTI_DETECTION_SCRIPT,
   }, nextId());
 
-  // Set a realistic user agent
+  // Set a realistic user agent (Chrome 131, Jan 2025)
   await cdpSend(ws, "Network.setUserAgentOverride", {
-    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   }, nextId());
 }
