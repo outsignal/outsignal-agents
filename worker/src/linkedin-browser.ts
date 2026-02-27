@@ -252,7 +252,7 @@ export class LinkedInBrowser {
   try {
     const resp = await fetch(${JSON.stringify(url)}, ${JSON.stringify(fetchOpts)});
     const text = await resp.text();
-    return { status: resp.status, body: text.substring(0, 5000) };
+    return { status: resp.status, body: text.substring(0, 20000) };
   } catch (e) {
     return { status: 0, body: String(e) };
   }
@@ -332,10 +332,12 @@ export class LinkedInBrowser {
    */
   private async sendMessageViaVoyager(
     recipientUrn: string,
-    urnType: string,
+    _urnType: string,
     messageText: string,
   ): Promise<{ success: boolean; error?: string }> {
-    const fullUrn = `urn:li:${urnType}:${recipientUrn}`;
+    // Always use fs_miniProfile for messaging — the ID is the same as fsd_profile
+    // but the messaging API only accepts fs_miniProfile URN type
+    const fullUrn = `urn:li:fs_miniProfile:${recipientUrn}`;
     const body = JSON.stringify({
       keyVersion: "LEGACY_INBOX",
       conversationCreate: {
