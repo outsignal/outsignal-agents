@@ -90,7 +90,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can search companies by name, domain, or vertical with enrichment status visible on each result
   4. User can select people from search results individually or in bulk and add them to a named, workspace-scoped list
   5. List view shows enrichment completeness summary (how many records have email, LinkedIn, company data) so the user can see what's missing before export
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 04-01-PLAN.md — Foundation: Schema (TargetList + TargetListPerson), deps (nuqs, use-debounce), enrichment status utility, NuqsAdapter
+- [ ] 04-02-PLAN.md — People search API route + client search page with filters, debounce, pagination
+- [ ] 04-03-PLAN.md — Companies search API route + client search page with filters and pagination
+- [ ] 04-04-PLAN.md — List management API routes + list index page + list detail page with enrichment summary
+- [ ] 04-05-PLAN.md — Bulk selection, sticky action bar, add-to-list dropdown/modal, sidebar navigation update
 
 ### Phase 5: Export + EmailBison Integration
 **Goal**: Qualified, verified lists can be pushed directly to EmailBison campaigns or exported as CSV, with a hard verification gate preventing unverified emails from ever being exported
@@ -113,5 +118,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 | 2. Provider Adapters + Waterfall | 6/6 | Complete   | 2026-02-26 |
 | 3. ICP Qualification + Leads Agent | 3/3 | Complete    | 2026-02-26 |
 | 3.1 API Security + Hardening | 2/2 | Complete | 2026-02-26 |
-| 4. Search, Filter + List Building | 0/TBD | Not started | - |
+| 4. Search, Filter + List Building | 0/5 | Planned | - |
 | 5. Export + EmailBison Integration | 0/TBD | Not started | - |
