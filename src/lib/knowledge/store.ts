@@ -1,13 +1,15 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { embedText, embedBatch } from "./embeddings";
 
 /**
  * Knowledge base store for cold outbound best practices and reference documents.
  *
  * Documents are split into chunks (~800 chars each, split on paragraph boundaries)
- * and stored in the database. The Writer Agent searches these chunks for relevant
- * context when generating copy.
+ * and stored in the database. Chunks are embedded with OpenAI text-embedding-3-small
+ * and stored in KnowledgeChunk with pgvector for semantic similarity search.
  *
- * Currently uses simple text matching. Can be upgraded to embeddings later.
+ * Falls back to keyword matching if no KnowledgeChunk records exist yet (pre-migration).
  */
 
 const CHUNK_TARGET_SIZE = 800;
@@ -87,6 +89,7 @@ export function chunkText(text: string): string[] {
 /**
  * Ingest a document into the knowledge base.
  * Splits the content into chunks and stores both the full document and its chunks.
+ * Also generates vector embeddings for each chunk (requires OPENAI_API_KEY).
  */
 export async function ingestDocument(options: {
   title: string;
@@ -106,12 +109,34 @@ export async function ingestDocument(options: {
     },
   });
 
+  // Generate and store vector embeddings for each chunk
+  try {
+    const embeddings = await embedBatch(chunks);
+    for (let i = 0; i < chunks.length; i++) {
+      const id = crypto.randomUUID();
+      const embedding = embeddings[i];
+      await prisma.$executeRaw`
+        INSERT INTO "KnowledgeChunk" (id, "documentId", content, embedding, "chunkIndex", "createdAt")
+        VALUES (${id}, ${doc.id}, ${chunks[i]}, ${JSON.stringify(embedding)}::vector, ${i}, NOW())
+      `;
+    }
+  } catch (err) {
+    // Embedding failure is non-fatal — keyword fallback still works
+    console.warn(
+      `[store] Warning: failed to embed chunks for "${options.title}":`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   return { id: doc.id, chunkCount: chunks.length };
 }
 
 /**
  * Search the knowledge base for chunks matching a query.
- * Uses case-insensitive substring matching across chunks.
+ *
+ * Primary: pgvector cosine similarity (requires populated KnowledgeChunk table).
+ * Fallback: case-insensitive keyword matching on the KnowledgeDocument chunks JSON.
+ *
  * Returns the most relevant chunks with their document title and tags.
  */
 export async function searchKnowledge(
@@ -119,20 +144,65 @@ export async function searchKnowledge(
   options?: { limit?: number; tags?: string },
 ): Promise<{ title: string; chunk: string; tags: string | null }[]> {
   const limit = options?.limit ?? 10;
+
+  // Check if we have vector chunks (primary path)
+  const chunkCount = await prisma.knowledgeChunk.count();
+
+  if (chunkCount > 0) {
+    // Semantic search via pgvector cosine similarity
+    try {
+      const queryEmbedding = await embedText(query);
+
+      type VectorRow = {
+        content: string;
+        documentId: string;
+        title: string;
+        tags: string | null;
+        similarity: number;
+      };
+
+      const results = await prisma.$queryRaw<VectorRow[]>`
+        SELECT kc.content, kc."documentId", kd.title, kd.tags,
+               1 - (kc.embedding <=> ${JSON.stringify(queryEmbedding)}::vector) as similarity
+        FROM "KnowledgeChunk" kc
+        JOIN "KnowledgeDocument" kd ON kd.id = kc."documentId"
+        ${options?.tags ? Prisma.sql`WHERE kd.tags LIKE ${"%" + options.tags + "%"}` : Prisma.empty}
+        ORDER BY kc.embedding <=> ${JSON.stringify(queryEmbedding)}::vector
+        LIMIT ${limit}
+      `;
+
+      return results.map((r) => ({
+        title: r.title,
+        chunk: r.content,
+        tags: r.tags,
+      }));
+    } catch (err) {
+      console.warn(
+        "[store] pgvector search failed, falling back to keyword search:",
+        err instanceof Error ? err.message : err,
+      );
+      // Fall through to keyword search below
+    }
+  }
+
+  // Fallback: keyword matching (used pre-migration or if embedding fails)
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length > 2);
 
-  // Fetch all documents (or filter by tags)
   const where = options?.tags
     ? { tags: { contains: options.tags } }
     : {};
 
   const docs = await prisma.knowledgeDocument.findMany({ where });
 
-  // Score each chunk by keyword matches
-  const scored: { title: string; chunk: string; tags: string | null; score: number }[] = [];
+  const scored: {
+    title: string;
+    chunk: string;
+    tags: string | null;
+    score: number;
+  }[] = [];
 
   for (const doc of docs) {
     const chunks: string[] = JSON.parse(doc.chunks);
@@ -148,7 +218,6 @@ export async function searchKnowledge(
     }
   }
 
-  // Sort by score descending, return top N
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit).map(({ title, chunk, tags }) => ({
     title,
@@ -158,10 +227,58 @@ export async function searchKnowledge(
 }
 
 /**
+ * Re-embed all documents in the knowledge base using the current embedding model.
+ * Deletes existing KnowledgeChunk records and regenerates from stored chunks JSON.
+ * Use this for one-time migration or when the embedding model changes.
+ */
+export async function reembedAllDocuments(): Promise<{
+  documentsProcessed: number;
+  chunksCreated: number;
+}> {
+  const docs = await prisma.knowledgeDocument.findMany();
+  let documentsProcessed = 0;
+  let chunksCreated = 0;
+
+  for (const doc of docs) {
+    const chunks: string[] = JSON.parse(doc.chunks);
+
+    // Delete existing chunks for this document
+    await prisma.knowledgeChunk.deleteMany({
+      where: { documentId: doc.id },
+    });
+
+    // Generate embeddings in batch
+    const embeddings = await embedBatch(chunks);
+
+    // Insert new chunk records with embeddings
+    for (let i = 0; i < chunks.length; i++) {
+      const id = crypto.randomUUID();
+      await prisma.$executeRaw`
+        INSERT INTO "KnowledgeChunk" (id, "documentId", content, embedding, "chunkIndex", "createdAt")
+        VALUES (${id}, ${doc.id}, ${chunks[i]}, ${JSON.stringify(embeddings[i])}::vector, ${i}, NOW())
+      `;
+      chunksCreated++;
+    }
+
+    console.log(`Re-embedded "${doc.title}": ${chunks.length} chunks`);
+    documentsProcessed++;
+  }
+
+  return { documentsProcessed, chunksCreated };
+}
+
+/**
  * List all documents in the knowledge base.
  */
 export async function listDocuments(): Promise<
-  { id: string; title: string; source: string; tags: string | null; chunkCount: number; createdAt: Date }[]
+  {
+    id: string;
+    title: string;
+    source: string;
+    tags: string | null;
+    chunkCount: number;
+    createdAt: Date;
+  }[]
 > {
   const docs = await prisma.knowledgeDocument.findMany({
     orderBy: { createdAt: "desc" },
@@ -179,6 +296,7 @@ export async function listDocuments(): Promise<
 
 /**
  * Delete a document from the knowledge base.
+ * KnowledgeChunk records are deleted automatically via CASCADE.
  */
 export async function deleteDocument(id: string): Promise<void> {
   await prisma.knowledgeDocument.delete({ where: { id } });
