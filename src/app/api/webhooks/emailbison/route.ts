@@ -4,6 +4,39 @@ import { notifyReply } from "@/lib/notifications";
 import { enqueueAction, bumpPriority } from "@/lib/linkedin/queue";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 
+async function generateReplySuggestion(params: {
+  workspaceSlug: string;
+  leadName: string | null;
+  leadEmail: string;
+  subject: string | null;
+  replyBody: string | null;
+  interested: boolean;
+}): Promise<string | null> {
+  try {
+    const { runWriterAgent } = await import("@/lib/agents/writer");
+    const result = await runWriterAgent({
+      workspaceSlug: params.workspaceSlug,
+      task: `Suggest a reply to this incoming email from ${params.leadName ?? params.leadEmail}.
+
+Subject: ${params.subject ?? "(no subject)"}
+Their message: ${params.replyBody ?? "(no body)"}
+${params.interested ? "Note: This lead is marked as INTERESTED." : ""}
+
+Write a brief, conversational response (under 70 words). This is a reply to an existing conversation, NOT a cold outreach. Do not use spintax or PVP framework. Sound human and natural. Reference what they said and move the conversation forward.`,
+      channel: "email",
+    });
+
+    // Extract the reply text from the writer output
+    if (result.emailSteps && result.emailSteps.length > 0) {
+      return result.emailSteps[0].body;
+    }
+    return result.reviewNotes || null;
+  } catch (error) {
+    console.error("Reply suggestion generation failed:", error);
+    return null; // Non-blocking — notification still fires without suggestion
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();
@@ -114,6 +147,21 @@ export async function POST(request: NextRequest) {
 
     const notifyEvents = ["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED"];
     if (notifyEvents.includes(eventType) && !automatedReply) {
+      let suggestedResponse: string | null = null;
+
+      // Generate reply suggestion for reply/interested events (non-blocking)
+      const replyTriggerEvents = ["LEAD_REPLIED", "LEAD_INTERESTED"];
+      if (replyTriggerEvents.includes(eventType) && textBody) {
+        suggestedResponse = await generateReplySuggestion({
+          workspaceSlug,
+          leadName,
+          leadEmail: leadEmail ?? "unknown",
+          subject,
+          replyBody: textBody,
+          interested,
+        });
+      }
+
       try {
         await notifyReply({
           workspaceSlug,
@@ -123,6 +171,7 @@ export async function POST(request: NextRequest) {
           subject,
           bodyPreview: textBody,
           interested,
+          suggestedResponse,
         });
       } catch (err) {
         console.error("Notification error:", err);

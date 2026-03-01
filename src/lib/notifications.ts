@@ -10,6 +10,7 @@ export async function notifyReply(params: {
   subject: string | null;
   bodyPreview: string | null;
   interested?: boolean;
+  suggestedResponse?: string | null;
 }): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { slug: params.workspaceSlug },
@@ -74,6 +75,20 @@ export async function notifyReply(params: {
               text: preview,
             },
           },
+          ...(params.suggestedResponse
+            ? [
+                {
+                  type: "divider" as const,
+                },
+                {
+                  type: "section" as const,
+                  text: {
+                    type: "mrkdwn" as const,
+                    text: `*Suggested Response:*\n${params.suggestedResponse}`,
+                  },
+                },
+              ]
+            : []),
           {
             type: "actions",
             elements: [
@@ -109,6 +124,13 @@ ${params.leadName ? `<p><strong>Name:</strong> ${params.leadName}</p>` : ""}
 ${params.subject ? `<p><strong>Subject:</strong> ${params.subject}</p>` : ""}
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
 <p style="white-space:pre-wrap;">${preview}</p>
+${params.suggestedResponse ? `
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+<p style="font-size:12px;color:#6b7280;margin-bottom:4px;">SUGGESTED RESPONSE</p>
+<div style="background-color:#f9fafb;border-left:3px solid #F0FF7A;padding:12px 16px;margin:8px 0 16px 0;border-radius:4px;">
+  <p style="white-space:pre-wrap;margin:0;color:#374151;">${params.suggestedResponse}</p>
+</div>
+` : ""}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
   <tr>
     <td style="background-color:#F0FF7A;border-radius:6px;padding:0;">
