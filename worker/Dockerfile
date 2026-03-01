@@ -4,19 +4,25 @@ FROM node:22-slim
 # No VNC/Xvfb needed — agent-browser manages its own headless Chromium.
 RUN apt-get update && apt-get install -y \
     fonts-liberation \
+    libglib2.0-0 \
     libnss3 \
+    libnspr4 \
+    libdbus-1-3 \
+    libatk1.0-0 \
     libatk-bridge2.0-0 \
+    libcups2 \
     libdrm2 \
     libxkbcommon0 \
-    libgbm1 \
-    libasound2 \
-    libx11-xcb1 \
+    libatspi2.0-0 \
     libxcomposite1 \
-    libxrandr2 \
     libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
     libpango-1.0-0 \
     libcairo2 \
-    libcups2 \
+    libasound2 \
+    libx11-xcb1 \
     dbus \
     procps \
     --no-install-recommends \
