@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 9 of 10 (Client Portal Campaign Approval — Plan 03 COMPLETE: Campaign list page + nav update)
-Plan: 3 of 6 in current phase (09-01, 09-02, and 09-03 done)
-Status: Phase 9 In Progress. Plans 09-01, 09-02, and 09-03 complete.
-Last activity: 2026-03-01 — Executed Plan 03: Portal campaign list page at /portal/campaigns with pending-first sort, CampaignCard component (amber ring/dot for pending, status badge, channel icons, approval indicators), Campaigns added to PortalNav. TypeScript clean.
+Phase: 9 of 10 (Client Portal Campaign Approval — Plan 04 COMPLETE: Campaign detail page + lead/content approval UX)
+Plan: 4 of 5 in current phase (09-01, 09-02, 09-03, and 09-04 done)
+Status: Phase 9 In Progress. Plans 09-01, 09-02, 09-03, and 09-04 complete.
+Last activity: 2026-03-01 — Executed Plan 04: Campaign detail page at /portal/campaigns/[id] with CampaignApprovalLeads (top-50 lead table, ICP score color-coding, approve/request-changes) and CampaignApprovalContent (email accordion with spintax+token highlighting, LinkedIn cards). Independent approval sections per PORTAL-06. TypeScript clean.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -65,6 +65,9 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [09-01]: substituteTokens returns tokensFound list — enables future UI highlighting of resolved tokens on portal campaign detail page
 - [09-01]: Dual approval auto-transition: when both leadsApproved + contentApproved become true in pending_approval, status auto-advances to approved
 - [09-01]: Feedback cleared (null) on approval — approval replaces a rejection, no stale feedback displayed
+- [09-04]: PreviewText highlights tokens by regex-scanning post-spintax string, wrapping each known token replacement in <mark> with token name as title — enables granular JSX highlighting without losing text structure
+- [09-04]: accordion openStep uses index (0 = first open by default, -1 = all closed); clicking active step sets openStep to -1
+- [09-04]: T1+T2+T3 committed together — page.tsx imports both client components so they must coexist; single atomic commit avoids broken intermediate state
 
 **Phase 8 decisions (2026-03-01):**
 - [08-01]: Campaign stores email/LinkedIn sequences as JSON String columns (not relational EmailDraft rows) — simpler for writer agent output and client review flow
@@ -113,5 +116,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 09-03-PLAN.md (Portal Campaign List Page + Nav Update). /portal/campaigns page, CampaignCard component, and Campaigns nav entry created. Phase 9 at 3/6 plans done. Next: 09-04 (Campaign detail UI).
+Stopped at: Completed 09-04-PLAN.md (Portal Campaign Detail Page). /portal/campaigns/[id] page, CampaignApprovalLeads, CampaignApprovalContent components created. Phase 9 at 4/5 plans done. Next: 09-05 (deploy trigger / final approval flow).
 Resume file: None
