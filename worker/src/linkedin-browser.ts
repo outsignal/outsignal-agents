@@ -83,6 +83,25 @@ export class LinkedInBrowser {
   }
 
   /**
+   * Kill any running agent-browser daemon so the next command starts fresh.
+   *
+   * This is critical because the daemon ignores --proxy if it's already running.
+   * Without this, login() may hit LinkedIn without the residential proxy,
+   * causing blocks or different page layouts.
+   */
+  private killDaemon(): void {
+    try {
+      execFileSync("agent-browser", ["close"], {
+        encoding: "utf-8",
+        timeout: 5000,
+      });
+      this.log("Killed stale agent-browser daemon");
+    } catch {
+      // daemon may not be running, that's ok
+    }
+  }
+
+  /**
    * Execute an agent-browser CLI command synchronously.
    * Returns stdout as a string.
    */
@@ -395,6 +414,9 @@ export class LinkedInBrowser {
    */
   async launch(): Promise<void> {
     this.log("Launching agent-browser session...");
+
+    // Kill any stale daemon so --proxy is applied fresh
+    this.killDaemon();
 
     try {
       // Navigate to the feed to validate the session
@@ -1189,6 +1211,12 @@ export class LinkedInBrowser {
     try {
       this.log("Starting login flow...");
 
+      // Kill any stale daemon so --proxy is applied fresh.
+      // Without this, the daemon may already be running (from a prior launch()
+      // or poll cycle) and will ignore the --proxy flag, causing LinkedIn to
+      // serve a different page layout or block the request entirely.
+      this.killDaemon();
+
       // Navigate to login page
       await this.navigateTo("https://www.linkedin.com/login");
       await this.sleep(2000);
@@ -1197,24 +1225,63 @@ export class LinkedInBrowser {
       const snapshot = this.exec("snapshot -i");
       const elements = this.parseSnapshot(snapshot);
 
-      // Find email field
-      const emailInput = elements.find(
-        (el) =>
-          el.role === "textbox" &&
-          (el.text.toLowerCase().includes("email") ||
-            el.text.toLowerCase().includes("phone") ||
-            el.raw.toLowerCase().includes("username")),
+      // Debug: log what the snapshot actually contains so we can diagnose
+      // login failures in Railway logs
+      this.log(`Raw snapshot (first 500 chars): ${snapshot.substring(0, 500)}`);
+      this.log(`Snapshot has ${elements.length} elements`);
+      elements.slice(0, 30).forEach((el) =>
+        this.log(`  ${el.role}: "${el.text}" [ref=${el.ref}]`),
       );
 
-      if (!emailInput) {
+      // Find email field -- broaden the search to handle different
+      // accessibility tree representations across agent-browser versions
+      // and LinkedIn page variants (proxy vs direct, locale differences).
+      const emailInput = elements.find((el) => {
+        const lower = el.raw.toLowerCase();
+        const textLower = el.text.toLowerCase();
+        const isInput =
+          el.role === "textbox" ||
+          el.role === "input" ||
+          lower.includes("textbox") ||
+          lower.includes("input");
+        const isEmailField =
+          textLower.includes("email") ||
+          textLower.includes("phone") ||
+          lower.includes("username") ||
+          lower.includes("session_key") ||
+          lower.includes("login-email");
+        return isInput && isEmailField;
+      });
+
+      // Fallback: if no labelled email input, grab the first textbox/input
+      // on the login page (LinkedIn's login page only has two inputs)
+      const emailInputFinal =
+        emailInput ??
+        elements.find(
+          (el) =>
+            el.role === "textbox" ||
+            el.role === "input" ||
+            el.raw.toLowerCase().includes("textbox"),
+        );
+
+      if (!emailInputFinal) {
         this.log("Email input not found on login page");
         return false;
       }
 
-      // Find password field
-      const passwordInput = elements.find((el) =>
-        el.raw.toLowerCase().includes("password"),
+      this.log(
+        `Found email input: ref=${emailInputFinal.ref}, role=${emailInputFinal.role}, text="${emailInputFinal.text}"`,
       );
+
+      // Find password field
+      const passwordInput = elements.find((el) => {
+        const lower = el.raw.toLowerCase();
+        return (
+          lower.includes("password") ||
+          lower.includes("session_password") ||
+          lower.includes("login-password")
+        );
+      });
 
       if (!passwordInput) {
         this.log("Password input not found on login page");
@@ -1225,7 +1292,7 @@ export class LinkedInBrowser {
       const safeEmail = email.replace(/"/g, '\\"');
       const safePassword = password.replace(/"/g, '\\"');
 
-      this.exec(`fill ${emailInput.ref} "${safeEmail}"`);
+      this.exec(`fill ${emailInputFinal.ref} "${safeEmail}"`);
       await this.sleep(500);
       this.exec(`fill ${passwordInput.ref} "${safePassword}"`);
       await this.sleep(500);
