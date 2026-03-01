@@ -117,14 +117,13 @@ export interface WriterOutput {
 export interface CampaignInput {
   workspaceSlug: string;
   task: string;
-  campaignName?: string;
+  campaignId?: string;    // For operations on existing campaign
+  campaignName?: string;  // For creating or finding by name
 }
 
 export interface CampaignOutput {
-  campaignId?: number;
-  campaignName: string;
-  status: string;
-  leadsAssigned?: number;
-  sequenceSteps?: number;
-  action: string;
+  action: string; // "create" | "list" | "get" | "update" | "publish" | "generate_content" | "unknown"
+  summary: string;
+  campaignId?: string;
+  data?: unknown;
 }
