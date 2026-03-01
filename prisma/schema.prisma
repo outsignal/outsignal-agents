@@ -65,7 +65,8 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  senders Sender[]
+  senders    Sender[]
+  campaigns  Campaign[]
 }
 
 model Person {
@@ -343,7 +344,8 @@ model TargetList {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  people TargetListPerson[]
+  people     TargetListPerson[]
+  campaigns  Campaign[]
 
   @@index([workspaceSlug])
 }
@@ -360,6 +362,61 @@ model TargetListPerson {
   @@unique([listId, personId])
   @@index([listId])
   @@index([personId])
+}
+
+// --- Campaign ---
+
+model Campaign {
+  id            String  @id @default(cuid())
+  name          String
+  workspaceSlug String
+  description   String?
+
+  // Status lifecycle
+  // Transitions: draft -> internal_review -> pending_approval -> approved -> deployed -> active -> paused -> completed
+  // Also: active -> paused -> active (bidirectional), any -> completed
+  // Valid values: "draft" | "internal_review" | "pending_approval" | "approved" | "deployed" | "active" | "paused" | "completed"
+  status String @default("draft")
+
+  // Channel selection — JSON array: ["email"], ["linkedin"], or ["email", "linkedin"]
+  channels String @default("[\"email\"]")
+
+  // Lead ownership — nullable until a list is linked
+  targetListId String?
+  targetList   TargetList? @relation(fields: [targetListId], references: [id])
+
+  // Content storage (JSON per step)
+  // emailSequence: array of { position, subjectLine, subjectVariantB?, body, delayDays, notes? }
+  // linkedinSequence: array of { position, type, body, delayDays, notes? }
+  emailSequence    String?
+  linkedinSequence String?
+
+  // Lead approval (CAMP-04)
+  leadsApproved   Boolean   @default(false)
+  leadsFeedback   String?
+  leadsApprovedAt DateTime?
+
+  // Content approval (CAMP-04)
+  contentApproved   Boolean   @default(false)
+  contentFeedback   String?
+  contentApprovedAt DateTime?
+
+  // EmailBison linkage (used in Phase 10 deploy)
+  emailBisonCampaignId Int?
+  emailBisonSequenceId Int?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime? // When pushed for client review
+  deployedAt  DateTime? // When deployed to EmailBison/LinkedIn
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceSlug], references: [slug])
+
+  @@unique([workspaceSlug, name])
+  @@index([workspaceSlug])
+  @@index([status])
 }
 
 // --- LinkedIn Sequencer ---
