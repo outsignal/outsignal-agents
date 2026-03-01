@@ -138,3 +138,22 @@ Plans:
 | 8. Campaign Entity + Writer Integration | 6/6 | Complete   | 2026-03-01 | - |
 | 9. Client Portal Campaign Approval | 5/5 | Complete   | 2026-03-01 | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
+
+### Phase 11: LinkedIn Voyager API Client
+**Goal**: Replace browser automation (LinkedInBrowser) with direct HTTP calls to LinkedIn's Voyager API (VoyagerClient) for all LinkedIn actions (connect, message, profile_view, check_connection), reducing detection risk and improving reliability. Keep agent-browser for initial cookie capture only.
+**Depends on**: Phase 10 (deploy pipeline exists; LinkedIn actions are queued)
+**Requirements**: VOYAGER-01, VOYAGER-02, VOYAGER-03, VOYAGER-04, VOYAGER-05
+**Success Criteria** (what must be TRUE):
+  1. All LinkedIn actions (connect, message, profile_view, check_connection) execute via HTTP Voyager API calls, not browser automation
+  2. VoyagerClient authenticates using li_at + JSESSIONID cookies with correct CSRF token derivation (jsessionId.replace(/"/g, ''))
+  3. All Voyager API requests route through the sender's ISP residential proxy via SOCKS5 when proxyUrl is configured
+  4. Error responses (429 rate limit, 403 auth expired, 999 IP blocked, checkpoint redirect) are handled with appropriate sender health status updates
+  5. Cookie extraction from agent-browser session persists li_at + JSESSIONID to Sender.sessionData via existing API
+  6. Worker creates VoyagerClient per sender using stored cookies, falling back to browser login when cookies are missing
+  7. Full worker project compiles without errors with the new VoyagerClient integration
+**Plans**: 3 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — VoyagerClient class with Voyager API methods + socks-proxy-agent dependency
+- [ ] 11-02-PLAN.md — Cookie extraction from LinkedInBrowser + ApiClient cookie persistence
+- [ ] 11-03-PLAN.md — Worker integration: swap LinkedInBrowser for VoyagerClient in worker.ts
