@@ -1358,31 +1358,79 @@ export class LinkedInBrowser {
         const tfaSnapshot = this.exec("snapshot -i");
         const tfaElements = this.parseSnapshot(tfaSnapshot);
 
-        const pinInput = tfaElements.find(
-          (el) =>
-            el.role === "textbox" ||
-            el.raw.toLowerCase().includes("pin") ||
-            el.raw.toLowerCase().includes("verification"),
+        // Debug: log challenge page snapshot for Railway log diagnosis
+        this.log(
+          `2FA raw snapshot (first 500 chars): ${tfaSnapshot.substring(0, 500)}`,
+        );
+        this.log(`2FA snapshot has ${tfaElements.length} elements`);
+        tfaElements.slice(0, 20).forEach((el) =>
+          this.log(`  ${el.role}: "${el.text}" [ref=${el.ref}]`),
         );
 
-        if (pinInput) {
-          this.exec(`fill ${pinInput.ref} "${code}"`);
+        // 1. Try labelled match: textbox/input with verification-related label
+        const pinInput = tfaElements.find((el) => {
+          const lower = el.raw.toLowerCase();
+          const textLower = el.text.toLowerCase();
+          const isInput =
+            el.role === "textbox" ||
+            el.role === "input" ||
+            lower.includes("textbox") ||
+            lower.includes("input");
+          const isCodeField =
+            textLower.includes("verification") ||
+            textLower.includes("code") ||
+            textLower.includes("pin") ||
+            textLower.includes("digit") ||
+            lower.includes("verification") ||
+            lower.includes("code") ||
+            lower.includes("pin") ||
+            lower.includes("digit") ||
+            lower.includes("input-challengepin") ||
+            lower.includes("challenge");
+          return isInput && isCodeField;
+        });
+
+        // 2. Fallback: first textbox/input on the page (challenge pages
+        //    typically only have one input)
+        const tfaInput =
+          pinInput ??
+          tfaElements.find(
+            (el) =>
+              el.role === "textbox" ||
+              el.role === "input" ||
+              el.raw.toLowerCase().includes("textbox") ||
+              el.raw.toLowerCase().includes("input"),
+          );
+
+        if (tfaInput) {
+          this.log(
+            `Found 2FA input: ref=${tfaInput.ref}, role=${tfaInput.role}, text="${tfaInput.text}"`,
+          );
+          this.exec(`fill ${tfaInput.ref} "${code}"`);
           await this.sleep(500);
 
-          // Find submit button
+          // Find submit button — LinkedIn uses varying labels across
+          // different challenge page variants
           const submitBtn =
             this.findElement(tfaElements, "Submit", "button") ??
-            this.findElement(tfaElements, "Verify", "button");
+            this.findElement(tfaElements, "Verify", "button") ??
+            this.findElement(tfaElements, "Next", "button") ??
+            this.findElement(tfaElements, "Done", "button") ??
+            this.findElement(tfaElements, "Continue", "button");
 
           if (submitBtn) {
+            this.log(
+              `Clicking 2FA submit button: ref=${submitBtn.ref}, text="${submitBtn.text}"`,
+            );
             this.exec(`click ${submitBtn.ref}`);
           } else {
+            this.log("No submit button found, pressing Enter");
             this.exec("press Enter");
           }
 
           await this.sleep(5000);
         } else {
-          this.log("2FA input not found");
+          this.log("2FA input not found — no textbox or input on challenge page");
           return false;
         }
       }
