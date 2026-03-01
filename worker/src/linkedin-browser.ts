@@ -630,6 +630,13 @@ export class LinkedInBrowser {
         };
       }
 
+      // DEBUG: dump full initial profile snapshot
+      this.log(`Profile snapshot: ${elements.length} elements`);
+      for (const el of elements) {
+        this.log(`  ${el.ref}: ${el.role} "${el.text}"`);
+      }
+      this.log(`Raw snapshot:\n${snapshot}`);
+
       // Dismiss any cookie/consent banners that may block interaction
       this.dismissOverlays(elements);
 
@@ -670,12 +677,22 @@ export class LinkedInBrowser {
         const moreBtn = this.findElement(elements, "More", "button");
 
         if (moreBtn) {
+          // DEBUG: log the More button element before clicking
+          this.log(`More button found — ref: ${moreBtn.ref}, role: ${moreBtn.role}, text: "${moreBtn.text}", raw: "${moreBtn.raw}"`);
+
           this.exec(`click ${moreBtn.ref}`);
           await this.sleep(1500);
 
           // Take a FRESH snapshot after clicking More to see dropdown items
           const dropdownSnapshot = this.exec("snapshot -i");
           const dropdownElements = this.parseSnapshot(dropdownSnapshot);
+
+          // DEBUG: dump full dropdown snapshot
+          this.log(`Dropdown snapshot: ${dropdownElements.length} elements`);
+          for (const el of dropdownElements) {
+            this.log(`  ${el.ref}: ${el.role} "${el.text}"`);
+          }
+          this.log(`Raw dropdown snapshot:\n${dropdownSnapshot}`);
 
           // Dismiss overlays again in case they appeared over the dropdown
           this.dismissOverlays(dropdownElements);
