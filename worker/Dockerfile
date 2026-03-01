@@ -1,8 +1,8 @@
 FROM node:22-slim
 
-# Install Chromium, VNC stack, and noVNC for browser streaming
+# agent-browser uses playwright-core which needs these browser dependencies.
+# No VNC/Xvfb needed — agent-browser manages its own headless Chromium.
 RUN apt-get update && apt-get install -y \
-    chromium \
     fonts-liberation \
     libnss3 \
     libatk-bridge2.0-0 \
@@ -18,15 +18,12 @@ RUN apt-get update && apt-get install -y \
     libcairo2 \
     libcups2 \
     dbus \
-    xvfb \
-    x11vnc \
-    novnc \
     procps \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-ENV CHROME_PATH=/usr/bin/chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# Install agent-browser CLI globally and its bundled browser
+RUN npm install -g agent-browser && agent-browser install
 
 WORKDIR /app
 

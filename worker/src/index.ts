@@ -3,7 +3,7 @@
  *
  * Runs two services concurrently:
  * 1. Worker poll loop — fetches actions from the queue and executes them
- * 2. Session server — HTTP + WebSocket server for browser login streaming
+ * 2. Session server — HTTP server for headless login via agent-browser
  *
  * Handles graceful shutdown on SIGTERM/SIGINT.
  */
@@ -48,7 +48,7 @@ const worker = new Worker({
   workspaceSlugs: slugs,
 });
 
-// Start session server (HTTP + WebSocket for browser login streaming)
+// Start session server (HTTP for headless login via agent-browser)
 const sessionServer = new SessionServer(api, API_SECRET);
 sessionServer.start(PORT);
 

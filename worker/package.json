@@ -9,6 +9,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "agent-browser": "^0.15.1",
     "otpauth": "^9.5.0",
     "ws": "^8.18.0"
   },

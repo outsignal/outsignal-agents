@@ -14,7 +14,6 @@
 import { ApiClient } from "./api-client.js";
 import { LinkedInBrowser } from "./linkedin-browser.js";
 import type { ActionResult } from "./linkedin-browser.js";
-import type { CdpCookie } from "./cdp.js";
 import {
   isWithinBusinessHours,
   msUntilBusinessHours,
@@ -296,24 +295,20 @@ export class Worker {
   /**
    * Get or launch a browser session for a sender.
    * Reuses existing sessions within the same tick.
+   *
+   * With agent-browser, sessions are isolated per sender via --session flag.
+   * Cookies/state are managed internally by agent-browser's named sessions.
    */
   private async getOrLaunchBrowser(sender: SenderConfig): Promise<LinkedInBrowser> {
     // Reuse existing browser if available
     const existing = this.activeBrowsers.get(sender.id);
     if (existing) return existing;
 
-    // Parse session cookies (CDP format from Network.getAllCookies)
-    let cookies: CdpCookie[] = [];
-
-    if (sender.sessionData) {
-      try {
-        cookies = JSON.parse(sender.sessionData) as CdpCookie[];
-      } catch {
-        console.error(`[Worker] Failed to parse session data for ${sender.name}`);
-      }
-    }
-
-    const browser = new LinkedInBrowser(cookies, sender.proxyUrl ?? undefined);
+    // agent-browser manages session state internally via named sessions.
+    // We pass an empty cookies array for API compatibility — the session
+    // name (set via setSenderId) is what actually isolates state.
+    const browser = new LinkedInBrowser([], sender.proxyUrl ?? undefined);
+    browser.setSenderId(sender.id);
     await browser.launch();
 
     // Validate session
