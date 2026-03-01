@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T09:05:00Z"
+last_updated: "2026-03-01T09:09:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 8 of 10 (Campaign Entity Writer — 08-01 and 08-03 complete, 08-02 and 08-04 through 08-06 remaining)
-Plan: 3 of 6 in current phase (08-01 and 08-03 done)
-Status: In Progress (Phase 8 — Campaign operations layer deployed)
-Last activity: 2026-03-01 — Executed Plan 03: created Campaign operations layer with 8 CRUD/lifecycle functions, state machine validation, typed interfaces
+Phase: 8 of 10 (Campaign Entity Writer — 08-01, 08-02, and 08-03 complete, 08-04 through 08-06 remaining)
+Plan: 3 of 6 in current phase (08-01, 08-02, 08-03 done)
+Status: In Progress (Phase 8 — pgvector semantic search + campaign operations deployed)
+Last activity: 2026-03-01 — Executed Plan 02: pgvector extension + KnowledgeChunk model in Neon, searchKnowledge upgraded to cosine similarity with keyword fallback, searchKnowledgeBase extracted to shared-tools.ts and available across writer/leads/orchestrator agents (NOTE: OPENAI_API_KEY required to run migration script and activate semantic search — keyword fallback active until key set)
 
 Progress: [██░░░░░░░░] 24% (v1.1 — Phase 8 in progress)
 
@@ -61,6 +61,10 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [08-01]: targetListId nullable — Campaign can exist before lead list is attached
 - [08-01]: @@unique([workspaceSlug, name]) enforced at DB level to prevent accidental duplicate campaign names
 - [08-01]: channels stored as JSON string defaulting to ["email"] — supports email, linkedin, or both
+- [08-02]: pgvector via Unsupported('vector(1536)') in Prisma — all vector reads/writes use raw SQL with ::vector cast
+- [08-02]: OpenAI client uses lazy init — not instantiated at module load, avoids crash if OPENAI_API_KEY absent
+- [08-02]: ingestDocument() embedding failure is non-fatal — warns to console, keyword fallback still works
+- [08-02]: searchKnowledgeBase shared in shared-tools.ts — extract cross-agent tools here, not inline in each agent
 - [08-03]: State machine as VALID_TRANSITIONS Record<string, string[]>; any->completed always allowed via early-return check
 - [08-03]: parseJsonArray helper returns null on invalid JSON (not throws) — safe for legacy/corrupt data
 - [08-03]: formatCampaignDetail centralizes JSON parsing and shaping — all 8 functions reuse single helper
@@ -82,9 +86,10 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - EmailBison campaign-lead assignment API — RESOLVED (07-04): No assignment endpoint exists; UI-only. Phase 10 must accept manual campaign assignment or find alternative. User has contacted EmailBison support.
 - EmailBison sequence step schema — RESOLVED (07-04): Full schema verified via live probe. See .planning/spikes/emailbison-api.md.
 - Vercel timeout — RESOLVED (07-03): maxDuration = 300 added to src/app/api/chat/route.ts
+- OPENAI_API_KEY missing (08-02): pgvector migration blocked until key set in Vercel. Keyword search fallback active. Run: `npx tsx scripts/reembed-knowledge.ts` after setting key.
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 08-03-PLAN.md (Campaign operations layer with 8 CRUD/lifecycle functions and state machine). Phase 8 Plan 3 complete. Next: Phase 8 Plan 2 (Writer Agent) or Plan 4 (API routes).
+Stopped at: Completed 08-02-PLAN.md (pgvector semantic search, KnowledgeChunk model, shared searchKnowledgeBase tool). Phase 8 Plan 2 complete. Next: Phase 8 Plan 4 (Campaign API routes) or Phase 8 Plan 5 (Writer agent integration).
 Resume file: None

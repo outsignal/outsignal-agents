@@ -22,7 +22,7 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [x] **CAMP-02**: Campaign owns a TargetList (leads) and stores email + LinkedIn sequences (content)
 - [ ] **CAMP-03**: Admin can create campaigns from Cmd+J chat, linking a TargetList and setting channels (email, LinkedIn, or both)
 - [x] **CAMP-04**: Campaign has separate approval fields for leads and content (approved/feedback/timestamp for each)
-- [ ] **CAMP-05**: Campaign CRUD API routes enforce workspace ownership
+- [x] **CAMP-05**: Campaign CRUD API routes enforce workspace ownership
 
 ### Writer Agent
 
@@ -33,8 +33,8 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [ ] **WRITER-05**: Writer ingests knowledge base best practices (46 docs) for email + LinkedIn copywriting
 - [ ] **WRITER-06**: On reply webhook (LEAD_REPLIED, LEAD_INTERESTED), writer generates a suggested response using conversation history, workspace context, and knowledge base — included in Slack notification
 - [ ] **WRITER-07**: Admin can refine reply suggestions via Cmd+J ("draft a response to John's reply", "make it more casual") — conversational iteration
-- [ ] **WRITER-08**: Knowledge base uses vector embeddings (pgvector on Neon) for semantic search — replaces keyword matching; all 46+ docs re-embedded on migration
-- [ ] **WRITER-09**: searchKnowledgeBase is a shared tool available to all agents (writer, leads, research, campaign) — not writer-only
+- [x] **WRITER-08**: Knowledge base uses vector embeddings (pgvector on Neon) for semantic search — replaces keyword matching; all 46+ docs re-embedded on migration
+- [x] **WRITER-09**: searchKnowledgeBase is a shared tool available to all agents (writer, leads, research, campaign) — not writer-only
 
 ### Portal Review
 
@@ -129,7 +129,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CAMP-02 | Phase 8 | Complete |
 | CAMP-03 | Phase 8 | Pending |
 | CAMP-04 | Phase 8 | Complete |
-| CAMP-05 | Phase 8 | Pending |
+| CAMP-05 | Phase 8 | Complete |
 | WRITER-01 | Phase 8 | Pending |
 | WRITER-02 | Phase 8 | Pending |
 | WRITER-03 | Phase 8 | Pending |
@@ -137,8 +137,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WRITER-05 | Phase 8 | Pending |
 | WRITER-06 | Phase 8 | Pending |
 | WRITER-07 | Phase 8 | Pending |
-| WRITER-08 | Phase 8 | Pending |
-| WRITER-09 | Phase 8 | Pending |
+| WRITER-08 | Phase 8 | Complete |
+| WRITER-09 | Phase 8 | Complete |
 | PORTAL-01 | Phase 9 | Pending |
 | PORTAL-02 | Phase 9 | Pending |
 | PORTAL-03 | Phase 9 | Pending |
