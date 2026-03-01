@@ -160,6 +160,80 @@ const writerTools = {
     },
   }),
 
+  getCampaignContext: tool({
+    description:
+      "Get the Campaign entity details including linked TargetList info, existing sequences, and approval status. Use this when generating content for a specific campaign.",
+    inputSchema: z.object({
+      campaignId: z.string().describe("The campaign ID"),
+    }),
+    execute: async ({ campaignId }) => {
+      const { getCampaign } = await import("@/lib/campaigns/operations");
+      const campaign = await getCampaign(campaignId);
+      if (!campaign) return { error: `Campaign '${campaignId}' not found` };
+      return {
+        name: campaign.name,
+        status: campaign.status,
+        channels: campaign.channels,
+        targetListName: campaign.targetListName,
+        targetListPeopleCount: campaign.targetListPeopleCount,
+        hasEmailSequence: campaign.emailSequence !== null,
+        hasLinkedinSequence: campaign.linkedinSequence !== null,
+        emailSequence: campaign.emailSequence,
+        linkedinSequence: campaign.linkedinSequence,
+        leadsApproved: campaign.leadsApproved,
+        contentApproved: campaign.contentApproved,
+      };
+    },
+  }),
+
+  saveCampaignSequence: tool({
+    description:
+      "Save email or LinkedIn sequence directly to a Campaign entity. Use this when generating content for a specific campaign (not standalone drafts).",
+    inputSchema: z.object({
+      campaignId: z.string().describe("The campaign ID"),
+      emailSequence: z
+        .array(
+          z.object({
+            position: z.number(),
+            subjectLine: z.string(),
+            subjectVariantB: z.string().optional(),
+            body: z.string(),
+            delayDays: z.number(),
+            notes: z.string().optional(),
+          }),
+        )
+        .optional()
+        .describe("Email sequence steps"),
+      linkedinSequence: z
+        .array(
+          z.object({
+            position: z.number(),
+            type: z.enum(["connection_request", "message", "inmail"]),
+            body: z.string(),
+            delayDays: z.number(),
+            notes: z.string().optional(),
+          }),
+        )
+        .optional()
+        .describe("LinkedIn sequence steps"),
+    }),
+    execute: async ({ campaignId, emailSequence, linkedinSequence }) => {
+      const { saveCampaignSequences } = await import(
+        "@/lib/campaigns/operations"
+      );
+      const updated = await saveCampaignSequences(campaignId, {
+        emailSequence: emailSequence ?? undefined,
+        linkedinSequence: linkedinSequence ?? undefined,
+      });
+      return {
+        status: "saved",
+        campaignName: updated.name,
+        emailStepCount: emailSequence?.length ?? 0,
+        linkedinStepCount: linkedinSequence?.length ?? 0,
+      };
+    },
+  }),
+
   saveDraft: tool({
     description:
       "Save an email or LinkedIn draft to the database for review. Call this for each step in the sequence. The draft starts in 'draft' status and can be reviewed/approved later.",
@@ -346,6 +420,14 @@ function buildWriterMessage(input: WriterInput): string {
   }
   if (input.campaignName) {
     parts.push(`Campaign: ${input.campaignName}`);
+  }
+  if (input.campaignId) {
+    parts.push(`Campaign ID: ${input.campaignId}`);
+  }
+  if (input.stepNumber !== undefined) {
+    parts.push(
+      `Target step: ${input.stepNumber} (regenerate only this step, preserve others)`,
+    );
   }
   if (input.feedback) {
     parts.push(`\nFeedback to incorporate:\n${input.feedback}`);

@@ -82,7 +82,9 @@ export interface WriterInput {
   task: string;
   channel?: "email" | "linkedin" | "email_linkedin";
   campaignName?: string;
+  campaignId?: string; // Link to Campaign entity for context
   feedback?: string;
+  stepNumber?: number; // For targeted step regeneration
 }
 
 export interface EmailStep {
