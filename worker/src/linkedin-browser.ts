@@ -279,12 +279,12 @@ export class LinkedInBrowser {
     this.exec(`open ${url}`, LinkedInBrowser.NAV_TIMEOUT);
     await this.sleep(1000);
 
-    // Wait for network to settle
+    // Wait for DOM to be ready (domcontentloaded is reliable; networkidle often times out)
     try {
-      this.exec("wait --load networkidle", LinkedInBrowser.NAV_TIMEOUT);
+      this.exec("wait --load domcontentloaded", LinkedInBrowser.NAV_TIMEOUT);
     } catch {
-      // networkidle timeout is non-fatal -- page may still be usable
-      this.log("networkidle wait timed out -- continuing");
+      // domcontentloaded timeout is non-fatal -- page may still be usable
+      this.log("domcontentloaded wait timed out -- continuing");
     }
 
     // Get final URL
@@ -302,6 +302,41 @@ export class LinkedInBrowser {
       url.includes("/checkpoint") ||
       url.includes("/challenge")
     );
+  }
+
+  /**
+   * Dismiss any cookie/consent banners or modal overlays on the page.
+   *
+   * LinkedIn shows cookie consent banners for fresh sessions or sessions
+   * in certain regions. These overlays block interaction with page elements.
+   * This method attempts to dismiss them by looking for common accept buttons.
+   */
+  private dismissOverlays(elements: SnapshotElement[]): void {
+    // Common button labels for cookie/consent banners on LinkedIn
+    const dismissLabels = [
+      "Accept cookies",
+      "Accept & continue",
+      "Accept all",
+      "Accept",
+      "Agree",
+      "Got it",
+      "OK",
+      "Reject",
+      "Dismiss",
+    ];
+
+    for (const label of dismissLabels) {
+      const btn = this.findElement(elements, label, "button");
+      if (btn) {
+        this.log(`Dismissing overlay: clicking "${btn.text}" (${btn.ref})`);
+        try {
+          this.exec(`click ${btn.ref}`);
+        } catch {
+          // Non-fatal -- overlay may have already been dismissed
+        }
+        return;
+      }
+    }
   }
 
   /**
@@ -595,6 +630,18 @@ export class LinkedInBrowser {
         };
       }
 
+      // Dismiss any cookie/consent banners that may block interaction
+      this.dismissOverlays(elements);
+
+      // Re-snapshot after dismissing overlays (elements may have changed)
+      await this.sleep(500);
+      try {
+        snapshot = this.exec("snapshot -i");
+        elements = this.parseSnapshot(snapshot);
+      } catch {
+        // Use previous snapshot if re-snap fails
+      }
+
       // Check if already connected (Message button present)
       const messageBtn = this.findElementExact(elements, "Message", "button");
       if (messageBtn) {
@@ -626,15 +673,29 @@ export class LinkedInBrowser {
           this.exec(`click ${moreBtn.ref}`);
           await this.sleep(1500);
 
-          // Re-snapshot to find Connect in dropdown
+          // Take a FRESH snapshot after clicking More to see dropdown items
           const dropdownSnapshot = this.exec("snapshot -i");
           const dropdownElements = this.parseSnapshot(dropdownSnapshot);
+
+          // Dismiss overlays again in case they appeared over the dropdown
+          this.dismissOverlays(dropdownElements);
 
           const connectInMenu = this.findElement(dropdownElements, "Connect");
           if (connectInMenu) {
             this.log(`Found Connect in dropdown: ${connectInMenu.ref}`);
             this.exec(`click ${connectInMenu.ref}`);
             connectClicked = true;
+          } else {
+            // Re-snapshot after overlay dismissal and try again
+            await this.sleep(500);
+            const retryDropdown = this.exec("snapshot -i");
+            const retryDropdownElements = this.parseSnapshot(retryDropdown);
+            const connectRetry = this.findElement(retryDropdownElements, "Connect");
+            if (connectRetry) {
+              this.log(`Found Connect in dropdown after overlay dismiss: ${connectRetry.ref}`);
+              this.exec(`click ${connectRetry.ref}`);
+              connectClicked = true;
+            }
           }
         }
       }
@@ -649,8 +710,16 @@ export class LinkedInBrowser {
         const retrySnapshot = this.exec("snapshot -i");
         const retryElements = this.parseSnapshot(retrySnapshot);
 
+        // Dismiss any overlays that may have appeared
+        this.dismissOverlays(retryElements);
+        await this.sleep(500);
+
+        const finalSnapshot = this.exec("snapshot -i");
+        const finalElements = this.parseSnapshot(finalSnapshot);
+
+        // Try direct Connect button
         const retryConnect = this.findElementExact(
-          retryElements,
+          finalElements,
           "Connect",
           "button",
         );
@@ -658,6 +727,33 @@ export class LinkedInBrowser {
           this.exec(`click ${retryConnect.ref}`);
           connectClicked = true;
         } else {
+          // Last attempt: try More dropdown on final snapshot
+          const retryMore = this.findElement(finalElements, "More", "button");
+          if (retryMore) {
+            this.exec(`click ${retryMore.ref}`);
+            await this.sleep(1500);
+            const retryMenuSnap = this.exec("snapshot -i");
+            const retryMenuElements = this.parseSnapshot(retryMenuSnap);
+            const connectInRetryMenu = this.findElement(retryMenuElements, "Connect");
+            if (connectInRetryMenu) {
+              this.log(`Found Connect in More dropdown on retry: ${connectInRetryMenu.ref}`);
+              this.exec(`click ${connectInRetryMenu.ref}`);
+              connectClicked = true;
+            }
+          }
+        }
+
+        if (!connectClicked) {
+          // Check for Follow button (some profiles only allow Follow)
+          const followBtn = this.findElementExact(finalElements, "Follow", "button");
+          if (followBtn) {
+            return {
+              success: false,
+              error: "Profile only shows Follow button -- Connect not available",
+              details: { follow_only: true },
+            };
+          }
+
           return {
             success: false,
             error:
@@ -698,17 +794,16 @@ export class LinkedInBrowser {
         const sendSnapshot = this.exec("snapshot -i");
         const sendElements = this.parseSnapshot(sendSnapshot);
         const sendBtn =
-          this.findElement(sendElements, "Send") ??
-          this.findElement(modalElements, "Send");
+          this.findElementExact(sendElements, "Send", "button") ??
+          this.findElement(sendElements, "Send");
         if (sendBtn) {
           this.exec(`click ${sendBtn.ref}`);
         }
       } else {
         // No note -- click "Send without a note" or just "Send"
-        const sendWithoutNote = this.findElement(
-          modalElements,
-          "Send without a note",
-        );
+        const sendWithoutNote =
+          this.findElement(modalElements, "Send without a note") ??
+          this.findElement(modalElements, "Send without a note", "button");
         const sendBtn =
           sendWithoutNote ??
           this.findElementExact(modalElements, "Send", "button");
