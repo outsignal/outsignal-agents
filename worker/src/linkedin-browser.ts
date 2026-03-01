@@ -184,29 +184,33 @@ export class LinkedInBrowser {
 
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed.startsWith("@")) continue;
+      if (!trimmed.startsWith("-")) continue;
 
-      // Match: @eN role "text" or @eN role 'text' or @eN role text
-      const match = trimmed.match(/^(@e\d+)\s+(\S+)\s+(?:"([^"]*)"|'([^']*)'|(.+))$/);
-      if (match) {
-        elements.push({
-          ref: match[1],
-          role: match[2],
-          text: match[3] ?? match[4] ?? match[5] ?? "",
-          raw: trimmed,
-        });
-      } else {
-        // Simpler format: @eN role (no text)
-        const simpleMatch = trimmed.match(/^(@e\d+)\s+(\S+)$/);
-        if (simpleMatch) {
-          elements.push({
-            ref: simpleMatch[1],
-            role: simpleMatch[2],
-            text: "",
-            raw: trimmed,
-          });
-        }
-      }
+      // Actual agent-browser format:
+      //   - role "text" [ref=eN] [optional attrs]
+      //   - role [ref=eN]  (no text)
+      // Examples:
+      //   - textbox "Email or phone" [ref=e6]
+      //   - button "Sign in" [ref=e11]
+      //   - checkbox "Keep me logged in" [ref=e10] [checked]
+
+      // Extract the ref first — it's always present
+      const refMatch = trimmed.match(/\[ref=(e\d+)\]/);
+      if (!refMatch) continue;
+
+      const ref = refMatch[1];
+
+      // Extract role: first word after the leading "- "
+      const roleMatch = trimmed.match(/^-\s+(\S+)/);
+      if (!roleMatch) continue;
+
+      const role = roleMatch[1];
+
+      // Extract quoted text (may not be present)
+      const textMatch = trimmed.match(/"([^"]*)"/);
+      const text = textMatch ? textMatch[1] : "";
+
+      elements.push({ ref, role, text, raw: trimmed });
     }
 
     return elements;
