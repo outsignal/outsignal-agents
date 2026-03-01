@@ -119,4 +119,22 @@ export class ApiClient {
       body: JSON.stringify({ cookies }),
     });
   }
+
+  /**
+   * Get decrypted LinkedIn credentials for a sender.
+   * Used for auto-login when session expires during worker processing.
+   */
+  async getSenderCredentials(
+    senderId: string,
+  ): Promise<{ email: string; password: string; totpSecret?: string } | null> {
+    try {
+      return await this.request<{
+        email: string;
+        password: string;
+        totpSecret?: string;
+      }>(`/api/linkedin/senders/${senderId}/credentials`);
+    } catch {
+      return null;
+    }
+  }
 }

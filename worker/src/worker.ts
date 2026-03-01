@@ -298,6 +298,10 @@ export class Worker {
    *
    * With agent-browser, sessions are isolated per sender via --session flag.
    * Cookies/state are managed internally by agent-browser's named sessions.
+   *
+   * If the session is expired, auto-login is attempted using stored credentials.
+   * The key insight: login() runs on the SAME daemon that launch() started,
+   * so the session persists across login → action execution.
    */
   private async getOrLaunchBrowser(sender: SenderConfig): Promise<LinkedInBrowser> {
     // Reuse existing browser if available
@@ -309,17 +313,43 @@ export class Worker {
     // name (set via setSenderId) is what actually isolates state.
     const browser = new LinkedInBrowser([], sender.proxyUrl ?? undefined);
     browser.setSenderId(sender.id);
-    await browser.launch();
+    const launchResult = await browser.launch();
 
-    // Validate session
-    const valid = await browser.isSessionValid();
-    if (!valid) {
-      await browser.close();
-      throw new Error("LinkedIn session is invalid or expired");
+    if (launchResult.success) {
+      this.activeBrowsers.set(sender.id, browser);
+      return browser;
     }
 
-    this.activeBrowsers.set(sender.id, browser);
-    return browser;
+    // Session expired — attempt auto-login on the same daemon
+    if (launchResult.needsLogin) {
+      console.log(`[Worker] Session expired for ${sender.name} — attempting auto-login`);
+
+      const credentials = await this.api.getSenderCredentials(sender.id);
+      if (!credentials) {
+        await browser.close();
+        throw new Error("Session expired and no stored credentials for auto-login");
+      }
+
+      const loginSuccess = await browser.login(
+        credentials.email,
+        credentials.password,
+        credentials.totpSecret,
+        { daemonAlreadyRunning: true },
+      );
+
+      if (!loginSuccess) {
+        await browser.close();
+        throw new Error("Session expired and auto-login failed");
+      }
+
+      console.log(`[Worker] Auto-login successful for ${sender.name}`);
+      this.activeBrowsers.set(sender.id, browser);
+      return browser;
+    }
+
+    // Launch failed for non-session reasons (network error, daemon crash, etc.)
+    await browser.close();
+    throw new Error("Browser launch failed");
   }
 
   /**

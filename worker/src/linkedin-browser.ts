@@ -23,6 +23,11 @@ export interface ActionResult {
   details?: Record<string, unknown>;
 }
 
+export interface LaunchResult {
+  success: boolean;
+  needsLogin: boolean;
+}
+
 export type ConnectionStatus =
   | "connected"
   | "pending"
@@ -422,9 +427,10 @@ export class LinkedInBrowser {
    * Launch the browser session and navigate to LinkedIn feed.
    *
    * Loads the named session (which preserves cookies from prior logins).
-   * Verifies the session is valid by checking we land on /feed/.
+   * Returns a result indicating whether the session is valid or needs login.
+   * The daemon is left running so login() can reuse it without a restart.
    */
-  async launch(): Promise<void> {
+  async launch(): Promise<LaunchResult> {
     this.log("Launching agent-browser session...");
 
     // Kill any stale daemon so --proxy is applied fresh
@@ -435,16 +441,16 @@ export class LinkedInBrowser {
       const url = await this.navigateTo("https://www.linkedin.com/feed/");
 
       if (this.isLoginPage(url)) {
-        throw new Error(
-          "LinkedIn session is expired or invalid -- landed on login page",
-        );
+        this.log("Session expired -- needs login");
+        return { success: false, needsLogin: true };
       }
 
       this.launched = true;
       this.log("Launch complete -- session is valid");
+      return { success: true, needsLogin: false };
     } catch (error) {
       this.log(`Launch failed: ${error}`);
-      throw error;
+      return { success: false, needsLogin: false };
     }
   }
 
@@ -1219,15 +1225,23 @@ export class LinkedInBrowser {
     email: string,
     password: string,
     totpSecret?: string,
+    options?: { daemonAlreadyRunning?: boolean },
   ): Promise<boolean> {
     try {
       this.log("Starting login flow...");
 
       // Kill any stale daemon so --proxy is applied fresh.
       // Without this, the daemon may already be running (from a prior launch()
-      // or poll cycle) and will ignore the --proxy flag, causing LinkedIn to
+      // or will ignore the --proxy flag, causing LinkedIn to
       // serve a different page layout or block the request entirely.
-      this.killDaemon();
+      //
+      // SKIP when daemonAlreadyRunning=true: the worker's auto-login calls
+      // login() on the same browser instance that launch() started. The daemon
+      // is already running with the correct --proxy, and killing it would
+      // destroy the session we need to reuse.
+      if (!options?.daemonAlreadyRunning) {
+        this.killDaemon();
+      }
 
       // Navigate to login page
       await this.navigateTo("https://www.linkedin.com/login");
