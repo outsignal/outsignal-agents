@@ -66,8 +66,8 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### Notifications
 
-- [ ] **NOTIF-01**: Admin receives Slack notification when client approves or rejects (leads or content)
-- [ ] **NOTIF-02**: Admin receives email notification when client approves or rejects (leads or content)
+- [x] **NOTIF-01**: Admin receives Slack notification when client approves or rejects (leads or content)
+- [x] **NOTIF-02**: Admin receives email notification when client approves or rejects (leads or content)
 - [ ] **NOTIF-03**: Admin receives notification when deploy completes or fails
 
 ## Future Requirements
@@ -146,8 +146,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PORTAL-05 | Phase 9 | Complete |
 | PORTAL-06 | Phase 9 | Complete |
 | PORTAL-07 | Phase 9 | Complete |
-| NOTIF-01 | Phase 9 | Pending |
-| NOTIF-02 | Phase 9 | Pending |
+| NOTIF-01 | Phase 9 | Complete |
+| NOTIF-02 | Phase 9 | Complete |
 | DEPLOY-02 | Phase 10 | Pending |
 | DEPLOY-03 | Phase 10 | Pending |
 | DEPLOY-04 | Phase 10 | Pending |

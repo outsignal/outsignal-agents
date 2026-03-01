@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 9 of 10 (Client Portal Campaign Approval — Plan 04 COMPLETE: Campaign detail page + lead/content approval UX)
-Plan: 4 of 5 in current phase (09-01, 09-02, 09-03, and 09-04 done)
-Status: Phase 9 In Progress. Plans 09-01, 09-02, 09-03, and 09-04 complete.
-Last activity: 2026-03-01 — Executed Plan 04: Campaign detail page at /portal/campaigns/[id] with CampaignApprovalLeads (top-50 lead table, ICP score color-coding, approve/request-changes) and CampaignApprovalContent (email accordion with spintax+token highlighting, LinkedIn cards). Independent approval sections per PORTAL-06. TypeScript clean.
+Phase: 9 of 10 (Client Portal Campaign Approval — Plan 05 COMPLETE: Approval notifications + API route wiring)
+Plan: 5 of 5 in current phase (09-01, 09-02, 09-03, 09-04, and 09-05 done) — Phase 9 COMPLETE
+Status: Phase 9 Complete. All 5 plans done.
+Last activity: 2026-03-01 — Executed Plan 05: notifyApproval() with structured Slack blocks and email HTML wired non-blocking into four portal approval/rejection routes, dual-approval detection firing distinct "Campaign Fully Approved" notification.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -68,6 +68,9 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [09-04]: PreviewText highlights tokens by regex-scanning post-spintax string, wrapping each known token replacement in <mark> with token name as title — enables granular JSX highlighting without losing text structure
 - [09-04]: accordion openStep uses index (0 = first open by default, -1 = all closed); clicking active step sets openStep to -1
 - [09-04]: T1+T2+T3 committed together — page.tsx imports both client components so they must coexist; single atomic commit avoids broken intermediate state
+- [09-05]: approvalsSlackChannelId used via direct property access — Prisma client regenerated in 09-01 has field typed correctly, no safe cast needed
+- [09-05]: T1+T2 committed together — notifyApproval function and route wiring are tightly coupled; single atomic commit avoids broken intermediate state
+- [09-05]: Dual approval fires both_approved by reading updated.status from operations return value — no extra DB query needed
 
 **Phase 8 decisions (2026-03-01):**
 - [08-01]: Campaign stores email/LinkedIn sequences as JSON String columns (not relational EmailDraft rows) — simpler for writer agent output and client review flow
@@ -116,5 +119,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 09-04-PLAN.md (Portal Campaign Detail Page). /portal/campaigns/[id] page, CampaignApprovalLeads, CampaignApprovalContent components created. Phase 9 at 4/5 plans done. Next: 09-05 (deploy trigger / final approval flow).
+Stopped at: Completed 09-05-PLAN.md (Approval Notifications + API Route Wiring). notifyApproval() added to notifications.ts, wired into all 4 portal action routes. Phase 9 complete (5/5 plans done). Next: Phase 10 (deploy trigger).
 Resume file: None
