@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 model Workspace {
@@ -267,7 +269,22 @@ model KnowledgeDocument {
   tags      String? // Comma-separated tags for filtering
   createdAt DateTime @default(now())
 
+  chunksRel KnowledgeChunk[]
+
   @@index([source])
+}
+
+model KnowledgeChunk {
+  id          String   @id @default(cuid())
+  documentId  String
+  content     String   // The chunk text
+  embedding   Unsupported("vector(1536)")? // OpenAI text-embedding-3-small dimension
+  chunkIndex  Int      // Position within the document
+  createdAt   DateTime @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 
 model EmailDraft {
