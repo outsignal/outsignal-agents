@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T09:18:00Z"
+last_updated: "2026-03-01T09:21:22.186Z"
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 9
+  completed_phases: 3
+  total_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -88,6 +88,8 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [07.1-02]: export_to_emailbison confirm=true path not replaced — MCP is superset (campaign management + custom variables); unified in Phase 8
 - [07.1-03]: SC-1 reframed from "zero divergent implementations" to accepted-exclusions — batch_score_list (workspace-level) and export campaign management are formally deferred to Phase 8; LEAD-05 remains checked
 - [07.1-03]: SCOPE comments replace NOTE comments in score.ts and export.ts — scope-as-documentation pattern with explicit LEAD-05 references
+- [Phase 08-05]: delegateToCampaign now calls runCampaignAgent — stub fully replaced with live Campaign Agent
+- [Phase 08-05]: delegateToWriter passes campaignId enabling campaign-aware content generation from the orchestrator
 
 ### Blockers/Concerns
 

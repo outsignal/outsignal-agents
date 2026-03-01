@@ -20,7 +20,7 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 - [x] **CAMP-01**: Campaign model exists as first-class entity with status lifecycle (draft → internal_review → pending_approval → approved → deployed → active → paused → completed)
 - [x] **CAMP-02**: Campaign owns a TargetList (leads) and stores email + LinkedIn sequences (content)
-- [ ] **CAMP-03**: Admin can create campaigns from Cmd+J chat, linking a TargetList and setting channels (email, LinkedIn, or both)
+- [x] **CAMP-03**: Admin can create campaigns from Cmd+J chat, linking a TargetList and setting channels (email, LinkedIn, or both)
 - [x] **CAMP-04**: Campaign has separate approval fields for leads and content (approved/feedback/timestamp for each)
 - [x] **CAMP-05**: Campaign CRUD API routes enforce workspace ownership
 
@@ -28,7 +28,7 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 - [x] **WRITER-01**: Writer agent generates multi-step email sequences with multiple angles for A/B testing, stored on Campaign.emailSequence
 - [x] **WRITER-02**: Writer agent generates LinkedIn connection request + follow-up messages, stored on Campaign.linkedinSequence
-- [ ] **WRITER-03**: Writer interaction is conversational — admin reviews drafts via Cmd+J, gives feedback, writer iterates
+- [x] **WRITER-03**: Writer interaction is conversational — admin reviews drafts via Cmd+J, gives feedback, writer iterates
 - [x] **WRITER-04**: Writer follows style rules: no em dashes, no AI/robotic tone, natural simple language (high school reading level), clear offering, avoid spam trigger words
 - [x] **WRITER-05**: Writer ingests knowledge base best practices (46 docs) for email + LinkedIn copywriting
 - [x] **WRITER-06**: On reply webhook (LEAD_REPLIED, LEAD_INTERESTED), writer generates a suggested response using conversation history, workspace context, and knowledge base — included in Slack notification
@@ -127,12 +127,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEPLOY-01 | Phase 7 | Complete |
 | CAMP-01 | Phase 8 | Complete |
 | CAMP-02 | Phase 8 | Complete |
-| CAMP-03 | Phase 8 | Pending |
+| CAMP-03 | Phase 8 | Complete |
 | CAMP-04 | Phase 8 | Complete |
 | CAMP-05 | Phase 8 | Complete |
 | WRITER-01 | Phase 8 | Complete |
 | WRITER-02 | Phase 8 | Complete |
-| WRITER-03 | Phase 8 | Pending |
+| WRITER-03 | Phase 8 | Complete |
 | WRITER-04 | Phase 8 | Complete |
 | WRITER-05 | Phase 8 | Complete |
 | WRITER-06 | Phase 8 | Complete |
