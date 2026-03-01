@@ -11,6 +11,7 @@ import {
 import { prisma } from "@/lib/db";
 import { generateProposalToken } from "@/lib/tokens";
 import { DEFAULT_PRICING } from "@/lib/proposal-templates";
+import { searchKnowledgeBase } from "./shared-tools";
 import type { AgentConfig } from "./types";
 
 // --- Delegation Tools ---
@@ -474,6 +475,8 @@ export const orchestratorTools = {
   delegateToLeads,
   delegateToWriter,
   delegateToCampaign,
+  // Shared knowledge base tool (direct access without delegation overhead)
+  searchKnowledgeBase,
   // Existing dashboard tools (for simple queries)
   ...dashboardTools,
 };

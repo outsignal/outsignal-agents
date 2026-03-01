@@ -1,8 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { searchKnowledge } from "@/lib/knowledge/store";
 import { getClientForWorkspace } from "@/lib/workspaces";
+import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
 import type { AgentConfig, WriterInput, WriterOutput } from "./types";
 
@@ -118,43 +118,7 @@ const writerTools = {
     },
   }),
 
-  searchKnowledgeBase: tool({
-    description:
-      "Search the knowledge base for cold email and LinkedIn outreach best practices, frameworks, and templates. Use this to ground your copy in proven strategies.",
-    inputSchema: z.object({
-      query: z
-        .string()
-        .describe(
-          "Search query — e.g. 'subject line best practices', 'follow-up sequence', 'LinkedIn connection request'",
-        ),
-      tags: z
-        .string()
-        .optional()
-        .describe("Filter by tag — e.g. 'cold-email', 'linkedin', 'subject-lines'"),
-      limit: z
-        .number()
-        .optional()
-        .default(8)
-        .describe("Max results (default 8)"),
-    }),
-    execute: async ({ query, tags, limit }) => {
-      const results = await searchKnowledge(query, { limit, tags });
-      if (results.length === 0) {
-        return {
-          message:
-            "No matching knowledge base entries found. Write based on your expertise.",
-          results: [],
-        };
-      }
-      return {
-        message: `Found ${results.length} relevant passage(s).`,
-        results: results.map((r) => ({
-          source: r.title,
-          content: r.chunk,
-        })),
-      };
-    },
-  }),
+  searchKnowledgeBase,
 
   getExistingDrafts: tool({
     description:

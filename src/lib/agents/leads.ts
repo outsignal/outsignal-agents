@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import * as operations from "@/lib/leads/operations";
+import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
 import type { AgentConfig, LeadsInput, LeadsOutput } from "./types";
 
@@ -143,6 +144,8 @@ const leadsTools = {
       return operations.exportListToEmailBison(listId, workspaceSlug);
     },
   }),
+
+  searchKnowledgeBase,
 };
 
 // --- System Prompt ---
