@@ -225,15 +225,23 @@ export class LinkedInBrowser {
     role?: string,
   ): SnapshotElement | null {
     const needle = text.toLowerCase();
+    const roleMatch = (el: SnapshotElement) =>
+      !role || el.role.toLowerCase() === role.toLowerCase();
+
+    // Prefer exact text match first to avoid partial collisions
+    // (e.g. "Sign in" should match "Sign in" not "Sign in with Apple")
+    const exact = elements.find(
+      (el) => el.text.toLowerCase().trim() === needle && roleMatch(el),
+    );
+    if (exact) return exact;
+
+    // Fall back to includes-based match
     return (
       elements.find((el) => {
         const textMatch =
           el.text.toLowerCase().includes(needle) ||
           el.raw.toLowerCase().includes(needle);
-        if (role) {
-          return textMatch && el.role.toLowerCase() === role.toLowerCase();
-        }
-        return textMatch;
+        return textMatch && roleMatch(el);
       }) ?? null
     );
   }
@@ -1301,8 +1309,11 @@ export class LinkedInBrowser {
       this.exec(`fill ${passwordInput.ref} "${safePassword}"`);
       await this.sleep(500);
 
-      // Find and click sign-in button
+      // Find and click sign-in button (exact match first to avoid
+      // hitting "Sign in with Apple" or similar OAuth buttons)
       const signInBtn =
+        this.findElementExact(elements, "Sign in", "button") ??
+        this.findElementExact(elements, "Log in", "button") ??
         this.findElement(elements, "Sign in", "button") ??
         this.findElement(elements, "Log in", "button");
 
