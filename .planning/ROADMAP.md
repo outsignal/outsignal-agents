@@ -79,7 +79,14 @@ Plans:
   9. Admin can refine a reply suggestion via Cmd+J: "draft a response to John's reply" or "make that response more casual" — conversational iteration on reply drafts
   10. Knowledge base search uses pgvector embeddings (cosine similarity) instead of keyword matching — all existing documents re-embedded during migration
   11. searchKnowledgeBase tool is available to all agents (writer, leads, research, campaign) as a shared utility, not writer-exclusive
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 08-01-PLAN.md — Campaign Prisma model with status lifecycle, TargetList ownership, approval fields
+- [ ] 08-02-PLAN.md — Knowledge base pgvector upgrade + shared searchKnowledgeBase tool
+- [ ] 08-03-PLAN.md — Campaign operations layer (CRUD + state machine)
+- [ ] 08-04-PLAN.md — Writer agent upgrade with production quality rules and campaign-aware generation
+- [ ] 08-05-PLAN.md — Campaign agent + orchestrator wiring + CRUD API routes
+- [ ] 08-06-PLAN.md — Reply suggestions in webhooks + Slack/email notifications
 
 ### Phase 9: Client Portal Campaign Approval
 **Goal**: Clients log into the portal, see their pending campaigns, preview lead sample and content, and approve or reject leads and content separately — triggering admin notifications. Campaign deploys ONLY when both leads AND content are approved.
@@ -123,6 +130,6 @@ Plans:
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
 | 7.1 Leads Agent Integration Fixes | v1.1 | 3/3 | Complete | 2026-02-27 |
-| 8. Campaign Entity + Writer Integration | v1.1 | 0/TBD | Not started | - |
+| 8. Campaign Entity + Writer Integration | v1.1 | 0/6 | Planned | - |
 | 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
