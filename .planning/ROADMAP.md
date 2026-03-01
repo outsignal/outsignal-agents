@@ -136,5 +136,5 @@ Plans:
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
 | 7.1 Leads Agent Integration Fixes | v1.1 | 3/3 | Complete | 2026-02-27 |
 | 8. Campaign Entity + Writer Integration | 6/6 | Complete   | 2026-03-01 | - |
-| 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
+| 9. Client Portal Campaign Approval | 2/5 | In Progress|  | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |

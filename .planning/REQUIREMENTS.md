@@ -39,11 +39,11 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 ### Portal Review
 
 - [ ] **PORTAL-01**: Client sees campaigns tab in portal with pending notification badges
-- [ ] **PORTAL-02**: Campaign detail shows lead sample (top N by ICP score) with key fields (name, title, company, location, LinkedIn)
-- [ ] **PORTAL-03**: Client can approve leads or request changes with feedback text
-- [ ] **PORTAL-04**: Campaign detail shows content preview — email sequence steps (subject + body) and LinkedIn messages
-- [ ] **PORTAL-05**: Client can approve content or request changes with feedback text
-- [ ] **PORTAL-06**: Lead approval and content approval are independent — one does not affect the other
+- [x] **PORTAL-02**: Campaign detail shows lead sample (top N by ICP score) with key fields (name, title, company, location, LinkedIn)
+- [x] **PORTAL-03**: Client can approve leads or request changes with feedback text
+- [x] **PORTAL-04**: Campaign detail shows content preview — email sequence steps (subject + body) and LinkedIn messages
+- [x] **PORTAL-05**: Client can approve content or request changes with feedback text
+- [x] **PORTAL-06**: Lead approval and content approval are independent — one does not affect the other
 - [ ] **PORTAL-07**: Portal endpoints enforce workspace ownership via session (workspace A cannot access workspace B)
 
 ### Campaign Deploy
@@ -140,11 +140,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WRITER-08 | Phase 8 | Complete |
 | WRITER-09 | Phase 8 | Complete |
 | PORTAL-01 | Phase 9 | Pending |
-| PORTAL-02 | Phase 9 | Pending |
-| PORTAL-03 | Phase 9 | Pending |
-| PORTAL-04 | Phase 9 | Pending |
-| PORTAL-05 | Phase 9 | Pending |
-| PORTAL-06 | Phase 9 | Pending |
+| PORTAL-02 | Phase 9 | Complete |
+| PORTAL-03 | Phase 9 | Complete |
+| PORTAL-04 | Phase 9 | Complete |
+| PORTAL-05 | Phase 9 | Complete |
+| PORTAL-06 | Phase 9 | Complete |
 | PORTAL-07 | Phase 9 | Pending |
 | NOTIF-01 | Phase 9 | Pending |
 | NOTIF-02 | Phase 9 | Pending |

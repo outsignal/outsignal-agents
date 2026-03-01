@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 8 of 10 (Campaign Entity Writer — ALL 6 PLANS COMPLETE: 08-01 through 08-06)
-Plan: 6 of 6 in current phase (all done — Phase 8 complete)
-Status: Phase 8 Complete. Ready for Phase 9 (Client Portal) or Phase 10 (Deployment Pipeline).
-Last activity: 2026-03-01 — Executed Plan 06: Reply suggestion generation on LEAD_REPLIED/LEAD_INTERESTED webhooks; suggestedResponse in Slack (divider + mrkdwn block) and email (brand-color styled box) notifications; non-blocking with null fallback.
+Phase: 9 of 10 (Client Portal Campaign Approval — Plan 01 COMPLETE: schema migration + approval operations + content preview)
+Plan: 1 of 6 in current phase (09-01 done)
+Status: Phase 9 In Progress. Plan 09-01 complete.
+Last activity: 2026-03-01 — Executed Plan 01: Workspace schema extended with approvalsSlackChannelId/Name, five approval operation functions added to campaigns/operations.ts, content-preview.ts created with spintax+token pipeline.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -45,16 +45,26 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - Campaign is first-class entity in Outsignal — owns TargetList (leads) + email/LinkedIn sequences (content)
 - Writer agent has two modes: proactive (campaign sequences) and reactive (reply suggestions)
 - Writer style rules: no em dashes, no AI/robotic tone, natural simple language, clear offering, avoid spam triggers
-- Writer interaction is conversational — admin reviews + iterates via Cmd+J
+- Writer interaction is conversational — admin reviews + iterates via Claude Code (not dashboard chat)
 - Reply suggestions surfaced in Slack notifications on LEAD_REPLIED / LEAD_INTERESTED webhooks
 - Unified inbox deferred to v1.3, payment integration deferred to future milestone
 - Onboarding → agent pipeline: manual CLI trigger for now, automated in v1.2
+- **Admin interface decision (2026-03-01)**: All AI agent interaction (leads, writer, campaign) happens through Claude Code (VSCode), NOT through the dashboard Cmd+J chat. Dashboard is display-only UI (view campaigns, lists, stats). This avoids Anthropic API costs — covered by Claude Code Max Plan 20x. The /api/chat route and orchestrator wiring remain functional but are accessed via Claude Code MCP tools, not a web chat UI.
+- Knowledge base: 126 documents (pgvector embeddings ready for Phase 8 writer)
+- LinkedIn agent-browser rewrite complete (profile-first targeting, like/comment actions added)
 
 **Phase 7 decisions (2026-02-27):**
 - [07-01]: operations.ts is single source of truth for all lead pipeline DB queries; agent tools will be thin wrappers; credit-gate on export; icpScoredAt skip guard on scoring
 - [07-03]: delegateToLeads limit param removed from inputSchema — Leads Agent handles pagination internally; workspaceSlug made optional
 - [07-03]: maxDuration = 300 on chat route — worst-case scoring for large lists can approach 300s
 - [07-04]: getSequenceSteps broken path fixed to /campaigns/campaignId/sequence-steps (confirmed correct via live API probe)
+
+**Phase 9 decisions (2026-03-01):**
+- [09-01]: prisma db push used instead of migrate dev — project has no migrations directory, uses push-based schema workflow
+- [09-01]: getCampaignLeadSample fetches all members then sorts/slices in JS — Prisma can't order by related model field; acceptable for target list sizes
+- [09-01]: substituteTokens returns tokensFound list — enables future UI highlighting of resolved tokens on portal campaign detail page
+- [09-01]: Dual approval auto-transition: when both leadsApproved + contentApproved become true in pending_approval, status auto-advances to approved
+- [09-01]: Feedback cleared (null) on approval — approval replaces a rejection, no stale feedback displayed
 
 **Phase 8 decisions (2026-03-01):**
 - [08-01]: Campaign stores email/LinkedIn sequences as JSON String columns (not relational EmailDraft rows) — simpler for writer agent output and client review flow
@@ -101,5 +111,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 08-06-PLAN.md (Reply suggestion generation in webhook notifications). Phase 8 fully complete (all 6 plans done). Next: Phase 9 (Client Portal) or Phase 10 (Deployment Pipeline).
+Stopped at: Completed 09-01-PLAN.md (Schema migration + approval operations + content preview utilities). Phase 9 started (1/6 plans done). Next: 09-02 (Portal approval API routes).
 Resume file: None
