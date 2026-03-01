@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T09:09:00Z"
+last_updated: "2026-03-01T09:26:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 8 of 10 (Campaign Entity Writer — 08-01, 08-02, and 08-03 complete, 08-04 through 08-06 remaining)
-Plan: 3 of 6 in current phase (08-01, 08-02, 08-03 done)
-Status: In Progress (Phase 8 — pgvector semantic search + campaign operations deployed)
-Last activity: 2026-03-01 — Executed Plan 02: pgvector extension + KnowledgeChunk model in Neon, searchKnowledge upgraded to cosine similarity with keyword fallback, searchKnowledgeBase extracted to shared-tools.ts and available across writer/leads/orchestrator agents (NOTE: OPENAI_API_KEY required to run migration script and activate semantic search — keyword fallback active until key set)
+Phase: 8 of 10 (Campaign Entity Writer — 08-01, 08-02, 08-03, 08-04 complete, 08-05 through 08-06 remaining)
+Plan: 4 of 6 in current phase (08-01, 08-02, 08-03, 08-04 done)
+Status: In Progress (Phase 8 — Writer Agent upgraded with production quality rules and campaign awareness)
+Last activity: 2026-03-01 — Executed Plan 04: Writer Agent upgraded with 11 hardcoded quality rules (PVP framework, spintax, 70-word limit, merge token format {FIRSTNAME}), getCampaignContext and saveCampaignSequence tools added, campaignId and stepNumber fields on WriterInput, smart iteration and reply suggestion mode
 
-Progress: [██░░░░░░░░] 24% (v1.1 — Phase 8 in progress)
+Progress: [██░░░░░░░░] 26% (v1.1 — Phase 8 in progress)
 
 ## Accumulated Context
 
@@ -69,6 +69,10 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [08-03]: parseJsonArray helper returns null on invalid JSON (not throws) — safe for legacy/corrupt data
 - [08-03]: formatCampaignDetail centralizes JSON parsing and shaping — all 8 functions reuse single helper
 - [08-03]: deleteCampaign restricted to draft/internal_review only — protects active campaigns
+- [08-04]: getCampaignContext and saveCampaignSequence use dynamic import to avoid circular dependency at module load
+- [08-04]: saveCampaignSequence coexists with saveDraft — system prompt guides agent to choose based on campaignId presence
+- [08-04]: stepNumber added to WriterInput for targeted single-step regeneration without rebuilding full sequence
+- [08-04]: Reply suggestion mode scoped to rules 2/5/6/7 only — no PVP or spintax for reactive replies
 
 **Phase 7.1 decisions (2026-02-27):**
 - [07.1-01]: apiToken check placed at call site in exportListToEmailBison, not in getClientForWorkspace — avoids changing shared utility used by many other tools
@@ -91,5 +95,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 08-02-PLAN.md (pgvector semantic search, KnowledgeChunk model, shared searchKnowledgeBase tool). Phase 8 Plan 2 complete. Next: Phase 8 Plan 4 (Campaign API routes) or Phase 8 Plan 5 (Writer agent integration).
+Stopped at: Completed 08-04-PLAN.md (Writer Agent quality rules, getCampaignContext, saveCampaignSequence, smart iteration, reply mode). Phase 8 Plan 4 complete. Next: Phase 8 Plan 5 (Campaign API routes).
 Resume file: None

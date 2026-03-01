@@ -135,6 +135,6 @@ Plans:
 | 6. MCP List Migration + CSV Download | v1.0 | — | Complete | 2026-02-27 |
 | 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
 | 7.1 Leads Agent Integration Fixes | v1.1 | 3/3 | Complete | 2026-02-27 |
-| 8. Campaign Entity + Writer Integration | 3/6 | In Progress|  | - |
+| 8. Campaign Entity + Writer Integration | 4/6 | In Progress|  | - |
 | 9. Client Portal Campaign Approval | v1.1 | 0/TBD | Not started | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |

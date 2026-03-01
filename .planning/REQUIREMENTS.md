@@ -26,11 +26,11 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### Writer Agent
 
-- [ ] **WRITER-01**: Writer agent generates multi-step email sequences with multiple angles for A/B testing, stored on Campaign.emailSequence
-- [ ] **WRITER-02**: Writer agent generates LinkedIn connection request + follow-up messages, stored on Campaign.linkedinSequence
+- [x] **WRITER-01**: Writer agent generates multi-step email sequences with multiple angles for A/B testing, stored on Campaign.emailSequence
+- [x] **WRITER-02**: Writer agent generates LinkedIn connection request + follow-up messages, stored on Campaign.linkedinSequence
 - [ ] **WRITER-03**: Writer interaction is conversational — admin reviews drafts via Cmd+J, gives feedback, writer iterates
-- [ ] **WRITER-04**: Writer follows style rules: no em dashes, no AI/robotic tone, natural simple language (high school reading level), clear offering, avoid spam trigger words
-- [ ] **WRITER-05**: Writer ingests knowledge base best practices (46 docs) for email + LinkedIn copywriting
+- [x] **WRITER-04**: Writer follows style rules: no em dashes, no AI/robotic tone, natural simple language (high school reading level), clear offering, avoid spam trigger words
+- [x] **WRITER-05**: Writer ingests knowledge base best practices (46 docs) for email + LinkedIn copywriting
 - [ ] **WRITER-06**: On reply webhook (LEAD_REPLIED, LEAD_INTERESTED), writer generates a suggested response using conversation history, workspace context, and knowledge base — included in Slack notification
 - [ ] **WRITER-07**: Admin can refine reply suggestions via Cmd+J ("draft a response to John's reply", "make it more casual") — conversational iteration
 - [x] **WRITER-08**: Knowledge base uses vector embeddings (pgvector on Neon) for semantic search — replaces keyword matching; all 46+ docs re-embedded on migration
@@ -130,11 +130,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CAMP-03 | Phase 8 | Pending |
 | CAMP-04 | Phase 8 | Complete |
 | CAMP-05 | Phase 8 | Complete |
-| WRITER-01 | Phase 8 | Pending |
-| WRITER-02 | Phase 8 | Pending |
+| WRITER-01 | Phase 8 | Complete |
+| WRITER-02 | Phase 8 | Complete |
 | WRITER-03 | Phase 8 | Pending |
-| WRITER-04 | Phase 8 | Pending |
-| WRITER-05 | Phase 8 | Pending |
+| WRITER-04 | Phase 8 | Complete |
+| WRITER-05 | Phase 8 | Complete |
 | WRITER-06 | Phase 8 | Pending |
 | WRITER-07 | Phase 8 | Pending |
 | WRITER-08 | Phase 8 | Complete |
