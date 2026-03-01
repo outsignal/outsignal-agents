@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T09:26:00Z"
+last_updated: "2026-03-01T09:18:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 8 of 10 (Campaign Entity Writer — 08-01, 08-02, 08-03, 08-04 complete, 08-05 through 08-06 remaining)
-Plan: 4 of 6 in current phase (08-01, 08-02, 08-03, 08-04 done)
-Status: In Progress (Phase 8 — Writer Agent upgraded with production quality rules and campaign awareness)
-Last activity: 2026-03-01 — Executed Plan 04: Writer Agent upgraded with 11 hardcoded quality rules (PVP framework, spintax, 70-word limit, merge token format {FIRSTNAME}), getCampaignContext and saveCampaignSequence tools added, campaignId and stepNumber fields on WriterInput, smart iteration and reply suggestion mode
+Phase: 8 of 10 (Campaign Entity Writer — ALL 6 PLANS COMPLETE: 08-01 through 08-06)
+Plan: 6 of 6 in current phase (all done — Phase 8 complete)
+Status: Phase 8 Complete. Ready for Phase 9 (Client Portal) or Phase 10 (Deployment Pipeline).
+Last activity: 2026-03-01 — Executed Plan 06: Reply suggestion generation on LEAD_REPLIED/LEAD_INTERESTED webhooks; suggestedResponse in Slack (divider + mrkdwn block) and email (brand-color styled box) notifications; non-blocking with null fallback.
 
-Progress: [██░░░░░░░░] 26% (v1.1 — Phase 8 in progress)
+Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
 ## Accumulated Context
 
@@ -73,6 +73,10 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [08-04]: saveCampaignSequence coexists with saveDraft — system prompt guides agent to choose based on campaignId presence
 - [08-04]: stepNumber added to WriterInput for targeted single-step regeneration without rebuilding full sequence
 - [08-04]: Reply suggestion mode scoped to rules 2/5/6/7 only — no PVP or spintax for reactive replies
+- [08-06]: generateReplySuggestion extracts emailSteps[0].body first, falls back to reviewNotes — handles both agent output paths
+- [08-06]: UNTRACKED_REPLY_RECEIVED excluded from reply suggestion trigger — per CONTEXT.md decision
+- [08-06]: textBody guard on suggestion trigger — no point calling writer if no reply body present
+- [08-06]: Tasks 1+2 committed together — webhook notifyReply call requires updated function signature to type-check
 
 **Phase 7.1 decisions (2026-02-27):**
 - [07.1-01]: apiToken check placed at call site in exportListToEmailBison, not in getClientForWorkspace — avoids changing shared utility used by many other tools
@@ -95,5 +99,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 08-04-PLAN.md (Writer Agent quality rules, getCampaignContext, saveCampaignSequence, smart iteration, reply mode). Phase 8 Plan 4 complete. Next: Phase 8 Plan 5 (Campaign API routes).
+Stopped at: Completed 08-06-PLAN.md (Reply suggestion generation in webhook notifications). Phase 8 fully complete (all 6 plans done). Next: Phase 9 (Client Portal) or Phase 10 (Deployment Pipeline).
 Resume file: None
