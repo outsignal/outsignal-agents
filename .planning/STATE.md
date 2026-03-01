@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T09:28:44.753Z"
+last_updated: "2026-03-01T16:12:14.264Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 3
-  total_plans: 13
-  completed_plans: 14
+  total_plans: 18
+  completed_plans: 16
 ---
 
 # Project State
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 9 of 10 (Client Portal Campaign Approval — Plan 01 COMPLETE: schema migration + approval operations + content preview)
-Plan: 1 of 6 in current phase (09-01 done)
-Status: Phase 9 In Progress. Plan 09-01 complete.
-Last activity: 2026-03-01 — Executed Plan 01: Workspace schema extended with approvalsSlackChannelId/Name, five approval operation functions added to campaigns/operations.ts, content-preview.ts created with spintax+token pipeline.
+Phase: 9 of 10 (Client Portal Campaign Approval — Plan 02 COMPLETE: 6 portal campaign API routes)
+Plan: 2 of 6 in current phase (09-01 and 09-02 done)
+Status: Phase 9 In Progress. Plans 09-01 and 09-02 complete.
+Last activity: 2026-03-01 — Executed Plan 02: 6 portal campaign API routes created (list, detail, approve-leads, request-changes-leads, approve-content, request-changes-content). All routes enforce session auth + workspace ownership. TypeScript clean.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -100,6 +100,8 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [07.1-03]: SCOPE comments replace NOTE comments in score.ts and export.ts — scope-as-documentation pattern with explicit LEAD-05 references
 - [Phase 08-05]: delegateToCampaign now calls runCampaignAgent — stub fully replaced with live Campaign Agent
 - [Phase 08-05]: delegateToWriter passes campaignId enabling campaign-aware content generation from the orchestrator
+- [Phase 09]: Portal route pattern: getPortalSession() first with 401 on failure; workspaceSlug ownership check with 403 on mismatch
+- [Phase 09]: Detail route combines campaign + leadSample in one GET response to avoid frontend round-trips
 
 ### Blockers/Concerns
 
@@ -111,5 +113,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 09-01-PLAN.md (Schema migration + approval operations + content preview utilities). Phase 9 started (1/6 plans done). Next: 09-02 (Portal approval API routes).
+Stopped at: Completed 09-02-PLAN.md (Portal Campaign API Routes). 6 route files created under /api/portal/campaigns/. Phase 9 at 2/6 plans done. Next: 09-03 (Campaign list UI) or 09-04 (Campaign detail UI).
 Resume file: None
