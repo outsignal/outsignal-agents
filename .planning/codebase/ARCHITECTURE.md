@@ -1,267 +1,210 @@
 # Architecture
 
-**Analysis Date:** 2026-02-26
+**Analysis Date:** 2025-03-01
 
 ## Pattern Overview
 
-**Overall:** Layered API + Agent-Driven Framework
+**Overall:** Multi-tenant B2B SaaS with three distinct customer-facing surfaces:
+- Admin dashboard (`admin.outsignal.ai`) — internal lead gen management
+- Client portal (`portal.outsignal.ai`) — campaign approval workflow
+- Public API — webhooks, proposals, enrichment endpoints
 
 **Key Characteristics:**
-- Multi-agent system with specialist orchestration (Research, Writer, Leads, Campaign agents planned)
-- Next.js 16 App Router with server/client separation
-- AI SDK-powered agents using Claude models with tool calling
-- Webhook-driven updates from EmailBison
-- Modular workspace management (env-based + database workspaces)
+- **Layered API design:** Route handlers → business operations → Prisma ORM → PostgreSQL
+- **Agent-driven workflows:** Four specialized agents (research, leads, writer, campaign) orchestrated via Claude AI
+- **Multi-channel campaign execution:** Email (EmailBison) + LinkedIn (custom sender framework)
+- **Enrichment waterfall:** Six external providers queued and deduplicated to avoid redundant API calls
+- **Workspace-scoped isolation:** All data partitioned by `workspaceSlug` (clients are isolated)
+- **Event-driven notifications:** Slack + email triggered by webhooks and rich business events
 
 ## Layers
 
-**Presentation Layer:**
-- Purpose: User interfaces for admin dashboard, customer onboarding, proposal flow, and live chat
-- Location: `src/app/(admin)`, `src/app/(customer)`, `src/components/`
-- Contains: Next.js pages (TSX), React components (UI library from shadcn), chat interface
-- Depends on: API layer (via HTTP), agent system
-- Used by: End users (admin, customer, visitors)
+**Presentation (Pages & API Routes):**
+- Purpose: Handle HTTP requests, parse parameters, delegate to operations layer
+- Location: `src/app/(admin)`, `src/app/(portal)`, `src/app/(customer)`, `src/app/api`
+- Contains: Next.js page components, API route handlers, middleware
+- Depends on: Operations layer, auth utilities, response formatters
+- Used by: Web browsers, EmailBison webhooks, Clay enrichment webhooks, Stripe
 
-**API Layer:**
-- Purpose: HTTP endpoints for webhooks, data mutations, chat streaming, enrichment callbacks
-- Location: `src/app/api/`
-- Contains: Route handlers for webhooks (EmailBison), chat streaming, proposal management, people/company enrichment
-- Depends on: Core services (database, EmailBison client, notifications)
-- Used by: Frontend clients, external services (EmailBison, Clay)
+**Operations (Business Logic):**
+- Purpose: Implement domain logic, state machines, data transformations
+- Location: `src/lib/campaigns/operations.ts`, `src/lib/leads/operations.ts`
+- Contains: Pure functions that orchestrate Prisma queries, validate state transitions
+- Depends on: Prisma ORM, external clients (EmailBison, Slack, Resend)
+- Used by: API routes, agents, MCP tools
+- Example: `updateCampaignStatus()` validates state machine, queries DB, publishes events
 
-**Agent Layer:**
-- Purpose: Intelligent automation for research, content generation, lead management, campaign orchestration
-- Location: `src/lib/agents/`
-- Contains: Orchestrator (dispatcher), Research Agent, Writer Agent, placeholder Leads/Campaign agents, type definitions
-- Depends on: Knowledge store, workspace config, external APIs (Firecrawl, EmailBison), database
-- Used by: Chat interface, orchestration for complex tasks
+**Agent System (Multi-turn AI Workflows):**
+- Purpose: Execute complex research and lead operations via Claude AI with tools
+- Location: `src/lib/agents/` (runner.ts, orchestrator.ts, research.ts, writer.ts, leads.ts, campaign.ts, shared-tools.ts)
+- Contains: Agent configurations, tool definitions, prompt engineering
+- Depends on: Operations layer, knowledge base, embeddings
+- Used by: Chat endpoint, MCP server, orchestrator agent for delegation
+- Pattern: Each agent is a `runAgent()` call with config (model, system prompt, tools array)
 
-**Core Services Layer:**
-- Purpose: Business logic, external API integration, data enrichment, notifications
-- Location: `src/lib/` (flat structure with topic subdirs)
-- Contains:
-  - Database client: `db.ts` (Prisma singleton)
-  - Email/SMS: `emailbison/client.ts`, `resend.ts` (Email notifications)
-  - Workspace management: `workspaces.ts` (loads from env or DB)
-  - Notifications: `notifications.ts` (Slack + email replies)
-  - Knowledge base: `knowledge/store.ts` (document ingestion and chunking)
-  - External crawling: `firecrawl/client.ts` (website analysis)
-  - Utilities: `tokens.ts`, `normalize.ts`, `stripe.ts`, `porkbun.ts`
-- Depends on: Database, external APIs
-- Used by: API layer, agent layer
+**Data Access (Prisma Client):**
+- Purpose: Provide type-safe database queries and transactions
+- Location: `src/lib/db.ts` (singleton)
+- Contains: Prisma instance
+- Depends on: PostgreSQL connection (DATABASE_URL env var)
+- Used by: Operations layer exclusively (never query from routes directly)
 
-**Data Layer:**
-- Purpose: Data persistence and schema
-- Location: `prisma/schema.prisma`
-- Contains: Models for Workspace, Person (Lead), PersonWorkspace (junction), Company, WebhookEvent, Proposal, AgentRun, KnowledgeDocument, EmailDraft, etc.
-- Depends on: PostgreSQL database
-- Used by: All layers
+**External Integrations:**
+- **EmailBison:** `src/lib/emailbison/client.ts` — send campaigns, fetch replies, manage leads
+- **LinkedIn:** `src/lib/linkedin/` — sender auth, action queue, rate limiting, browser automation
+- **Clay:** Webhook receivers at `src/app/api/people/enrich` and `src/app/api/companies/enrich`
+- **Stripe:** Payment processing at `src/app/api/stripe/`
+- **Slack:** `src/lib/slack.ts` — notification delivery
+- **Resend:** `src/lib/resend.ts` — email delivery
+- **Firecrawl:** `src/lib/firecrawl/client.ts` — web scraping for ICP analysis
+
+**Authentication & Authorization:**
+- **Admin auth:** `src/lib/admin-auth.ts` (session-based) + `src/lib/admin-auth-edge.ts` (Edge runtime)
+- **Portal auth:** `src/lib/portal-auth.ts` (magic link tokens) + `src/lib/portal-auth-edge.ts` (Edge runtime)
+- **API auth:** Workspace API tokens, Bearer tokens (LinkedIn worker), webhook signatures
+- Enforced via middleware at `src/middleware.ts`
 
 ## Data Flow
 
-**EmailBison Webhook Flow:**
+**Campaign Creation to Deployment:**
 
-1. EmailBison sends `LEAD_REPLIED` / `LEAD_INTERESTED` event to `/api/webhooks/emailbison?workspace={slug}`
-2. Webhook handler (`src/app/api/webhooks/emailbison/route.ts`) receives payload
-3. Creates `WebhookEvent` record for audit
-4. Updates `Person` and `PersonWorkspace` status (replied/interested)
-5. Triggers notification if not auto-reply:
-   - Slack message to workspace channel (if configured)
-   - Email to notification recipients (if configured)
-6. Notifications use templates in `src/lib/notifications.ts`
+1. Admin creates campaign via UI (`POST /api/campaigns`)
+2. Route handler validates input, calls `createCampaign()` operation
+3. Operation creates Campaign record (status: "draft"), returns summary
+4. Admin fills sequences (email + LinkedIn), calls campaign agent via chat
+5. Campaign agent generates/refines content using writer agent + knowledge base
+6. Admin publishes for client review (`POST /api/campaigns/{id}/publish`)
+7. Operation updates status to "pending_approval", notifies client via Slack/email
+8. Client portal loads campaign, approves or requests changes
+9. Once approved, admin deploys: `POST /api/campaigns/{id}/publish`
+10. Operation fetches target list, pushes to EmailBison, enqueues LinkedIn actions
+11. Campaign becomes "active", EmailBison begins sending
+12. Replies/opens flow back via webhook to update metrics and trigger notifications
 
-**Chat/Orchestration Flow:**
+**Lead Enrichment Pipeline:**
 
-1. User sends message in chat interface
-2. Frontend POSTs to `/api/chat` with messages + context (workspace, page)
-3. Handler calls `orchestratorConfig` with message
-4. Orchestrator (Claude model) analyzes request and calls tools:
-   - Delegation tools: `delegateToResearch`, `delegateToWriter`, `delegateToLeads`, `delegateToCampaign`
-   - Dashboard tools: `listWorkspaces`, `getWorkspaceInfo`, `getCampaigns`, `queryPeople`, etc.
-5. Each delegation calls `runAgent()` with specialist agent config
-6. Agent runs, logs tool calls, saves `AgentRun` record
-7. Response streams back to client
-8. Specialist agents save results to database (e.g., `WebsiteAnalysis`, `EmailDraft`)
-
-**Agent Execution Flow:**
-
-1. `runAgent(config, message)` creates `AgentRun` record (audit trail)
-2. Calls `generateText()` from AI SDK with:
-   - Model: Anthropic Claude
-   - System prompt: Agent-specific instructions
-   - Tools: Agent's tool set
-   - stopWhen: maxSteps (10-12)
-3. Extracts tool calls from response steps
-4. Attempts to parse structured output from JSON markdown blocks
-5. Updates `AgentRun` with status, output, steps, duration
-6. Returns `AgentRunResult<T>` with typed output + metadata
-
-**Research Agent Flow:**
-
-1. Input: workspace slug (optional), URL (optional), task description
-2. Tools: `crawlWebsite` (Firecrawl), `scrapeUrl`, `getWorkspaceInfo`, `saveWebsiteAnalysis`
-3. Crawls website with Firecrawl (up to 10 pages as markdown)
-4. Analyzes content with Claude to extract:
-   - Company overview
-   - ICP indicators (industries, titles, company size, countries)
-   - Value propositions
-   - Case studies
-   - Pain points
-   - Differentiators
-   - Pricing signals
-5. Saves `WebsiteAnalysis` record with crawl data + structured analysis
-6. Returns `ResearchOutput` with findings
-
-**Writer Agent Flow:**
-
-1. Input: workspace slug, task, channel (email/linkedin/both), campaign name (for revisions), feedback
-2. Tools: `getWorkspaceIntelligence` (ICP + latest website analysis), `getCampaignPerformance`, `searchKnowledge` (knowledge base chunks), `saveEmailDraft`
-3. Retrieves workspace data, campaign metrics, relevant knowledge chunks
-4. Claude writes sequences with:
-   - Email steps: subject, body, variants, delay, notes
-   - LinkedIn steps: type (connection/message/inmail), body, delay, notes
-5. Saves drafts as `EmailDraft` records
-6. Returns `WriterOutput` with structured campaign plan
-
-**Data Synchronization (Clay/Enrichment):**
-
-1. External sources (Clay, enrichment tools) POST to `/api/people/enrich?workspace={slug}` or similar
-2. Payload contains: email, firstName, lastName, jobTitle, company, companyDomain, linkedinUrl, etc.
-3. Handler normalizes field names (`FIELD_ALIASES` map)
-4. Creates or updates `Person` record (unique by email)
-5. Creates or updates `PersonWorkspace` junction entry
-6. Caches `Company` record if new company domain
-7. Returns confirmation
+1. Admin searches for leads or imports list
+2. Leads Agent searches external DBs (Clay, Prospeo, etc.), returns results
+3. Admin adds leads to list
+4. Leads Agent triggers enrichment job: `POST /api/enrichment/run`
+5. Route enqueues providers in waterfall order (dedup checks existing data)
+6. Cron job processes queue: `GET /api/enrichment/jobs/process`
+7. Each provider runs in batch, logs cost + results
+8. Results merged into Person/Company records (auto-derive companyDomain)
+9. Metrics cached in CachedMetrics for dashboard
+10. ICP scoring triggered if enabled: scores stored in PersonWorkspace.icpScore
 
 **State Management:**
 
-- Global state: Workspace context via URL params or environment variables
-- Per-session: Chat history in client-side React state
-- Persistent: Database (PostgreSQL via Prisma)
-- Audit trail: `AgentRun` records track all agent executions with inputs, outputs, tool calls, duration
-- Cached content: Website analyses, knowledge base chunks, email drafts (with version tracking)
+- **Campaign lifecycle:** State machine enforces valid transitions (draft→internal_review→pending_approval→approved→deployed→active)
+- **Lead status:** Tracks in both Person (global) and PersonWorkspace (workspace-scoped): new → contacted → replied → interested → bounced
+- **LinkedIn sender health:** Monitored in Sender.healthStatus (healthy/warning/paused/blocked), adjusted by warm-up day
+- **Enrichment jobs:** Queued with resume capability (paused until daily cap resets)
+- **Sessions:** Portal + admin stored in encrypted cookies, verified at Edge runtime for zero-latency auth
 
 ## Key Abstractions
 
-**Workspace:**
-- Purpose: Logical container for a client's cold outbound campaign
-- Examples: `src/lib/workspaces.ts`, Workspace model in schema
-- Pattern: Loaded from environment variables (EMAILBISON_WORKSPACES JSON) or database
-- Properties: slug (unique), name, vertical, apiToken, ICP config, sender info, campaign brief
-- Access: `getAllWorkspaces()`, `getWorkspaceBySlug()`, `getWorkspaceDetails()`, `getClientForWorkspace()`
+**Workspace (Multi-tenancy):**
+- Purpose: Isolate all data by client
+- Examples: `src/lib/workspaces.ts`, Campaign model, PersonWorkspace junction
+- Pattern: Every data-scoped query filters by workspaceSlug; API routes extract from auth headers
 
-**Person/Lead:**
-- Purpose: Unique contact record (workspace-agnostic, enriched once)
-- Examples: `prisma/schema.prisma` Person model, junction PersonWorkspace
-- Pattern: Many-to-many via PersonWorkspace (per-workspace status, tags, vertical)
-- Enrichment: Data stored once on Person record (name, email, jobTitle, company, LinkedIn URL)
-- Workspace-specific: status, sourceId, tags per workspace
-- Indexed by: email (unique), status, company, vertical, source
+**Campaign (State Machine):**
+- Purpose: Manage outbound campaign lifecycle with approvals
+- Examples: `src/lib/campaigns/operations.ts`, Campaign model in schema
+- Pattern: VALID_TRANSITIONS dict, guard functions prevent invalid state changes
 
-**Agent/Specialist:**
-- Purpose: Autonomous AI worker with specific domain (Research, Writer, Leads, Campaign)
-- Examples: `src/lib/agents/research.ts`, `writer.ts`, `orchestrator.ts`
-- Pattern: Config (name, model, systemPrompt, tools, maxSteps) + runner (`runAgent()`)
-- Tool calling: Each agent has custom tools for its domain (crawl, save analysis, write drafts, etc.)
-- Audit: Every run logged to `AgentRun` with input, output, steps, duration, status
+**Enrichment Queue:**
+- Purpose: Batch process external provider calls, deduplicate, handle daily caps
+- Examples: `src/lib/enrichment/queue.ts`, `src/lib/enrichment/waterfall.ts`
+- Pattern: Job record tracks progress, resume time, error log; cron processes in chunks
 
-**Orchestrator/Dispatcher:**
-- Purpose: Central intelligence that routes user requests to specialists or queries dashboard
-- Examples: `src/lib/agents/orchestrator.ts`
-- Pattern: Meta-agent with tools for delegation + direct dashboard queries
-- Delegation decision: Complex tasks (research, writing) delegate to specialists; simple queries use dashboard tools directly
-- Model: Claude Sonnet 4
+**Sender (LinkedIn Account Management):**
+- Purpose: Represent a warm-up LinkedIn account with credentials, session, health metrics
+- Examples: Sender model, `src/lib/linkedin/sender.ts`, `src/lib/linkedin/rate-limiter.ts`
+- Pattern: Credentials encrypted at rest, session refreshed on login, rate limits adjusted by warm-up day
 
-**Knowledge Store:**
-- Purpose: Reference corpus for Writer Agent (best practices, templates, past examples)
-- Examples: `src/lib/knowledge/store.ts`
-- Pattern: Documents chunked (~800 chars per chunk) and stored in KnowledgeDocument
-- Search: Simple text matching (searchKnowledge function filters by tags)
-- Extensibility: Can upgrade to embeddings/semantic search later
+**Agent (Agentic AI):**
+- Purpose: Execute multi-turn Claude AI workflows with tools
+- Examples: `src/lib/agents/runner.ts` (core), research/writer/leads/campaign agents
+- Pattern: `runAgent(config, userMessage)` returns AgentRunResult with output + step log
+
+**Person ↔ Company (Soft Link):**
+- Purpose: Store enrichment data centrally, normalize across workspaces
+- Examples: Person.companyDomain → Company.domain, Person.vertical auto-derived
+- Pattern: companyDomain auto-extracted from email (skip free domains), backfilled from company enrichment
 
 ## Entry Points
 
-**Web Application:**
-- Location: `src/app/layout.tsx` (root)
-- Triggers: Browser navigation, HTTP requests
-- Responsibilities: Sets up fonts, metadata, global layout
-
 **Admin Dashboard:**
-- Location: `src/app/(admin)/layout.tsx`, pages under `(admin)/`
-- Triggers: Admin user accessing dashboard routes
-- Responsibilities: App shell with sidebar, navigation, workspace context
+- Location: `src/app/(admin)/page.tsx`
+- Triggers: User navigates to `admin.outsignal.ai`
+- Responsibilities: Display workspace list, redirect to workspace detail
 
-**Customer Onboarding:**
-- Location: `src/app/(customer)/p/[token]/` (proposal flow), `o/[token]/` (team member invites)
-- Triggers: Customer clicking proposal link or invite link
-- Responsibilities: Guided onboarding to collect ICP, campaign brief, sender details
+**Workspace Detail:**
+- Location: `src/app/(admin)/workspace/[slug]/page.tsx`
+- Triggers: User clicks workspace
+- Responsibilities: Fetch campaigns + replies from EmailBison, render metrics, show campaign table
 
-**Chat API:**
+**Client Portal:**
+- Location: `src/app/(portal)/portal/page.tsx`
+- Triggers: Magic link or session cookie
+- Responsibilities: List campaigns awaiting approval, render approval UI
+
+**Campaign Chat:**
 - Location: `src/app/api/chat/route.ts`
-- Triggers: Frontend chat client POSTs messages
-- Responsibilities: Streams orchestrator responses with agent delegation
+- Triggers: User sends message in campaign builder
+- Responsibilities: Delegate to orchestrator agent, return multi-turn response
 
-**Webhook Handlers:**
+**EmailBison Webhook:**
 - Location: `src/app/api/webhooks/emailbison/route.ts`
-- Triggers: EmailBison sends LEAD_REPLIED, LEAD_INTERESTED, UNTRACKED_REPLY_RECEIVED
-- Responsibilities: Update lead status, notify via Slack/email
+- Triggers: EmailBison sends event (reply, open, bounce)
+- Responsibilities: Log event, trigger notifications, update lead status
 
-**Enrichment Hooks:**
-- Location: `src/app/api/people/enrich/route.ts`, `companies/enrich/route.ts`
-- Triggers: Clay or enrichment services POST contact/company data
-- Responsibilities: Normalize fields, upsert Person/Company records, link to workspace
+**Enrichment Cron:**
+- Location: `src/app/api/enrichment/jobs/process/route.ts`
+- Triggers: Daily at 6am UTC (Vercel cron, triggered by external scheduler)
+- Responsibilities: Dequeue enrichment jobs, batch process providers, log costs
+
+**Clay Webhooks:**
+- Location: `src/app/api/people/enrich/route.ts`, `src/app/api/companies/enrich/route.ts`
+- Triggers: Clay sends enriched record
+- Responsibilities: Normalize fields, upsert Person/Company, backfill vertical
 
 ## Error Handling
 
-**Strategy:** Try-catch with fallback, error logging, graceful degradation
+**Strategy:** Fail-safe with retries + alerting
 
 **Patterns:**
-
-- **API Routes:** Try-catch wrapping entire handler, return JSON error responses
-  - Example: `src/app/api/webhooks/emailbison/route.ts` catches and logs errors
-  - Returns NextResponse with 500 status if fatal
-
-- **Agent Execution:** Errors caught in `runAgent()`, stored in `AgentRun` record with status "failed"
-  - Saves error message for audit
-  - Re-throws for caller to handle
-  - Example: Research Agent catches crawl failures, logs, returns error to orchestrator
-
-- **Notifications:** Wrapped in try-catch, logged but don't block main flow
-  - If Slack post fails, error logged but webhook still returns success
-  - If email fails, logged but doesn't crash agent
-
-- **Database:** Prisma errors propagate (connection issues, constraint violations)
-  - Handled at API layer with generic error responses
-  - Not exposed to client
+- **Enrichment provider failures:** Logged in EnrichmentLog (status="error"), retried up to maxAttempts, error saved
+- **Campaign deployment:** If EmailBison push fails, campaign stays in "pending" status, admin retries
+- **Webhook processing:** Signature validation + 3-second response timeout; failed webhooks logged but don't block
+- **Agent failures:** AgentRun record captures error + step log, returned to user, no side effects committed
+- **Database constraints:** Unique index violations caught, duplicate leads merged via dedup logic
 
 ## Cross-Cutting Concerns
 
-**Logging:** Console-based (browser console for client, server logs for backend)
-- Agent runs logged with `AgentRun` records containing input/output/steps/duration
-- Webhook events logged to database via `WebhookEvent` model
-- Errors logged to console with context
+**Logging:**
+- Using `console.log()` + structured JSON for errors
+- All API routes log errors with `[CONTEXT] Error:` prefix
+- Agent runs logged with full step trace via AgentRun model
 
 **Validation:**
-- API payload validation via Zod schemas (e.g., `EnrichmentPayload` in people/enrich)
-- Field alias mapping handles variations from Clay/external sources
-- Database constraints (unique email on Person, unique domain on Company)
+- Input validation at route handler level (e.g., check required fields)
+- Business logic validation in operations (e.g., state machine transitions)
+- Zod schemas for agent tool inputs
 
 **Authentication:**
-- Workspace context via URL params or environment variables
-- API tokens stored in Workspace model (EmailBison integration)
-- No user auth system (internal tool, assumes trusted access)
+- Admin pages + API: Cookie-based session (verified at Edge via `verifyAdminSessionEdge()`)
+- Portal pages + API: Magic link tokens (verified at Edge via `verifySessionEdge()`)
+- Public API: API key (for workspace token auth), Bearer token (for LinkedIn worker), webhook signature (HMAC)
+- Middleware enforces all checks before route handler executes
 
-**Rate Limiting:**
-- EmailBison API client handles 429 responses with RateLimitError
-- Tracks retry-after headers
-- Not globally enforced at API layer
-
-**Caching:**
-- Firecrawl responses cached in `WebsiteAnalysis` with status tracking
-- Knowledge documents stored once, searched by chunk
-- Workspace env vars read once at startup
-- Prisma manages query caching per request
+**Notifications:**
+- Slack: Rich blocks via `src/lib/slack.ts` (new replies, approvals needed, campaign deployed)
+- Email: Plain text + button via `src/lib/resend.ts` (replies, approvals)
+- Always include workspace + action context, link back to relevant page
 
 ---
 
-*Architecture analysis: 2026-02-26*
+*Architecture analysis: 2025-03-01*

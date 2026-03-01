@@ -1,77 +1,96 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-02-26
+**Analysis Date:** 2026-03-01
 
 ## Test Framework
 
 **Runner:**
 - Vitest 4.0.18
 - Config: `vitest.config.ts`
-- Environment: Node.js (no jsdom)
+- Environment: Node.js (not jsdom)
+- Globals: enabled (`globals: true`)
 
 **Assertion Library:**
-- Vitest's built-in expect (from Vitest)
-- Also installed: `@testing-library/jest-dom` (6.9.1)
+- Vitest's built-in `expect` (from Vitest)
+- Also installed: `@testing-library/jest-dom` (6.9.1) for additional matchers
+- Additional packages: `@testing-library/react` (16.3.2) for React testing
 
 **Run Commands:**
 ```bash
 npm run test              # Run all tests once
 npm run test:watch       # Watch mode for development
-npm test -- --coverage   # Run with coverage (vitest --coverage)
+vitest --coverage        # Run with coverage report
 ```
+
+**Vitest Config:**
+- `src/__tests__/setup.ts` as global setup file
+- Node environment
+- Path alias `@/` resolves to `src/`
 
 ## Test File Organization
 
 **Location:**
 - Centralized in `src/__tests__/` directory
-- Not colocated with source files
-- Setup file: `src/__tests__/setup.ts`
+- NOT colocated with source files
+- Setup file: `src/__tests__/setup.ts` (initialized by vitest.config.ts)
 
 **Naming:**
 - Pattern: `{module}.test.ts`
-- Examples: `slack.test.ts`, `emailbison-client.test.ts`, `api-routes.test.ts`
+- Examples: `slack.test.ts`, `emailbison-client.test.ts`, `api-routes.test.ts`, `enrichment-dedup.test.ts`
 
-**Structure:**
+**Current Test Files (12 total, 3,369 lines):**
 ```
 src/__tests__/
-├── setup.ts                      # Global test setup with Prisma mocks
-├── slack.test.ts                 # Slack integration tests
-├── emailbison-client.test.ts     # EmailBison client tests
-├── resend-notifications.test.ts  # Email notification tests
-├── api-routes.test.ts            # API route handler tests
-└── lib-utils.test.ts             # Utility function tests
+├── setup.ts                          # Global Prisma mock setup (96 lines)
+├── api-routes.test.ts                # Proposal/webhook routes (444 lines)
+├── emailbison-client.test.ts          # EmailBison API client (461 lines)
+├── enrichment-dedup.test.ts           # Deduplication logic (105 lines)
+├── enrichment-queue.test.ts           # Job queuing system (340 lines)
+├── lib-utils.test.ts                  # Utility functions (295 lines)
+├── linkedin-queue.test.ts             # LinkedIn queue processing (290 lines)
+├── linkedin-rate-limiter.test.ts      # Rate limiting (238 lines)
+├── linkedin-sender.test.ts            # LinkedIn sending (211 lines)
+├── normalizer.test.ts                 # Company name normalization (192 lines)
+├── resend-notifications.test.ts       # Email notifications (331 lines)
+└── slack.test.ts                      # Slack integration (462 lines)
 ```
 
 ## Test Structure
 
 **Suite Organization:**
 ```typescript
-describe("Module/Feature Name", () => {
-  let client: EmailBisonClient;
-  let fetchMock: ReturnType<typeof vi.fn>;
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { prisma } from "@/lib/db";
 
+describe("Module/Feature Name", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    fetchMock = vi.fn();
-    global.fetch = fetchMock;
-    client = new EmailBisonClient(TEST_TOKEN);
+    vi.clearAllMocks();  // Clear all mocks before each test
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.restoreAllMocks();  // Restore all mocks after each test
   });
 
   describe("Function Name", () => {
-    it("does specific behavior", async () => {
+    it("should do specific behavior when X", async () => {
       // Arrange
-      mockFn.mockResolvedValue(expectedValue);
+      (prisma.person.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "p-1",
+        email: "test@example.com",
+      });
 
       // Act
-      const result = await functionUnderTest();
+      const result = await functionUnderTest("param");
 
       // Assert
-      expect(result).toBe(expectedValue);
-      expect(mockFn).toHaveBeenCalledWith(expectedParams);
+      expect(result).toEqual(expectedValue);
+      expect(prisma.person.findUnique).toHaveBeenCalledWith({
+        where: { email: "test@example.com" },
+      });
+    });
+
+    it("should throw when X is missing", async () => {
+      await expect(functionUnderTest("invalid")).rejects.toThrow("error message");
     });
   });
 });
@@ -80,32 +99,52 @@ describe("Module/Feature Name", () => {
 **Patterns:**
 - `describe` blocks organize by feature/function
 - Nested `describe` blocks for sub-features
-- `beforeEach` clears mocks and sets up test state
-- `afterEach` restores mocks and cleans up environment
-- Test names use "should" style: "returns null when X is missing"
+- `beforeEach` clears mocks before each test
+- `afterEach` cleans up (optional, but used for environment variables)
+- Test names use "should" style: "returns campaigns from paginated response"
+- Import style: `import { describe, it, expect, vi, beforeEach } from "vitest"`
 
 ## Mocking
 
 **Framework:** Vitest `vi.mock()` and `vi.fn()`
 
-**Patterns:**
+**Module Mocking:**
 
-### Mock Modules Before Import
+### Setup File Mocks (setup.ts)
+Global Prisma mock set up once for all tests:
 ```typescript
-// Mock setup BEFORE imports
+import { vi } from "vitest";
+
 vi.mock("@/lib/db", () => ({
   prisma: {
-    workspace: { findMany: vi.fn() },
-    proposal: { findMany: vi.fn() },
+    workspace: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+    },
+    person: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+      count: vi.fn(),
+    },
+    enrichmentJob: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    // ... other models
   },
 }));
-
-// Import after mocking
-import { prisma } from "@/lib/db";
 ```
 
-### Mock Classes
+### Per-Test Module Mocks
+Example from `slack.test.ts`:
 ```typescript
+const mockConversationsCreate = vi.fn();
+const mockUsersLookupByEmail = vi.fn();
+const mockChatPostMessage = vi.fn();
+
 vi.mock("@slack/web-api", () => {
   const MockWebClient = vi.fn(function () {
     return {
@@ -116,9 +155,13 @@ vi.mock("@slack/web-api", () => {
   });
   return { WebClient: MockWebClient };
 });
+
+// Import AFTER mocking so the mock is in place
+import { createPrivateChannel } from "@/lib/slack";
 ```
 
 ### Hoisted Mocks for Factory Functions
+Example from `resend-notifications.test.ts`:
 ```typescript
 const { mockSend, mockPostMessage } = vi.hoisted(() => ({
   mockSend: vi.fn().mockResolvedValue({ id: "test-email-id" }),
@@ -130,39 +173,34 @@ vi.mock("resend", () => ({
     emails = { send: mockSend };
   },
 }));
+
+// Now imports work because hoisted mocks run before module setup
 ```
 
-### Mock Error Responses
+### Mock Setup Pattern
 ```typescript
-mockUsersLookupByEmail.mockRejectedValue({
-  data: { error: "users_not_found" },
+beforeEach(() => {
+  vi.clearAllMocks();  // Clear call history
+  (prisma.enrichmentJob.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(mockJob);
 });
-
-// With specific error structure
-const otherError = new Error("network_failure");
-(otherError as unknown as { data: { error: string } }).data = {
-  error: "network_failure",
-};
-mockUsersLookupByEmail.mockRejectedValue(otherError);
 ```
 
 **What to Mock:**
-- External API clients (Slack, Resend, EmailBison)
+- External API clients (Slack WebClient, Resend, EmailBison)
 - Database client (Prisma)
 - Next.js modules (NextResponse, NextRequest)
 - Environment-dependent services
 
 **What NOT to Mock:**
-- Pure utility functions
+- Pure utility functions (e.g., `normalizeCompanyName`)
 - Error classes
 - Type definitions
-- Internal helper functions (unless testing in isolation)
+- Internal helper functions
 
 ## Fixtures and Factories
 
-**Test Data:**
-- Helper functions for generating test data
-- Example: `makePaginatedResponse()` in emailbison-client.test.ts
+**Test Data Helpers:**
+Example from `emailbison-client.test.ts`:
 ```typescript
 function makePaginatedResponse<T>(
   data: T[],
@@ -187,15 +225,26 @@ function makePaginatedResponse<T>(
     },
   };
 }
+
+function mockFetchResponse<T>(data: T, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Map([["retry-after", "60"]]),
+    json: async () => data,
+    text: async () => JSON.stringify(data),
+  } as Response;
+}
 ```
 
 **Location:**
 - Defined within test files as helper functions
-- No separate fixture directory
+- No separate fixtures directory
+- Constants like `BASE_URL` and `TEST_TOKEN` at top of test file
 
 ## Coverage
 
-**Requirements:** Not enforced (no coverage configuration in package.json or vitest.config.ts)
+**Requirements:** Not enforced (no coverage configuration)
 
 **View Coverage:**
 ```bash
@@ -204,38 +253,46 @@ vitest --coverage
 
 ## Test Types
 
-**Unit Tests:**
-- Primary testing approach
-- Individual function behavior tested in isolation
+**Unit Tests (Primary):**
+- Individual function behavior in isolation
 - Mocked dependencies
-- Fast execution (~1-2ms per test)
-- Examples: `slack.test.ts`, `emailbison-client.test.ts`
+- Fast execution (~1-5ms per test)
+- Examples: `normalizer.test.ts` (192 lines), `enrichment-dedup.test.ts` (105 lines)
 
-**Integration Tests:**
+**Integration Tests (Secondary):**
 - Testing interaction between mocked modules
-- API route handlers with Prisma and external service mocks
-- Examples: `api-routes.test.ts`, `resend-notifications.test.ts`
+- API route handlers with mocked Prisma and external services
+- Examples: `api-routes.test.ts` (444 lines), `resend-notifications.test.ts` (331 lines)
 
 **E2E Tests:**
-- Not used in this codebase
-- No Playwright, Cypress, or similar configuration
+- Not present in this codebase
 
 ## Common Patterns
 
-**Async Testing:**
+**Async Testing with await/rejects:**
 ```typescript
-it("returns campaigns from a single-page response", async () => {
-  fetchMock.mockResolvedValueOnce(
-    mockFetchResponse(makePaginatedResponse(campaigns, 1, 1)),
-  );
+it("returns campaigns from paginated response", async () => {
+  const mockJob = {
+    id: "job-1",
+    entityType: "person",
+    provider: "prospeo",
+    status: "pending",
+    entityIds: JSON.stringify(["p1", "p2"]),
+  };
+  (prisma.enrichmentJob.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(mockJob);
 
-  const result = await client.getCampaigns();
+  const result = await processNextChunk();
 
-  expect(result).toEqual(campaigns);
+  expect(result).toEqual(expect.objectContaining({
+    jobId: "job-1",
+    processed: 2,
+  }));
 });
 
-// Using rejects for error cases
-await expect(client.getCampaigns()).rejects.toThrow(/Rate limited/);
+// Error cases
+await expect(enqueueJob({ entityIds: [] })).rejects.toThrow(
+  "Cannot enqueue job with empty entityIds"
+);
 ```
 
 **Error Testing:**
@@ -246,7 +303,7 @@ it("throws EmailBisonApiError on 500 response", async () => {
   );
 
   await expect(client.getCampaigns()).rejects.toThrow(
-    /Email Bison API error 500/,
+    /Email Bison API error 500/
   );
 
   // Verify error properties
@@ -264,6 +321,7 @@ it("throws EmailBisonApiError on 500 response", async () => {
 const ORIGINAL_ENV = process.env;
 
 beforeEach(() => {
+  vi.clearAllMocks();
   process.env = { ...ORIGINAL_ENV };
   process.env.SLACK_BOT_TOKEN = "xoxb-test-token";
 });
@@ -274,56 +332,49 @@ afterEach(() => {
 
 it("returns null when SLACK_BOT_TOKEN is not set", async () => {
   delete process.env.SLACK_BOT_TOKEN;
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
   const result = await createPrivateChannel("test-channel");
 
   expect(result).toBeNull();
-});
-```
-
-**Console Spying:**
-```typescript
-it("logs warning when API key not set", async () => {
-  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-  await sendNotificationEmail({
-    to: ["user@example.com"],
-    subject: "Test",
-    html: "<p>Hello</p>",
-  });
-
   expect(warnSpy).toHaveBeenCalledWith(
-    "RESEND_API_KEY not set, skipping email notification",
+    "SLACK_BOT_TOKEN not set, skipping channel creation"
   );
-
   warnSpy.mockRestore();
 });
 ```
 
 **Mock Verification with Multiple Calls:**
 ```typescript
-it("aggregates data across multiple pages", async () => {
-  const page1 = [{ id: 1, name: "Campaign A" }];
-  const page2 = [{ id: 2, name: "Campaign B" }];
+it("processes a chunk and transitions to complete", async () => {
+  (prisma.enrichmentJob.findFirst as ReturnType<typeof vi.fn>)
+    .mockResolvedValueOnce(mockJob)
+    .mockResolvedValueOnce(null);  // Second call returns nothing
+  (prisma.enrichmentJob.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
-  fetchMock
-    .mockResolvedValueOnce(
-      mockFetchResponse(makePaginatedResponse(page1, 1, 2)),
-    )
-    .mockResolvedValueOnce(
-      mockFetchResponse(makePaginatedResponse(page2, 2, 2)),
-    );
+  const result = await processNextChunk();
 
-  const result = await client.getCampaigns();
+  expect(result).toEqual({
+    jobId: "job-1",
+    processed: 2,
+    done: true,
+    status: "complete",
+  });
 
-  expect(result).toEqual([...page1, ...page2]);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
-  expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/campaigns?page=1`);
-  expect(fetchMock.mock.calls[1][0]).toBe(`${BASE_URL}/campaigns?page=2`);
+  // Verify multiple updates
+  expect(prisma.enrichmentJob.update).toHaveBeenCalledTimes(2);
+  expect(prisma.enrichmentJob.update).toHaveBeenNthCalledWith(1, {
+    where: { id: "job-1" },
+    data: { status: "running" },
+  });
+  expect(prisma.enrichmentJob.update).toHaveBeenNthCalledWith(2, {
+    where: { id: "job-1" },
+    data: expect.objectContaining({ status: "complete" }),
+  });
 });
 ```
 
-**Parameterized API Routes:**
+**API Route Testing:**
 ```typescript
 describe("POST /api/proposals", () => {
   let POST: typeof import("@/app/api/proposals/route").POST;
@@ -345,6 +396,25 @@ describe("POST /api/proposals", () => {
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/clientName/);
   });
+
+  it("creates proposal and returns 200", async () => {
+    (prisma.proposal.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "prop-1",
+      clientName: "Acme Corp",
+    });
+
+    const req = postRequest({
+      clientName: "Acme Corp",
+      companyOverview: "Overview",
+      packageType: "email",
+    });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.id).toBe("prop-1");
+  });
 });
 
 function postRequest(data: unknown): Request {
@@ -356,40 +426,49 @@ function postRequest(data: unknown): Request {
 }
 ```
 
+**Console Spying:**
+```typescript
+it("logs warning when RESEND_API_KEY is not set", async () => {
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+  await sendNotificationEmail({
+    to: ["user@example.com"],
+    subject: "Test",
+    html: "<p>Hello</p>",
+  });
+
+  expect(warnSpy).toHaveBeenCalledWith(
+    "RESEND_API_KEY not set, skipping email notification"
+  );
+  warnSpy.mockRestore();
+});
+```
+
 ## Global Setup
 
-**File:** `src/__tests__/setup.ts`
+**File:** `src/__tests__/setup.ts` (96 lines)
 
-**Purpose:** Initialize global mocks for Prisma before any tests run
+**Purpose:** Initialize global Prisma mock before any tests run (prevents repeated mock definitions)
 
-**Content:**
+**Key Mocks:**
 ```typescript
-import { vi } from "vitest";
-
 vi.mock("@/lib/db", () => ({
   prisma: {
-    workspace: {
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-    },
-    proposal: {
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-    },
-    lead: {
-      findMany: vi.fn(),
-      upsert: vi.fn(),
-      updateMany: vi.fn(),
-    },
-    // ... other models
+    workspace: { findMany, findUnique, create },
+    proposal: { findMany, findUnique, create, update, updateMany },
+    person: { findUnique, findMany, updateMany, count },
+    enrichmentJob: { findFirst, create, update, findMany },
+    enrichmentLog: { findFirst, create, findMany, count },
+    linkedInAction: { create, findMany, findUnique, findUniqueOrThrow, update, updateMany },
+    linkedInDailyUsage: { findUnique, create, upsert },
+    linkedInConnection: { findFirst, findUnique, create, upsert, count },
+    // ... 15+ models total
   },
 }));
 ```
 
+All test files rely on this setup, so Prisma mocking is consistent across tests.
+
 ---
 
-*Testing analysis: 2026-02-26*
+*Testing analysis: 2026-03-01*

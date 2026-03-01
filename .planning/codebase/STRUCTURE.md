@@ -1,338 +1,473 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-02-26
+**Analysis Date:** 2025-03-01
 
 ## Directory Layout
 
 ```
 outsignal-agents/
-├── .planning/                      # GSD documentation (generated)
-├── prisma/
-│   └── schema.prisma              # Prisma data models and database schema
-├── public/                         # Static assets (logos, fonts, etc.)
-├── scripts/                        # One-time setup and utility scripts
+├── .planning/                          # GSD documentation
+│   └── codebase/
+│       ├── ARCHITECTURE.md             # This architecture overview
+│       ├── STRUCTURE.md                # This structure guide
+│       ├── CONVENTIONS.md              # Coding standards
+│       ├── TESTING.md                  # Testing patterns
+│       ├── CONCERNS.md                 # Technical debt
+│       ├── STACK.md                    # Technology stack
+│       └── INTEGRATIONS.md             # External services
 ├── src/
-│   ├── app/                        # Next.js App Router
-│   │   ├── layout.tsx              # Root layout (fonts, metadata)
-│   │   ├── globals.css             # Global styles (Tailwind)
-│   │   ├── (admin)/                # Admin dashboard routes
+│   ├── app/                            # Next.js 16 app directory (routes + pages)
+│   │   ├── (admin)/                    # Admin dashboard route group
 │   │   │   ├── layout.tsx
-│   │   │   ├── page.tsx            # Dashboard home
-│   │   │   ├── workspace/[slug]/   # Workspace-specific pages
-│   │   │   ├── onboard/            # Client onboarding management
-│   │   │   ├── onboarding/         # Onboarding invites UI
-│   │   │   ├── people/             # People/leads database view
-│   │   │   └── settings/           # Admin settings
-│   │   ├── (customer)/             # Customer-facing routes
-│   │   │   ├── p/[token]/          # Proposal signing flow
-│   │   │   └── o/[token]/          # Team member onboarding invites
-│   │   └── api/                    # HTTP endpoints
-│   │       ├── chat/               # Chat interface endpoint
-│   │       ├── webhooks/emailbison # EmailBison webhook receiver
-│   │       ├── people/             # Person enrichment endpoints
-│   │       ├── companies/          # Company enrichment endpoints
-│   │       ├── workspace/          # Workspace configuration
-│   │       ├── proposals/          # Proposal CRUD
-│   │       ├── onboard/            # Onboarding flow
-│   │       ├── stripe/             # Stripe payment webhooks
-│   │       └── domains/            # Domain suggestion helper
-│   ├── lib/                        # Business logic and utilities
-│   │   ├── agents/                 # AI agent system
-│   │   │   ├── orchestrator.ts     # Meta-agent dispatcher
-│   │   │   ├── research.ts         # Research specialist agent
-│   │   │   ├── writer.ts           # Content writing specialist agent
-│   │   │   ├── runner.ts           # Agent execution engine
-│   │   │   └── types.ts            # Type definitions (AgentConfig, etc.)
-│   │   ├── chat/                   # Chat system
-│   │   │   └── tools.ts            # Tool definitions (legacy, now in orchestrator)
-│   │   ├── knowledge/              # Knowledge base
-│   │   │   └── store.ts            # Document chunking and search
-│   │   ├── emailbison/             # EmailBison API integration
-│   │   │   ├── client.ts           # HTTP client for EmailBison API
-│   │   │   └── types.ts            # Type definitions
-│   │   ├── clay/                   # Clay CRM integration
-│   │   │   └── sync.ts             # Import/sync functions (contacts, companies)
-│   │   ├── firecrawl/              # Website crawling
-│   │   │   └── client.ts           # Firecrawl API wrapper
-│   │   ├── db.ts                   # Prisma singleton
-│   │   ├── notifications.ts        # Slack and email notifications
-│   │   ├── slack.ts                # Slack WebClient wrapper
-│   │   ├── resend.ts               # Resend email wrapper
-│   │   ├── stripe.ts               # Stripe API wrapper
-│   │   ├── tokens.ts               # Token generation utilities
-│   │   ├── normalize.ts            # Data normalization (company names)
-│   │   ├── workspaces.ts           # Workspace loading and management
-│   │   ├── porkbun.ts              # Domain registration API
-│   │   ├── proposal-templates.ts   # Pricing templates for proposals
-│   │   └── utils.ts                # General utilities
-│   └── components/                 # React components
-│       ├── ui/                     # Shadcn UI components
-│       │   ├── button.tsx
-│       │   ├── card.tsx
-│       │   ├── dialog.tsx
-│       │   ├── input.tsx
-│       │   ├── select.tsx
-│       │   ├── tabs.tsx
-│       │   ├── table.tsx
-│       │   └── [other UI primitives]
-│       ├── layout/                 # Layout components
-│       │   ├── app-shell.tsx       # Main app container
-│       │   ├── sidebar.tsx         # Navigation sidebar
-│       │   └── header.tsx          # Top navigation
-│       ├── chat/                   # Chat interface
-│       │   ├── chat-panel.tsx      # Main chat UI
-│       │   ├── chat-toggle.tsx     # Toggle button
-│       │   └── chat-sidebar.tsx    # Chat conversation history
-│       ├── inbox/                  # Inbox/replies view
-│       │   └── reply-detail.tsx    # Reply expansion
-│       └── settings/               # Settings forms
-│           └── api-token-form.tsx
-├── .env.local                      # Local environment variables (not committed)
-├── package.json                    # NPM dependencies
-├── tsconfig.json                   # TypeScript configuration with path aliases
-├── tailwind.config.ts              # Tailwind CSS configuration
-├── next.config.ts                  # Next.js configuration
-└── prisma.config.js                # Prisma client generation
+│   │   │   ├── page.tsx                # Dashboard homepage
+│   │   │   ├── companies/
+│   │   │   ├── enrichment-costs/
+│   │   │   ├── lists/
+│   │   │   ├── people/
+│   │   │   ├── settings/
+│   │   │   ├── onboard/
+│   │   │   ├── onboarding/
+│   │   │   ├── workspace/[slug]/       # Workspace detail + sub-pages
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── campaigns/
+│   │   │   │   ├── linkedin/
+│   │   │   │   ├── inbox/
+│   │   │   │   ├── inbox-health/
+│   │   │   │   └── settings/
+│   │   │   └── error.tsx
+│   │   ├── (portal)/                   # Client portal route group
+│   │   │   ├── layout.tsx
+│   │   │   ├── portal/
+│   │   │   │   ├── page.tsx            # Portal homepage (campaign list)
+│   │   │   │   ├── login/
+│   │   │   │   ├── campaigns/
+│   │   │   │   ├── linkedin/
+│   │   │   │   ├── error.tsx
+│   │   │   │   ├── loading.tsx
+│   │   │   │   └── not-found.tsx
+│   │   ├── (customer)/                 # Public customer flows (no auth)
+│   │   │   ├── p/[token]/              # Proposal viewing + e-signature
+│   │   │   │   ├── layout.tsx
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── onboard/
+│   │   │   └── o/[token]/              # Onboarding invite acceptance
+│   │   │       ├── layout.tsx
+│   │   │       └── page.tsx
+│   │   ├── api/                        # All API routes
+│   │   │   ├── admin/                  # Admin auth
+│   │   │   │   ├── login/
+│   │   │   │   └── logout/
+│   │   │   ├── campaigns/              # Campaign CRUD + publish
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/
+│   │   │   ├── chat/                   # Agent orchestrator chat
+│   │   │   │   └── route.ts
+│   │   │   ├── companies/              # Company search + enrichment
+│   │   │   │   ├── search/
+│   │   │   │   └── enrich/
+│   │   │   ├── domains/                # Domain suggestions
+│   │   │   ├── enrichment/             # Enrichment pipeline control
+│   │   │   │   ├── costs/
+│   │   │   │   ├── jobs/
+│   │   │   │   └── run/
+│   │   │   ├── linkedin/               # LinkedIn sender management
+│   │   │   │   ├── actions/
+│   │   │   │   ├── senders/
+│   │   │   │   └── usage/
+│   │   │   ├── lists/                  # Target list CRUD
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/
+│   │   │   ├── onboard/                # Customer onboarding
+│   │   │   ├── onboarding-invites/     # Onboarding invite management
+│   │   │   ├── people/                 # People search + enrichment + import
+│   │   │   │   ├── enrich/
+│   │   │   │   ├── import/
+│   │   │   │   ├── search/
+│   │   │   │   └── sync/
+│   │   │   ├── portal/                 # Portal auth + campaign approval
+│   │   │   │   ├── login/
+│   │   │   │   ├── logout/
+│   │   │   │   ├── verify/
+│   │   │   │   └── campaigns/
+│   │   │   ├── proposals/              # Proposal CRUD + accept
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/
+│   │   │   ├── stripe/                 # Payment webhooks
+│   │   │   │   ├── checkout/
+│   │   │   │   └── webhook/
+│   │   │   ├── webhooks/               # External service webhooks
+│   │   │   │   └── emailbison/
+│   │   │   └── workspace/              # Workspace configuration
+│   │   ├── login/                      # Admin login page
+│   │   ├── layout.tsx                  # Root layout + fonts
+│   │   ├── globals.css                 # Global Tailwind styles
+│   │   └── not-found.tsx               # 404 page
+│   ├── components/                     # React components (organized by feature)
+│   │   ├── ui/                         # Shadcn UI primitives
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── label.tsx
+│   │   │   ├── select.tsx
+│   │   │   ├── tabs.tsx
+│   │   │   ├── table.tsx
+│   │   │   ├── textarea.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── checkbox.tsx
+│   │   │   ├── dropdown-menu.tsx
+│   │   │   ├── scroll-area.tsx
+│   │   │   ├── separator.tsx
+│   │   │   ├── skeleton.tsx
+│   │   │   └── tooltip.tsx
+│   │   ├── layout/
+│   │   │   ├── app-shell.tsx
+│   │   │   ├── header.tsx
+│   │   │   └── sidebar.tsx
+│   │   ├── dashboard/
+│   │   │   ├── metric-card.tsx
+│   │   │   └── overview-table.tsx
+│   │   ├── search/                     # Lead/company search UI
+│   │   │   ├── people-search-page.tsx
+│   │   │   ├── companies-search-page.tsx
+│   │   │   ├── list-index-page.tsx
+│   │   │   ├── list-detail-page.tsx
+│   │   │   ├── filter-sidebar.tsx
+│   │   │   ├── bulk-action-bar.tsx
+│   │   │   ├── add-to-list-dropdown.tsx
+│   │   │   └── enrichment-badge.tsx
+│   │   ├── linkedin/                   # LinkedIn sender setup
+│   │   │   ├── connect-button.tsx
+│   │   │   ├── connect-modal.tsx
+│   │   │   ├── add-account-button.tsx
+│   │   │   └── connect-button.tsx
+│   │   ├── onboarding/                 # Client onboarding flow
+│   │   │   ├── onboarding-client.tsx
+│   │   │   ├── onboarding-steps.ts
+│   │   │   ├── domain-step.tsx
+│   │   │   ├── typeform-engine.tsx
+│   │   │   └── send-invite-button.tsx
+│   │   ├── portal/                     # Client portal components
+│   │   │   ├── portal-nav.tsx
+│   │   │   ├── campaign-card.tsx
+│   │   │   ├── campaign-approval-leads.tsx
+│   │   │   ├── campaign-approval-content.tsx
+│   │   │   └── logout-button.tsx
+│   │   ├── proposal/                   # Proposal document
+│   │   │   ├── proposal-document.tsx
+│   │   │   ├── proposal-actions.tsx
+│   │   │   ├── e-signature.tsx
+│   │   │   └── pricing-table.tsx
+│   │   ├── proposals/                  # Proposal management (admin)
+│   │   │   ├── copy-link-button.tsx
+│   │   │   └── mark-paid-button.tsx
+│   │   ├── chat/                       # Chat sidebar + panels
+│   │   │   ├── chat-panel.tsx
+│   │   │   ├── chat-sidebar.tsx
+│   │   │   └── chat-toggle.tsx
+│   │   ├── inbox/                      # Reply detail view
+│   │   │   └── reply-detail.tsx
+│   │   ├── charts/                     # Campaign metrics visualization
+│   │   │   └── campaign-chart.tsx
+│   │   ├── brand/
+│   │   │   └── outsignal-logo.tsx
+│   │   ├── settings/
+│   │   │   └── api-token-form.tsx
+│   │   └── workspace/
+│   │       └── workspace-settings-form.tsx
+│   ├── lib/                            # Business logic & utilities
+│   │   ├── agents/                     # AI agent system
+│   │   │   ├── runner.ts               # Core execution engine: runAgent()
+│   │   │   ├── orchestrator.ts         # Master agent (delegation to research/leads/writer/campaign)
+│   │   │   ├── research.ts             # Research Agent (ICP analysis, website crawl)
+│   │   │   ├── leads.ts                # Leads Agent (search, list ops, export, scoring)
+│   │   │   ├── writer.ts               # Writer Agent (email/LinkedIn copy generation)
+│   │   │   ├── campaign.ts             # Campaign Agent (sequence design, deployment)
+│   │   │   ├── shared-tools.ts         # Tool definitions (knowledge search, workspace query)
+│   │   │   └── types.ts                # AgentConfig, AgentRunResult interfaces
+│   │   ├── enrichment/                 # Lead enrichment pipeline
+│   │   │   ├── waterfall.ts            # Multi-provider orchestration + deduplication
+│   │   │   ├── queue.ts                # Job queuing, batch processing, resume logic
+│   │   │   ├── merge.ts                # Merge enrichment results into Person/Company
+│   │   │   ├── dedup.ts                # Check if field already enriched
+│   │   │   ├── costs.ts                # Cost tracking
+│   │   │   ├── log.ts                  # EnrichmentLog helper
+│   │   │   ├── status.ts               # Job status queries
+│   │   │   ├── types.ts                # EnrichmentProvider interface
+│   │   │   └── providers/              # Individual enrichment providers
+│   │   │       ├── prospeo.ts
+│   │   │       ├── aiark.ts
+│   │   │       ├── aiark-person.ts
+│   │   │       ├── findymail.ts
+│   │   │       ├── leadmagic.ts
+│   │   │       └── firecrawl-company.ts
+│   │   ├── linkedin/                   # LinkedIn sender + action system
+│   │   │   ├── sender.ts               # Sender account operations
+│   │   │   ├── actions.ts              # Action queuing + execution
+│   │   │   ├── queue.ts                # LinkedInAction processor
+│   │   │   ├── rate-limiter.ts         # Rate limit enforcement by sender tier
+│   │   │   ├── auth.ts                 # Session refresh + login
+│   │   │   └── types.ts                # LinkedInAction, Sender interfaces
+│   │   ├── campaigns/                  # Campaign lifecycle operations
+│   │   │   └── operations.ts           # createCampaign, updateStatus, deploy, etc.
+│   │   ├── leads/                      # Lead lifecycle operations
+│   │   │   └── operations.ts           # addLeadsToList, scoreICP, export, etc.
+│   │   ├── knowledge/                  # Knowledge base for agents
+│   │   │   ├── store.ts                # Vector search + retrieval
+│   │   │   └── embeddings.ts           # OpenAI embeddings client
+│   │   ├── icp/                        # ICP scoring
+│   │   │   ├── scorer.ts               # Score Person against workspace criteria
+│   │   │   └── crawl-cache.ts          # Cache homepage markdown per Company
+│   │   ├── emailbison/                 # EmailBison API client
+│   │   │   ├── client.ts               # HTTP methods (getCampaigns, sendEmail, etc.)
+│   │   │   └── types.ts                # Campaign, Lead, Reply types
+│   │   ├── export/                     # Data export utilities
+│   │   │   ├── csv.ts                  # Generate CSV from leads
+│   │   │   └── verification-gate.ts    # Check lead verification before export
+│   │   ├── clay/                       # Clay integration
+│   │   │   └── sync.ts                 # Fetch from Clay, enqueue enrichment
+│   │   ├── firecrawl/                  # Firecrawl API client
+│   │   │   └── client.ts               # Scrape website, return markdown
+│   │   ├── normalizer/                 # Data normalization
+│   │   │   ├── index.ts                # Main normalizer entry
+│   │   │   ├── company.ts              # Company name normalization
+│   │   │   ├── job-title.ts            # Job title standardization
+│   │   │   ├── industry.ts             # Industry/vertical mapping
+│   │   │   └── vocabulary.ts           # Lookup tables
+│   │   ├── verification/               # Email verification providers
+│   │   │   └── leadmagic.ts            # Email validation
+│   │   ├── chat/                       # Chat tool definitions for orchestrator
+│   │   │   └── tools.ts                # Tool schema for chat endpoint
+│   │   ├── db.ts                       # Prisma singleton
+│   │   ├── notifications.ts            # Slack + email sender (campaigns, approvals, replies)
+│   │   ├── admin-auth.ts               # Admin session creation/verification
+│   │   ├── admin-auth-edge.ts          # Edge-compatible admin auth
+│   │   ├── portal-auth.ts              # Magic link auth for clients
+│   │   ├── portal-auth-edge.ts         # Edge-compatible portal auth
+│   │   ├── portal-session.ts           # Session helpers
+│   │   ├── workspaces.ts               # Workspace queries (by slug, details)
+│   │   ├── stripe.ts                   # Stripe client
+│   │   ├── slack.ts                    # Slack API client
+│   │   ├── resend.ts                   # Resend email client
+│   │   ├── tokens.ts                   # Token generation (proposals, onboarding)
+│   │   ├── cron-auth.ts                # Cron job signature verification
+│   │   ├── crypto.ts                   # AES-256-GCM encryption (LinkedIn credentials)
+│   │   ├── normalize.ts                # Company name + free email domain detection
+│   │   ├── content-preview.ts          # Draft email HTML preview
+│   │   ├── porkbun.ts                  # Domain WHOIS lookup
+│   │   ├── proposal-templates.ts       # Default pricing, template HTML
+│   │   └── utils.ts                    # Shared utilities
+│   ├── mcp/                            # Model Context Protocol server
+│   │   └── leads-agent/                # Claude Desktop integration
+│   │       ├── index.ts                # MCP server entrypoint
+│   │       └── tools/
+│   │           ├── enrich.ts
+│   │           ├── export.ts
+│   │           ├── lists.ts
+│   │           ├── score.ts
+│   │           ├── search.ts
+│   │           ├── status.ts
+│   │           └── workspace.ts
+│   └── middleware.ts                   # Route protection + subdomain routing
+├── prisma/
+│   ├── schema.prisma                   # Database schema (14+ models)
+│   └── migrations/                     # Migration history
+├── scripts/
+│   └── ingest-document.ts              # Knowledge base document ingestion CLI
+├── src/__tests__/                      # Unit tests (Vitest)
+│   ├── api-routes.test.ts
+│   ├── enrichment-dedup.test.ts
+│   ├── enrichment-queue.test.ts
+│   ├── emailbison-client.test.ts
+│   ├── linkedin-sender.test.ts
+│   ├── linkedin-queue.test.ts
+│   ├── linkedin-rate-limiter.test.ts
+│   ├── normalizer.test.ts
+│   ├── slack.test.ts
+│   ├── resend-notifications.test.ts
+│   ├── lib-utils.test.ts
+│   └── setup.ts
+├── public/
+│   └── favicon.ico
+├── next.config.ts                      # Next.js configuration
+├── tsconfig.json                       # TypeScript configuration
+├── vitest.config.ts                    # Vitest configuration
+├── vercel.json                         # Vercel cron + deployment config
+├── .env.example                        # Environment variable template
+├── .eslintrc.mjs                       # ESLint config
+├── postcss.config.mjs                  # PostCSS config
+├── components.json                     # Shadcn UI config
+└── package.json                        # Dependencies + build scripts
 ```
 
 ## Directory Purposes
 
-**`.planning/codebase/`:**
-- Purpose: GSD (Get Shit Done) documentation
-- Contains: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md, CONCERNS.md
-- Generated: Yes (by GSD tools)
-- Committed: Yes
+**src/app:**
+- Purpose: Define routes, pages, and API endpoints (Next.js app directory)
+- Contains: Page.tsx files, layout.tsx, API route handlers
+- Key files: `(admin)/workspace/[slug]/page.tsx`, `api/campaigns/route.ts`, `api/webhooks/emailbison/route.ts`
 
-**`prisma/`:**
+**src/components:**
+- Purpose: Organize reusable React components by feature
+- Contains: Page components, feature-specific components, Shadcn primitives
+- Key files: `layout/app-shell.tsx`, `search/people-search-page.tsx`, `proposal/proposal-document.tsx`
+
+**src/lib:**
+- Purpose: Business logic, integrations, utilities (not UI)
+- Contains: Agent system, enrichment pipeline, auth, external API clients
+- Key files: `agents/runner.ts`, `enrichment/waterfall.ts`, `campaigns/operations.ts`
+
+**prisma:**
 - Purpose: Database schema and migrations
-- Contains: schema.prisma (data models), migration history
-- Key files: `schema.prisma` (all models: Workspace, Person, Company, AgentRun, etc.)
+- Contains: schema.prisma (14 models: Workspace, Person, Company, Campaign, Sender, etc.)
+- Committed: Yes (schema is source of truth)
 
-**`src/app/`:**
-- Purpose: Next.js pages and API routes
-- Contains: App Router structure, layouts, page components, HTTP endpoints
-- Subdirectories: `(admin)` admin dashboard, `(customer)` public flows, `api/` endpoints
+**scripts:**
+- Purpose: One-off CLI tasks
+- Contains: `ingest-document.ts` (add docs to knowledge base)
+- Run: `npx ts-node scripts/ingest-document.ts <path>`
 
-**`src/app/(admin)/`:**
-- Purpose: Admin dashboard pages
-- Contains: Workspace management, onboarding, people database, settings
-- Key pages:
-  - `page.tsx`: Dashboard home
-  - `workspace/[slug]/page.tsx`: Workspace dashboard
-  - `workspace/[slug]/inbox/page.tsx`: Email replies view
-  - `workspace/[slug]/campaigns/[id]/page.tsx`: Campaign details
-  - `onboard/page.tsx`: Onboarding management interface
-  - `people/page.tsx`: People/leads database
-
-**`src/app/(customer)/`:**
-- Purpose: Customer-facing flows (no authentication)
-- Contains: Proposal signing, team member onboarding invites
-- Key pages:
-  - `p/[token]/page.tsx`: Proposal document (view and sign)
-  - `o/[token]/page.tsx`: Team member invite acceptance
-
-**`src/app/api/`:**
-- Purpose: HTTP endpoints for webhooks, data mutations, streaming
-- Contains: Route handlers for all external integrations and data operations
-- Key routes:
-  - `POST /api/chat`: Chat interface (streams orchestrator responses)
-  - `POST /api/webhooks/emailbison`: EmailBison webhook handler
-  - `POST /api/people/enrich`: Person enrichment webhook
-  - `POST /api/companies/enrich`: Company enrichment webhook
-  - `POST /api/proposals`: Proposal creation
-  - `POST /api/stripe/webhook`: Stripe payment status updates
-
-**`src/lib/`:**
-- Purpose: Reusable business logic, services, utilities
-- Contains: Agent system, API clients, database helpers, domain logic
-- Pattern: No subdirectories except for agents, chat, knowledge, clay, emailbison, firecrawl (5 topic areas)
-
-**`src/lib/agents/`:**
-- Purpose: AI agent framework and specialist implementations
-- Contains: Orchestrator, Research, Writer agents + runner + types
-- Files:
-  - `orchestrator.ts`: Meta-agent with delegation tools
-  - `research.ts`: Website analysis specialist
-  - `writer.ts`: Content generation specialist
-  - `runner.ts`: Universal agent execution engine
-  - `types.ts`: Shared type definitions
-
-**`src/lib/knowledge/`:**
-- Purpose: Knowledge base for Writer Agent
-- Contains: Document chunking, storage, search
-- Files: `store.ts` (chunkText, searchKnowledge, ingestDocument)
-
-**`src/lib/emailbison/`:**
-- Purpose: EmailBison API integration
-- Contains: HTTP client, type definitions
-- Files: `client.ts` (EmailBisonClient class), `types.ts` (Campaign, Lead, Reply, etc.)
-
-**`src/components/`:**
-- Purpose: React component library
-- Contains: Shadcn UI primitives, feature components
-- Subdirectories:
-  - `ui/`: Reusable UI components (button, input, dialog, table, etc.)
-  - `layout/`: Page structure (app shell, sidebar, header)
-  - `chat/`: Chat interface components
-  - `inbox/`: Email reply components
-  - `settings/`: Configuration forms
-
-**`scripts/`:**
-- Purpose: One-time utilities (not part of app runtime)
-- Examples: setup-client.ts (one-time onboarding setup), ingest-document.ts (knowledge base ingestion)
-
-**`public/`:**
-- Purpose: Static assets served by Next.js
-- Contains: Images, icons, fonts
-- Generated: No
-- Committed: Yes
+**src/__tests__:**
+- Purpose: Unit and integration tests
+- Contains: Test files (*.test.ts), setup.ts for test environment
+- Pattern: Co-located by feature (e.g., `enrichment-dedup.test.ts` tests dedup logic)
 
 ## Key File Locations
 
 **Entry Points:**
-- `src/app/layout.tsx`: Root HTML structure, fonts, metadata
-- `src/app/(admin)/layout.tsx`: Admin dashboard shell and navigation
-- `src/app/(customer)/p/[token]/layout.tsx`: Proposal layout
-- `src/app/api/chat/route.ts`: Chat endpoint (streamed responses)
+- `src/app/layout.tsx` — Root layout with fonts
+- `src/app/(admin)/page.tsx` — Admin dashboard homepage
+- `src/app/(portal)/portal/page.tsx` — Client portal homepage
+- `src/middleware.ts` — Route protection + subdomain routing
 
 **Configuration:**
-- `tsconfig.json`: TypeScript with path alias `@/*` → `./src/*`
-- `tailwind.config.ts`: Tailwind CSS setup
-- `next.config.ts`: Next.js configuration (middleware, etc.)
-- `package.json`: Dependencies and scripts
+- `prisma/schema.prisma` — Database models
+- `next.config.ts` — Next.js settings
+- `tsconfig.json` — TypeScript compiler options
+- `vercel.json` — Cron job definitions
 
 **Core Logic:**
-- `prisma/schema.prisma`: All data models and schema
-- `src/lib/db.ts`: Prisma client singleton
-- `src/lib/workspaces.ts`: Workspace loading (env + DB)
-- `src/lib/agents/orchestrator.ts`: Agent dispatcher and tools
-- `src/lib/agents/runner.ts`: Agent execution engine with audit logging
+- `src/lib/agents/runner.ts` — AI agent execution engine
+- `src/lib/enrichment/waterfall.ts` — Multi-provider enrichment orchestration
+- `src/lib/campaigns/operations.ts` — Campaign lifecycle state machine
+- `src/lib/linkedin/queue.ts` — LinkedIn action processor
+- `src/lib/notifications.ts` — Slack + email sender
 
 **Testing:**
-- Tests are co-located with source files (not found; project may not have tests yet)
-- Config: `vitest.config.ts` (testing framework)
-
-**Environment:**
-- `.env.local`: Local env vars (DATABASE_URL, API keys, etc.) — NOT committed
-- Environment setup: Load from `.env.local` + Vercel deployment env vars
+- `src/__tests__/enrichment-dedup.test.ts` — Dedup logic tests
+- `src/__tests__/slack.test.ts` — Slack formatting tests
+- `src/__tests__/normalizer.test.ts` — Company/job title normalization tests
 
 ## Naming Conventions
 
 **Files:**
-- Pages: `page.tsx` (Next.js convention)
-- Layouts: `layout.tsx` (Next.js convention)
-- API routes: `route.ts` (Next.js convention)
-- Components: PascalCase.tsx (e.g., `ChatPanel.tsx`, `ReplyDetail.tsx`)
-- Utilities: camelCase.ts (e.g., `workspaces.ts`, `normalize.ts`)
-- Types: Same file or separate `types.ts` in same directory
+- `*.ts` — TypeScript files (logic, utilities, types)
+- `*.tsx` — React components
+- `route.ts` — Next.js API route handler
+- `page.tsx` — Next.js page component
+- `*.test.ts` — Vitest unit tests
+- `[dynamic].ts` — Dynamic route segment (e.g., `[slug]`)
 
 **Directories:**
-- Feature directories: lowercase, plural (e.g., `agents/`, `components/`, `api/`)
-- Route groups: parentheses notation (e.g., `(admin)/`, `(customer)/`)
-- Dynamic routes: square brackets (e.g., `[slug]/`, `[token]/`, `[id]/`)
-- Nested routes: nested directories (e.g., `workspace/[slug]/inbox/`)
+- Lowercase, dash-separated for feature areas: `src/lib/linkedin`, `src/components/search`
+- Parentheses for route groups: `src/app/(admin)`, `src/app/(portal)` — not in URL
+- Brackets for dynamic segments: `src/app/(admin)/workspace/[slug]`
 
-**TypeScript/React:**
-- Components: PascalCase function names
-- Functions: camelCase
-- Constants: UPPER_SNAKE_CASE
-- Interfaces: PascalCase with `I` prefix (some files don't follow this)
-- Types: PascalCase
-- Props: Inline type or dedicated `Props` interface
+**Functions:**
+- camelCase: `createCampaign()`, `enrichPerson()`, `runAgent()`
+- Prefixes for clarity: `useWorkspace()` (hooks), `verifySession()` (auth), `getWorkspace()` (queries)
 
-**Database:**
-- Models: PascalCase (Workspace, Person, Company)
-- Fields: camelCase (createdAt, firstName, jobTitle)
-- Relations: Lowercase, plural (workspaces, person)
-- Maps: @map("LegacyTableName") for renamed fields
+**Variables:**
+- camelCase: `campaignId`, `workspaceSlug`, `isApproved`
+- UPPER_SNAKE_CASE for constants: `FREE_EMAIL_DOMAINS`, `VALID_TRANSITIONS`, `MAX_RETRY_ATTEMPTS`
+- `_` prefix for unused params: `(_req: NextRequest)` → tells TypeScript it's intentional
+
+**Types:**
+- PascalCase: `Campaign`, `Person`, `EnrichmentProvider`, `AgentRunResult`
+- Suffix `Params` for function argument interfaces: `CreateCampaignParams`, `UpdateWorkspaceParams`
+- Suffix `Result` for return types: `EnrichmentResult`, `AgentRunResult`
 
 ## Where to Add New Code
 
-**New Feature (e.g., new campaign type):**
-- Primary code: `src/lib/[domain]/` (e.g., `src/lib/linkedin-campaigns/`)
-- API endpoint: `src/app/api/[resource]/route.ts`
-- Types: `src/lib/[domain]/types.ts`
-- Database: Add model to `prisma/schema.prisma`
-- Agent tools (if needed): Add tool function to specialist agent
+**New Feature (e.g., SMS outreach):**
+- Primary code: `src/lib/sms/` (client, types, operations)
+- API routes: `src/app/api/sms/` (send, status, webhook)
+- Components: `src/components/sms/` (setup UI)
+- Tests: `src/__tests__/sms.test.ts`
+- Database: Add models to `prisma/schema.prisma` (SMS_Action, etc.)
 
 **New Component/Module:**
-- Implementation: `src/components/[feature]/ComponentName.tsx`
-- Utilities: `src/lib/[domain]/` (if cross-cutting)
-- Exports: Use barrel files (index.ts) if group related
+- Implementation: `src/components/{feature}/` (e.g., `src/components/video/`)
+- Export via index: Create barrel file at `src/components/{feature}/index.ts`
+- Use in pages: Import from barrel, then use in page.tsx or layout.tsx
 
-**Utilities & Helpers:**
-- Shared helpers: `src/lib/utils.ts` (general) or topic-specific (e.g., `src/lib/normalize.ts`)
-- Type-only files: `src/lib/[domain]/types.ts`
-- API clients: `src/lib/[service]/client.ts` (EmailBison, Firecrawl, etc.)
+**Utilities:**
+- Shared helpers: `src/lib/utils.ts` (small utilities)
+- Domain-specific: `src/lib/{feature}/utils.ts` or new file (e.g., `src/lib/export/utils.ts`)
+- Type definitions: Co-locate in same file as usage, or in `{feature}/types.ts` if shared
 
-**New Agent:**
-- File: `src/lib/agents/[agentname].ts`
-- Pattern: Define tools, system prompt, config, run function
-- Example: See `research.ts` and `writer.ts` for structure
-- Registration: Add to `orchestratorTools` in `src/lib/agents/orchestrator.ts`
+**Agent Tools:**
+- New tool: Add to `src/lib/agents/shared-tools.ts` (if used by multiple agents)
+- Agent-specific tool: Add to agent file (e.g., `src/lib/agents/campaign.ts`)
+- Tool implementation: Keep function in tool closure, delegate logic to operations layer
 
-**Testing:**
-- Co-located: `*.test.ts` or `*.spec.ts` in same directory as source
-- Config: `vitest.config.ts` (already present, but tests not found yet)
+**API Routes:**
+- Standard CRUD: `src/app/api/{resource}/route.ts` (GET, POST) + `[id]/route.ts` (GET, PATCH, DELETE)
+- Webhooks: `src/app/api/webhooks/{service}/route.ts` (POST only, async processing)
+- Complex operations: `src/app/api/{resource}/{action}/route.ts` (e.g., `campaigns/[id]/publish/route.ts`)
+
+**Database Models:**
+- Edit: `prisma/schema.prisma` → `npx prisma migrate dev --name {description}`
+- Relations: Use FK or soft links (@map for renamed fields)
+- Indexes: Add for query columns, especially workspace, status, timestamps
+
+**Tests:**
+- Unit tests: `src/__tests__/{feature}.test.ts`
+- Setup mocks: `src/__tests__/setup.ts` (prisma, environment)
+- Pattern: Describe > Test > Expect
 
 ## Special Directories
 
-**`node_modules/`:**
-- Purpose: Installed dependencies
-- Generated: Yes (npm install)
-- Committed: No
-
-**`.next/`:**
-- Purpose: Next.js build output
-- Generated: Yes (npm run build)
-- Committed: No
-
-**`.git/`:**
-- Purpose: Git repository
-- Committed: Yes (system file)
-
-**`.env.local`:**
-- Purpose: Local environment configuration (secrets, API keys, DATABASE_URL)
-- Generated: Manual setup
-- Committed: No (in .gitignore)
-- Contains: DATABASE_URL, Slack tokens, EmailBison tokens, Resend API key, etc.
-
-**`prisma/migrations/`:**
-- Purpose: Database schema version history
-- Generated: Yes (prisma migrate)
+**src/app/(admin):**
+- Purpose: Protected admin dashboard pages
+- Generated: No (source files)
 - Committed: Yes
+- Auth: Cookie-based (verified by middleware)
+- Contains: Pages for workspace, people, campaigns, lists, onboarding, settings
+
+**src/app/(portal):**
+- Purpose: Client portal (campaign approvals)
+- Generated: No (source files)
+- Committed: Yes
+- Auth: Magic link tokens (verified by middleware)
+- Contains: Login, campaign list, approval forms
+
+**src/app/(customer):**
+- Purpose: Public customer flows (proposals, onboarding)
+- Generated: No (source files)
+- Committed: Yes
+- Auth: Token-based (proposal token, onboarding invite)
+- Contains: Proposal view + e-signature, onboarding form
+
+**src/app/api:**
+- Purpose: All API endpoints (admin, portal, webhooks, public)
+- Generated: No (source files)
+- Committed: Yes
+- Auth: Varies by route (session cookie, API key, webhook signature, Bearer token)
+- Contains: 50+ route files organized by resource
+
+**prisma:**
+- Purpose: Database schema and migrations
+- Generated: node_modules/.prisma (client code, not committed)
+- Committed: Yes (schema.prisma, migrations/)
+- Updated: Via `npx prisma migrate dev`
+
+**.next:**
+- Purpose: Build output
+- Generated: Yes (`npm run build`)
+- Committed: No (.gitignore)
+- Contents: Compiled routes, static assets, server functions
 
 ---
 
-## Route Structure Quick Reference
-
-```
-Admin Dashboard (authenticated by workspace context):
-/                                 → Dashboard home
-/workspace/[slug]                 → Workspace overview
-/workspace/[slug]/inbox           → Email replies
-/workspace/[slug]/inbox-health    → Sender health metrics
-/workspace/[slug]/campaigns/[id]  → Campaign details
-/workspace/[slug]/settings        → Workspace configuration
-/people                           → People/leads database
-/onboard                          → Onboarding client management
-/onboarding                       → Onboarding invite management
-/settings                         → Admin settings
-
-Customer Flows (public, token-gated):
-/p/[token]                        → Proposal document
-/p/[token]/onboard                → Onboarding after proposal
-/o/[token]                        → Team member invite
-
-API Endpoints:
-POST /api/chat                    → Chat interface (streams)
-POST /api/webhooks/emailbison     → EmailBison webhook
-POST /api/people/enrich           → Person enrichment
-POST /api/companies/enrich        → Company enrichment
-POST /api/proposals               → Create proposal
-POST /api/workspace/[slug]/configure → Update workspace
-POST /api/stripe/webhook          → Stripe payment updates
-GET  /api/domains/suggest         → Domain suggestions
-```
-
-*Structure analysis: 2026-02-26*
+*Structure analysis: 2025-03-01*

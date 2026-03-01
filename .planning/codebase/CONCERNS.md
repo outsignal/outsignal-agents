@@ -1,237 +1,345 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-02-26
+**Analysis Date:** 2025-03-01
 
 ## Tech Debt
 
-**JSON Parsing Without Validation:**
-- Issue: Multiple endpoints parse JSON from database without try-catch or validation, risking crashes if data is corrupted
-- Files: `src/app/api/people/enrich/route.ts` (line 168), `src/app/api/companies/enrich/route.ts` (lines 112-113), `src/lib/agents/writer.ts` (line 47)
-- Impact: If enrichmentData or websiteAnalysis fields contain malformed JSON, the application crashes rather than gracefully handling the error
-- Fix approach: Wrap all JSON.parse() calls in try-catch blocks; return sensible defaults on parse failure. Consider adding a validation helper that safely parses JSON and logs corruption.
+**Silent Error Handling in Enrichment Pipeline:**
+- Issue: Multiple catch blocks swallow errors with `catch { }` or `catch { /* ignore */ }`, masking enrichment failures
+- Files: `src/lib/enrichment/waterfall.ts` (lines 188-191, 203, 217, 388-389), `src/app/api/people/enrich/route.ts` (lines 143-145, 168-169, 199-201), `src/lib/enrichment/queue.ts` (line 149-151)
+- Impact: API call failures and data corruption go unlogged. Normalizers fail silently; enrichment records show success when they didn't actually run. Makes debugging enrichment issues difficult
+- Fix approach: Replace all silent catches with at least `console.error()` or structured logging. Create a centralized logger (Pino/Winston) to capture structured error context
 
-**Unsafe Batch Operations:**
-- Issue: Clay sync and people enrichment endpoints process arrays in sequential loops without transaction support or rollback on partial failure
-- Files: `src/app/api/people/enrich/route.ts` (lines 234-239), `src/app/api/companies/enrich/route.ts` (lines 211-216), `src/lib/clay/sync.ts` (lines 32-92)
-- Impact: If batch processing fails midway (e.g., database connection drops), some records update while others don't, leaving data in inconsistent state. No way to retry or rollback.
-- Fix approach: Use Prisma transactions (prisma.$transaction) for batch operations. Implement idempotent processing with deduplication keys. Add retry logic for transient failures.
+**Unhandled Race Condition in Daily Cost Tracking:**
+- Issue: `checkDailyCap()` and `incrementDailySpend()` in `src/lib/enrichment/costs.ts` are not atomic. A job can pass the cap check, then another concurrent job increments spend beyond the limit before the first job records its cost
+- Files: `src/lib/enrichment/costs.ts` (lines 29-33, 41-50)
+- Impact: Daily enrichment budget can be exceeded by up to one chunk's worth (~$0.50). Comment at line 38-39 explicitly acknowledges this: "not atomic...accepts small overspend risk"
+- Fix approach: Use Prisma transactions to wrap check + increment as a single operation, or implement optimistic locking with a version field on `DailyCostTotal`
 
-**Silent Error Swallowing:**
-- Issue: Several try-catch blocks catch errors but don't log them or only increment an error counter without context
-- Files: `src/lib/clay/sync.ts` (line 89), `src/app/api/people/enrich/route.ts` (line 168), `src/app/api/companies/enrich/route.ts` (line 115)
-- Impact: Debugging production issues becomes difficult. Error patterns go undetected (e.g., "Why are 10% of imports failing?").
-- Fix approach: Log error details before swallowing: `catch (err) { console.error(`enrichPerson failed for ${email}:`, err); }`. Use structured logging with context (email, domain, operation type).
+**JSON.parse Without Error Boundaries:**
+- Issue: 30 instances of `JSON.parse()` throughout codebase. Many lack try-catch or have silent catches
+- Files: `src/lib/enrichment/queue.ts` (line 94, 148), `src/app/api/people/enrich/route.ts` (line 168), `src/app/api/companies/enrich/route.ts` (line 112), `src/lib/enrichment/waterfall.ts` (line 188)
+- Impact: Malformed JSON in database (enrichmentData, entityIds, errorLog) can crash processing jobs. Silent failures make root causes hard to find
+- Fix approach: Create a safe `safeJsonParse()` utility that returns `[data, error]` tuple with structured error logging. Use everywhere JSON.parse is called on external/untrusted data
 
-**Pagination Not Capped:**
-- Issue: EmailBison client's getAllPages() method will fetch unlimited pages if API returns high page counts, potentially consuming all memory and API quota
-- Files: `src/lib/emailbison/client.ts` (lines 65-84)
-- Impact: Large workspaces with thousands of campaigns/replies could cause OOM errors or API rate limiting during dashboard loads
-- Fix approach: Add a configurable max page limit (e.g., 100 pages = ~5000 records). Add logging when limit is hit. Consider cursor-based pagination if EmailBison supports it.
+**Excessive console.log in Production:**
+- Issue: 38+ console statements scattered in production code: `console.warn()`, `console.error()`, `console.log()`
+- Files: `src/lib/enrichment/waterfall.ts` (lines 204, 218, 245, 260, 389), `src/app/api/enrichment/jobs/process/route.ts` (lines 29, 64), `src/lib/linkedin/auth.ts` (line 10), and others
+- Impact: Unstructured logging makes debugging hard. No log aggregation, sampling, or filtering. Pollutes Vercel logs
+- Fix approach: Replace all console statements with a centralized structured logger (e.g., Pino or Zod logger). Add log levels, context fields, and sampling rules
+
+**Job Queue Has No Timeout Mechanism:**
+- Issue: Enrichment jobs marked as "running" but no heartbeat check or timeout if worker crashes
+- Files: `src/lib/enrichment/queue.ts` (lines 87-90)
+- Impact: If a worker process dies while handling a job, that job is stuck in "running" state forever. Manual intervention required to reset
+- Fix approach: Add `heartbeatAt` and `timeoutAt` fields to EnrichmentJob. Mark job as failed if no heartbeat in 5 minutes. Implement heartbeat update in chunk processing loop
 
 ## Known Bugs
 
-**Missing Workspace Slug Handling in Notifications:**
-- Symptoms: Notifications fail silently if workspace slug is missing from webhook or invalid
-- Files: `src/app/api/webhooks/emailbison/route.ts` (line 11), `src/lib/notifications.ts` (line 14)
-- Trigger: EmailBison sends webhook without workspace_name param, or workspace query param is blank
-- Workaround: None - notification just doesn't get sent. User finds out later by checking inbox.
-- Fix approach: Return 400 error if workspace slug is empty/invalid. Add webhook retry queue for failed notifications.
+**LinkedIn Session Encryption Key Not Enforced:**
+- Symptoms: Encrypted LinkedIn session cookies can fail to decrypt without `LINKEDIN_SESSION_KEY` env var. Throws hard error instead of graceful fallback
+- Files: `src/lib/crypto.ts` (lines 8-10, 34)
+- Trigger: Deploy to Vercel without `LINKEDIN_SESSION_KEY` set, then attempt to decrypt existing sessions. Worker calls LinkedIn decrypt endpoints
+- Workaround: Always set `LINKEDIN_SESSION_KEY` on Vercel before deploying. No fallback mechanism
 
-**Domain Normalization Not Consistent:**
-- Symptoms: Same company may have multiple records (e.g., "example.com" vs "www.example.com" vs "Example.Com")
-- Files: `src/app/api/companies/enrich/route.ts` (line 69), `src/app/api/people/enrich/route.ts` (lines 83-87)
-- Trigger: Clay webhooks send domains in different formats
-- Workaround: Manual deduplication needed in analytics
-- Fix approach: Normalize all domains to lowercase in a shared utility before upsert. Add migration to clean up existing duplicates.
+**Webhook Signature Validation Optional (Security Risk):**
+- Symptoms: Clay enrichment webhooks and EmailBison webhooks skip authentication if env vars aren't set. Anyone can POST fake enrichment data
+- Files: `src/app/api/people/enrich/route.ts` (lines 210-219), `src/app/api/companies/enrich/route.ts` (lines 187-196)
+- Trigger: `CLAY_WEBHOOK_SECRET` not set on production, attacker sends fake person/company enrichment with arbitrary data
+- Workaround: Always set `CLAY_WEBHOOK_SECRET` on Vercel. Add pre-deployment validation check
+- Impact: Attacker can create unlimited fake leads with fabricated data (fake emails, companies, job titles)
 
-**PersonWorkspace Unique Constraint Not Enforced on Upsert:**
-- Symptoms: If Clay webhook sends duplicate person+workspace pairs in rapid succession (e.g., two concurrent requests), second upsert may fail silently
-- Files: `src/lib/clay/sync.ts` (lines 70-85), `src/app/api/people/enrich/route.ts` (not explicitly shown but affected)
-- Trigger: High-volume webhook from Clay during bulk import
-- Workaround: Depends on retry behavior - may need manual intervention
-- Fix approach: Use Prisma's upsert with explicit error handling. Add database-level check constraints. Implement deduplication key (personId + workspace + sourceId).
+**Worker API Secret Not Enforced:**
+- Symptoms: LinkedIn worker endpoints require `WORKER_API_SECRET` but only log error to console.error, never throw
+- Files: `src/lib/linkedin/auth.ts` (line 10)
+- Trigger: Missing `WORKER_API_SECRET` on production — worker integrations fail silently with "WORKER_API_SECRET not configured"
+- Workaround: Check logs manually. Add deployment validation
+- Impact: LinkedIn login/session management silently fails with no user-facing error
+
+**Concurrent Enrichment Can Exceed Daily Cap:**
+- Symptoms: Two chunks process simultaneously, both pass checkDailyCap() before either increments spend
+- Files: `src/lib/enrichment/costs.ts` (line 38-39), `src/lib/enrichment/queue.ts` (line 103-110)
+- Trigger: Two concurrent invocations of `/api/enrichment/jobs/process` near daily cap threshold
+- Workaround: Keep chunk size small. Monitor daily spend manually
+- Impact: Budget can be exceeded; unplanned API costs
 
 ## Security Considerations
 
-**API Key Validation Optional:**
-- Risk: CLAY_WEBHOOK_SECRET is optional; if not set, any attacker can send arbitrary data to enrichment endpoints and create/modify leads
-- Files: `src/app/api/people/enrich/route.ts` (lines 210-219), `src/app/api/companies/enrich/route.ts` (lines 187-196)
-- Current mitigation: Documentation suggests setting CLAY_WEBHOOK_SECRET in production, but there's no warning or enforcement
-- Recommendations: (1) Make secret required in production (check NODE_ENV). (2) Return 401 instead of accepting unauth requests. (3) Add rate limiting per IP. (4) Log all webhook attempts to detect tampering.
+**Type Escapes (`as any`, `as unknown`):**
+- Risk: 35+ instances of unsafe type casts bypass TypeScript safety. Enables silent runtime errors and type confusion
+- Files: `src/lib/enrichment/waterfall.ts` (line 287 — `(err as any)?.status`), `src/lib/enrichment/providers/leadmagic.ts` (lines 64, 69, 82, 87), `src/lib/enrichment/providers/findymail.ts` (line 74)
+- Current mitigation: None. Type safety completely bypassed in error handling paths
+- Recommendations:
+  1. Create proper error type definition: `class ApiError extends Error { status: number }`
+  2. Replace `as any` with proper instanceof checks or exhaustive type guards
+  3. Enable `noImplicitAny: true` and `strictNullChecks: true` in tsconfig
+  4. Add type guards utility: `const hasStatus = (err: unknown): err is { status: number } => ...`
 
-**No Workspace Access Control on API Routes:**
-- Risk: Anyone knowing a workspace slug can call any API route that updates it (e.g., configure, chatroom)
-- Files: `src/app/api/workspace/[slug]/configure/route.ts` (no auth check), `src/app/api/chat/route.ts` (no auth check)
-- Current mitigation: Routes are not publicly advertised; rely on slug obscurity
-- Recommendations: (1) Add user session/JWT validation. (2) Check that logged-in user owns the workspace. (3) Add audit logging for configuration changes.
+**Unvalidated API Input in Enrichment Endpoints:**
+- Risk: `/api/people/enrich` and `/api/companies/enrich` accept arbitrary fields, store unknowns in JSON columns without size limit
+- Files: `src/app/api/people/enrich/route.ts` (lines 17-18, 90-96), `src/app/api/companies/enrich/route.ts` (lines 18, 80-85)
+- Current mitigation: Field whitelisting (KNOWN_FIELDS) plus catch-all into enrichmentData JSON
+- Recommendations:
+  1. Validate with Zod schema before storing
+  2. Set max size limit on enrichmentData JSON (prevent unbounded growth, cap at 10KB)
+  3. Sanitize unknown fields to prevent injection attacks
+  4. Add rate limiting per IP (prevent data dump attacks)
 
-**Stripe Webhook Secret Used Directly:**
-- Risk: If STRIPE_WEBHOOK_SECRET is compromised, attacker can forge payment confirmations
-- Files: `src/app/api/stripe/webhook/route.ts`
-- Current mitigation: Standard Stripe webhook signing validation
-- Recommendations: Ensure STRIPE_WEBHOOK_SECRET is never logged. Use environment secrets manager (Vercel Secrets). Rotate monthly.
+**Missing CSRF Protection on Portal:**
+- Risk: Portal login, campaign approvals, and LinkedIn connect endpoints may be vulnerable to CSRF attacks
+- Files: `src/app/(portal)/portal/login/page.tsx`, `/api/portal/campaigns/[id]/approve-leads/route.ts`, `/api/linkedin/actions/[id]/complete/route.ts`
+- Current mitigation: Session-based auth (cookies), but no explicit CSRF tokens in forms
+- Recommendations:
+  1. Add CSRF token generation in middleware
+  2. Validate tokens on all state-changing operations
+  3. Check that all portal forms include CSRF token in POST body
+  4. Add SameSite=Strict to session cookie
 
-**JSON Data Not Sanitized for XSS:**
-- Risk: enrichmentData, companyOverview, etc. stored as JSON strings; if rendered in HTML without escaping, XSS possible
-- Files: `src/app/(admin)/workspace/[slug]/page.tsx` (displays workspace data), Proposal/e-signature components
-- Current mitigation: React auto-escapes by default in JSX
-- Recommendations: (1) Audit all JSON.parse() + render flows. (2) Use DOMPurify or React's sanitize libs if displaying user-generated HTML. (3) Add CSP headers.
+**Free Email Domain List Hardcoded:**
+- Risk: List of 24 free email providers is hardcoded in route handler. Missing new providers (Proton Mail, etc.) breaks domain derivation
+- Files: `src/app/api/people/enrich/route.ts` (lines 76-82)
+- Current mitigation: None
+- Recommendations:
+  1. Move list to database table or config file (easier to update)
+  2. Add deployment checklist to review when new free email providers emerge
+  3. Add test cases for edge cases (mail.ru, zoho.com, hey.com)
 
 ## Performance Bottlenecks
 
-**getAllPages Loads Full Dataset into Memory:**
-- Problem: Fetching all campaigns/replies via getAllPages() for a workspace with 10k+ records loads entire dataset into RAM
-- Files: `src/lib/emailbison/client.ts` (lines 65-84), `src/lib/agents/orchestrator.ts` (line 208: getCampaigns)
-- Cause: No pagination, filtering, or streaming in API
-- Improvement path: (1) Add limit/offset params to agent tools. (2) Cache dashboard metrics in CachedMetrics table. (3) Use server-side pagination for UI displays. (4) Consider cursor-based pagination with EmailBison.
+**Synchronous LinkedIn Rate Limit Checking:**
+- Problem: `checkBudget()` in `src/lib/linkedin/queue.ts` (line 98) is called once per action in a loop. Each call queries the database
+- Files: `src/lib/linkedin/queue.ts` (line 95-99), `src/lib/linkedin/rate-limiter.ts`
+- Cause: No batch caching of budget checks. For 10 actions, makes 10+ database queries
+- Improvement path: Cache sender budget state in memory or Redis for the batch duration. Refresh once per `getNextBatch()` call
 
-**Synchronous Loop Over Clay Contacts:**
-- Problem: importClayContacts loops through potentially 1000+ contacts sequentially, one database query per contact
-- Files: `src/lib/clay/sync.ts` (lines 32-92)
-- Cause: No batching; each upsert is a separate DB round-trip
-- Improvement path: (1) Use Prisma's createMany with skipDuplicates where possible. (2) Batch in chunks of 100. (3) Use prisma.$transaction to group updates. (4) Add progress logging for long imports.
+**Large File Operations Without Streaming:**
+- Problem: CSV export loads all people into memory before writing
+- Files: `src/lib/export/csv.ts` (lines 93-102)
+- Cause: Fetches all list members, formats all rows, then serializes to string
+- Improvement path: Implement streaming CSV writer that yields rows incrementally. Return ReadableStream from export endpoint
 
-**No Caching of Workspace Config:**
-- Problem: Every orchestrator tool call queries workspace details from DB; no caching across agent steps
-- Files: `src/lib/agents/orchestrator.ts` (line 171), `src/lib/agents/writer.ts` (line 19)
-- Cause: Each tool re-fetches same workspace data independently
-- Improvement path: (1) Cache workspace in agent context/memory. (2) Use Redis for 5-min workspace cache. (3) Invalidate on update. (4) Add @cached decorator for workspace queries.
+**N+1 Query in Campaign Lead Sample:**
+- Problem: `getCampaignLeadSample()` fetches all list members with company data in loop, could optimize with include
+- Files: `src/lib/campaigns/operations.ts` (lines 674-696)
+- Cause: Fetches targetListPerson rows, then accesses `.person.company` which loads related person records
+- Improvement path: Use Prisma `include: { person: true }` in the initial query
 
-**Website Analysis Parsed on Every Writer Agent Call:**
-- Problem: JSON.parse(analysis.analysis) happens every time writer agent runs; no memoization or structured storage
-- Files: `src/lib/agents/writer.ts` (line 47)
-- Cause: Analysis stored as JSON string; parsed fresh each time
-- Improvement path: (1) Store parsed analysis separately or cache. (2) Index frequently-accessed fields. (3) Consider denormalization for read-heavy analysis lookups.
+**Enrichment Waterfall Fetches Person Twice per Provider:**
+- Problem: After enrichment succeeds, re-fetches the person record to normalize data (line 359 in waterfall.ts)
+- Files: `src/lib/enrichment/waterfall.ts` (line 359)
+- Cause: Data written by `mergePersonData()`, then immediately re-fetched for normalization
+- Improvement path: Return the updated person from `mergePersonData()`, or apply normalizations in memory before writing
+
+**No Caching of Enrichment Dedup Status:**
+- Problem: `shouldEnrich()` checks database on every provider call to see if entity was already enriched
+- Files: `src/lib/enrichment/waterfall.ts` (lines 101, 265), `src/lib/enrichment/dedup.ts`
+- Cause: For 5+ providers per entity, makes 5+ queries. With circuit breaker retry logic, can be 10+
+- Improvement path: Cache dedup status in memory per batch. Mark as "attempted" until job completes
 
 ## Fragile Areas
 
-**Agent System Memory and Context Management:**
-- Files: `src/lib/agents/orchestrator.ts` (line 502), `src/lib/agents/runner.ts`
-- Why fragile: Agents run with maxSteps=12 but no timeout; long-running agents (e.g., crawling large websites) could hang. No circuit breaker if Anthropic API is slow.
-- Safe modification: (1) Add timeout to runAgent. (2) Add step timeout tracking. (3) Implement exponential backoff for API errors. (4) Log all tool calls for debugging.
-- Test coverage: No tests for agent timeout/error scenarios. Integration tests missing.
+**Enrichment Queue Processing:**
+- Files: `src/lib/enrichment/queue.ts`, `src/app/api/enrichment/jobs/process/route.ts`
+- Why fragile: Multiple moving parts with silent failures:
+  1. Job marked as "running" but no timeout if worker crashes
+  2. Entity ID chunks parsed from JSON with silent error handling
+  3. Error log merged with existing errors — malformed existing log silently ignored
+  4. Daily cap check allows job pause but doesn't validate `resumeAt` is set correctly
+- Safe modification:
+  1. Add job heartbeat/timeout mechanism (TTL on "running" status, update every 10s)
+  2. Use structured queue schema validation (Zod)
+  3. Test malformed errorLog recovery path explicitly
+  4. Add integration test for daily cap pause/resume cycle
+  5. Log all job state transitions with timestamps
 
-**Website Crawl Status State Machine:**
-- Files: `src/lib/agents/research.ts`, `src/app/api/webhooks/` (no explicit webhook for crawl completion)
-- Why fragile: WebsiteAnalysis records transition through states (pending -> crawling -> analyzing -> complete) but no locking mechanism. Two concurrent research agent runs could both set status='crawling' then overwrite each other's results.
-- Safe modification: (1) Add optimistic locking with version field. (2) Use database constraints to enforce status transitions. (3) Add createdAt timestamp; only update if record is older than X minutes (detect stuck crawls).
-- Test coverage: No tests for concurrent analysis updates.
+**Free Email Domain List:**
+- Files: `src/app/api/people/enrich/route.ts` (lines 76-82)
+- Why fragile: Hardcoded list of 24 domains. Missing new providers breaks domain derivation for those emails
+- Safe modification:
+  1. Move list to a database table or config file (easier to update)
+  2. Add deployment checklist to review when new free email providers emerge
+  3. Add test cases for edge cases (iCloud+, Proton, new Outlook domains)
+  4. Version the list so old records can be audited
 
-**Knowledge Document Search Without Type Checking:**
-- Files: `src/lib/knowledge/store.ts` (searchKnowledge function)
-- Why fragile: searchKnowledge probably parses chunks JSON without validation; corrupted chunks field breaks search
-- Safe modification: (1) Validate chunks on insert. (2) Wrap JSON.parse in try-catch. (3) Add schema validation (Zod) on KnowledgeDocument.
-- Test coverage: No tests for corrupted knowledge data.
+**Portal Session Cookie Handling:**
+- Files: `src/lib/portal-session.ts`, `src/middleware.ts`
+- Why fragile: Session cookie checked for existence but never re-validated on each request. No expiry enforcement
+- Safe modification:
+  1. Add explicit expiry check to `getPortalSession()` (max 24 hours)
+  2. Validate session token against database on each request (not just presence)
+  3. Add logout mechanism to invalidate sessions
+  4. Add `createdAt` and `expiresAt` fields to session table
 
-**Workspace Status Transitions Not Validated:**
-- Files: `src/app/api/workspace/[slug]/configure/route.ts` (line 10: status field in ALLOWED_FIELDS)
-- Why fragile: Any status string is accepted (enum not enforced at API level). Invalid transitions possible (e.g., onboarding -> active without setup).
-- Safe modification: (1) Add Zod schema with enum("onboarding", "pending_emailbison", "active"). (2) Add validation middleware. (3) Add audit log for status changes.
-- Test coverage: No validation tests.
+**Campaign State Machine:**
+- Files: `src/lib/campaigns/operations.ts` (lines 67-75)
+- Why fragile: VALID_TRANSITIONS dict is easily modified. No audit trail for state changes. Bypass possible with direct database update
+- Safe modification:
+  1. Log all state transitions with timestamp and actor ID
+  2. Add explicit validation that new status matches allowed transitions
+  3. Test every transition path in test suite
+  4. Add database constraint or trigger to enforce valid transitions
+
+**Concurrent Job Processing Without Locking:**
+- Files: `src/lib/enrichment/queue.ts` (lines 74-90)
+- Why fragile: Two concurrent workers could pick up same job. `findFirst()` followed by `update()` is not atomic
+- Safe modification:
+  1. Use database-level `FOR UPDATE` locking in Prisma: `findFirst({ where: {...} }, { for: "update" })`
+  2. Or implement optimistic locking with version field
+  3. Add test for concurrent job pickup
 
 ## Scaling Limits
 
-**Database Query N+1 in Agent Tools:**
-- Current capacity: Works fine for <100 workspaces; degrades with each workspace adding 5-10 unnecessary queries per agent run
-- Limit: ~500+ concurrent agent runs start to show high query latency
-- Scaling path: (1) Batch load related data (include relations in Prisma queries). (2) Add query caching layer (Redis). (3) Use DataLoader pattern for agent tools. (4) Profile with Prisma Studio.
+**Daily Enrichment Cost Cap (Soft Limit):**
+- Current capacity: $10.00 USD per day (configurable via `ENRICHMENT_DAILY_CAP_USD`)
+- Limit: Non-atomic check + increment allows 1 chunk overspend (~$0.50 max). Multiple concurrent requests can exceed cap
+- Scaling path:
+  1. Increase cap via env var (no code change needed)
+  2. Switch to transactional checks to prevent overspend
+  3. Implement provider-level rate limiting (reduce max retries)
+  4. Add per-workspace daily caps (not just global)
 
-**Webhook Event Storage Unbounded:**
-- Current capacity: WebhookEvent table grows ~1000s per week per workspace
-- Limit: After 6 months, table could have 500k+ records; queries slow, storage grows
-- Scaling path: (1) Archive old events (>90 days) to separate table. (2) Add materialized view for metrics. (3) Implement event retention policy. (4) Use time-series database (TimescaleDB) for events.
+**LinkedIn Sender Daily Action Limits:**
+- Current capacity: Per-sender limits hardcoded in rate limiter
+- Limit: If a workspace exceeds sender capacity, actions queue indefinitely (no timeout)
+- Scaling path:
+  1. Add more senders per workspace (multi-account support already designed)
+  2. Implement action timeout/discard after N days
+  3. Add dashboard to show queue depth and estimated completion
 
-**EmailBison API Rate Limits Not Respected:**
-- Current capacity: Sequential API calls work for small datasets; getAllPages has no rate limiting
-- Limit: Bulk imports or dashboard refreshes can hit EmailBison's 100 req/min limit
-- Scaling path: (1) Add exponential backoff with jitter. (2) Implement request queue with rate limiting. (3) Cache campaigns/replies with 5-min TTL. (4) Add circuit breaker pattern.
+**Portal Campaign Approvals:**
+- Current capacity: No limit on concurrent campaign approvals
+- Limit: If client approves many campaigns simultaneously, EmailBison API rate limits could block deployment
+- Scaling path:
+  1. Queue campaign deployments with exponential backoff
+  2. Batch deploy multiple campaigns in single EmailBison call
+  3. Add concurrency limiter (max 3 concurrent deploys per workspace)
 
-**Knowledge Base Search Unbounded:**
-- Current capacity: searchKnowledge likely does vector similarity across all documents
-- Limit: With 100+ documents and concurrent searches, could cause Anthropic API overload
-- Scaling path: (1) Implement search result limit (e.g., top 5 most relevant). (2) Add caching for common queries. (3) Use hybrid search (keywords + vector). (4) Consider switching to Pinecone/Weaviate for large-scale RAG.
+**Enrichment Job Queue Without Pagination:**
+- Current capacity: Reads full `entityIds` JSON array into memory
+- Limit: Jobs with 100k+ entity IDs will consume memory. Large chunks slow down job retrieval
+- Scaling path:
+  1. Split large enqueueJob requests into multiple smaller jobs
+  2. Or store entityIds in separate table instead of JSON column
+  3. Or use cursor-based job iteration instead of loading all IDs
 
 ## Dependencies at Risk
 
-**Next.js 16 - Rapid Release Cycle:**
-- Risk: Next.js versions every 2-4 weeks; dependency updates could break production (e.g., API changes, breaking changes in middleware)
-- Impact: Vercel deployment could fail. Next.js ISR/revalidation behavior changes unpredictably.
-- Migration plan: (1) Test major updates in staging before deploying to prod. (2) Pin to specific minor version in package.json. (3) Monitor release notes weekly. (4) Consider pinning to LTS if available (Next.js 14 is stable).
+**Railway Worker for LinkedIn (External Service):**
+- Risk: Railway hosting is external. Worker IP/proxy changes could break session capture. Service could go down
+- Impact: LinkedIn login fails. Clients can't add new accounts or send LinkedIn messages
+- Migration plan:
+  1. Monitor Railway uptime and response times
+  2. Add fallback error messaging to portal
+  3. Document manual session recovery process (if possible)
+  4. Consider self-hosted worker as fallback
 
-**Prisma 6 - Large Major Version Jump:**
-- Risk: Recently upgraded from v5; potential query behavior changes, schema incompatibilities
-- Impact: Database queries could behave differently. generatePrismaClient hooks could break.
-- Migration plan: (1) Monitor breaking changes in Prisma release notes. (2) Run migration tests before deploying. (3) Keep v5 in separate branch for rollback. (4) Test with Neon PostgreSQL explicitly.
+**Stripe (Payment Processing):**
+- Risk: Webhook signature validation optional. `STRIPE_WEBHOOK_SECRET` not enforced
+- Impact: Fake payment webhooks could trigger onboarding or proposals without payment
+- Migration plan:
+  1. Make `STRIPE_WEBHOOK_SECRET` mandatory on production (check at startup)
+  2. Add CI check to verify all secrets set before deploy
+  3. Rotate secret monthly
+  4. Monitor webhook delivery in Stripe dashboard
 
-**Anthropic AI SDK - Still in Beta (3.0.x):**
-- Risk: API surface could change; tool definitions, error handling may shift
-- Impact: Agent system could break if SDK updates incompatibly (especially orchestrator delegation pattern)
-- Migration plan: (1) Lock to specific minor version. (2) Test agent workflows after each SDK update. (3) Monitor https://github.com/anthropics/anthropic-sdk-python/releases. (4) Maintain fallback error handling for API changes.
+**EmailBison API Rate Limits:**
+- Risk: Batch campaign export hits `/api/campaigns` endpoint which may have rate limits
+- Impact: Large batch exports fail silently
+- Migration plan:
+  1. Implement exponential backoff with jitter on EmailBison calls
+  2. Cache campaign list response (5-min TTL if data freshness allows)
+  3. Add circuit breaker pattern (stop retrying after 5 failures)
 
-**Firecrawl API - External Service Dependency:**
-- Risk: Service could go down, rate limiting could tighten, API could change format
-- Impact: Website crawling fails entirely; research agent becomes unusable
-- Migration plan: (1) Add retry logic with exponential backoff. (2) Implement circuit breaker (stop crawling if failing >50% of attempts). (3) Cache crawl results aggressively. (4) Consider Playwright/Puppeteer as local fallback.
+**Neon PostgreSQL:**
+- Risk: Database provider could change pricing or add cold-start delays
+- Impact: Production queries slow down unexpectedly
+- Migration plan:
+  1. Monitor query performance (add APM)
+  2. Have backup database provider identified (Supabase, Railway)
+  3. Test migration to new provider quarterly
 
 ## Missing Critical Features
 
-**No Observability / Structured Logging:**
-- Problem: console.error and console.log scattered throughout; no structured format, no log levels, no trace IDs
-- Blocks: Debugging production issues, tracing agent execution, monitoring error rates
-- Fix approach: (1) Add Winston or Pino logger. (2) Use structured JSON logging. (3) Add trace IDs to all async operations. (4) Ship logs to Vercel Analytics or external service (Datadog, LogRocket).
+**No Audit Trail for Sensitive Operations:**
+- Problem: Campaign approvals, list exports, and enrichment runs have no audit log
+- Blocks: Compliance audits, debugging user actions, rollback capability
+- Fix approach: Add audit_log table with `{action, actor, timestamp, before, after}` fields. Log on campaign state change, export, and enrichment start/complete
 
-**No Agent Execution History or Audit Trail:**
-- Problem: Agent runs are logged to AgentRun table but not easily queryable or displayable in UI
-- Blocks: Debugging agent failures, understanding agent decision-making, auditing changes made by agents
-- Fix approach: (1) Build UI page for agent run history. (2) Add filtering by workspace/agent/status. (3) Show tool calls, reasoning, and output in detail. (4) Add replay/rerun functionality.
+**No Idempotency Keys:**
+- Problem: Duplicate webhook deliveries could create duplicate people/companies or double-count enrichments
+- Blocks: Reliable webhook handling, safe retries
+- Fix approach: Add idempotency_key column to Person, Company, EnrichmentJob. Check key before insert. Return cached result on duplicate
 
-**No Retry Mechanism for Failed Webhooks:**
-- Problem: If Clay/EmailBison webhook fails midway, no automatic retry; data may be lost
-- Blocks: Reliable data sync from external sources
-- Fix approach: (1) Implement webhook retry queue (Bull, Inngest, or simple cron). (2) Store failed events in database. (3) Retry with exponential backoff. (4) Add dead-letter queue for permanently failed events.
+**No Job Timeout Mechanism:**
+- Problem: Enrichment jobs stuck in "running" state forever if worker crashes
+- Blocks: Job recovery, health monitoring
+- Fix approach: Add `heartbeatAt` column to EnrichmentJob. Mark as failed if no heartbeat in 5 minutes
 
-**No Bulk Lead Import UI:**
-- Problem: Can only import leads via API/webhooks; no admin UI for one-off CSV uploads
-- Blocks: Onboarding new clients manually
-- Fix approach: (1) Add CSV upload endpoint and form. (2) Validate and preview before import. (3) Show import progress and errors. (4) Allow mapping of CSV columns to Lead fields.
+**No Rate Limit Headers in API Responses:**
+- Problem: Clients (Clay, EmailBison) don't know when they'll be rate-limited
+- Blocks: Graceful retry logic on client side
+- Fix approach: Add RateLimit-* headers to all API responses per RFC 6585 (RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset)
 
-**No Workspace Permission Model:**
-- Problem: No concept of team members, roles, or granular permissions; all admins can see all workspaces
-- Blocks: Multi-user teams, client delegation, secure collaboration
-- Fix approach: (1) Add User and WorkspacePermission models. (2) Implement role-based access control (RBAC). (3) Add audit log for access. (4) Implement org/team concepts.
+**No Structured Observability:**
+- Problem: console.log scattered everywhere. No trace IDs, no request correlation
+- Blocks: Debugging distributed issues (webhooks → enrichment → notifications)
+- Fix approach: Implement centralized logger (Pino/Winston) with structured fields. Add trace ID to all requests. Ship to log aggregation service
 
 ## Test Coverage Gaps
 
-**Webhook Payload Validation:**
-- What's not tested: Invalid EmailBison webhook formats, missing fields, malformed JSON
-- Files: `src/app/api/webhooks/emailbison/route.ts`
-- Risk: Bad payload could crash or corrupt database
-- Priority: High
+**Enrichment Waterfall Error Paths:**
+- What's not tested:
+  - Circuit breaker behavior when 5+ consecutive failures occur
+  - Daily cap pause/resume cycle across chunk boundaries
+  - Normalizer failures during enrichment (classifyJobTitle throws)
+  - Malformed enrichmentData JSON during merge
+  - Retry logic with 429 responses and exponential backoff
+- Files: `src/lib/enrichment/waterfall.ts`
+- Risk: Circuit breaker false positives or negatives. Paused jobs may never resume. Retries could retry indefinitely
+- Priority: High — affects core enrichment pipeline reliability
 
-**Concurrent Enrichment Operations:**
-- What's not tested: Two simultaneous enrichPerson calls for same email; race conditions in upsert
-- Files: `src/app/api/people/enrich/route.ts`, `src/lib/clay/sync.ts`
-- Risk: Data inconsistency, duplicate records
-- Priority: High
+**Portal Authentication Flow:**
+- What's not tested:
+  - Session expiry enforcement
+  - Concurrent login attempts
+  - CSRF protection (if implemented)
+  - Cross-origin portal access
+  - Session invalidation on logout
+- Files: `src/lib/portal-session.ts`, `src/app/(portal)/portal/login/page.tsx`
+- Risk: Unauthorized access, session hijacking, sessions never expire
+- Priority: High — affects client data security
 
-**Agent Tool Error Handling:**
-- What's not tested: What happens when EmailBison API returns 500, or workspace not found during agent execution
-- Files: `src/lib/agents/orchestrator.ts` (delegateToResearch, delegateToCampaign)
-- Risk: Agent hangs or returns cryptic errors to user
-- Priority: Medium
+**LinkedIn Worker Integration:**
+- What's not tested:
+  - Worker not available (timeout, 500 error)
+  - Invalid credentials rejected by LinkedIn
+  - Session capture race conditions (multiple logins simultaneously)
+  - Proxy rotation behavior
+  - Worker secret validation
+- Files: `src/lib/linkedin/actions.ts`, `src/app/api/linkedin/senders/[id]/login/route.ts`
+- Risk: LinkedIn account setup mysteriously fails with no clear error. Concurrent logins corrupt session state
+- Priority: Medium — affects feature usage but has workaround (manual session)
 
-**Database Transaction Failures:**
-- What's not tested: Prisma transaction rollback, connection errors during multi-step operations
-- Files: All database operations in Clay sync, enrichment endpoints
-- Risk: Partial updates leave system in bad state
-- Priority: Medium
+**Batch Enrichment Enqueue/Dequeue:**
+- What's not tested:
+  - Concurrent enqueue (duplicate job IDs?)
+  - Large entityIds arrays (1M+ items)
+  - Entity IDs in wrong format (invalid UUID)
+  - Job pickup race between multiple workers
+  - Job marked "running" but never completes
+- Files: `src/lib/enrichment/queue.ts`
+- Risk: Queue corruption, lost jobs, duplicate processing, zombie jobs
+- Priority: Medium — affects reliability at scale
 
-**JSON Parse Edge Cases:**
-- What's not tested: Empty strings, null, undefined, circular references in enrichmentData fields
-- Files: `src/lib/agents/writer.ts` (line 47), `src/app/api/companies/enrich/route.ts` (line 113)
-- Risk: Crashes or unexpected behavior when parsing database fields
-- Priority: Medium
+**Webhook Idempotency:**
+- What's not tested:
+  - Duplicate webhook delivery (same payload twice)
+  - Webhook retry with updated data
+  - Concurrent webhooks for same entity
+- Files: `src/app/api/people/enrich/route.ts`, `/api/webhooks/emailbison/route.ts`
+- Risk: Duplicate records, data inconsistency, double-cost counting
+- Priority: Medium — Clay/EmailBison may retry webhooks
 
 ---
 
-*Concerns audit: 2026-02-26*
+*Concerns audit: 2025-03-01*
