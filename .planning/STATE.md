@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T09:01:00Z"
+last_updated: "2026-03-01T09:05:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 8 of 10 (Campaign Entity Writer — 08-01 complete, 08-02 through 08-06 remaining)
-Plan: 1 of 6 in current phase (08-01 done)
-Status: In Progress (Phase 8 started — Campaign model deployed)
-Last activity: 2026-03-01 — Executed Plan 01: added Campaign Prisma model with full status lifecycle, dual approval fields, JSON sequence columns; pushed to Neon DB
+Phase: 8 of 10 (Campaign Entity Writer — 08-01 and 08-03 complete, 08-02 and 08-04 through 08-06 remaining)
+Plan: 3 of 6 in current phase (08-01 and 08-03 done)
+Status: In Progress (Phase 8 — Campaign operations layer deployed)
+Last activity: 2026-03-01 — Executed Plan 03: created Campaign operations layer with 8 CRUD/lifecycle functions, state machine validation, typed interfaces
 
-Progress: [██░░░░░░░░] 22% (v1.1 — Phase 8 started)
+Progress: [██░░░░░░░░] 24% (v1.1 — Phase 8 in progress)
 
 ## Accumulated Context
 
@@ -61,6 +61,10 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [08-01]: targetListId nullable — Campaign can exist before lead list is attached
 - [08-01]: @@unique([workspaceSlug, name]) enforced at DB level to prevent accidental duplicate campaign names
 - [08-01]: channels stored as JSON string defaulting to ["email"] — supports email, linkedin, or both
+- [08-03]: State machine as VALID_TRANSITIONS Record<string, string[]>; any->completed always allowed via early-return check
+- [08-03]: parseJsonArray helper returns null on invalid JSON (not throws) — safe for legacy/corrupt data
+- [08-03]: formatCampaignDetail centralizes JSON parsing and shaping — all 8 functions reuse single helper
+- [08-03]: deleteCampaign restricted to draft/internal_review only — protects active campaigns
 
 **Phase 7.1 decisions (2026-02-27):**
 - [07.1-01]: apiToken check placed at call site in exportListToEmailBison, not in getClientForWorkspace — avoids changing shared utility used by many other tools
@@ -82,5 +86,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 08-01-PLAN.md (Campaign Prisma model added, schema pushed to Neon, client regenerated). Phase 8 Plan 1 complete. Next: Phase 8 Plan 2 (Writer Agent).
+Stopped at: Completed 08-03-PLAN.md (Campaign operations layer with 8 CRUD/lifecycle functions and state machine). Phase 8 Plan 3 complete. Next: Phase 8 Plan 2 (Writer Agent) or Plan 4 (API routes).
 Resume file: None
