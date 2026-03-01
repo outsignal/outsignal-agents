@@ -103,10 +103,10 @@ Plans:
   8. Client from workspace A cannot view or act on campaigns belonging to workspace B
 **Plans**: TBD
 
-### Phase 10: Auto-Deploy on Approval
-**Goal**: When client approves both leads and content, the system auto-deploys to EmailBison (campaign + sequence steps + leads) and LinkedIn sequencer (connection requests + follow-ups) as a fire-and-forget background job, with deploy status visible to admin.
-**Depends on**: Phase 9 (approval flow exists)
-**Requirements**: DEPLOY-02, DEPLOY-03, DEPLOY-04, DEPLOY-05, DEPLOY-06, DEPLOY-07
+### Phase 10: Auto-Deploy + Email ↔ LinkedIn Sequencing
+**Goal**: When client approves both leads and content, the system auto-deploys to EmailBison (campaign + sequence steps + leads) and LinkedIn sequencer (connection requests + follow-ups) as a fire-and-forget background job, with deploy status visible to admin. Email and LinkedIn channels are interconnected — LinkedIn actions trigger based on email events (EMAIL_SENT steps 1/2/3), and LinkedIn content adapts based on which email step fired.
+**Depends on**: Phase 9 (approval flow exists), LinkedIn agent-browser rewrite (profile-first targeting)
+**Requirements**: DEPLOY-02, DEPLOY-03, DEPLOY-04, DEPLOY-05, DEPLOY-06, DEPLOY-07, SEQ-01, SEQ-02, SEQ-03, SEQ-04, SEQ-05
 **Success Criteria** (what must be TRUE):
   1. On dual approval, deploy triggers automatically (no admin intervention) and returns immediately while running in background
   2. EmailBison shows a new campaign with sequence steps matching the approved email content after deploy completes
@@ -115,6 +115,11 @@ Plans:
   5. Deploy handles email-only, LinkedIn-only, or both channels depending on Campaign.channels
   6. CampaignDeploy record tracks status (pending → running → complete / failed), lead count, step count, error message — visible in admin campaign detail
   7. Admin receives notification when deploy completes or fails
+  8. EMAIL_SENT webhook triggers LinkedIn actions via CampaignSequenceRule — e.g., "24h after Email 1, send connection request" is queued automatically
+  9. CampaignSequenceRule maps email steps to LinkedIn actions with configurable delays, message templates, and action types
+  10. Connection accept detection polls periodically — when a connection is accepted, the next LinkedIn sequence step (e.g., follow-up message) is auto-queued
+  11. LinkedIn content adapts based on email step context — message templates can reference which email the lead received
+  12. Sender session refresh runs on a daily cron — proactively re-authenticates sessions older than 6 days to prevent expiry failures
 **Plans**: TBD
 
 ## Progress

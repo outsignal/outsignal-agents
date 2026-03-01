@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-02-27T19:30:27.714Z"
+last_updated: "2026-03-01T09:01:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 7
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 7.1 of 10 (Leads Agent Integration Fixes — fully complete, including SC-1 gap closure)
-Plan: 3 of 3 in current phase (all plans complete, phase done)
-Status: In Progress (Phase 7.1 fully complete — next: Phase 8)
-Last activity: 2026-02-27 — Executed Plan 03: removed dead operations imports from score.ts and export.ts, updated ROADMAP SC-1 with accepted-exclusions language, added LEAD-05 scope note to REQUIREMENTS
+Phase: 8 of 10 (Campaign Entity Writer — 08-01 complete, 08-02 through 08-06 remaining)
+Plan: 1 of 6 in current phase (08-01 done)
+Status: In Progress (Phase 8 started — Campaign model deployed)
+Last activity: 2026-03-01 — Executed Plan 01: added Campaign Prisma model with full status lifecycle, dual approval fields, JSON sequence columns; pushed to Neon DB
 
-Progress: [██░░░░░░░░] 20% (v1.1 — Phase 7 complete, 7.1-10 remaining)
+Progress: [██░░░░░░░░] 22% (v1.1 — Phase 8 started)
 
 ## Accumulated Context
 
@@ -56,6 +56,12 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [07-03]: maxDuration = 300 on chat route — worst-case scoring for large lists can approach 300s
 - [07-04]: getSequenceSteps broken path fixed to /campaigns/campaignId/sequence-steps (confirmed correct via live API probe)
 
+**Phase 8 decisions (2026-03-01):**
+- [08-01]: Campaign stores email/LinkedIn sequences as JSON String columns (not relational EmailDraft rows) — simpler for writer agent output and client review flow
+- [08-01]: targetListId nullable — Campaign can exist before lead list is attached
+- [08-01]: @@unique([workspaceSlug, name]) enforced at DB level to prevent accidental duplicate campaign names
+- [08-01]: channels stored as JSON string defaulting to ["email"] — supports email, linkedin, or both
+
 **Phase 7.1 decisions (2026-02-27):**
 - [07.1-01]: apiToken check placed at call site in exportListToEmailBison, not in getClientForWorkspace — avoids changing shared utility used by many other tools
 - [07.1-01]: conversationContext gap was only in orchestrator schema; leads.ts already handled it — one-file fix
@@ -75,6 +81,6 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-02-27
-Stopped at: Completed 07.1-03-PLAN.md (SC-1 gap closure: dead imports removed from score.ts and export.ts, ROADMAP SC-1 and REQUIREMENTS LEAD-05 scope documented). Phase 7.1 fully complete. Next: Phase 8.
+Last session: 2026-03-01
+Stopped at: Completed 08-01-PLAN.md (Campaign Prisma model added, schema pushed to Neon, client regenerated). Phase 8 Plan 1 complete. Next: Phase 8 Plan 2 (Writer Agent).
 Resume file: None

@@ -18,10 +18,10 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### Campaign Entity
 
-- [ ] **CAMP-01**: Campaign model exists as first-class entity with status lifecycle (draft → internal_review → pending_approval → approved → deployed → active → paused → completed)
-- [ ] **CAMP-02**: Campaign owns a TargetList (leads) and stores email + LinkedIn sequences (content)
+- [x] **CAMP-01**: Campaign model exists as first-class entity with status lifecycle (draft → internal_review → pending_approval → approved → deployed → active → paused → completed)
+- [x] **CAMP-02**: Campaign owns a TargetList (leads) and stores email + LinkedIn sequences (content)
 - [ ] **CAMP-03**: Admin can create campaigns from Cmd+J chat, linking a TargetList and setting channels (email, LinkedIn, or both)
-- [ ] **CAMP-04**: Campaign has separate approval fields for leads and content (approved/feedback/timestamp for each)
+- [x] **CAMP-04**: Campaign has separate approval fields for leads and content (approved/feedback/timestamp for each)
 - [ ] **CAMP-05**: Campaign CRUD API routes enforce workspace ownership
 
 ### Writer Agent
@@ -55,6 +55,14 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [ ] **DEPLOY-05**: System queues LinkedIn messages via LinkedIn sequencer worker on Railway
 - [ ] **DEPLOY-06**: Deploy is fire-and-forget with CampaignDeploy record tracking status (pending → running → complete / failed)
 - [ ] **DEPLOY-07**: Deploy handles email-only, LinkedIn-only, or both channels depending on Campaign.channels
+
+### Email ↔ LinkedIn Sequencing
+
+- [ ] **SEQ-01**: EMAIL_SENT webhook triggers LinkedIn actions via CampaignSequenceRule — configurable delay between email send and LinkedIn action (e.g., "24h after Email 1, send connection request")
+- [ ] **SEQ-02**: CampaignSequenceRule maps email steps to LinkedIn actions with triggerEvent, triggerStepRef, actionType, messageTemplate, and delayMinutes
+- [ ] **SEQ-03**: Connection accept detection polls periodically — when accepted, next LinkedIn sequence step auto-queues (e.g., follow-up message)
+- [ ] **SEQ-04**: LinkedIn message templates can reference email step context — adapting content based on which email the lead received
+- [ ] **SEQ-05**: Sender session refresh runs on daily cron — proactively re-authenticates sessions older than 6 days to prevent expiry failures
 
 ### Notifications
 
@@ -117,10 +125,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LEAD-05 | Phase 7.1 | Complete |
 | LEAD-06 | Phase 7 | Complete |
 | DEPLOY-01 | Phase 7 | Complete |
-| CAMP-01 | Phase 8 | Pending |
-| CAMP-02 | Phase 8 | Pending |
+| CAMP-01 | Phase 8 | Complete |
+| CAMP-02 | Phase 8 | Complete |
 | CAMP-03 | Phase 8 | Pending |
-| CAMP-04 | Phase 8 | Pending |
+| CAMP-04 | Phase 8 | Complete |
 | CAMP-05 | Phase 8 | Pending |
 | WRITER-01 | Phase 8 | Pending |
 | WRITER-02 | Phase 8 | Pending |
@@ -147,12 +155,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEPLOY-06 | Phase 10 | Pending |
 | DEPLOY-07 | Phase 10 | Pending |
 | NOTIF-03 | Phase 10 | Pending |
+| SEQ-01 | Phase 10 | Pending |
+| SEQ-02 | Phase 10 | Pending |
+| SEQ-03 | Phase 10 | Pending |
+| SEQ-04 | Phase 10 | Pending |
+| SEQ-05 | Phase 10 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 38 total (7 complete, 31 pending)
-- Mapped to phases: 38
+- v1.1 requirements: 43 total (7 complete, 36 pending)
+- Mapped to phases: 43
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-27*
-*Last updated: 2026-02-27 — Revised Phases 8-10 per outbound vision alignment*
+*Last updated: 2026-03-01 — Added SEQ-01 to SEQ-05 (Email ↔ LinkedIn sequencing) to Phase 10*
