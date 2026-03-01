@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, approveCampaignLeads } from "@/lib/campaigns/operations";
+import { notifyApproval } from "@/lib/notifications";
 
 export async function POST(
   _req: Request,
@@ -24,6 +25,18 @@ export async function POST(
   }
 
   const updated = await approveCampaignLeads(id);
+
+  // Determine if this triggered dual approval
+  const action = updated.status === "approved" ? "both_approved" : "leads_approved";
+
+  // Non-blocking notification
+  notifyApproval({
+    workspaceSlug: session.workspaceSlug,
+    campaignId: id,
+    campaignName: campaign.name,
+    action,
+    feedback: null,
+  }).catch((err) => console.error("Approval notification failed:", err));
 
   return NextResponse.json({ campaign: updated });
 }

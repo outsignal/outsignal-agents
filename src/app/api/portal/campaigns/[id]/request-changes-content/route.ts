@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, rejectCampaignContent } from "@/lib/campaigns/operations";
+import { notifyApproval } from "@/lib/notifications";
 
 export async function POST(
   req: Request,
@@ -33,6 +34,14 @@ export async function POST(
   }
 
   const updated = await rejectCampaignContent(id, feedback.trim());
+
+  notifyApproval({
+    workspaceSlug: session.workspaceSlug,
+    campaignId: id,
+    campaignName: campaign.name,
+    action: "content_rejected",
+    feedback: feedback.trim(),
+  }).catch((err) => console.error("Approval notification failed:", err));
 
   return NextResponse.json({ campaign: updated });
 }
