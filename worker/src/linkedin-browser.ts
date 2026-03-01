@@ -91,7 +91,7 @@ export class LinkedInBrowser {
    */
   private killDaemon(): void {
     try {
-      execFileSync("agent-browser", ["close"], {
+      execFileSync("agent-browser", ["--session", this.session, "close"], {
         encoding: "utf-8",
         timeout: 5000,
       });
