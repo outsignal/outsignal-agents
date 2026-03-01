@@ -14,6 +14,9 @@
  *   npx tsx scripts/ingest-document.ts --list
  */
 
+import { config } from "dotenv";
+config({ path: ".env.local" }); // Load env vars for local script execution
+
 import { readFileSync, existsSync } from "fs";
 import { basename, extname } from "path";
 import { PrismaClient } from "@prisma/client";
