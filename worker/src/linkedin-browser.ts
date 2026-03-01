@@ -1367,8 +1367,51 @@ export class LinkedInBrowser {
           this.log(`  ${el.role}: "${el.text}" [ref=${el.ref}]`),
         );
 
+        // LinkedIn's default challenge page shows a PIN-to-email flow.
+        // The TOTP input is on a separate page behind "Verify using
+        // authenticator app". Click that link first if it exists.
+        const authAppLink = tfaElements.find((el) => {
+          const lower = el.text.toLowerCase();
+          return (
+            el.role === "link" &&
+            (lower.includes("authenticator app") ||
+              lower.includes("authenticator"))
+          );
+        });
+
+        // We'll work with a mutable reference so we can re-snapshot after
+        // navigating to the authenticator page.
+        let activeElements = tfaElements;
+
+        if (authAppLink) {
+          this.log(
+            `Found authenticator app link: ref=${authAppLink.ref}, text="${authAppLink.text}" — clicking`,
+          );
+          this.exec(`click ${authAppLink.ref}`);
+          await this.sleep(3000);
+
+          // Take a fresh snapshot of the authenticator TOTP page
+          const authSnapshot = this.exec("snapshot -i");
+          activeElements = this.parseSnapshot(authSnapshot);
+
+          // Debug: log authenticator page snapshot for Railway log diagnosis
+          this.log(
+            `Authenticator page raw snapshot (first 500 chars): ${authSnapshot.substring(0, 500)}`,
+          );
+          this.log(
+            `Authenticator page snapshot has ${activeElements.length} elements`,
+          );
+          activeElements.slice(0, 20).forEach((el) =>
+            this.log(`  ${el.role}: "${el.text}" [ref=${el.ref}]`),
+          );
+        } else {
+          this.log(
+            "No authenticator app link found — assuming TOTP input is already on this page",
+          );
+        }
+
         // 1. Try labelled match: textbox/input with verification-related label
-        const pinInput = tfaElements.find((el) => {
+        const pinInput = activeElements.find((el) => {
           const lower = el.raw.toLowerCase();
           const textLower = el.text.toLowerCase();
           const isInput =
@@ -1394,7 +1437,7 @@ export class LinkedInBrowser {
         //    typically only have one input)
         const tfaInput =
           pinInput ??
-          tfaElements.find(
+          activeElements.find(
             (el) =>
               el.role === "textbox" ||
               el.role === "input" ||
@@ -1412,11 +1455,11 @@ export class LinkedInBrowser {
           // Find submit button — LinkedIn uses varying labels across
           // different challenge page variants
           const submitBtn =
-            this.findElement(tfaElements, "Submit", "button") ??
-            this.findElement(tfaElements, "Verify", "button") ??
-            this.findElement(tfaElements, "Next", "button") ??
-            this.findElement(tfaElements, "Done", "button") ??
-            this.findElement(tfaElements, "Continue", "button");
+            this.findElement(activeElements, "Submit", "button") ??
+            this.findElement(activeElements, "Verify", "button") ??
+            this.findElement(activeElements, "Next", "button") ??
+            this.findElement(activeElements, "Done", "button") ??
+            this.findElement(activeElements, "Continue", "button");
 
           if (submitBtn) {
             this.log(
