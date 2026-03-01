@@ -36,7 +36,8 @@ export async function notifyApproval(params: {
       "Both leads and content approved — auto-deploy triggered",
   };
 
-  const campaignUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai"}/workspace/${params.workspaceSlug}/campaigns/${params.campaignId}`;
+  const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL ?? "https://portal.outsignal.ai";
+  const campaignUrl = `${portalBase}/portal/campaigns/${params.campaignId}`;
 
   // ---------- Slack ----------
 
