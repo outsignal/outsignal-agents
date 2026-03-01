@@ -6,7 +6,9 @@
  * Never put DB queries or business logic inside agent tool closures.
  *
  * Exports: createCampaign, getCampaign, listCampaigns, updateCampaign,
- *          updateCampaignStatus, deleteCampaign, publishForReview, saveCampaignSequences
+ *          updateCampaignStatus, deleteCampaign, publishForReview, saveCampaignSequences,
+ *          approveCampaignLeads, rejectCampaignLeads, approveCampaignContent,
+ *          rejectCampaignContent, getCampaignLeadSample
  */
 
 import { prisma } from "@/lib/db";
@@ -498,4 +500,206 @@ export async function saveCampaignSequences(
   });
 
   return formatCampaignDetail(campaign);
+}
+
+// ---------------------------------------------------------------------------
+// 9. approveCampaignLeads — approve the lead list for a campaign
+// ---------------------------------------------------------------------------
+
+/**
+ * Approve the lead list for a campaign.
+ *
+ * Sets leadsApproved: true, clears previous feedback, sets timestamp.
+ * If contentApproved is also true and status is 'pending_approval',
+ * auto-transitions the campaign to 'approved'.
+ *
+ * @param id - Campaign ID
+ * @returns Updated CampaignDetail
+ * @throws If campaign not found
+ */
+export async function approveCampaignLeads(id: string): Promise<CampaignDetail> {
+  const current = await prisma.campaign.findUnique({
+    where: { id },
+    select: { contentApproved: true, status: true },
+  });
+
+  if (!current) throw new Error(`Campaign not found: '${id}'`);
+
+  const updateData: Record<string, unknown> = {
+    leadsApproved: true,
+    leadsApprovedAt: new Date(),
+    leadsFeedback: null, // clear previous feedback on approval
+  };
+
+  // Dual approval check: if content is ALSO already approved, transition to 'approved'
+  if (current.contentApproved && current.status === "pending_approval") {
+    updateData.status = "approved";
+  }
+
+  const campaign = await prisma.campaign.update({
+    where: { id },
+    data: updateData,
+    include: targetListInclude,
+  });
+
+  return formatCampaignDetail(campaign);
+}
+
+// ---------------------------------------------------------------------------
+// 10. rejectCampaignLeads — reject the lead list with feedback
+// ---------------------------------------------------------------------------
+
+/**
+ * Reject the lead list for a campaign with feedback text.
+ *
+ * @param id - Campaign ID
+ * @param feedback - Rejection reason / feedback for the admin
+ * @returns Updated CampaignDetail
+ */
+export async function rejectCampaignLeads(
+  id: string,
+  feedback: string,
+): Promise<CampaignDetail> {
+  const campaign = await prisma.campaign.update({
+    where: { id },
+    data: {
+      leadsApproved: false,
+      leadsFeedback: feedback,
+    },
+    include: targetListInclude,
+  });
+  return formatCampaignDetail(campaign);
+}
+
+// ---------------------------------------------------------------------------
+// 11. approveCampaignContent — approve the email/LinkedIn content
+// ---------------------------------------------------------------------------
+
+/**
+ * Approve the campaign content (email/LinkedIn sequences).
+ *
+ * Sets contentApproved: true, clears previous feedback, sets timestamp.
+ * If leadsApproved is also true and status is 'pending_approval',
+ * auto-transitions the campaign to 'approved'.
+ *
+ * @param id - Campaign ID
+ * @returns Updated CampaignDetail
+ * @throws If campaign not found
+ */
+export async function approveCampaignContent(id: string): Promise<CampaignDetail> {
+  const current = await prisma.campaign.findUnique({
+    where: { id },
+    select: { leadsApproved: true, status: true },
+  });
+
+  if (!current) throw new Error(`Campaign not found: '${id}'`);
+
+  const updateData: Record<string, unknown> = {
+    contentApproved: true,
+    contentApprovedAt: new Date(),
+    contentFeedback: null,
+  };
+
+  if (current.leadsApproved && current.status === "pending_approval") {
+    updateData.status = "approved";
+  }
+
+  const campaign = await prisma.campaign.update({
+    where: { id },
+    data: updateData,
+    include: targetListInclude,
+  });
+
+  return formatCampaignDetail(campaign);
+}
+
+// ---------------------------------------------------------------------------
+// 12. rejectCampaignContent — reject the content with feedback
+// ---------------------------------------------------------------------------
+
+/**
+ * Reject the campaign content with feedback text.
+ *
+ * @param id - Campaign ID
+ * @param feedback - Rejection reason / feedback for the admin
+ * @returns Updated CampaignDetail
+ */
+export async function rejectCampaignContent(
+  id: string,
+  feedback: string,
+): Promise<CampaignDetail> {
+  const campaign = await prisma.campaign.update({
+    where: { id },
+    data: {
+      contentApproved: false,
+      contentFeedback: feedback,
+    },
+    include: targetListInclude,
+  });
+  return formatCampaignDetail(campaign);
+}
+
+// ---------------------------------------------------------------------------
+// 13. getCampaignLeadSample — fetch top N leads from a target list by ICP score
+// ---------------------------------------------------------------------------
+
+export interface LeadSample {
+  personId: string;
+  firstName: string | null;
+  lastName: string | null;
+  jobTitle: string | null;
+  company: string | null;
+  location: string | null;
+  linkedinUrl: string | null;
+  icpScore: number | null;
+}
+
+/**
+ * Fetch a sample of leads from a target list, ordered by ICP score descending.
+ *
+ * ICP score is workspace-specific (lives on PersonWorkspace), so workspaceSlug
+ * is required to avoid cross-workspace score leakage.
+ *
+ * @param targetListId - TargetList ID to sample from
+ * @param workspaceSlug - Workspace slug for ICP score filtering
+ * @param limit - Max leads to return (default 50)
+ * @returns { leads: LeadSample[], totalCount: number }
+ */
+export async function getCampaignLeadSample(
+  targetListId: string,
+  workspaceSlug: string,
+  limit = 50,
+): Promise<{ leads: LeadSample[]; totalCount: number }> {
+  const [members, totalCount] = await Promise.all([
+    prisma.targetListPerson.findMany({
+      where: { listId: targetListId },
+      include: {
+        person: {
+          include: {
+            workspaces: {
+              where: { workspace: workspaceSlug },
+              select: { icpScore: true },
+            },
+          },
+        },
+      },
+    }),
+    prisma.targetListPerson.count({ where: { listId: targetListId } }),
+  ]);
+
+  const leads = members
+    .map((m) => ({
+      personId: m.person.id,
+      firstName: m.person.firstName,
+      lastName: m.person.lastName,
+      jobTitle: m.person.jobTitle,
+      company: m.person.company,
+      location: m.person.location,
+      linkedinUrl: m.person.linkedinUrl,
+      icpScore: m.person.workspaces[0]?.icpScore ?? null,
+    }))
+    .sort((a, b) => (b.icpScore ?? -1) - (a.icpScore ?? -1))
+    .slice(0, limit);
+
+  return { leads, totalCount };
 }
