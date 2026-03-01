@@ -272,6 +272,44 @@ export class LinkedInBrowser {
   }
 
   /**
+   * Find the Connect/Invite-to-connect element on a profile page.
+   * Searches in order:
+   *   1. Exact button "Connect"
+   *   2. Any link or button containing "connect" (case-insensitive)
+   *   3. Any link containing "Invite" AND "connect" (case-insensitive)
+   * Returns the first match or null.
+   */
+  private findConnectElement(
+    elements: SnapshotElement[],
+  ): SnapshotElement | null {
+    // 1. Exact button "Connect" (original behavior)
+    const exact = this.findElementExact(elements, "Connect", "button");
+    if (exact) return exact;
+
+    // 2. Any link or button whose text contains "connect" (case-insensitive)
+    const connectCI = elements.find((el) => {
+      const lowerText = el.text.toLowerCase();
+      const isActionable =
+        el.role === "link" || el.role === "button";
+      return isActionable && lowerText.includes("connect");
+    });
+    if (connectCI) return connectCI;
+
+    // 3. Any link whose text contains both "invite" and "connect"
+    const inviteConnect = elements.find((el) => {
+      const lowerText = el.text.toLowerCase();
+      return (
+        el.role === "link" &&
+        lowerText.includes("invite") &&
+        lowerText.includes("connect")
+      );
+    });
+    if (inviteConnect) return inviteConnect;
+
+    return null;
+  }
+
+  /**
    * Navigate to a URL and wait for the page to load.
    * Returns the final URL after any redirects.
    */
@@ -663,12 +701,12 @@ export class LinkedInBrowser {
         return { success: true, details: { already_pending: true } };
       }
 
-      // Look for Connect button
+      // Look for Connect button (or "Invite ... to connect" link)
       let connectClicked = false;
-      const connectBtn = this.findElementExact(elements, "Connect", "button");
+      const connectBtn = this.findConnectElement(elements);
 
       if (connectBtn) {
-        this.log(`Found Connect button: ${connectBtn.ref}`);
+        this.log(`Found Connect element: ${connectBtn.ref} (${connectBtn.role} "${connectBtn.text}")`);
         this.exec(`click ${connectBtn.ref}`);
         connectClicked = true;
       } else {
@@ -734,13 +772,10 @@ export class LinkedInBrowser {
         const finalSnapshot = this.exec("snapshot -i");
         const finalElements = this.parseSnapshot(finalSnapshot);
 
-        // Try direct Connect button
-        const retryConnect = this.findElementExact(
-          finalElements,
-          "Connect",
-          "button",
-        );
+        // Try direct Connect button (or "Invite ... to connect" link)
+        const retryConnect = this.findConnectElement(finalElements);
         if (retryConnect) {
+          this.log(`Found Connect element on retry: ${retryConnect.ref} (${retryConnect.role} "${retryConnect.text}")`);
           this.exec(`click ${retryConnect.ref}`);
           connectClicked = true;
         } else {
@@ -1040,15 +1075,15 @@ export class LinkedInBrowser {
         return "pending";
       }
 
-      // Check for Connect -> not connected
-      if (this.findElementExact(elements, "Connect", "button")) {
+      // Check for Connect (or "Invite ... to connect") -> not connected
+      if (this.findConnectElement(elements)) {
         return "not_connected";
       }
 
       // Check for Follow only (creator mode, no Connect available)
       if (
         this.findElementExact(elements, "Follow", "button") &&
-        !this.findElement(elements, "Connect")
+        !this.findConnectElement(elements)
       ) {
         return "not_connectable";
       }
@@ -1064,7 +1099,7 @@ export class LinkedInBrowser {
         if (this.findElementExact(retryElements, "Message", "button"))
           return "connected";
         if (this.findElement(retryElements, "Pending")) return "pending";
-        if (this.findElementExact(retryElements, "Connect", "button"))
+        if (this.findConnectElement(retryElements))
           return "not_connected";
       } catch {
         // Retry failed
