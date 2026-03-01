@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 9 of 10 (Client Portal Campaign Approval — Plan 02 COMPLETE: 6 portal campaign API routes)
-Plan: 2 of 6 in current phase (09-01 and 09-02 done)
-Status: Phase 9 In Progress. Plans 09-01 and 09-02 complete.
-Last activity: 2026-03-01 — Executed Plan 02: 6 portal campaign API routes created (list, detail, approve-leads, request-changes-leads, approve-content, request-changes-content). All routes enforce session auth + workspace ownership. TypeScript clean.
+Phase: 9 of 10 (Client Portal Campaign Approval — Plan 03 COMPLETE: Campaign list page + nav update)
+Plan: 3 of 6 in current phase (09-01, 09-02, and 09-03 done)
+Status: Phase 9 In Progress. Plans 09-01, 09-02, and 09-03 complete.
+Last activity: 2026-03-01 — Executed Plan 03: Portal campaign list page at /portal/campaigns with pending-first sort, CampaignCard component (amber ring/dot for pending, status badge, channel icons, approval indicators), Campaigns added to PortalNav. TypeScript clean.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -113,5 +113,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 09-02-PLAN.md (Portal Campaign API Routes). 6 route files created under /api/portal/campaigns/. Phase 9 at 2/6 plans done. Next: 09-03 (Campaign list UI) or 09-04 (Campaign detail UI).
+Stopped at: Completed 09-03-PLAN.md (Portal Campaign List Page + Nav Update). /portal/campaigns page, CampaignCard component, and Campaigns nav entry created. Phase 9 at 3/6 plans done. Next: 09-04 (Campaign detail UI).
 Resume file: None
