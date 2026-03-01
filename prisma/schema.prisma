@@ -18,8 +18,10 @@ model Workspace {
   status   String  @default("onboarding") // onboarding | pending_emailbison | active
 
   // Notification config
-  slackChannelId     String?
-  notificationEmails String? // JSON array of email addresses
+  slackChannelId            String?
+  notificationEmails        String? // JSON array of email addresses
+  approvalsSlackChannelId   String?
+  approvalsSlackChannelName String?
 
   // Section 1 - LinkedIn Access
   linkedinUsername     String?
