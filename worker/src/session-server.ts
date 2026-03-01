@@ -134,16 +134,38 @@ export class SessionServer {
       );
 
       if (success) {
-        // Export cookies and save via API for session tracking
-        const cookies = await browser.exportCookies();
-        await this.api.updateSession(senderId, cookies);
-
         this.sessionState = { senderId, status: "logged_in" };
-
         console.log("[SessionServer] Headless login successful");
+
+        // Try to export cookies and save via API for tracking.
+        // This is optional — agent-browser manages the session internally
+        // via the --session flag, so cookie export failure is non-fatal.
+        let cookieCount = 0;
+        try {
+          const cookies = await browser.exportCookies();
+          if (Array.isArray(cookies) && cookies.length > 0) {
+            await this.api.updateSession(senderId, cookies);
+            cookieCount = cookies.length;
+            console.log(
+              `[SessionServer] Saved ${cookieCount} cookies for tracking`,
+            );
+          } else {
+            console.log(
+              "[SessionServer] No cookies exported (agent-browser manages session internally)",
+            );
+          }
+        } catch (cookieError) {
+          console.warn(
+            "[SessionServer] Cookie export/save failed (non-fatal):",
+            cookieError instanceof Error
+              ? cookieError.message
+              : String(cookieError),
+          );
+        }
+
         this.jsonResponse(res, 200, {
           success: true,
-          cookieCount: cookies.length,
+          cookieCount,
         });
       } else {
         this.sessionState = {
