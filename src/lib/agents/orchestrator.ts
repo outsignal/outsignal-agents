@@ -3,6 +3,7 @@ import { z } from "zod";
 import { runResearchAgent } from "./research";
 import { runWriterAgent } from "./writer";
 import { runLeadsAgent } from "./leads";
+import { runCampaignAgent } from "./campaign";
 import {
   getAllWorkspaces,
   getWorkspaceDetails,
@@ -109,18 +110,23 @@ const delegateToWriter = tool({
       .string()
       .optional()
       .describe("Campaign name (for revisions)"),
+    campaignId: z
+      .string()
+      .optional()
+      .describe("Campaign ID — pass this when generating content for a specific campaign"),
     feedback: z
       .string()
       .optional()
       .describe("Feedback to incorporate"),
   }),
-  execute: async ({ workspaceSlug, task, channel, campaignName, feedback }) => {
+  execute: async ({ workspaceSlug, task, channel, campaignName, campaignId, feedback }) => {
     try {
       const result = await runWriterAgent({
         workspaceSlug,
         task,
         channel,
         campaignName,
+        campaignId,
         feedback,
       });
       return {
@@ -143,21 +149,35 @@ const delegateToWriter = tool({
 
 const delegateToCampaign = tool({
   description:
-    "Delegate a task to the Campaign Agent. Use this when the user wants to: create a campaign in EmailBison, add leads to a campaign, configure sequence steps, or check campaign status.",
+    "Delegate a task to the Campaign Agent. Use this when the user wants to: create a campaign, list campaigns, get campaign details, link a target list to a campaign, or push a campaign for client approval. The Campaign Agent handles all campaign lifecycle operations.",
   inputSchema: z.object({
     workspaceSlug: z.string().describe("Workspace slug"),
     task: z.string().describe("What you want the Campaign Agent to do"),
+    campaignId: z
+      .string()
+      .optional()
+      .describe("Campaign ID (for operations on existing campaign)"),
     campaignName: z
       .string()
       .optional()
-      .describe("Campaign name"),
+      .describe("Campaign name (for creating or finding)"),
   }),
-  execute: async () => {
-    return {
-      status: "not_available",
-      message:
-        "The Campaign Agent is not yet implemented. It will be available in Iteration 4 and will handle EmailBison campaign creation and management.",
-    };
+  execute: async ({ workspaceSlug, task, campaignId, campaignName }) => {
+    try {
+      const result = await runCampaignAgent({ workspaceSlug, task, campaignId, campaignName });
+      return {
+        status: "complete",
+        action: result.action,
+        summary: result.summary,
+        campaignId: result.campaignId,
+        data: result.data,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Campaign Agent failed",
+      };
+    }
   },
 });
 
@@ -492,14 +512,15 @@ Use these to delegate work to specialist agents:
 - **delegateToResearch**: For website analysis, ICP extraction, company intelligence
 - **delegateToLeads**: For searching people, building target lists, scoring against ICP, exporting to EmailBison
 - **delegateToWriter**: For email and LinkedIn copy generation, sequence writing, campaign performance analysis, draft revisions
-- **delegateToCampaign**: For EmailBison campaign management (coming soon)
+- **delegateToCampaign**: For creating campaigns, managing campaign lifecycle, linking target lists, and publishing for client approval
 
 ## 2. Dashboard Tools (for quick queries)
 Use these directly for simple data lookups:
 - listWorkspaces, getWorkspaceInfo, getCampaigns, getReplies, getSenderHealth, queryPeople, listProposals, createProposal
 
 ## When to Delegate vs Use Dashboard Tools:
-- "Show me campaigns for X" → Use getCampaigns directly (simple query)
+- "Show me campaigns for X" → Use getCampaigns directly (simple query for EmailBison campaigns)
+- "Create a campaign" → Delegate to Campaign Agent (creates Outsignal Campaign entity)
 - "Analyze the website for X" → Delegate to Research Agent (complex analysis)
 - "What's the reply rate for X?" → Use getCampaigns directly (simple query)
 - "Write an email sequence for X" → Delegate to Writer Agent (creative work)
@@ -509,6 +530,18 @@ Use these directly for simple data lookups:
 - "Create a list called Rise Q1" → Delegate to Leads Agent
 - "Score the Rise Q1 list" → Delegate to Leads Agent
 - "Export Rise Q1 to EmailBison" → Delegate to Leads Agent
+- "Push for client approval" → Delegate to Campaign Agent (publishes campaign)
+
+## Campaign Workflow (Cmd+J):
+This is the primary admin workflow for campaign creation and launch:
+
+1. "Create a campaign for Rise" → delegateToCampaign (creates Campaign entity in Outsignal DB)
+2. "Write email sequence for this campaign" → delegateToWriter (with campaignId from step 1)
+3. "Make step 2 shorter" → delegateToWriter (with feedback + campaignId)
+4. "Write LinkedIn messages" → delegateToWriter (with channel=linkedin + campaignId)
+5. "Push for client approval" → delegateToCampaign (publishes campaign for client review)
+
+When the user creates a campaign and then asks to generate content, pass the campaignId from the Campaign Agent's response to the Writer Agent delegation. Track the active campaign context throughout the conversation.
 
 ## Guidelines:
 - Be concise and action-oriented
