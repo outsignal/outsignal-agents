@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
             : null,
           targetVolume: body.targetVolume || null,
           onboardingNotes: body.onboardingNotes || null,
+          clientEmails: notificationEmails,
         },
       });
 
