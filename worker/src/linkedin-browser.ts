@@ -1324,34 +1324,27 @@ export class LinkedInBrowser {
   }
 
   /**
-   * Fallback cookie extraction via document.cookie string parsing.
-   * Used when the primary extraction fails (e.g., li_at is HttpOnly).
+   * Fallback cookie extraction via agent-browser's cookies API.
+   * Returns all cookies including HttpOnly. Used when document.cookie fails (li_at is HttpOnly).
    */
   private extractCookiesViaCDP(): { liAt: string; jsessionId: string } | null {
     try {
-      // agent-browser's eval can access CDP via the browser session
-      // Alternative: use the exec method to call a CDP command
-      // For now, try reading from the session's cookie store
-      const result = this.exec(
-        'eval "(() => { return JSON.stringify(document.cookie); })()"'
+      const result = this.exec("cookies get --json");
+      const cookies: Array<{ name: string; value: string; domain: string }> = JSON.parse(result.trim());
+
+      // Find li_at and JSESSIONID cookies for LinkedIn domain
+      const liAtCookie = cookies.find(
+        (c) => c.name === "li_at" && c.domain.includes("linkedin.com")
       );
-      // Parse the cookie string for li_at and JSESSIONID
-      const cookieStr = JSON.parse(result.trim());
-      const liAt = this.parseCookieValue(cookieStr, 'li_at');
-      const jsessionId = this.parseCookieValue(cookieStr, 'JSESSIONID');
-      if (!liAt || !jsessionId) return null;
-      return { liAt, jsessionId };
+      const jsessionCookie = cookies.find(
+        (c) => c.name === "JSESSIONID" && c.domain.includes("linkedin.com")
+      );
+
+      if (!liAtCookie || !jsessionCookie) return null;
+      return { liAt: liAtCookie.value, jsessionId: jsessionCookie.value };
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Parse a single cookie value from a cookie string by name.
-   */
-  private parseCookieValue(cookieStr: string, name: string): string | null {
-    const match = cookieStr.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-    return match ? match[1] : null;
   }
 
   // ---------------------------------------------------------------------------
