@@ -139,7 +139,7 @@ Plans:
 | 9. Client Portal Campaign Approval | 5/5 | Complete   | 2026-03-01 | - |
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
 | 11. LinkedIn Voyager API Client | — | 3/3 | Code complete | 2026-03-02 |
-| 12. Dashboard & Admin UX | 3/8 | In Progress|  | - |
+| 12. Dashboard & Admin UX | 7/8 | In Progress|  | - |
 | 13. Smart Sender Health | — | 0/TBD | Not started | - |
 | 14. LinkedIn Cookie Chrome Extension | — | 0/TBD | Not started | - |
 
@@ -178,7 +178,7 @@ Plans:
   8. Sender management page uses card grid with modal add/edit, pause/delete from card
   9. Sidebar navigation includes all new pages in logical groups
   10. Proposals support edit/delete via modal, document upload auto-parses content
-**Plans:** 3/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 - [ ] 12-01-PLAN.md — Dashboard home KPIs, activity charts, alerts, client filter
