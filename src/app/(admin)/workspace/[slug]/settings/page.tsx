@@ -51,6 +51,7 @@ export default async function WorkspaceSettingsPage({
     senderEmailDomains: details?.senderEmailDomains ?? null,
     targetVolume: details?.targetVolume ?? null,
     onboardingNotes: details?.onboardingNotes ?? null,
+    clientEmails: details?.clientEmails ?? null,
   };
 
   return (

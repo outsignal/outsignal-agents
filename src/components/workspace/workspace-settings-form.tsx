@@ -42,6 +42,7 @@ interface WorkspaceData {
   senderEmailDomains: string | null;
   targetVolume: string | null;
   onboardingNotes: string | null;
+  clientEmails: string | null;
 }
 
 interface WorkspaceSettingsFormProps {
@@ -92,6 +93,7 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
     supportingMaterials: workspace.supportingMaterials ?? "",
     exclusionList: workspace.exclusionList ?? "",
     onboardingNotes: workspace.onboardingNotes ?? "",
+    clientEmails: parseEmails(workspace.clientEmails),
   });
 
   function updateField(field: string, value: string) {
@@ -105,8 +107,13 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
     setSaved(false);
 
     try {
-      // Convert notification emails to JSON array
+      // Convert email fields to JSON arrays
       const emails = form.notificationEmails
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean);
+
+      const clientEmailList = form.clientEmails
         .split(",")
         .map((e) => e.trim())
         .filter(Boolean);
@@ -141,6 +148,7 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
           supportingMaterials: form.supportingMaterials || null,
           exclusionList: form.exclusionList || null,
           onboardingNotes: form.onboardingNotes || null,
+          clientEmails: clientEmailList.length > 0 ? clientEmailList : null,
         }),
       });
 
@@ -238,6 +246,18 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
             />
             <p className="text-xs text-muted-foreground mt-1">
               Comma-separated email addresses for notifications
+            </p>
+          </FieldRow>
+          <FieldRow label="Client Portal Emails">
+            <Input
+              value={form.clientEmails}
+              onChange={(e) =>
+                updateField("clientEmails", e.target.value)
+              }
+              placeholder="client@company.com, another@company.com"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Comma-separated emails authorized to log into the client portal
             </p>
           </FieldRow>
         </CardContent>

@@ -41,6 +41,7 @@ const ALLOWED_FIELDS = [
   "senderEmailDomains",
   "targetVolume",
   "onboardingNotes",
+  "clientEmails",
 ] as const;
 
 export async function GET(
@@ -82,6 +83,10 @@ export async function PATCH(
   for (const field of ALLOWED_FIELDS) {
     if (body[field] !== undefined) {
       if (field === "notificationEmails") {
+        updateData[field] = Array.isArray(body[field])
+          ? JSON.stringify(body[field])
+          : body[field];
+      } else if (field === "clientEmails") {
         updateData[field] = Array.isArray(body[field])
           ? JSON.stringify(body[field])
           : body[field];
