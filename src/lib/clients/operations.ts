@@ -24,9 +24,11 @@ const PIPELINE_STATUSES = [
   "demo",
   "proposal",
   "negotiation",
+  "closed_lost",
+  "unqualified",
 ];
 
-const POST_PIPELINE_STATUSES = ["closed_won", "closed_lost", "unqualified", "churned"];
+const POST_PIPELINE_STATUSES = ["closed_won", "churned"];
 
 // ---------------------------------------------------------------------------
 // Result types
