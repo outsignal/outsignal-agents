@@ -172,6 +172,17 @@ model CachedMetrics {
   @@unique([workspace, metricType])
 }
 
+model InboxStatusSnapshot {
+  id                 String   @id @default(cuid())
+  workspaceSlug      String   @unique
+  statuses           String              // JSON: { "email": "Connected", ... }
+  disconnectedEmails String   @default("[]")  // JSON array of disconnected emails
+  checkedAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([workspaceSlug])
+}
+
 model Proposal {
   id     String @id @default(cuid())
   token  String @unique
