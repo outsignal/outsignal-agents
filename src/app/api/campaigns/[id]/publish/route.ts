@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { publishForReview } from "@/lib/campaigns/operations";
+import { notify } from "@/lib/notify";
 
 // POST /api/campaigns/[id]/publish — push campaign for client review
 export async function POST(
@@ -10,6 +11,14 @@ export async function POST(
     const { id } = await params;
 
     const campaign = await publishForReview(id);
+
+    notify({
+      type: "system",
+      severity: "info",
+      title: `Campaign published for review: ${campaign.name}`,
+      workspaceSlug: campaign.workspaceSlug,
+      metadata: { campaignId: id },
+    }).catch(() => {});
 
     return NextResponse.json({
       campaign,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importClayContacts, importClayCompany } from "@/lib/clay/sync";
+import { notify } from "@/lib/notify";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,6 +19,16 @@ export async function POST(request: NextRequest) {
     if (company) {
       const saved = await importClayCompany(company);
       results.company = { domain: saved.domain };
+    }
+
+    if (results.contacts) {
+      notify({
+        type: "system",
+        severity: "info",
+        title: `Clay import completed`,
+        message: `${results.contacts.created} created, ${results.contacts.updated} updated`,
+        metadata: { created: results.contacts.created, updated: results.contacts.updated },
+      }).catch(() => {});
     }
 
     return NextResponse.json({ success: true, results });

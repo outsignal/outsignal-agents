@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { postMessage } from "@/lib/slack";
 
 interface NotifyParams {
-  type: "onboard" | "provisioning" | "agent" | "system" | "error";
+  type: "onboard" | "provisioning" | "agent" | "system" | "error" | "approval" | "proposal";
   severity?: "info" | "warning" | "error";
   title: string;
   message?: string;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { notifyReply } from "@/lib/notifications";
+import { notify } from "@/lib/notify";
 import { enqueueAction, bumpPriority } from "@/lib/linkedin/queue";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 
@@ -175,6 +176,16 @@ export async function POST(request: NextRequest) {
         });
       } catch (err) {
         console.error("Notification error:", err);
+      }
+
+      if (eventType === "LEAD_INTERESTED") {
+        notify({
+          type: "system",
+          severity: "info",
+          title: `Interested reply: ${leadName || leadEmail || "unknown"}`,
+          workspaceSlug,
+          metadata: { campaignId, eventType },
+        }).catch(() => {});
       }
     }
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { generateProposalToken } from "@/lib/tokens";
 import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { sendNotificationEmail } from "@/lib/resend";
+import { notify } from "@/lib/notify";
 
 export async function GET() {
   const proposals = await prisma.proposal.findMany({
@@ -46,6 +47,13 @@ export async function POST(request: Request) {
         status: "draft",
       },
     });
+
+    notify({
+      type: "proposal",
+      severity: "info",
+      title: `Proposal created: ${clientName}`,
+      metadata: { proposalId: proposal.id },
+    }).catch(() => {});
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const proposalUrl = `${appUrl}/p/${token}`;

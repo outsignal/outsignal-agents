@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { notify } from "@/lib/notify";
 
 export async function POST(
   request: NextRequest,
@@ -36,6 +37,13 @@ export async function POST(
       signatureData: body.signatureData,
     },
   });
+
+  notify({
+    type: "proposal",
+    severity: "info",
+    title: `Proposal accepted: ${proposal.clientName || proposal.id}`,
+    metadata: { proposalId: proposal.id },
+  }).catch(() => {});
 
   return NextResponse.json({ success: true });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, rejectCampaignContent } from "@/lib/campaigns/operations";
 import { notifyApproval } from "@/lib/notifications";
+import { notify } from "@/lib/notify";
 
 export async function POST(
   req: Request,
@@ -42,6 +43,15 @@ export async function POST(
     action: "content_rejected",
     feedback: feedback.trim(),
   }).catch((err) => console.error("Approval notification failed:", err));
+
+  notify({
+    type: "approval",
+    severity: "warning",
+    title: `Content changes requested: ${campaign.name}`,
+    message: feedback.trim() || undefined,
+    workspaceSlug: campaign.workspaceSlug,
+    metadata: { campaignId: id },
+  }).catch(() => {});
 
   return NextResponse.json({ campaign: updated });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStripeClient } from "@/lib/stripe";
 import { sendNotificationEmail } from "@/lib/resend";
+import { notify } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,13 @@ export async function POST(request: NextRequest) {
           paidAt: new Date(),
         },
       });
+
+      notify({
+        type: "proposal",
+        severity: "info",
+        title: `Payment received: ${proposal.clientName || "Unknown"}`,
+        metadata: { proposalId: proposal.id },
+      }).catch(() => {});
 
       // Send onboarding link to client
       if (proposal.clientEmail) {

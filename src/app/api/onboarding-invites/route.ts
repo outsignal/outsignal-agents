@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateProposalToken } from "@/lib/tokens";
 import { sendOnboardingInviteEmail } from "@/lib/resend";
+import { notify } from "@/lib/notify";
 
 export async function GET() {
   const invites = await prisma.onboardingInvite.findMany({
@@ -34,6 +35,13 @@ export async function POST(request: Request) {
         status: "draft",
       },
     });
+
+    notify({
+      type: "onboard",
+      severity: "info",
+      title: `Onboarding invite created: ${clientName}`,
+      metadata: { inviteId: invite.id },
+    }).catch(() => {});
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const inviteUrl = `${appUrl}/o/${token}`;

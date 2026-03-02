@@ -59,6 +59,8 @@ const TYPE_OPTIONS = [
   { value: "agent", label: "Agent" },
   { value: "system", label: "System" },
   { value: "error", label: "Error" },
+  { value: "approval", label: "Approval" },
+  { value: "proposal", label: "Proposal" },
 ];
 
 const SEVERITY_OPTIONS = [
@@ -73,6 +75,8 @@ const typeBadgeVariant: Record<string, "success" | "brand" | "secondary" | "dest
   agent: "default",
   system: "secondary",
   error: "destructive",
+  approval: "success",
+  proposal: "brand",
 };
 
 const typeBadgeClassName: Record<string, string> = {
