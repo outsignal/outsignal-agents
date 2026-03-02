@@ -192,7 +192,15 @@ export class Worker {
         `[Worker] Executing ${action.actionType} (priority ${action.priority}) for person ${action.personId}`,
       );
 
-      await this.executeAction(client, action, sender.id);
+      try {
+        await this.executeAction(client, action, sender.id);
+      } catch (error) {
+        if (error instanceof Error && error.message === "RATE_LIMITED") {
+          // Skip remaining actions for this sender — natural backoff until next poll
+          break;
+        }
+        throw error;
+      }
 
       // Random delay between actions (not after the last one)
       if (i < actions.length - 1 && this.running) {
@@ -348,6 +356,12 @@ export class Worker {
       // Handle auth/blocking errors — invalidate cached client and update sender health.
       // IMPORTANT: markFailed() only updates LinkedInAction.status — it does NOT update
       // Sender.healthStatus. We must call updateSenderHealth() explicitly.
+      if (result.error === "rate_limited") {
+        console.warn(`[Worker] Rate limited for sender ${senderId}, backing off`);
+        this.activeClients.delete(senderId);
+        throw new Error("RATE_LIMITED");
+      }
+
       if (result.error === "auth_expired" || result.error === "unauthorized") {
         console.warn(`[Worker] Auth expired for sender ${senderId} — removing cached client`);
         this.activeClients.delete(senderId); // Will re-create with fresh cookies next tick
