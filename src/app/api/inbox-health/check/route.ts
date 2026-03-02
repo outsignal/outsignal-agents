@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { validateCronSecret } from "@/lib/cron-auth";
 import { checkAllWorkspaces } from "@/lib/inbox-health/monitor";
+import { notifyInboxDisconnect } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
 
 export async function GET(request: Request) {
@@ -22,7 +23,10 @@ export async function GET(request: Request) {
       const hasPersistentDisconnections = change.persistentDisconnections.length > 0;
 
       if (hasNewDisconnections || hasPersistentDisconnections) {
-        // Ops-only notification (in-app + ops Slack channel)
+        // Email notification (no client Slack — ops Slack handled by notify() below)
+        await notifyInboxDisconnect(change);
+
+        // In-app notification + ops Slack
         const parts: string[] = [];
         if (hasNewDisconnections) {
           parts.push(
