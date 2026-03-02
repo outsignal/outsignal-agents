@@ -4,16 +4,17 @@
  * For each active sender:
  *   1. Check business hours
  *   2. Poll /api/linkedin/actions/next
- *   3. Launch browser with sender's session + proxy
- *   4. Execute actions in priority order
+ *   3. Load Voyager cookies from API (or extract via browser login if missing)
+ *   4. Create VoyagerClient per sender and execute actions via HTTP
  *   5. Random delays between actions (30-90s)
  *   6. Report results back via API
- *   7. Piggyback connection status checks
+ *   7. LinkedInBrowser is only used for login + cookie extraction (no action execution)
  */
 
 import { ApiClient } from "./api-client.js";
 import { LinkedInBrowser } from "./linkedin-browser.js";
-import type { ActionResult } from "./linkedin-browser.js";
+import { VoyagerClient } from "./voyager-client.js";
+import type { ActionResult } from "./voyager-client.js";
 import {
   isWithinBusinessHours,
   msUntilBusinessHours,
@@ -54,7 +55,7 @@ export class Worker {
   private api: ApiClient;
   private options: WorkerOptions;
   private running = false;
-  private activeBrowsers: Map<string, LinkedInBrowser> = new Map();
+  private activeClients: Map<string, VoyagerClient> = new Map();
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -88,21 +89,12 @@ export class Worker {
 
   /**
    * Stop the worker gracefully.
+   * VoyagerClient is stateless HTTP — no connections to close, just clear the map.
    */
   async stop(): Promise<void> {
     console.log("[Worker] Stopping...");
     this.running = false;
-
-    // Close all active browser sessions
-    for (const [senderId, browser] of this.activeBrowsers) {
-      try {
-        console.log(`[Worker] Closing browser for sender ${senderId}`);
-        await browser.close();
-      } catch (error) {
-        console.error(`[Worker] Error closing browser for ${senderId}:`, error);
-      }
-    }
-    this.activeBrowsers.clear();
+    this.activeClients.clear();
   }
 
   /**
@@ -157,7 +149,7 @@ export class Worker {
   }
 
   /**
-   * Process a single sender — fetch actions and execute them.
+   * Process a single sender — fetch actions and execute them via VoyagerClient.
    */
   private async processSender(sender: SenderConfig): Promise<void> {
     console.log(`[Worker] Processing sender: ${sender.name} (${sender.id})`);
@@ -178,40 +170,17 @@ export class Worker {
 
     console.log(`[Worker] ${actions.length} actions for ${sender.name}`);
 
-    // Get or launch browser for this sender
-    let browser: LinkedInBrowser;
+    // Get or create VoyagerClient for this sender
+    let client: VoyagerClient;
     try {
-      browser = await this.getOrLaunchBrowser(sender);
+      client = await this.getOrCreateVoyagerClient(sender);
     } catch (error) {
-      console.error(`[Worker] Failed to launch browser for ${sender.name}:`, error);
+      console.error(`[Worker] Failed to create VoyagerClient for ${sender.name}:`, error);
       // Mark all actions as failed
       for (const action of actions) {
-        await this.safeMarkFailed(action.id, `Browser launch failed: ${error}`);
+        await this.safeMarkFailed(action.id, `VoyagerClient creation failed: ${error}`);
       }
       return;
-    }
-
-    // Check for CAPTCHA or restriction before executing
-    try {
-      if (await browser.checkForCaptcha()) {
-        console.error(`[Worker] CAPTCHA detected for ${sender.name} — pausing`);
-        for (const action of actions) {
-          await this.safeMarkFailed(action.id, "CAPTCHA detected");
-        }
-        await this.closeBrowser(sender.id);
-        return;
-      }
-
-      if (await browser.checkForRestriction()) {
-        console.error(`[Worker] Restriction detected for ${sender.name} — pausing`);
-        for (const action of actions) {
-          await this.safeMarkFailed(action.id, "LinkedIn restriction detected");
-        }
-        await this.closeBrowser(sender.id);
-        return;
-      }
-    } catch (error) {
-      console.error(`[Worker] Health check error for ${sender.name}:`, error);
     }
 
     // Execute each action with delays between them
@@ -223,7 +192,7 @@ export class Worker {
         `[Worker] Executing ${action.actionType} (priority ${action.priority}) for person ${action.personId}`,
       );
 
-      await this.executeAction(browser, action);
+      await this.executeAction(client, action, sender.id);
 
       // Random delay between actions (not after the last one)
       if (i < actions.length - 1 && this.running) {
@@ -235,9 +204,95 @@ export class Worker {
   }
 
   /**
-   * Execute a single LinkedIn action.
+   * Get or create a VoyagerClient for a sender.
+   *
+   * Tries to reuse an existing client instance within the same tick.
+   * Falls back to loading stored Voyager cookies from the API.
+   * If no cookies are stored, launches a browser for login + cookie extraction.
    */
-  private async executeAction(browser: LinkedInBrowser, action: ActionItem): Promise<void> {
+  private async getOrCreateVoyagerClient(sender: SenderConfig): Promise<VoyagerClient> {
+    // Reuse existing client if available
+    const existing = this.activeClients.get(sender.id);
+    if (existing) return existing;
+
+    // Try to load stored Voyager cookies
+    let cookies = await this.api.getVoyagerCookies(sender.id);
+
+    if (!cookies) {
+      // No stored cookies — need to login via browser and extract
+      console.log(`[Worker] No Voyager cookies for ${sender.name} — launching browser for login`);
+      cookies = await this.loginAndExtractCookies(sender);
+      if (!cookies) {
+        throw new Error("Failed to obtain Voyager cookies via browser login");
+      }
+    }
+
+    const client = new VoyagerClient(cookies.liAt, cookies.jsessionId, sender.proxyUrl ?? undefined);
+    this.activeClients.set(sender.id, client);
+    return client;
+  }
+
+  /**
+   * Login via LinkedInBrowser and extract Voyager cookies.
+   * LinkedInBrowser is ONLY used here — all action execution goes through VoyagerClient.
+   *
+   * After successful login, the extracted li_at + JSESSIONID are saved to the API
+   * for future use (no browser launch needed on next tick).
+   */
+  private async loginAndExtractCookies(
+    sender: SenderConfig,
+  ): Promise<{ liAt: string; jsessionId: string } | null> {
+    const browser = new LinkedInBrowser([], sender.proxyUrl ?? undefined);
+    browser.setSenderId(sender.id);
+
+    try {
+      const launchResult = await browser.launch();
+
+      if (launchResult.needsLogin) {
+        const credentials = await this.api.getSenderCredentials(sender.id);
+        if (!credentials) {
+          console.error(`[Worker] No credentials for ${sender.name} — cannot login`);
+          return null;
+        }
+
+        const loginSuccess = await browser.login(
+          credentials.email,
+          credentials.password,
+          credentials.totpSecret,
+          { daemonAlreadyRunning: true },
+        );
+
+        if (!loginSuccess) {
+          console.error(`[Worker] Login failed for ${sender.name}`);
+          return null;
+        }
+      }
+
+      // Extract Voyager cookies from the browser session
+      const cookies = await browser.extractVoyagerCookies();
+      if (cookies) {
+        // Persist cookies to API for future use
+        await this.api.saveVoyagerCookies(sender.id, cookies);
+        console.log(`[Worker] Voyager cookies extracted and saved for ${sender.name}`);
+      }
+
+      return cookies;
+    } finally {
+      await browser.close();
+    }
+  }
+
+  /**
+   * Execute a single LinkedIn action via VoyagerClient.
+   *
+   * On auth/blocking errors, explicitly calls updateSenderHealth() to set sender
+   * healthStatus — markFailed() only updates LinkedInAction.status, NOT Sender.healthStatus.
+   */
+  private async executeAction(
+    client: VoyagerClient,
+    action: ActionItem,
+    senderId: string,
+  ): Promise<void> {
     let result: ActionResult;
 
     // Validate that we have a LinkedIn URL
@@ -251,11 +306,11 @@ export class Worker {
     try {
       switch (action.actionType) {
         case "profile_view":
-          result = await browser.viewProfile(profileUrl);
+          result = await client.viewProfile(profileUrl);
           break;
 
         case "connect":
-          result = await browser.sendConnectionRequest(profileUrl);
+          result = await client.sendConnectionRequest(profileUrl);
           break;
 
         case "message":
@@ -263,11 +318,11 @@ export class Worker {
             result = { success: false, error: "No message body provided" };
             break;
           }
-          result = await browser.sendMessage(profileUrl, action.messageBody);
+          result = await client.sendMessage(profileUrl, action.messageBody);
           break;
 
         case "check_connection": {
-          const status = await browser.checkConnectionStatus(profileUrl);
+          const status = await client.checkConnectionStatus(profileUrl);
           result = {
             success: true,
             details: { connectionStatus: status },
@@ -289,81 +344,33 @@ export class Worker {
     } else {
       console.error(`[Worker] Action ${action.id} failed: ${result.error}`);
       await this.safeMarkFailed(action.id, result.error ?? "Unknown error");
-    }
-  }
 
-  /**
-   * Get or launch a browser session for a sender.
-   * Reuses existing sessions within the same tick.
-   *
-   * With agent-browser, sessions are isolated per sender via --session flag.
-   * Cookies/state are managed internally by agent-browser's named sessions.
-   *
-   * If the session is expired, auto-login is attempted using stored credentials.
-   * The key insight: login() runs on the SAME daemon that launch() started,
-   * so the session persists across login → action execution.
-   */
-  private async getOrLaunchBrowser(sender: SenderConfig): Promise<LinkedInBrowser> {
-    // Reuse existing browser if available
-    const existing = this.activeBrowsers.get(sender.id);
-    if (existing) return existing;
-
-    // agent-browser manages session state internally via named sessions.
-    // We pass an empty cookies array for API compatibility — the session
-    // name (set via setSenderId) is what actually isolates state.
-    const browser = new LinkedInBrowser([], sender.proxyUrl ?? undefined);
-    browser.setSenderId(sender.id);
-    const launchResult = await browser.launch();
-
-    if (launchResult.success) {
-      this.activeBrowsers.set(sender.id, browser);
-      return browser;
-    }
-
-    // Session expired — attempt auto-login on the same daemon
-    if (launchResult.needsLogin) {
-      console.log(`[Worker] Session expired for ${sender.name} — attempting auto-login`);
-
-      const credentials = await this.api.getSenderCredentials(sender.id);
-      if (!credentials) {
-        await browser.close();
-        throw new Error("Session expired and no stored credentials for auto-login");
+      // Handle auth/blocking errors — invalidate cached client and update sender health.
+      // IMPORTANT: markFailed() only updates LinkedInAction.status — it does NOT update
+      // Sender.healthStatus. We must call updateSenderHealth() explicitly.
+      if (result.error === "auth_expired" || result.error === "unauthorized") {
+        console.warn(`[Worker] Auth expired for sender ${senderId} — removing cached client`);
+        this.activeClients.delete(senderId); // Will re-create with fresh cookies next tick
+        await this.api.updateSenderHealth(senderId, "session_expired").catch((err) =>
+          console.error(`[Worker] Failed to update sender health:`, err),
+        );
       }
 
-      const loginSuccess = await browser.login(
-        credentials.email,
-        credentials.password,
-        credentials.totpSecret,
-        { daemonAlreadyRunning: true },
-      );
-
-      if (!loginSuccess) {
-        await browser.close();
-        throw new Error("Session expired and auto-login failed");
+      if (result.error === "ip_blocked") {
+        console.error(`[Worker] Sender ${senderId} IP blocked — updating health to blocked`);
+        this.activeClients.delete(senderId);
+        await this.api.updateSenderHealth(senderId, "blocked").catch((err) =>
+          console.error(`[Worker] Failed to update sender health:`, err),
+        );
       }
 
-      console.log(`[Worker] Auto-login successful for ${sender.name}`);
-      this.activeBrowsers.set(sender.id, browser);
-      return browser;
-    }
-
-    // Launch failed for non-session reasons (network error, daemon crash, etc.)
-    await browser.close();
-    throw new Error("Browser launch failed");
-  }
-
-  /**
-   * Close and remove a browser session for a sender.
-   */
-  private async closeBrowser(senderId: string): Promise<void> {
-    const browser = this.activeBrowsers.get(senderId);
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (error) {
-        console.error(`[Worker] Error closing browser for ${senderId}:`, error);
+      if (result.error === "checkpoint_detected") {
+        console.error(`[Worker] Sender ${senderId} checkpoint detected — updating health to blocked`);
+        this.activeClients.delete(senderId);
+        await this.api.updateSenderHealth(senderId, "blocked").catch((err) =>
+          console.error(`[Worker] Failed to update sender health:`, err),
+        );
       }
-      this.activeBrowsers.delete(senderId);
     }
   }
 
