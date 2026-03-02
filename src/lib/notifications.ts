@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { postMessage } from "./slack";
 import { sendNotificationEmail } from "./resend";
+import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
 import type { KnownBlock } from "@slack/web-api";
 
 export async function notifyApproval(params: {
@@ -47,6 +48,7 @@ export async function notifyApproval(params: {
     workspace.approvalsSlackChannelId ?? workspace.slackChannelId;
 
   if (slackChannelId) {
+    if (!verifySlackChannel(slackChannelId, "client", "notifyApproval")) return;
     try {
       await postMessage(slackChannelId, headerText, [
         {
@@ -110,13 +112,14 @@ export async function notifyApproval(params: {
   if (workspace.notificationEmails) {
     try {
       const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      if (recipients.length > 0) {
+      const verified = verifyEmailRecipients(recipients, "client", "notifyApproval");
+      if (verified.length > 0) {
         const subjectLine = isFullyApproved
           ? `[${workspace.name}] Campaign Fully Approved — ${params.campaignName}`
           : `[${workspace.name}] ${actionLabel[params.action]} — ${params.campaignName}`;
 
         await sendNotificationEmail({
-          to: recipients,
+          to: verified,
           subject: subjectLine,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
 <h2 style="margin-bottom:16px;">${headerText}</h2>
@@ -180,6 +183,7 @@ export async function notifyReply(params: {
 
   // Slack notification
   if (workspace.slackChannelId) {
+    if (!verifySlackChannel(workspace.slackChannelId, "client", "notifyReply")) return;
     try {
       await postMessage(
         workspace.slackChannelId,
@@ -266,9 +270,10 @@ export async function notifyReply(params: {
   if (workspace.notificationEmails) {
     try {
       const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      if (recipients.length > 0) {
+      const verified = verifyEmailRecipients(recipients, "client", "notifyReply");
+      if (verified.length > 0) {
         await sendNotificationEmail({
-          to: recipients,
+          to: verified,
           subject: `[${workspace.name}] ${label} from ${params.leadName ?? params.leadEmail}`,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
 <h2 style="margin-bottom:16px;">${label} Received</h2>
@@ -333,6 +338,8 @@ export async function notifyInboxDisconnect(params: {
   if (adminEmail && (hasNew || hasPersistent)) {
     try {
       const recipients = [adminEmail];
+      const verified = verifyEmailRecipients(recipients, "admin", "notifyInboxDisconnect");
+      if (verified.length === 0) return;
       {
         // Build subject line
         const subjectParts: string[] = [];
@@ -391,7 +398,7 @@ export async function notifyInboxDisconnect(params: {
         const headerColor = hasNew ? "#dc2626" : "#d97706";
 
         await sendNotificationEmail({
-          to: recipients,
+          to: verified,
           subject,
           html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
 <h2 style="margin-bottom:16px;color:${headerColor};">${headerText}</h2>

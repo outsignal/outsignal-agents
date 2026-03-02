@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { postMessage } from "@/lib/slack";
+import { verifySlackChannel } from "@/lib/notification-guard";
 
 interface NotifyParams {
   type: "onboard" | "provisioning" | "agent" | "system" | "error" | "approval" | "proposal";
@@ -38,6 +39,7 @@ export async function notify(params: NotifyParams): Promise<void> {
   // 2. Post to Slack ops channel
   const channelId = process.env.OPS_SLACK_CHANNEL_ID;
   if (channelId) {
+    if (!verifySlackChannel(channelId, "admin", "notify")) return;
     try {
       const emoji = SEVERITY_EMOJI[severity] ?? "ℹ️";
       const parts = [
