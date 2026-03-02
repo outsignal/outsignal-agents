@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { validateCronSecret } from "@/lib/cron-auth";
 import { checkAllWorkspaces } from "@/lib/inbox-health/monitor";
-import { notifyInboxDisconnect } from "@/lib/notifications";
+import { notifyInboxDisconnect, notifySenderHealth, sendSenderHealthDigest } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
 import { runSenderHealthCheck } from "@/lib/linkedin/health-check";
 
@@ -75,12 +75,72 @@ export async function GET(request: Request) {
 
     // --- Sender Health Check ---
     const healthResults = await runSenderHealthCheck();
-    // Notification handling will be wired in Plan 02
-    if (healthResults.length > 0) {
-      console.log(
-        `[${timestamp}] Sender health check: ${healthResults.length} sender(s) with status changes`,
-      );
+
+    // --- Process sender health results ---
+    const warningsForDigest: Array<{
+      workspaceSlug: string;
+      senderName: string;
+      reason: string;
+      detail: string;
+    }> = [];
+
+    for (const result of healthResults) {
+      if (result.severity === "critical") {
+        // Critical: fire immediate Slack + email notification
+        try {
+          await notifySenderHealth({
+            workspaceSlug: result.workspaceSlug,
+            senderName: result.senderName,
+            reason: result.reason,
+            detail: result.detail,
+            severity: "critical",
+            reassignedCount: result.reassignedCount,
+            workspacePaused: result.workspacePaused,
+          });
+        } catch (err) {
+          console.error(`[sender-health] Critical notification failed for ${result.senderName}:`, err);
+        }
+
+        // Also write to in-app notification + ops Slack
+        await notify({
+          type: "system",
+          severity: "error",
+          title: `Sender flagged: ${result.senderName}`,
+          message: result.detail,
+          workspaceSlug: result.workspaceSlug,
+          metadata: {
+            senderId: result.senderId,
+            reason: result.reason,
+            reassignedCount: result.reassignedCount,
+            workspacePaused: result.workspacePaused,
+          },
+        });
+      } else {
+        // Warning: collect for daily digest
+        warningsForDigest.push({
+          workspaceSlug: result.workspaceSlug,
+          senderName: result.senderName,
+          reason: result.reason,
+          detail: result.detail,
+        });
+      }
     }
+
+    // Send daily digest for warning-level events (Slack only)
+    if (warningsForDigest.length > 0) {
+      try {
+        await sendSenderHealthDigest({ warnings: warningsForDigest });
+      } catch (err) {
+        console.error("[sender-health] Digest notification failed:", err);
+      }
+    }
+
+    const criticalCount = healthResults.filter((r) => r.severity === "critical").length;
+    const warningCount = warningsForDigest.length;
+
+    console.log(
+      `[${timestamp}] Sender health check complete: ${healthResults.length} result(s) (${criticalCount} critical, ${warningCount} warnings)`,
+    );
 
     return NextResponse.json({
       checked: changes.length,
@@ -90,7 +150,9 @@ export async function GET(request: Request) {
         persistentDisconnections: c.persistentDisconnections.length,
         reconnections: c.reconnections.length,
       })),
-      senderHealthChanges: healthResults.length,
+      healthChecked: healthResults.length,
+      healthCritical: criticalCount,
+      healthWarnings: warningCount,
     });
   } catch (error) {
     console.error("[inbox-health/check] Error:", error);
