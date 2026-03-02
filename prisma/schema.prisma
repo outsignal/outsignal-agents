@@ -478,9 +478,10 @@ model Sender {
   linkedinTier String @default("free") // "free" | "premium"
 
   // Health metrics
-  ssiScore       Int?
-  acceptanceRate Float?
-  healthStatus   String @default("healthy") // healthy | warning | paused | blocked | session_expired
+  ssiScore        Int?
+  acceptanceRate  Float?
+  healthStatus    String    @default("healthy") // healthy | warning | paused | blocked | session_expired
+  healthFlaggedAt DateTime? // Timestamp when a soft flag was set; used for 48h cooldown auto-recovery
 
   // Warm-up tracking
   warmupDay       Int       @default(0) // 0 = not started, 1-28 = warmup day
@@ -496,14 +497,30 @@ model Sender {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace   Workspace            @relation(fields: [workspaceSlug], references: [slug])
-  actions     LinkedInAction[]
-  dailyUsage  LinkedInDailyUsage[]
-  connections LinkedInConnection[]
+  workspace    Workspace            @relation(fields: [workspaceSlug], references: [slug])
+  actions      LinkedInAction[]
+  dailyUsage   LinkedInDailyUsage[]
+  connections  LinkedInConnection[]
+  healthEvents SenderHealthEvent[]
 
   @@index([workspaceSlug])
   @@index([status])
   @@index([healthStatus])
+}
+
+model SenderHealthEvent {
+  id        String   @id @default(cuid())
+  senderId  String
+  status    String   // "healthy" | "warning" | "blocked" | "session_expired"
+  reason    String   // "bounce_rate" | "captcha" | "restriction" | "session_expired" | "manual" | "auto_recovered" | "admin_reactivated"
+  detail    String?  // human-readable explanation, e.g. "Bounce rate 7.2% (14/193 sends)"
+  bouncePct Float?   // snapshot at time of event (null for non-bounce reasons)
+  createdAt DateTime @default(now())
+
+  sender Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, createdAt])
+  @@index([createdAt])
 }
 
 model LinkedInAction {
