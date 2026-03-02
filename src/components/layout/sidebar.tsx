@@ -15,6 +15,7 @@ import {
   Linkedin,
   Building2,
   ListChecks,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,6 +40,7 @@ const mainNav = [
   { href: "/lists", label: "Lists", icon: ListChecks },
   { href: "/onboard", label: "Proposals", icon: UserPlus },
   { href: "/onboarding", label: "Onboarding", icon: ClipboardList },
+  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

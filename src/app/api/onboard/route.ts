@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createChannelWithMembers, postMessage } from "@/lib/slack";
 import { runResearchAgent } from "@/lib/agents/research";
+import { notify } from "@/lib/notify";
 
 function slugify(text: string): string {
   return text
@@ -149,8 +150,22 @@ export async function POST(request: NextRequest) {
           });
           workspaceStatus = "active";
           console.log(`[Onboard] EmailBison workspace provisioned for ${slug} (EB id: ${ebWorkspace.id})`);
+          notify({
+            type: "provisioning",
+            severity: "info",
+            title: "EmailBison workspace provisioned",
+            workspaceSlug: slug,
+            metadata: { emailBisonId: ebWorkspace.id },
+          }).catch(() => {});
         } catch (err) {
           console.error("[Onboard] EmailBison provisioning failed (non-blocking):", err);
+          notify({
+            type: "provisioning",
+            severity: "error",
+            title: "EmailBison provisioning failed",
+            message: err instanceof Error ? err.message : String(err),
+            workspaceSlug: slug,
+          }).catch(() => {});
         }
       }
 
@@ -165,6 +180,14 @@ export async function POST(request: NextRequest) {
           // Non-critical
         }
       }
+
+      notify({
+        type: "onboard",
+        severity: "info",
+        title: `New client onboarded: ${name}`,
+        workspaceSlug: slug,
+        metadata: { status: workspaceStatus },
+      }).catch(() => {});
     }
 
     // If submitted from a proposal, update the proposal status
@@ -220,6 +243,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Onboarding error:", error);
+    notify({
+      type: "error",
+      severity: "error",
+      title: "Onboarding failed",
+      message: error instanceof Error ? error.message : String(error),
+    }).catch(() => {});
     return NextResponse.json(
       { error: "Failed to create workspace" },
       { status: 500 },

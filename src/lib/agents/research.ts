@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { crawlWebsite, scrapeUrl } from "@/lib/firecrawl/client";
+import { notify } from "@/lib/notify";
 import { runAgent } from "./runner";
 import type { AgentConfig, ResearchInput, ResearchOutput } from "./types";
 
@@ -252,12 +253,23 @@ export async function runResearchAgent(
 ): Promise<ResearchOutput> {
   const userMessage = buildResearchMessage(input);
 
-  const result = await runAgent<ResearchOutput>(researchConfig, userMessage, {
-    triggeredBy: "cli",
-    workspaceSlug: input.workspaceSlug,
-  });
+  try {
+    const result = await runAgent<ResearchOutput>(researchConfig, userMessage, {
+      triggeredBy: "cli",
+      workspaceSlug: input.workspaceSlug,
+    });
 
-  return result.output;
+    return result.output;
+  } catch (error) {
+    notify({
+      type: "agent",
+      severity: "error",
+      title: "Research agent failed",
+      message: error instanceof Error ? error.message : String(error),
+      workspaceSlug: input.workspaceSlug,
+    }).catch(() => {});
+    throw error;
+  }
 }
 
 function buildResearchMessage(input: ResearchInput): string {

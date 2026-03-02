@@ -611,3 +611,20 @@ model MagicLinkToken {
   @@index([token])
   @@index([email])
 }
+
+model Notification {
+  id            String   @id @default(cuid())
+  type          String   // "onboard", "provisioning", "agent", "system", "error"
+  severity      String   @default("info") // "info", "warning", "error"
+  title         String
+  message       String?
+  workspaceSlug String?
+  metadata      Json?
+  read          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([workspaceSlug])
+  @@index([type])
+  @@index([read])
+}
