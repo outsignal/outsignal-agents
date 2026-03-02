@@ -64,6 +64,8 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -167,6 +169,26 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
     }
   }
 
+  async function handleProvision() {
+    setProvisioning(true);
+    setProvisionError(null);
+    try {
+      const res = await fetch(`/api/workspace/${workspace.slug}/provision-emailbison`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setProvisionError(data.error ?? "Provisioning failed");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setProvisionError("Failed to provision EmailBison");
+    } finally {
+      setProvisioning(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Save button bar */}
@@ -183,6 +205,33 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
           <span className="text-sm text-red-600 font-medium">{error}</span>
         )}
       </div>
+
+      {/* EmailBison Provisioning */}
+      {(!workspace.apiToken || workspace.status === "pending_emailbison") && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-amber-900">EmailBison Not Provisioned</p>
+                <p className="text-sm text-amber-700 mt-1">
+                  This workspace needs an EmailBison account to send emails.
+                </p>
+              </div>
+              <Button
+                onClick={handleProvision}
+                disabled={provisioning}
+                variant="outline"
+                className="border-amber-400 text-amber-900 hover:bg-amber-100"
+              >
+                {provisioning ? "Provisioning..." : "Provision EmailBison"}
+              </Button>
+            </div>
+            {provisionError && (
+              <p className="text-sm text-red-600 mt-2">{provisionError}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* General */}
       <Card>
