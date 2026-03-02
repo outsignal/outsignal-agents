@@ -105,9 +105,9 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [x] **HEALTH-06**: Soft flags (bounce rate) auto-recover after 48h cooldown when rate normalizes; hard flags (CAPTCHA, restriction, session expired) require manual admin reactivation
 - [x] **HEALTH-07**: Critical alerts (CAPTCHA, restriction, session expired, last sender down) fire Slack + email notification immediately
 - [x] **HEALTH-08**: Warning alerts (bounce rate) batched into daily health digest — Slack only
-- [ ] **HEALTH-09**: Sender cards enhanced with expandable health history panel, sparkline trends, health event log, and summary metrics
-- [ ] **HEALTH-10**: Admin reactivate button for hard-flagged senders (blocked, session_expired) with POST /api/senders/[id]/reactivate endpoint
-- [ ] **HEALTH-11**: Dashboard sender health KPI card with healthy/total count and link to /senders page
+- [x] **HEALTH-09**: Sender cards enhanced with expandable health history panel, sparkline trends, health event log, and summary metrics
+- [x] **HEALTH-10**: Admin reactivate button for hard-flagged senders (blocked, session_expired) with POST /api/senders/[id]/reactivate endpoint
+- [x] **HEALTH-11**: Dashboard sender health KPI card with healthy/total count and link to /senders page
 
 ## Future Requirements
 
@@ -227,9 +227,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HEALTH-06 | Phase 13 | Complete |
 | HEALTH-07 | Phase 13 | Complete |
 | HEALTH-08 | Phase 13 | Complete |
-| HEALTH-09 | Phase 13 | Pending |
-| HEALTH-10 | Phase 13 | Pending |
-| HEALTH-11 | Phase 13 | Pending |
+| HEALTH-09 | Phase 13 | Complete |
+| HEALTH-10 | Phase 13 | Complete |
+| HEALTH-11 | Phase 13 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 73 total (37 complete, 36 pending)

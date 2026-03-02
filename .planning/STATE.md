@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 13 of 13 (Smart Sender Health — Plan 02 COMPLETE: Sender health notifications + daily digest wired into cron)
-Plan: 2 of 3 in current phase (13-02 done: notifySenderHealth + sendSenderHealthDigest + cron wiring)
-Status: Phase 13 — 2/3 plans done. Critical alerts fire Slack + email immediately; warning-level bounces batched into daily Slack digest.
-Last activity: 2026-03-02 — Executed Plan 02: notifySenderHealth() and sendSenderHealthDigest() added to notifications.ts; cron pipeline wired to fire critical alerts immediately and collect warnings for daily digest.
+Phase: 13 of 13 (Smart Sender Health — Plan 03 COMPLETE: Sender health UI panel, sparkline, reactivate button, dashboard KPI)
+Plan: 3 of 3 in current phase (13-03 done: reactivate + health-history API, SenderHealthPanel sparkline, SenderCard expand/reactivate, dashboard KPI card)
+Status: Phase 13 — 3/3 plans done. All sender health requirements complete (HEALTH-09, HEALTH-10, HEALTH-11).
+Last activity: 2026-03-02 — Executed Plan 03: POST /reactivate and GET /health-history endpoints added; SenderHealthPanel with recharts 30-day sparkline; SenderCard health expand toggle and Reactivate button; dashboard "Sender Health" KPI links to /senders.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -142,6 +142,11 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [13-01]: Case-insensitive email matching for senderEmail <-> Sender.emailAddress using .toLowerCase() on both sides
 - [13-01]: Least-loaded reassignment scoring: pendingCount - remainingBudget (lower score = better target sender)
 - [13-01]: prisma.$transaction for atomic workspace campaign pause when last healthy sender goes down
+- [13-03]: Sparkline fetched lazily on expand (not on card mount) — avoids N×30-day DB queries on initial page load with many senders
+- [13-03]: statusToNum severity mapping (0/1/2) used for sparkline Y-axis and color — single severity scale
+- [13-03]: prisma.$transaction([update, create]) for reactivation — ensures health reset and audit event are always atomically paired
+- [13-03]: Link wraps MetricCard for Sender Health KPI — keeps MetricCard as pure display component, navigation at page level
+- [13-03]: Reactivate button only renders for healthStatus=blocked|session_expired — soft-flagged senders don't require admin intervention
 - [13-02]: notifySenderHealth() uses workspace.slackChannelId (client channel) for alerts — ops channel gets coverage via notify() DB+Slack call
 - [13-02]: Email only for critical severity — warning-level bounce rate alerts are low urgency, Slack digest sufficient per CONTEXT.md
 - [13-02]: sendSenderHealthDigest() groups by workspaceSlug — one Slack message per workspace regardless of how many senders have warnings
@@ -157,5 +162,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 13-02-PLAN.md (notifySenderHealth + sendSenderHealthDigest added to notifications.ts; cron pipeline wired for immediate critical Slack+email alerts and daily warning digest).
+Stopped at: Completed 13-03-PLAN.md (sender health UI complete: POST /reactivate + GET /health-history APIs; SenderHealthPanel recharts sparkline; SenderCard expand/reactivate; dashboard Sender Health KPI → /senders).
 Resume file: None
