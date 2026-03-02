@@ -28,7 +28,7 @@ export async function notify(params: NotifyParams): Promise<void> {
         title: params.title,
         message: params.message ?? null,
         workspaceSlug: params.workspaceSlug ?? null,
-        metadata: params.metadata ?? undefined,
+        metadata: params.metadata ? JSON.parse(JSON.stringify(params.metadata)) : undefined,
       },
     });
   } catch (err) {
