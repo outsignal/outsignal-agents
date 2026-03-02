@@ -157,3 +157,23 @@ Plans:
 - [ ] 11-01-PLAN.md — VoyagerClient class with Voyager API methods + socks-proxy-agent dependency
 - [ ] 11-02-PLAN.md — Cookie extraction from LinkedInBrowser + ApiClient cookie persistence
 - [ ] 11-03-PLAN.md — Worker integration: swap LinkedInBrowser for VoyagerClient in worker.ts
+
+### Phase 12: Dashboard & Admin UX
+
+**Goal:** Upgrade the admin dashboard from a read-only overview to a full operational command center. Add activity graphs (reply volume, sent/bounce trends from WebhookEvent table) filterable by client or all. Agent run monitoring UI (AgentRun model). LinkedIn action queue viewer (LinkedInAction model). Proposal and onboarding CRUD (edit, delete). Manual document upload/ingest for proposals and onboarding docs (PDF/Google Doc parsing to auto-create records). Person detail page. LinkedIn sender management (add/edit/pause/delete, proxy URL, daily limits). Webhook event log viewer.
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)
+
+### Phase 13: Smart Sender Health
+
+**Goal:** Automated sender health management. Auto-detect flagged senders (bounce rate >5%, CAPTCHA, restriction, session expired). Auto-remove flagged sender from campaign rotation (not pause whole campaign). Reassign pending LinkedIn actions to healthy senders. Slack + email notifications on health events. Sender swap workflow in admin UI. Health history tracking and trend visualization.
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 13 to break down)

@@ -33,6 +33,8 @@ Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
 ### Roadmap Evolution
 - Phase 11 added: LinkedIn Voyager API Client — replace browser automation with HTTP-based Voyager API calls for account safety
+- Phase 12 added: Dashboard & Admin UX — operational command center with activity graphs, agent monitoring, sender management, proposal CRUD, document ingest
+- Phase 13 added: Smart Sender Health — auto-detect flagged senders, remove from campaign rotation, reassign actions, Slack notifications, swap workflow
 
 ### Decisions
 
