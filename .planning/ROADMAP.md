@@ -140,7 +140,7 @@ Plans:
 | 10. Auto-Deploy on Approval | v1.1 | 0/TBD | Not started | - |
 | 11. LinkedIn Voyager API Client | — | 3/3 | Code complete | 2026-03-02 |
 | 12. Dashboard & Admin UX | 8/8 | Complete    | 2026-03-02 | - |
-| 13. Smart Sender Health | 3/3 | Complete   | 2026-03-02 | - |
+| 13. Smart Sender Health | 3/3 | Complete    | 2026-03-02 | - |
 | 14. LinkedIn Cookie Chrome Extension | — | 0/TBD | Not started | - |
 
 ### Phase 11: LinkedIn Voyager API Client
