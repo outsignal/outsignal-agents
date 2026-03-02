@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 11 of 11 (LinkedIn Voyager API Client — Plan 02 COMPLETE: Cookie extraction bridge + API endpoints)
-Plan: 2 of 3 in current phase (11-01 done: VoyagerClient, 11-02 done: cookie bridge + endpoints)
-Status: Phase 11 in progress. 2/3 plans done. Next: Plan 03 (worker Voyager integration).
-Last activity: 2026-03-02 — Executed Plan 02: extractVoyagerCookies() on LinkedInBrowser, saveVoyagerCookies/getVoyagerCookies/updateSenderHealth on ApiClient, GET /api/linkedin/senders/{id}/cookies, PATCH /api/linkedin/senders/{id}/health.
+Phase: 11 of 11 (LinkedIn Voyager API Client — Plan 03 COMPLETE: Worker Voyager integration)
+Plan: 3 of 3 in current phase (11-01 done: VoyagerClient, 11-02 done: cookie bridge + endpoints, 11-03 done: worker integration)
+Status: Phase 11 COMPLETE. All 3 plans done. LinkedIn action execution now via VoyagerClient HTTP (not browser automation).
+Last activity: 2026-03-02 — Executed Plan 03: worker.ts uses VoyagerClient for all action execution, LinkedInBrowser demoted to cookie capture only, getOrCreateVoyagerClient/loginAndExtractCookies/executeAction(senderId) implemented.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -118,6 +118,8 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 11-02]: saveVoyagerCookies wraps li_at + JSESSIONID with type:voyager marker in existing session POST array — no endpoint changes needed
 - [Phase 11-02]: getVoyagerCookies uses new /cookies GET (not /session GET) — /session GET only returns status fields, not sessionData
 - [Phase 11-02]: Health endpoint validates against explicit allowlist: healthy/warning/paused/blocked/session_expired
+- [Phase 11-03]: executeAction receives senderId as third param — cleanest approach for activeClients.delete() and updateSenderHealth() without reverse-lookup on the map
+- [Phase 11-03]: loginAndExtractCookies wraps browser in try/finally with browser.close() — ensures cleanup even on error; LinkedInBrowser used only here
 
 ### Blockers/Concerns
 
@@ -129,5 +131,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 11-02-PLAN.md (Cookie Extraction Bridge + API Endpoints). extractVoyagerCookies on LinkedInBrowser, 3 new ApiClient methods, 2 new worker-only endpoints. Phase 11: 2/3 plans done. Next: Plan 03 (worker Voyager integration).
+Stopped at: Completed 11-03-PLAN.md (Worker Voyager Integration). worker.ts fully swapped to VoyagerClient HTTP execution. Phase 11 complete: all 3/3 plans done.
 Resume file: None
