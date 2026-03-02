@@ -66,11 +66,11 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### LinkedIn Voyager API
 
-- [ ] **VOYAGER-01**: All LinkedIn actions (connect, message, profile_view, check_connection) execute via HTTP Voyager API calls instead of browser automation
-- [ ] **VOYAGER-02**: VoyagerClient authenticates using li_at + JSESSIONID cookies with correct CSRF token derivation
-- [ ] **VOYAGER-03**: All Voyager API requests route through sender's ISP residential proxy via SOCKS5
-- [ ] **VOYAGER-04**: VoyagerClient handles error responses (429 rate limit, 403 auth expired, 999 IP blocked, checkpoint redirect) with appropriate sender health status updates
-- [ ] **VOYAGER-05**: Cookie extraction from agent-browser session persists li_at + JSESSIONID to Sender.sessionData via existing API
+- [x] **VOYAGER-01**: All LinkedIn actions (connect, message, profile_view, check_connection) execute via HTTP Voyager API calls instead of browser automation
+- [x] **VOYAGER-02**: VoyagerClient authenticates using li_at + JSESSIONID cookies with correct CSRF token derivation
+- [x] **VOYAGER-03**: All Voyager API requests route through sender's ISP residential proxy via SOCKS5
+- [x] **VOYAGER-04**: VoyagerClient handles error responses (429 rate limit, 403 auth expired, 999 IP blocked, checkpoint redirect) with appropriate sender health status updates
+- [x] **VOYAGER-05**: Cookie extraction from agent-browser session persists li_at + JSESSIONID to Sender.sessionData via existing API
 
 ### Notifications
 
@@ -169,11 +169,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEQ-04 | Phase 10 | Pending |
 | SEQ-05 | Phase 10 | Pending |
 
-| VOYAGER-01 | Phase 11 | Pending |
-| VOYAGER-02 | Phase 11 | Pending |
-| VOYAGER-03 | Phase 11 | Pending |
-| VOYAGER-04 | Phase 11 | Pending |
-| VOYAGER-05 | Phase 11 | Pending |
+| VOYAGER-01 | Phase 11 | Complete |
+| VOYAGER-02 | Phase 11 | Complete |
+| VOYAGER-03 | Phase 11 | Complete |
+| VOYAGER-04 | Phase 11 | Complete |
+| VOYAGER-05 | Phase 11 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 48 total (7 complete, 41 pending)
