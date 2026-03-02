@@ -54,6 +54,7 @@ export class LinkedInBrowser {
   private proxyUrl: string | undefined;
   private launched = false;
   private urnCache: Map<string, CachedProfile> = new Map();
+  private voyagerCookies: { liAt: string; jsessionId: string } | null = null;
 
   /** URN cache TTL: 30 minutes */
   private static readonly URN_CACHE_TTL = 30 * 60 * 1000;
@@ -1294,6 +1295,66 @@ export class LinkedInBrowser {
   }
 
   // ---------------------------------------------------------------------------
+  // Voyager cookie extraction
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Extract Voyager API cookies (li_at + JSESSIONID) from the agent-browser session.
+   * These are required to authenticate HTTP-based Voyager API calls.
+   * Called automatically after a successful login. Returns null if extraction fails.
+   */
+  async extractVoyagerCookies(): Promise<{ liAt: string; jsessionId: string } | null> {
+    try {
+      // Navigate to LinkedIn to ensure we're on the right domain
+      // (cookies are domain-scoped)
+      const result = this.exec(
+        'eval "(() => { const c = {}; document.cookie.split(\\";\\").forEach(p => { const [k,...v] = p.trim().split(\\"=\\"); c[k] = v.join(\\"=\\"); }); return JSON.stringify({ li_at: c.li_at || null, JSESSIONID: c.JSESSIONID || null }); })()"'
+      );
+
+      const parsed = JSON.parse(result.trim());
+      if (!parsed.li_at || !parsed.JSESSIONID) {
+        // li_at may be HttpOnly — try CDP Network.getAllCookies as fallback
+        return this.extractCookiesViaCDP();
+      }
+      return { liAt: parsed.li_at, jsessionId: parsed.JSESSIONID };
+    } catch (err) {
+      console.error('[LinkedInBrowser] Cookie extraction failed:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Fallback cookie extraction via document.cookie string parsing.
+   * Used when the primary extraction fails (e.g., li_at is HttpOnly).
+   */
+  private extractCookiesViaCDP(): { liAt: string; jsessionId: string } | null {
+    try {
+      // agent-browser's eval can access CDP via the browser session
+      // Alternative: use the exec method to call a CDP command
+      // For now, try reading from the session's cookie store
+      const result = this.exec(
+        'eval "(() => { return JSON.stringify(document.cookie); })()"'
+      );
+      // Parse the cookie string for li_at and JSESSIONID
+      const cookieStr = JSON.parse(result.trim());
+      const liAt = this.parseCookieValue(cookieStr, 'li_at');
+      const jsessionId = this.parseCookieValue(cookieStr, 'JSESSIONID');
+      if (!liAt || !jsessionId) return null;
+      return { liAt, jsessionId };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Parse a single cookie value from a cookie string by name.
+   */
+  private parseCookieValue(cookieStr: string, name: string): string | null {
+    const match = cookieStr.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+    return match ? match[1] : null;
+  }
+
+  // ---------------------------------------------------------------------------
   // Cookie management (compatibility)
   // ---------------------------------------------------------------------------
 
@@ -1651,6 +1712,15 @@ export class LinkedInBrowser {
         this.log("Login successful");
         await this.saveSessionState();
         this.launched = true;
+
+        // Extract Voyager API cookies for HTTP-based actions
+        this.voyagerCookies = await this.extractVoyagerCookies();
+        if (this.voyagerCookies) {
+          this.log("Voyager cookies extracted successfully");
+        } else {
+          console.warn("[LinkedInBrowser] Failed to extract Voyager cookies — HTTP actions will not work");
+        }
+
         return true;
       }
 
