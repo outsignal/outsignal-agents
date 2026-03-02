@@ -44,9 +44,21 @@ export async function PATCH(
   if (body.retainerCost !== undefined)
     updateData.retainerCost = body.retainerCost;
 
+  // Package type update
+  if (body.packageType !== undefined) updateData.packageType = body.packageType;
+
   // Allow sending (changing status from draft to sent)
   if (body.status === "sent" && proposal.status === "draft") {
     updateData.status = "sent";
+  }
+
+  // General status override for admin
+  if (
+    body.status !== undefined &&
+    body.status !== "sent" &&
+    body.status !== proposal.status
+  ) {
+    updateData.status = body.status;
   }
 
   const updated = await prisma.proposal.update({
@@ -55,4 +67,26 @@ export async function PATCH(
   });
 
   return NextResponse.json({ proposal: updated });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const proposal = await prisma.proposal.findUnique({ where: { id } });
+  if (!proposal) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (proposal.status !== "draft") {
+    return NextResponse.json(
+      { error: "Cannot delete a non-draft proposal" },
+      { status: 409 },
+    );
+  }
+
+  await prisma.proposal.delete({ where: { id } });
+  return new NextResponse(null, { status: 204 });
 }

@@ -47,6 +47,9 @@ export async function PATCH(
   // Update editable fields
   if (body.clientName) updateData.clientName = body.clientName;
   if (body.clientEmail !== undefined) updateData.clientEmail = body.clientEmail;
+  if (body.status !== undefined && !body.sendEmail) updateData.status = body.status;
+  if (body.createWorkspace !== undefined) updateData.createWorkspace = body.createWorkspace;
+  if (body.workspaceSlug !== undefined) updateData.workspaceSlug = body.workspaceSlug;
 
   const updated = await prisma.onboardingInvite.update({
     where: { id },
@@ -54,4 +57,26 @@ export async function PATCH(
   });
 
   return NextResponse.json({ invite: updated });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const invite = await prisma.onboardingInvite.findUnique({ where: { id } });
+  if (!invite) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (invite.status === "completed") {
+    return NextResponse.json(
+      { error: "Cannot delete completed onboarding invite" },
+      { status: 409 },
+    );
+  }
+
+  await prisma.onboardingInvite.delete({ where: { id } });
+  return new NextResponse(null, { status: 204 });
 }
