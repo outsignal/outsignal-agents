@@ -97,12 +97,12 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### Smart Sender Health
 
-- [ ] **HEALTH-01**: Daily cron detects unhealthy senders — bounce rate >5% (24h window, min 10 sends), CAPTCHA, LinkedIn restriction, session expired
-- [ ] **HEALTH-02**: SenderHealthEvent audit trail records every health state change with status, reason, detail, and timestamp
-- [ ] **HEALTH-03**: Flagged sender auto-removed from campaign rotation; campaign continues running with remaining healthy senders
+- [x] **HEALTH-01**: Daily cron detects unhealthy senders — bounce rate >5% (24h window, min 10 sends), CAPTCHA, LinkedIn restriction, session expired
+- [x] **HEALTH-02**: SenderHealthEvent audit trail records every health state change with status, reason, detail, and timestamp
+- [x] **HEALTH-03**: Flagged sender auto-removed from campaign rotation; campaign continues running with remaining healthy senders
 - [ ] **HEALTH-04**: Pending LinkedIn actions auto-reassign to healthy sender in same workspace (least-loaded with budget check)
-- [ ] **HEALTH-05**: If workspace has only one sender and it's flagged, all active campaigns pause and urgent critical alert fires
-- [ ] **HEALTH-06**: Soft flags (bounce rate) auto-recover after 48h cooldown when rate normalizes; hard flags (CAPTCHA, restriction, session expired) require manual admin reactivation
+- [x] **HEALTH-05**: If workspace has only one sender and it's flagged, all active campaigns pause and urgent critical alert fires
+- [x] **HEALTH-06**: Soft flags (bounce rate) auto-recover after 48h cooldown when rate normalizes; hard flags (CAPTCHA, restriction, session expired) require manual admin reactivation
 - [ ] **HEALTH-07**: Critical alerts (CAPTCHA, restriction, session expired, last sender down) fire Slack + email notification immediately
 - [ ] **HEALTH-08**: Warning alerts (bounce rate) batched into daily health digest — Slack only
 - [ ] **HEALTH-09**: Sender cards enhanced with expandable health history panel, sparkline trends, health event log, and summary metrics
@@ -219,12 +219,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-12 | Phase 12 | Complete |
 | DASH-13 | Phase 12 | Complete |
 | DASH-14 | Phase 12 | Complete |
-| HEALTH-01 | Phase 13 | Pending |
-| HEALTH-02 | Phase 13 | Pending |
-| HEALTH-03 | Phase 13 | Pending |
+| HEALTH-01 | Phase 13 | Complete |
+| HEALTH-02 | Phase 13 | Complete |
+| HEALTH-03 | Phase 13 | Complete |
 | HEALTH-04 | Phase 13 | Pending |
-| HEALTH-05 | Phase 13 | Pending |
-| HEALTH-06 | Phase 13 | Pending |
+| HEALTH-05 | Phase 13 | Complete |
+| HEALTH-06 | Phase 13 | Complete |
 | HEALTH-07 | Phase 13 | Pending |
 | HEALTH-08 | Phase 13 | Pending |
 | HEALTH-09 | Phase 13 | Pending |

@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 12 of 12 (Dashboard & Admin UX — Plan 07 COMPLETE: Sidebar navigation reorganized into logical groups)
-Plan: 7 of 8 in current phase (12-01 done: dashboard home, 12-02 done: person detail, 12-03 done: webhook log, 12-04 done: agent run monitoring, 12-05 done: linkedin queue, 12-06 done: senders, 12-07 done: sidebar nav)
-Status: Phase 12 — 7/8 plans done. Sidebar now has 5 logical groups with dividers; LinkedIn Queue added. Plan 08 (Proposals/Onboarding CRUD) remains.
-Last activity: 2026-03-02 — Executed Plan 07: Sidebar reorganized into navGroups (Core, Business, LinkedIn, Operations, Config) with thin dividers; LinkedIn Queue nav item added.
+Phase: 13 of 13 (Smart Sender Health — Plan 01 COMPLETE: SenderHealthEvent schema + runSenderHealthCheck() detection engine)
+Plan: 1 of 3 in current phase (13-01 done: schema + detection engine)
+Status: Phase 13 — 1/3 plans done. SenderHealthEvent model added, bounce rate/CAPTCHA/restriction/session expiry detection implemented, cron integrated.
+Last activity: 2026-03-02 — Executed Plan 01: SenderHealthEvent model added to DB via prisma db push; runSenderHealthCheck() detects 4 health signals with auto-recovery and action reassignment; integrated into inbox-health cron.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -133,6 +133,16 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 12-01]: Alerts positioned above KPIs — critical items need immediate visibility; LEAD_INTERESTED counted as reply in time-series
 - [Phase 12]: Kept Linkedin icon (deprecated hint not error) — no non-deprecated replacement in lucide-react v0.575.0
 
+**Phase 13 decisions (2026-03-02):**
+- [13-01]: Minimum 10-send volume gate before bounce rate flagging — avoids false positives from low-volume senders
+- [13-01]: Soft flag (bounce_rate) uses healthFlaggedAt for 48h cooldown auto-recovery; hard flags (captcha/restriction/session_expired) require manual admin reactivation regardless of time
+- [13-01]: Warning severity keeps sender in rotation — bounce rate 5-7% is monitoring signal, not removal trigger
+- [13-01]: healthFlaggedAt only set for soft flags; hard flags don't use it since they require explicit admin reactivation
+- [13-01]: Notifications deferred to Plan 02 — detection engine returns HealthCheckResult[] for caller, does not fire Slack/email
+- [13-01]: Case-insensitive email matching for senderEmail <-> Sender.emailAddress using .toLowerCase() on both sides
+- [13-01]: Least-loaded reassignment scoring: pendingCount - remainingBudget (lower score = better target sender)
+- [13-01]: prisma.$transaction for atomic workspace campaign pause when last healthy sender goes down
+
 ### Blockers/Concerns
 
 - EmailBison campaign-lead assignment API — RESOLVED (07-04): No assignment endpoint exists; UI-only. Phase 10 must accept manual campaign assignment or find alternative. User has contacted EmailBison support.
@@ -143,5 +153,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 12-07-PLAN.md (Sidebar navigation reorganized into logical groups with dividers, LinkedIn Queue added).
+Stopped at: Completed 13-01-PLAN.md (SenderHealthEvent schema added to DB; runSenderHealthCheck() detection engine implemented with bounce rate, CAPTCHA, restriction, session expiry detection, auto-recovery, and cron integration).
 Resume file: None
