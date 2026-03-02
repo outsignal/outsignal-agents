@@ -21,6 +21,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/onboard",          // Customer onboarding submission
   "/api/domains/",         // Domain suggestions (customer onboarding)
   "/api/enrichment/jobs/", // Cron-triggered enrichment processing
+  "/api/inbox-health/",    // Cron-triggered inbox health monitoring
 ];
 
 // Proposal accept is customer-facing (POST /api/proposals/:id/accept)
