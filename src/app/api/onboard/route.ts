@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
 
     const shouldCreateWorkspace = body.createWorkspace !== false;
     let workspaceSlug: string | null = null;
+    let workspaceStatus = "pending_emailbison";
 
     if (shouldCreateWorkspace) {
       const slug = slugify(name);
@@ -108,12 +109,57 @@ export async function POST(request: NextRequest) {
 
       workspaceSlug = workspace.slug;
 
+      // Best-effort: Auto-provision EmailBison workspace + API token
+      if (process.env.EMAILBISON_ADMIN_TOKEN) {
+        try {
+          const ebBase = "https://app.outsignal.ai/api";
+          const adminHeaders = {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.EMAILBISON_ADMIN_TOKEN}`,
+          };
+
+          // 1. Create EmailBison workspace
+          const createRes = await fetch(`${ebBase}/workspaces`, {
+            method: "POST",
+            headers: adminHeaders,
+            body: JSON.stringify({ name: body.name }),
+          });
+          if (!createRes.ok) throw new Error(`EB create workspace: ${createRes.status}`);
+          const { data: ebWorkspace } = await createRes.json();
+
+          // 2. Generate API token
+          const tokenRes = await fetch(
+            `${ebBase}/workspaces/v1.1/${ebWorkspace.id}/api-tokens`,
+            {
+              method: "POST",
+              headers: adminHeaders,
+              body: JSON.stringify({ name: "outsignal-admin" }),
+            },
+          );
+          if (!tokenRes.ok) throw new Error(`EB create token: ${tokenRes.status}`);
+          const { data: tokenData } = await tokenRes.json();
+
+          // 3. Store token and activate workspace
+          await prisma.workspace.update({
+            where: { slug },
+            data: {
+              apiToken: tokenData.plain_text_token,
+              status: "active",
+            },
+          });
+          workspaceStatus = "active";
+          console.log(`[Onboard] EmailBison workspace provisioned for ${slug} (EB id: ${ebWorkspace.id})`);
+        } catch (err) {
+          console.error("[Onboard] EmailBison provisioning failed (non-blocking):", err);
+        }
+      }
+
       // Post welcome message to Slack channel
       if (slackChannelId) {
         try {
           await postMessage(
             slackChannelId,
-            `New client onboarded: *${workspace.name}*\nVertical: ${workspace.vertical ?? "N/A"}\nSender: ${workspace.senderFullName}\nStatus: Pending Email Bison setup`,
+            `New client onboarded: *${workspace.name}*\nVertical: ${workspace.vertical ?? "N/A"}\nSender: ${workspace.senderFullName}\nStatus: ${workspaceStatus === "active" ? "Active (EmailBison provisioned)" : "Pending Email Bison setup"}`,
           );
         } catch {
           // Non-critical
@@ -170,7 +216,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       slug: workspaceSlug,
-      status: shouldCreateWorkspace ? "pending_emailbison" : "info_collected",
+      status: shouldCreateWorkspace ? workspaceStatus : "info_collected",
     });
   } catch (error) {
     console.error("Onboarding error:", error);
