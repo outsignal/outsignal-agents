@@ -3,6 +3,7 @@ import { validateCronSecret } from "@/lib/cron-auth";
 import { checkAllWorkspaces } from "@/lib/inbox-health/monitor";
 import { notifyInboxDisconnect } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
+import { runSenderHealthCheck } from "@/lib/linkedin/health-check";
 
 export async function GET(request: Request) {
   if (!validateCronSecret(request)) {
@@ -72,6 +73,15 @@ export async function GET(request: Request) {
       `[${timestamp}] Inbox health check complete: ${changes.length} workspace(s) with changes`,
     );
 
+    // --- Sender Health Check ---
+    const healthResults = await runSenderHealthCheck();
+    // Notification handling will be wired in Plan 02
+    if (healthResults.length > 0) {
+      console.log(
+        `[${timestamp}] Sender health check: ${healthResults.length} sender(s) with status changes`,
+      );
+    }
+
     return NextResponse.json({
       checked: changes.length,
       workspacesWithChanges: changes.map((c) => ({
@@ -80,6 +90,7 @@ export async function GET(request: Request) {
         persistentDisconnections: c.persistentDisconnections.length,
         reconnections: c.reconnections.length,
       })),
+      senderHealthChanges: healthResults.length,
     });
   } catch (error) {
     console.error("[inbox-health/check] Error:", error);
