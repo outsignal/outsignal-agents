@@ -195,7 +195,7 @@ export class VoyagerClient {
    * Send a LinkedIn connection request.
    *
    * Calls viewProfile() first to extract memberUrn. Then POSTs to
-   * /growth/normInvitations with the connection request payload.
+   * /voyagerRelationshipsDashMemberRelationships with the connection request payload.
    */
   async sendConnectionRequest(
     profileUrl: string,
@@ -211,28 +211,31 @@ export class VoyagerClient {
       const memberUrn = profileResult.details?.memberUrn as string;
       const profileId = profileResult.details?.profileId as string;
 
-      const body: Record<string, unknown> = {
-        inviteeUrn: `urn:li:fsd_profile:${memberUrn}`,
-        invitationType: "CONNECTION",
-        trackingId: Buffer.from(Math.random().toString())
-          .toString("base64")
-          .slice(0, 16),
-      };
-
-      // Only add message key if note is provided — omit entirely if no note
-      if (note) {
-        body.message = note;
+      // Validate note length (LinkedIn max is 300 characters)
+      if (note && note.length > 300) {
+        return { success: false, error: "note_too_long", details: { maxLength: 300 } };
       }
 
-      const response = await this.request("/growth/normInvitations", {
-        method: "POST",
-        body: JSON.stringify(body),
-        extraHeaders: {
-          "Content-Type": "application/json",
-          // Referer reduces detection risk for write operations (per research)
-          Referer: `https://www.linkedin.com/in/${profileId}/`,
+      const body = {
+        invitee: {
+          inviteeUnion: {
+            memberProfile: `urn:li:fsd_profile:${memberUrn}`,
+          },
         },
-      });
+        customMessage: note || "",
+      };
+
+      const response = await this.request(
+        `/voyagerRelationshipsDashMemberRelationships?action=verifyQuotaAndCreateV2&decorationId=com.linkedin.voyager.dash.deco.relationships.InvitationCreationResultWithInvitee-2`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          extraHeaders: {
+            "Content-Type": "application/json",
+            Referer: `https://www.linkedin.com/in/${profileId}/`,
+          },
+        }
+      );
 
       // Checkpoint detection
       if (
@@ -248,6 +251,10 @@ export class VoyagerClient {
 
       return { success: true, details: { memberUrn } };
     } catch (err) {
+      // CANT_RESEND_YET = already sent an invite to this person
+      if (err instanceof VoyagerError && err.status === 400) {
+        return { success: false, error: "already_invited" };
+      }
       return this.handleError(err);
     }
   }
