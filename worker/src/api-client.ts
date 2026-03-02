@@ -137,4 +137,68 @@ export class ApiClient {
       return null;
     }
   }
+
+  /**
+   * Save Voyager API cookies (li_at + JSESSIONID) for a sender.
+   * These are stored encrypted in Sender.sessionData via the existing session endpoint.
+   * The cookies are stored as a JSON object with type marker for the API to distinguish
+   * from the old browser cookie array format.
+   */
+  async saveVoyagerCookies(
+    senderId: string,
+    cookies: { liAt: string; jsessionId: string },
+  ): Promise<void> {
+    await this.request(`/api/linkedin/senders/${senderId}/session`, {
+      method: "POST",
+      body: JSON.stringify({
+        cookies: [
+          { type: "voyager", liAt: cookies.liAt, jsessionId: cookies.jsessionId }
+        ],
+      }),
+    });
+  }
+
+  /**
+   * Load Voyager API cookies for a sender from the cookies endpoint.
+   * Uses GET /api/linkedin/senders/{id}/cookies which decrypts sessionData server-side.
+   * Returns null if no cookies are stored or if they're in the old browser format.
+   */
+  async getVoyagerCookies(
+    senderId: string,
+  ): Promise<{ liAt: string; jsessionId: string } | null> {
+    try {
+      const result = await this.request<{ cookies: unknown[] }>(
+        `/api/linkedin/senders/${senderId}/cookies`,
+      );
+
+      // Look for voyager-type cookie entry
+      if (Array.isArray(result.cookies)) {
+        const voyagerEntry = result.cookies.find(
+          (entry: any) => entry && typeof entry === 'object' && (entry as any).type === 'voyager'
+        ) as { type: string; liAt: string; jsessionId: string } | undefined;
+
+        if (voyagerEntry?.liAt && voyagerEntry?.jsessionId) {
+          return { liAt: voyagerEntry.liAt, jsessionId: voyagerEntry.jsessionId };
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Update the health status of a sender.
+   * Called by the worker when it detects auth failures, IP blocks, or checkpoint challenges.
+   * The fail action endpoint does NOT update sender health — only action status.
+   */
+  async updateSenderHealth(
+    senderId: string,
+    healthStatus: string,
+  ): Promise<void> {
+    await this.request(`/api/linkedin/senders/${senderId}/health`, {
+      method: "PATCH",
+      body: JSON.stringify({ healthStatus }),
+    });
+  }
 }
