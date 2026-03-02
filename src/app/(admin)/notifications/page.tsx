@@ -150,6 +150,8 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [workspaceFilter, setWorkspaceFilter] = useState<string>("all");
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [page, setPage] = useState(1);
 
   const fetchNotifications = useCallback(async () => {
@@ -157,6 +159,7 @@ export default function NotificationsPage() {
     const params = new URLSearchParams();
     if (typeFilter !== "all") params.set("type", typeFilter);
     if (severityFilter !== "all") params.set("severity", severityFilter);
+    if (workspaceFilter !== "all") params.set("workspace", workspaceFilter);
     params.set("page", String(page));
 
     try {
@@ -166,11 +169,28 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, severityFilter, page]);
+  }, [typeFilter, severityFilter, workspaceFilter, page]);
 
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
+
+  // Fetch distinct workspace slugs for filter
+  useEffect(() => {
+    fetch("/api/notifications?page=1")
+      .then((r) => r.json())
+      .then((json: NotificationsResponse) => {
+        const slugs = [
+          ...new Set(
+            json.notifications
+              .map((n) => n.workspaceSlug)
+              .filter((s): s is string => !!s),
+          ),
+        ].sort();
+        setWorkspaces(slugs);
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleMarkAllRead() {
     await fetch("/api/notifications", {
@@ -264,6 +284,28 @@ export default function NotificationsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {workspaces.length > 0 && (
+            <Select
+              value={workspaceFilter}
+              onValueChange={(val) => {
+                setWorkspaceFilter(val);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue placeholder="All workspaces" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All workspaces</SelectItem>
+                {workspaces.map((slug) => (
+                  <SelectItem key={slug} value={slug}>
+                    {slug}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {data && (
             <span className="text-xs text-muted-foreground ml-auto">
