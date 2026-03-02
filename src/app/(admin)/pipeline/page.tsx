@@ -53,6 +53,24 @@ interface Prospect {
   createdAt: string;
 }
 
+interface ProspectFormData {
+  name: string;
+  contactEmail: string;
+  contactName: string;
+  website: string;
+  companyOverview: string;
+  notes: string;
+}
+
+const EMPTY_FORM: ProspectFormData = {
+  name: "",
+  contactEmail: "",
+  contactName: "",
+  website: "",
+  companyOverview: "",
+  notes: "",
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeTime(dateStr: string): string {
@@ -271,7 +289,7 @@ function KanbanColumn({
   onStatusChange: (id: string, newStatus: string) => void;
   onDelete: (id: string, name: string) => void;
   onConvert: (id: string) => void;
-  onEdit: (id: string) => void;
+  onEdit: (prospect: Prospect) => void;
 }) {
   return (
     <div className="flex flex-col min-h-0">
@@ -298,7 +316,7 @@ function KanbanColumn({
             onStatusChange={(newStatus) => onStatusChange(p.id, newStatus)}
             onDelete={() => onDelete(p.id, p.name)}
             onConvert={() => onConvert(p.id)}
-            onEdit={() => onEdit(p.id)}
+            onEdit={() => onEdit(p)}
           />
         ))}
 
@@ -322,15 +340,13 @@ export default function PipelinePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    name: "",
-    contactEmail: "",
-    contactName: "",
-    website: "",
-    companyOverview: "",
-    notes: "",
-  });
+  // Add Prospect form state
+  const [formData, setFormData] = useState<ProspectFormData>({ ...EMPTY_FORM });
+
+  // Edit Prospect state
+  const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
+  const [editFormData, setEditFormData] = useState<ProspectFormData>({ ...EMPTY_FORM });
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const fetchProspects = useCallback(async () => {
     setLoading(true);
@@ -438,14 +454,7 @@ export default function PipelinePage() {
 
       if (res.ok) {
         setDialogOpen(false);
-        setFormData({
-          name: "",
-          contactEmail: "",
-          contactName: "",
-          website: "",
-          companyOverview: "",
-          notes: "",
-        });
+        setFormData({ ...EMPTY_FORM });
         fetchProspects();
       }
     } finally {
@@ -457,8 +466,37 @@ export default function PipelinePage() {
     router.push(`/clients/${id}`);
   }
 
-  function handleEdit(id: string) {
-    router.push(`/clients/${id}`);
+  function handleEdit(prospect: Prospect) {
+    setEditingProspect(prospect);
+    setEditFormData({
+      name: prospect.name ?? "",
+      contactEmail: prospect.contactEmail ?? "",
+      contactName: prospect.contactName ?? "",
+      website: prospect.website ?? "",
+      companyOverview: prospect.companyOverview ?? "",
+      notes: prospect.notes ?? "",
+    });
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingProspect) return;
+    setEditSubmitting(true);
+
+    try {
+      const res = await fetch(`/api/clients/${editingProspect.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editFormData),
+      });
+
+      if (res.ok) {
+        setEditingProspect(null);
+        fetchProspects();
+      }
+    } finally {
+      setEditSubmitting(false);
+    }
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -711,6 +749,120 @@ export default function PipelinePage() {
           </>
         )}
       </div>
+
+      {/* ─── Edit Prospect Dialog ──────────────────────────────────────────── */}
+      <Dialog
+        open={editingProspect !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingProspect(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Prospect</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdate} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Company Name *</Label>
+              <Input
+                id="edit-name"
+                required
+                value={editFormData.name}
+                onChange={(e) =>
+                  setEditFormData((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="Acme Corp"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-contactEmail">Contact Email</Label>
+                <Input
+                  id="edit-contactEmail"
+                  type="email"
+                  value={editFormData.contactEmail}
+                  onChange={(e) =>
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      contactEmail: e.target.value,
+                    }))
+                  }
+                  placeholder="john@acme.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-contactName">Contact Name</Label>
+                <Input
+                  id="edit-contactName"
+                  value={editFormData.contactName}
+                  onChange={(e) =>
+                    setEditFormData((prev) => ({
+                      ...prev,
+                      contactName: e.target.value,
+                    }))
+                  }
+                  placeholder="John Smith"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-website">Website</Label>
+              <Input
+                id="edit-website"
+                value={editFormData.website}
+                onChange={(e) =>
+                  setEditFormData((prev) => ({ ...prev, website: e.target.value }))
+                }
+                placeholder="https://acme.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-companyOverview">Company Overview</Label>
+              <Textarea
+                id="edit-companyOverview"
+                value={editFormData.companyOverview}
+                onChange={(e) =>
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    companyOverview: e.target.value,
+                  }))
+                }
+                placeholder="Brief description of the company..."
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editFormData.notes}
+                onChange={(e) =>
+                  setEditFormData((prev) => ({ ...prev, notes: e.target.value }))
+                }
+                placeholder="Internal notes about this prospect..."
+                rows={2}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingProspect(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editSubmitting}>
+                {editSubmitting ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
