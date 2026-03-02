@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-01T16:28:05.566Z"
+last_updated: "2026-03-02T11:52:32.655Z"
 progress:
-  total_phases: 5
+  total_phases: 7
   completed_phases: 4
-  total_plans: 18
-  completed_plans: 19
+  total_plans: 21
+  completed_plans: 21
 ---
 
 # Project State
@@ -22,14 +22,17 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 
 ## Current Position
 
-Phase: 9 of 10 (Client Portal Campaign Approval — Plan 05 COMPLETE: Approval notifications + API route wiring)
-Plan: 5 of 5 in current phase (09-01, 09-02, 09-03, 09-04, and 09-05 done) — Phase 9 COMPLETE
-Status: Phase 9 Complete. All 5 plans done.
-Last activity: 2026-03-01 — Executed Plan 05: notifyApproval() with structured Slack blocks and email HTML wired non-blocking into four portal approval/rejection routes, dual-approval detection firing distinct "Campaign Fully Approved" notification.
+Phase: 11 of 11 (LinkedIn Voyager API Client — Plan 02 COMPLETE: Cookie extraction bridge + API endpoints)
+Plan: 2 of 3 in current phase (11-01 done: VoyagerClient, 11-02 done: cookie bridge + endpoints)
+Status: Phase 11 in progress. 2/3 plans done. Next: Plan 03 (worker Voyager integration).
+Last activity: 2026-03-02 — Executed Plan 02: extractVoyagerCookies() on LinkedInBrowser, saveVoyagerCookies/getVoyagerCookies/updateSenderHealth on ApiClient, GET /api/linkedin/senders/{id}/cookies, PATCH /api/linkedin/senders/{id}/health.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
 ## Accumulated Context
+
+### Roadmap Evolution
+- Phase 11 added: LinkedIn Voyager API Client — replace browser automation with HTTP-based Voyager API calls for account safety
 
 ### Decisions
 
@@ -108,6 +111,13 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 08-05]: delegateToWriter passes campaignId enabling campaign-aware content generation from the orchestrator
 - [Phase 09]: Portal route pattern: getPortalSession() first with 401 on failure; workspaceSlug ownership check with 403 on mismatch
 - [Phase 09]: Detail route combines campaign + leadSample in one GET response to avoid frontend round-trips
+- [Phase 11-01]: Use Node.js native global fetch (not undici import) — compiles cleanly with @types/node 22
+- [Phase 11-01]: ConnectionStatus defined locally in voyager-client.ts matching worker/linkedin-browser.ts (not shared server type)
+- [Phase 11-01]: dispatcher: proxyAgent as any — SocksProxyAgent implements undici.Dispatcher but TypeScript types require cast
+- [Phase 11-01]: viewProfile() always called first in write ops to extract memberUrn from entityUrn in Voyager API response
+- [Phase 11-02]: saveVoyagerCookies wraps li_at + JSESSIONID with type:voyager marker in existing session POST array — no endpoint changes needed
+- [Phase 11-02]: getVoyagerCookies uses new /cookies GET (not /session GET) — /session GET only returns status fields, not sessionData
+- [Phase 11-02]: Health endpoint validates against explicit allowlist: healthy/warning/paused/blocked/session_expired
 
 ### Blockers/Concerns
 
@@ -118,6 +128,6 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-01
-Stopped at: Completed 09-05-PLAN.md (Approval Notifications + API Route Wiring). notifyApproval() added to notifications.ts, wired into all 4 portal action routes. Phase 9 complete (5/5 plans done). Next: Phase 10 (deploy trigger).
+Last session: 2026-03-02
+Stopped at: Completed 11-02-PLAN.md (Cookie Extraction Bridge + API Endpoints). extractVoyagerCookies on LinkedInBrowser, 3 new ApiClient methods, 2 new worker-only endpoints. Phase 11: 2/3 plans done. Next: Plan 03 (worker Voyager integration).
 Resume file: None
