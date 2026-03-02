@@ -107,7 +107,7 @@ export default function ClientDetailPage() {
         throw new Error("Failed to fetch client");
       }
       const data = await res.json();
-      setClient(data);
+      setClient(data.client);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch client");
