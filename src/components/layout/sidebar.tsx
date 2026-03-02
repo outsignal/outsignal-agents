@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -46,6 +47,25 @@ const mainNav = [
 
 export function Sidebar({ workspaces }: SidebarProps) {
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchUnread() {
+      try {
+        const res = await fetch("/api/notifications?page=1");
+        const json = await res.json();
+        if (mounted) {
+          setUnreadCount(
+            json.notifications?.filter((n: { read: boolean }) => !n.read).length ?? 0,
+          );
+        }
+      } catch {}
+    }
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 60_000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
 
   return (
     <aside className="flex h-screen w-64 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
@@ -73,6 +93,11 @@ export function Sidebar({ workspaces }: SidebarProps) {
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
+                {item.href === "/notifications" && unreadCount > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}
