@@ -1,684 +1,889 @@
 # Architecture Research
 
-**Domain:** Outbound Pipeline v1.1 — Leads Agent Dashboard + Client Portal Review + Smart Campaign Deploy
-**Researched:** 2026-02-27
-**Confidence:** HIGH (based on direct codebase inspection of all relevant files)
+**Domain:** Multi-source lead discovery, signal monitoring, Creative Ideas copy, CLI orchestrator, signal dashboard
+**Researched:** 2026-03-03
+**Confidence:** HIGH — based on direct codebase inspection + verified API docs
 
 ---
 
-## Existing Architecture (What We're Building On)
+## System Overview
+
+This is an integration architecture document for v2.0 additions to an existing system. Every decision must fit within the established patterns of:
+- Agent pattern: `AgentConfig` + `runAgent()` + typed tools
+- Enrichment pattern: provider adapter + waterfall orchestrator + circuit breaker + dedup gate
+- Railway: long-running Node.js worker process polling via `ApiClient`
+- Vercel: Next.js App Router, 2-cron limit already saturated
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  CLIENTS (browsers)                                              │
-│  admin.outsignal.ai              portal.outsignal.ai            │
-└────────────┬─────────────────────────────┬───────────────────────┘
-             │                             │ (middleware rewrites)
-             ▼                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Next.js 16 App Router                                           │
-│  ┌──────────────────────┐   ┌─────────────────────────────────┐ │
-│  │  (admin) route group │   │  (portal) route group           │ │
-│  │  AppShell + sidebar  │   │  /portal/* server components    │ │
-│  │  Cmd+J chat overlay  │   │  Auth: portal_session cookie    │ │
-│  │  Auth: admin cookie  │   │  Pages: /, /linkedin            │ │
-│  └──────────┬───────────┘   └─────────────────────────────────┘ │
-│             │                                                    │
-│  ┌──────────▼──────────────────────────────────────────────────┐│
-│  │  POST /api/chat → orchestrator.ts (Sonnet 4, 12 steps)     ││
-│  │  delegateToResearch ✓  delegateToWriter ✓                   ││
-│  │  delegateToLeads ✗ (stub)  delegateToCampaign ✗ (stub)     ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                  │
-│  Agent Runners — src/lib/agents/                                 │
-│  ┌───────────────┐  ┌───────────────┐  ┌──────────┐  ┌───────┐  │
-│  │ research.ts   │  │ writer.ts     │  │leads.ts  │  │campaign│ │
-│  │ Opus 4, 8 steps│  │ Opus 4, 10 steps│  │(stub)  │  │(stub) │ │
-│  └───────────────┘  └───────────────┘  └──────────┘  └───────┘  │
-│                                                                  │
-│  runner.ts — AgentRun audit trail, generateText wrapper          │
-└─────────────────────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Data Layer — PostgreSQL (Neon) via Prisma 6                     │
-│  Person, Company, TargetList, TargetListPerson                   │
-│  EmailDraft (status: draft|review|approved|deployed)             │
-│  AgentRun, WebsiteAnalysis, KnowledgeDocument                    │
-└─────────────────────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  External Services                                               │
-│  EmailBison API (app.outsignal.ai/api) — EmailBisonClient        │
-│    createCampaign, duplicateCampaign, createLead                 │
-│    getSequenceSteps, ensureCustomVariables                       │
-│  Enrichment: Prospeo → AI Ark → LeadMagic → FindyMail waterfall  │
-│  Firecrawl (website crawl/scrape/ICP scoring)                    │
-│  Anthropic API (Opus 4, Sonnet 4, Haiku)                         │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              VERCEL (Next.js 16)                             │
+├─────────────────────┬───────────────────────┬───────────────────────────────┤
+│  Admin Dashboard    │   API Routes          │   Agent Framework              │
+│  /admin/*           │   /api/chat           │   src/lib/agents/              │
+│  /signals (NEW)     │   /api/discovery/*    │   orchestrator, runner, types  │
+│  Cmd+J sidebar      │   /api/signals/*      │   leads (UPGRADE), writer,     │
+│                     │   /api/cron/* (2 max) │   research, campaign           │
+└─────────────────────┴───────────────────────┴───────────────────────────────┘
+         │                       │                           │
+         ▼                       ▼                           ▼
+┌──────────────┐     ┌───────────────────┐     ┌──────────────────────────────┐
+│  PostgreSQL  │     │  External APIs    │     │   src/lib/ modules            │
+│  (Neon)      │     │  (Discovery)      │     │   enrichment/ (EXTEND)        │
+│              │     │  Apollo           │     │   discovery/ (NEW)            │
+│  Person      │     │  Prospeo Search   │     │   knowledge/store             │
+│  Company     │     │  AI Ark Search    │     │   agents/shared-tools         │
+│  SignalEvent │     │  Exa.ai           │     │                               │
+│  (NEW)       │     │  Serper.dev       │     │   src/mcp/leads-agent/        │
+│  SignalCamp  │     │  Apify LinkedIn   │     │   (EXTEND with new tools)     │
+│  (NEW)       │     │  PredictLeads     │     │                               │
+│  Campaign    │     │  Firecrawl        │     │   scripts/cli-chat.ts (NEW)   │
+│  TargetList  │     └───────────────────┘     └──────────────────────────────┘
+│  KBDocument  │
+│  AgentRun    │
+└──────────────┘
+         ▲
+         │  (all reads/writes via ApiClient → Vercel API)
+         │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         RAILWAY (Node.js workers)                            │
+├──────────────────────────────┬──────────────────────────────────────────────┤
+│  LinkedIn Worker (existing)  │  Signal Monitor Worker (NEW)                 │
+│  worker/src/worker.ts        │  worker/src/signal-worker.ts                 │
+│  - Polls LinkedIn action Q   │  - Long-running poll loop (same pattern)     │
+│  - Voyager HTTP API          │  - Polls PredictLeads + Serper.dev           │
+│  - Reports via ApiClient     │  - Writes SignalEvent via POST /api/signals  │
+│                              │  - Triggers auto-pipeline on match           │
+└──────────────────────────────┴──────────────────────────────────────────────┘
 ```
 
 ---
 
-## System Overview After v1.1
+## Component Boundaries
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  ADMIN DASHBOARD (Cmd+J chat)                                    │
-│                                                                  │
-│  "Find 50 SaaS leads for Rise, write copy, deploy campaign"      │
-│      ↓                                                           │
-│  Orchestrator → delegateToLeads → Leads Agent                    │
-│    searchPeople → enrichPerson → scorePerson → addToList         │
-│    Creates: TargetList (status: building → pending_review)       │
-│      ↓                                                           │
-│  Orchestrator → delegateToWriter → Writer Agent                  │
-│    Generates: EmailDraft[] (status: draft → review)             │
-│      ↓                                                           │
-│  Admin promotes list to pending_review + drafts to review        │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  CLIENT PORTAL (portal.outsignal.ai)                             │
-│                                                                  │
-│  /portal/review/leads — shows TargetList sample + enrichment     │
-│    Client: [Approve] or [Request Changes]                        │
-│    → POST /api/portal/review/leads/[id]/approve                  │
-│    → TargetList.status = 'approved'                              │
-│                                                                  │
-│  /portal/review/copy — shows EmailDraft[] in 'review' status     │
-│    Client: [Approve] or [Request Changes]                        │
-│    → POST /api/portal/review/copy/[name]/approve                 │
-│    → EmailDraft[].status = 'approved'                            │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ (both approved)
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  CAMPAIGN DEPLOY SERVICE                                         │
-│  src/lib/campaign-deploy/deploy.ts                               │
-│                                                                  │
-│  1. Verify approvals (or admin bypass)                           │
-│  2. EmailBisonClient.createCampaign()                            │
-│  3. EmailBisonClient.addSequenceStep() per EmailDraft            │
-│  4. EmailBisonClient.createLead() per verified person            │
-│  5. EmailBisonClient.assignLeadToCampaign() per lead             │
-│  6. Update: TargetList.status = 'deployed'                       │
-│  7. Update: EmailDraft[].status = 'deployed'                     │
-│  8. Log: AgentRun { agent: 'campaign-deploy', ... }              │
-└─────────────────────────────────────────────────────────────────┘
-```
+### New vs Existing
+
+| Component | Status | Location | Responsibility |
+|-----------|--------|----------|----------------|
+| `src/lib/discovery/` | NEW module | Vercel | Provider adapters for lead search (Apollo, Prospeo Search, AI Ark Search, Exa.ai, Serper.dev, Apify) |
+| `src/lib/enrichment/` | EXTEND (not replace) | Vercel | Add discovery providers to Provider union; enrichment waterfall stays separate |
+| `src/lib/agents/leads.ts` | UPGRADE | Vercel | New `discoverLeads` tool replaces/supplements DB-only `searchPeople` |
+| `src/lib/agents/writer.ts` | EXTEND | Vercel | Add Creative Ideas mode via new tool + system prompt section |
+| `src/lib/agents/orchestrator.ts` | EXTEND | Vercel | Add `delegateToSignalPipeline` delegation tool |
+| `src/mcp/leads-agent/tools/` | EXTEND | Claude Code | New `discover.ts` and `signals.ts` tool modules |
+| `worker/src/signal-worker.ts` | NEW | Railway | Long-running PredictLeads + Serper.dev poll loop |
+| `worker/src/index.ts` | EXTEND | Railway | Launch signal worker alongside LinkedIn worker |
+| `prisma/schema.prisma` | EXTEND | Both | Add SignalEvent, SignalCampaign models |
+| `src/app/(admin)/signals/` | NEW page | Vercel | Signal dashboard UI |
+| `src/app/api/signals/` | NEW routes | Vercel | Signal CRUD + pipeline trigger endpoints |
+| `scripts/cli-chat.ts` | NEW script | Local | Interactive CLI orchestrator session |
 
 ---
 
-## Component Map: New vs Modified
+## 1. Discovery Module: `src/lib/discovery/`
 
-| Component | Status | Location | Notes |
-|-----------|--------|----------|-------|
-| `leads.ts` | **NEW** | `src/lib/agents/leads.ts` | Full Leads Agent: search, enrich, score, list ops |
-| `campaign-deploy/deploy.ts` | **NEW** | `src/lib/campaign-deploy/deploy.ts` | Deploy orchestration service |
-| `campaign-deploy/sequence-builder.ts` | **NEW** | `src/lib/campaign-deploy/sequence-builder.ts` | EmailDraft → EB sequence step converter |
-| `/portal/review/leads/page.tsx` | **NEW** | `src/app/(portal)/portal/review/leads/page.tsx` | Read-only lead list preview |
-| `/portal/review/copy/page.tsx` | **NEW** | `src/app/(portal)/portal/review/copy/page.tsx` | Read-only draft copy preview |
-| `/api/portal/review/leads/[id]/approve` | **NEW** | `src/app/api/portal/review/leads/[id]/approve/route.ts` | Portal approval endpoint |
-| `/api/portal/review/leads/[id]/reject` | **NEW** | `src/app/api/portal/review/leads/[id]/reject/route.ts` | Portal reject with feedback |
-| `/api/portal/review/copy/[name]/approve` | **NEW** | `src/app/api/portal/review/copy/[name]/approve/route.ts` | Copy approval endpoint |
-| `/api/portal/review/copy/[name]/reject` | **NEW** | `src/app/api/portal/review/copy/[name]/reject/route.ts` | Copy reject with feedback |
-| `/api/lists/[id]/deploy` | **NEW** | `src/app/api/lists/[id]/deploy/route.ts` | Admin-triggered manual deploy |
-| `EmailBisonClient` | **MODIFY** | `src/lib/emailbison/client.ts` | Add `addSequenceStep()`, `assignLeadToCampaign()` |
-| `orchestrator.ts` | **MODIFY** | `src/lib/agents/orchestrator.ts` | Wire stubs to real `runLeadsAgent()` / `runCampaignAgent()` |
-| `types.ts` | **MODIFY** | `src/lib/agents/types.ts` | Extend LeadsInput/Output if needed (already skeleton-typed) |
-| `portal/layout.tsx` | **MODIFY** | `src/app/(portal)/layout.tsx` | Add "Review" nav link |
-| `schema.prisma` | **MODIFY** | `prisma/schema.prisma` | Add `status` field to `TargetList` |
-| `middleware.ts` | **NO CHANGE** | `src/middleware.ts` | `/api/portal/` already in PUBLIC_API_PREFIXES |
+### Why a separate module (not inside `src/lib/enrichment/`)
 
----
+Enrichment and discovery are architecturally different operations:
+- **Enrichment**: takes a known person/company, fills in missing fields (email, title, etc.)
+- **Discovery**: searches a provider's database to return a list of matching leads from criteria
 
-## Detailed Integration Points
+Mixing them would bloat waterfall.ts and confuse the adapter interface contracts. Keep them separate.
 
-### 1. Leads Agent Runner
+### Structure
 
-**What changes where:**
+```
+src/lib/discovery/
+├── types.ts           # DiscoveryInput, DiscoveryResult, DiscoveryAdapter
+├── index.ts           # discoverLeads(input, sources) — fan-out across providers
+├── providers/
+│   ├── apollo.ts      # Apollo /people/search → DiscoveryResult[]
+│   ├── prospeo.ts     # Prospeo /search endpoint (separate from enrichment adapter)
+│   ├── aiark.ts       # AI Ark search endpoint
+│   ├── exa.ts         # Exa.ai company/person semantic search
+│   ├── serper.ts      # Serper.dev Google + Reddit + Twitter search
+│   └── apify.ts       # Apify LinkedIn scraping actor
+```
 
-The `delegateToLeads` tool in `orchestrator.ts` is currently a stub returning `{ status: "not_available" }`. Replace the `execute` function body with a call to `runLeadsAgent()`, following the exact pattern used by `delegateToResearch`:
+### Core Types
 
 ```typescript
-// orchestrator.ts — current stub execute:
-execute: async () => {
-  return { status: "not_available", message: "..." };
+// src/lib/discovery/types.ts
+
+export interface DiscoveryInput {
+  jobTitles?: string[];
+  industries?: string[];
+  locations?: string[];
+  companySizeMin?: number;
+  companySizeMax?: number;
+  keywords?: string[];
+  companyType?: "enterprise" | "smb" | "niche" | "local";
+  limit?: number;
 }
 
-// Replace with:
-execute: async ({ workspaceSlug, task, limit }) => {
-  try {
-    const result = await runLeadsAgent({ workspaceSlug, task, limit });
-    return { status: "complete", ...result };
-  } catch (error) {
-    return { status: "failed", error: error instanceof Error ? error.message : "Leads Agent failed" };
+export interface DiscoveryResult {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  company?: string;
+  companyDomain?: string;
+  linkedinUrl?: string;
+  location?: string;
+  source: DiscoveryProvider;
+  confidence: "high" | "medium" | "low";
+  rawResponse?: unknown;
+}
+
+export type DiscoveryProvider =
+  | "apollo"
+  | "prospeo-search"
+  | "aiark-search"
+  | "exa"
+  | "serper"
+  | "apify";
+
+export type DiscoveryAdapter = (
+  input: DiscoveryInput
+) => Promise<DiscoveryResult[]>;
+```
+
+### Source Selection Logic (in `index.ts`)
+
+```typescript
+// Agent provides ICP type hint — index.ts picks providers accordingly
+// enterprise → Apollo (250M contacts, deep firmographics)
+// niche → Exa.ai (semantic search, finds obscure verticals)
+// local → Serper.dev (Google Maps + local business search)
+// linkedin-heavy → Apify (LinkedIn scraping, profile data)
+// default → Prospeo Search + AI Ark Search (cheapest first)
+```
+
+The Leads Agent calls `discoverLeads()` with the workspace ICP and a source hint. The function runs the appropriate providers in parallel (or sequenced by cost) and deduplicates against the local DB before returning.
+
+---
+
+## 2. Signal Monitoring: Railway Signal Worker
+
+### Why Railway (not Vercel cron)
+
+Vercel Hobby plan: 2 cron slots, both already used (enrichment + inbox-health). Adding a third would require a plan upgrade. Railway already runs the LinkedIn worker as a long-running process. The signal worker follows the identical architectural pattern.
+
+### Pattern: Mirror the LinkedIn Worker
+
+```
+worker/
+├── src/
+│   ├── index.ts             # EXTEND: launch signal worker alongside LinkedIn worker
+│   ├── worker.ts            # Existing LinkedIn worker (unchanged)
+│   ├── signal-worker.ts     # NEW: PredictLeads + Serper.dev poll loop
+│   ├── api-client.ts        # EXTEND: add postSignalEvent(), getSignalCampaigns()
+│   ├── voyager-client.ts    # Unchanged
+│   └── scheduler.ts         # Unchanged (reuse business hours logic)
+```
+
+### Signal Worker Loop
+
+```typescript
+// worker/src/signal-worker.ts
+
+class SignalWorker {
+  async tick(): Promise<void> {
+    // 1. Fetch active SignalCampaigns from API
+    const campaigns = await this.api.getSignalCampaigns();
+
+    for (const campaign of campaigns) {
+      // 2. Query PredictLeads for matching signals since last check
+      const signals = await this.predictLeads.query({
+        domains: campaign.targetDomains,
+        signalTypes: campaign.signalTypes,  // job_change | funding | hiring | tech | news
+        since: campaign.lastCheckedAt,
+      });
+
+      // 3. For each signal, POST to /api/signals/events
+      for (const signal of signals) {
+        await this.api.postSignalEvent({
+          signalCampaignId: campaign.id,
+          workspaceSlug: campaign.workspaceSlug,
+          type: signal.type,
+          companyDomain: signal.domain,
+          payload: signal,
+        });
+      }
+
+      // 4. Update campaign.lastCheckedAt
+      await this.api.updateSignalCampaignLastChecked(campaign.id);
+    }
+
+    // 5. Social listening via Serper.dev (Reddit/Twitter)
+    await this.runSocialListening();
   }
 }
 ```
 
-**Tools the Leads Agent needs** (operate on existing Prisma models — zero schema changes needed for Phase 1):
+The signal worker polls every 4 hours (configurable per campaign). PredictLeads is queried per company domain list — this is efficient as PredictLeads is designed for agent-style polling.
 
-```
-searchPeople(query, filters)      → Person[] from local DB (14k+ dataset)
-enrichPerson(email)               → trigger waterfall enrichment via existing /api/people/enrich logic
-scorePerson(personId, workspaceSlug) → ICP score using existing scorer
-createList(name, workspaceSlug)   → TargetList.create()
-addToList(listId, personIds[])    → TargetListPerson.createMany()
-getList(listId)                   → TargetList with members + enrichment summary
-```
+---
 
-All these tools touch models that already exist. The agent produces `TargetList` + `TargetListPerson` records — the same data the v1.0 UI list builder creates.
+## 3. Prisma Schema Extensions
 
-### 2. Schema Change (TargetList Status)
-
-`TargetList` needs a `status` field to track the portal review lifecycle:
+### New Models
 
 ```prisma
-model TargetList {
+// Add to prisma/schema.prisma
+
+model SignalCampaign {
   id            String   @id @default(cuid())
-  name          String
   workspaceSlug String
+  name          String
   description   String?
-  status        String   @default("building")
-  // building | pending_review | approved | rejected | deployed
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
 
-  people TargetListPerson[]
-  @@index([workspaceSlug])
+  // What signals to monitor
+  signalTypes   String   // JSON array: ["job_change", "funding", "hiring", "tech", "news"]
+  targetDomains String?  // JSON array of company domains to monitor (null = use workspace ICP)
+
+  // Auto-pipeline config
+  autoPipeline  Boolean  @default(false)  // trigger enrich→score→campaign→copy on match
+  campaignTemplateId String?  // Campaign to clone as template for auto-pipeline
+
+  // Monitoring cadence
+  checkIntervalHours Int  @default(4)
+  lastCheckedAt DateTime?
+
+  status  String  @default("active")  // active | paused | archived
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceSlug], references: [slug])
+  events    SignalEvent[]
+
+  @@index([workspaceSlug, status])
+}
+
+model SignalEvent {
+  id               String   @id @default(cuid())
+  signalCampaignId String
+  workspaceSlug    String
+  type             String   // "job_change" | "funding" | "hiring_spike" | "tech_adoption" | "news" | "social_mention"
+
+  // Source entity
+  companyDomain    String?
+  personEmail      String?  // if signal is person-level (job change)
+
+  // Pipeline status
+  pipelineStatus   String   @default("pending")  // pending | enriching | scoring | draft | portal | deployed | skipped
+  personId         String?  // set after enrichment
+  campaignId       String?  // set after campaign creation
+
+  payload          String   // JSON - raw signal data from PredictLeads/Serper
+
+  detectedAt       DateTime @default(now())
+  processedAt      DateTime?
+
+  campaign  SignalCampaign @relation(fields: [signalCampaignId], references: [id])
+
+  @@index([signalCampaignId, pipelineStatus])
+  @@index([workspaceSlug, type])
+  @@index([detectedAt])
 }
 ```
 
-`EmailDraft.status` already has the correct values (`draft | review | approved | deployed`). No schema change needed there — the Writer Agent saves drafts in `draft` status; admin promotes them to `review` manually before exposing to portal.
+### Relationships to Existing Models
 
-### 3. Portal Review Pages
+- `SignalCampaign` → `Workspace` (many-to-one, existing pattern matches Campaign → Workspace)
+- `SignalEvent.personId` → `Person` (soft reference, resolved after enrichment)
+- `SignalEvent.campaignId` → `Campaign` (created by auto-pipeline)
+- `SignalCampaign.campaignTemplateId` → `Campaign` (optional template to clone)
 
-Both pages are read-only server components. They use `getPortalSession()` to scope to the workspace — same pattern as the existing `/portal/page.tsx`:
+---
+
+## 4. Leads Agent Upgrade
+
+### Current tools (local DB only)
+
+`searchPeople`, `createList`, `addPeopleToList`, `getList`, `getLists`, `scoreList`, `exportListToEmailBison`, `searchKnowledgeBase`
+
+### New tools to ADD (not replace)
 
 ```typescript
-// /portal/review/leads/page.tsx — structure
-export default async function LeadsReviewPage() {
-  const { workspaceSlug } = await getPortalSession();
+// src/lib/agents/leads.ts — add to leadsTools
 
-  // Find the pending_review list for this workspace
-  const list = await prisma.targetList.findFirst({
-    where: { workspaceSlug, status: "pending_review" },
-    include: { people: { include: { person: true }, take: 100 } },
-    orderBy: { updatedAt: "desc" },
-  });
+discoverLeads: tool({
+  description: "Search external discovery providers for new leads matching ICP criteria. " +
+    "Use when: local DB has insufficient leads, client needs fresh contacts, " +
+    "or agent selects 'enterprise' ICP type. Results are deduped against local DB before returning. " +
+    "COSTS CREDITS. Always preview count before running.",
+  inputSchema: z.object({
+    workspaceSlug: z.string(),
+    jobTitles: z.array(z.string()).optional(),
+    industries: z.array(z.string()).optional(),
+    locations: z.array(z.string()).optional(),
+    companySizeMin: z.number().optional(),
+    companySizeMax: z.number().optional(),
+    keywords: z.array(z.string()).optional(),
+    sources: z.array(z.enum(["apollo", "prospeo-search", "aiark-search", "exa", "serper", "apify"])).optional(),
+    limit: z.number().optional().default(50),
+  }),
+  execute: async (params) => {
+    return operations.discoverLeads(params);
+  },
+}),
 
-  // Render sample: company, title, name (no email shown to client)
-  // Approve/Reject buttons fire POST to /api/portal/review/leads/[id]/approve
-}
+searchDirectory: tool({
+  description: "Scrape a niche directory or curated list URL via Firecrawl to extract leads. " +
+    "Use for ultra-niche ICPs (e.g. 'all members of UK Promotional Merchandise Association'). " +
+    "COSTS CREDITS (Firecrawl).",
+  inputSchema: z.object({
+    url: z.string(),
+    extractionPrompt: z.string().describe("What to extract from each listing"),
+    workspaceSlug: z.string(),
+  }),
+  execute: async (params) => {
+    return operations.scrapeDirectory(params);
+  },
+}),
 ```
 
-Client sees: list name, count, sample rows (company + title + name), enrichment summary (% with email, LinkedIn, etc.). No email addresses shown — client is approving the targeting, not the data.
+### Updated system prompt section
 
-### 4. Portal Approval API Routes
+The Leads Agent system prompt gains a new section:
 
-These live under `/api/portal/` which is already in `PUBLIC_API_PREFIXES` in middleware (passes through without admin auth). The route handlers verify the portal session themselves:
-
-```typescript
-// /api/portal/review/leads/[id]/approve/route.ts
-export async function POST(_req: Request, context: RouteContext) {
-  const { workspaceSlug } = await getPortalSession();  // throws → 500 if no session
-  const { id } = await context.params;
-
-  const list = await prisma.targetList.findUnique({ where: { id } });
-  // Ownership check — critical security boundary
-  if (!list || list.workspaceSlug !== workspaceSlug) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  await prisma.targetList.update({ where: { id }, data: { status: "approved" } });
-
-  // Check if copy is also approved — trigger deploy if so
-  const approvedDrafts = await prisma.emailDraft.count({
-    where: { workspaceSlug, status: "approved" }
-  });
-  if (approvedDrafts > 0) {
-    // Fire-and-forget — don't block the response
-    void deployCampaign(workspaceSlug, id);
-  }
-
-  return NextResponse.json({ ok: true });
-}
 ```
-
-### 5. EmailBisonClient Extensions
-
-Two methods need to be added to `src/lib/emailbison/client.ts`. The client's `request<T>()` pattern is well-established — these follow the exact same shape:
-
-```typescript
-// Add to EmailBisonClient:
-
-async addSequenceStep(campaignId: number, step: {
-  subject?: string;
-  body: string;
-  delay_days: number;
-  position: number;
-}): Promise<SequenceStep> {
-  const res = await this.request<{ data: SequenceStep }>(
-    `/campaigns/sequence-steps`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ campaign_id: campaignId, ...step }),
-      revalidate: 0,
-    }
-  );
-  return res.data;
-}
-
-async assignLeadToCampaign(campaignId: number, leadId: number): Promise<void> {
-  await this.request<unknown>(
-    `/campaigns/${campaignId}/leads`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ lead_id: leadId }),
-      revalidate: 0,
-    }
-  );
-}
-```
-
-Note: The EmailBison API for `addSequenceStep` and `assignLeadToCampaign` endpoint shapes are MEDIUM confidence — they follow common REST patterns but should be verified against the EmailBison API docs during implementation. The existing `createCampaign` and `createLead` methods provide the pattern to follow.
-
-### 6. Deploy Service
-
-```typescript
-// src/lib/campaign-deploy/deploy.ts
-export async function deployCampaign(
-  workspaceSlug: string,
-  listId: string,
-  campaignNameOverride?: string
-): Promise<void> {
-  // 1. Load list + people (verified email only)
-  const list = await prisma.targetList.findUnique({
-    where: { id: listId },
-    include: { people: { include: { person: true } } },
-  });
-
-  // 2. Load approved drafts for workspace
-  const drafts = await prisma.emailDraft.findMany({
-    where: { workspaceSlug, status: "approved" },
-    orderBy: [{ campaignName: "asc" }, { sequenceStep: "asc" }],
-  });
-
-  // Group drafts by campaign name — deploy one campaign per unique name
-  const campaignGroups = groupBy(drafts, d => d.campaignName);
-
-  for (const [campaignName, steps] of Object.entries(campaignGroups)) {
-    const client = await getClientForWorkspace(workspaceSlug);
-
-    // 3. Create campaign in EmailBison
-    const campaign = await client.createCampaign({ name: campaignName });
-
-    // 4. Add sequence steps
-    for (const draft of steps) {
-      await client.addSequenceStep(campaign.id, {
-        subject: draft.subjectLine ?? undefined,
-        body: draft.bodyText,
-        delay_days: draft.delayDays,
-        position: draft.sequenceStep,
-      });
-    }
-
-    // 5. Add leads (email verified only — hard gate)
-    for (const tlp of list.people) {
-      if (!tlp.person.email) continue; // skip unverified
-      const lead = await client.createLead({
-        email: tlp.person.email,
-        firstName: tlp.person.firstName ?? undefined,
-        lastName: tlp.person.lastName ?? undefined,
-        jobTitle: tlp.person.jobTitle ?? undefined,
-        company: tlp.person.company ?? undefined,
-      });
-      await client.assignLeadToCampaign(campaign.id, lead.id);
-    }
-
-    // 6. Update draft statuses
-    await prisma.emailDraft.updateMany({
-      where: { workspaceSlug, campaignName, status: "approved" },
-      data: { status: "deployed" },
-    });
-  }
-
-  // 7. Update list status
-  await prisma.targetList.update({
-    where: { id: listId },
-    data: { status: "deployed" },
-  });
-}
+## Discovery Mode
+When local DB results are insufficient or user asks to "find new leads" / "discover leads":
+1. Check workspace ICP to determine best source(s)
+   - Enterprise (>500 employees): Apollo (best firmographic depth)
+   - Niche/unusual vertical: Exa.ai (semantic search)
+   - Local/regional: Serper.dev (Google Maps, local queries)
+   - LinkedIn-heavy ICP: Apify LinkedIn scraper
+   - Default: Prospeo Search + AI Ark Search
+2. Call discoverLeads with appropriate sources
+3. Import discovered results into local DB via importDiscoveredLeads
+4. Proceed with normal list-building flow on imported people
 ```
 
 ---
 
-## Data Flows
+## 5. Writer Agent: Creative Ideas Mode
 
-### Admin Pipeline (Cmd+J Chat → Approved List + Copy)
+### What it is
 
-```
-User: "Find 50 UK SaaS leads for Rise and write 3-step email sequence"
-    ↓
-POST /api/chat (streamText, orchestrator, 12 steps)
-    ↓
-delegateToLeads { workspaceSlug: "rise", task: "...", limit: 50 }
-    ↓
-runLeadsAgent() → runner.ts creates AgentRun { agent: "leads" }
-    ↓
-Leads Agent tools: searchPeople → enrichPerson → scorePerson → createList → addToList
-    ↓
-TargetList { status: "building" } + TargetListPerson[] created in DB
-    ↓
-delegateToWriter { workspaceSlug: "rise", task: "3-step email for SaaS leads" }
-    ↓
-runWriterAgent() → runner.ts creates AgentRun { agent: "writer" }
-    ↓
-Writer Agent: getWorkspaceIntelligence → searchKnowledgeBase → saveDraft × 3
-    ↓
-EmailDraft[] { status: "draft" } created in DB
-    ↓
-Admin: PATCH /api/lists/[id] sets TargetList.status → "pending_review"
-Admin: PATCH /api/drafts sets EmailDraft[].status → "review"
-```
+A new generation mode that produces 3 constrained, client-specific "Creative Ideas" for a prospect — not generic "congrats on funding" hooks but ideas grounded in the client's specific value proposition and the prospect's situation.
 
-### Client Portal Approval Flow
+### Implementation: New tool + system prompt section (not a new agent)
 
-```
-Client visits portal.outsignal.ai
-    ↓ middleware rewrites → /portal/*
-portal_session cookie → getPortalSession() → { workspaceSlug }
-    ↓
-/portal/review/leads — server component fetches TargetList { status: "pending_review" }
-Shows: list name, count, sample rows (company + title + name), enrichment summary
-    ↓
-[Approve] → POST /api/portal/review/leads/[id]/approve
-  → verify list.workspaceSlug === session.workspaceSlug (ownership check)
-  → TargetList.status = "approved"
-  → if EmailDraft.status === "approved" exists → void deployCampaign()
-    ↓
-/portal/review/copy — server component fetches EmailDraft[] { status: "review" }
-Shows: campaign name, step 1/2/3 subject + body (read-only)
-    ↓
-[Approve] → POST /api/portal/review/copy/[campaignName]/approve
-  → verify drafts.workspaceSlug === session.workspaceSlug
-  → EmailDraft[].status = "approved"
-  → if TargetList.status === "approved" exists → void deployCampaign()
-```
-
-### Deploy Flow
-
-```
-deployCampaign(workspaceSlug, listId)
-    ↓
-Load TargetList + people (email verified only)
-Load EmailDraft[] { status: "approved", workspaceSlug }
-    ↓
-Group drafts by campaignName
-    ↓
-For each campaign group:
-  EmailBisonClient.createCampaign({ name, type: "outbound" })
-    → returns { id: campaignId }
-      ↓
-  For each EmailDraft (sorted by sequenceStep):
-    EmailBisonClient.addSequenceStep(campaignId, { subject, body, delay_days })
-      ↓
-  For each TargetListPerson (email verified only):
-    EmailBisonClient.createLead(person) → returns { id: leadId }
-    EmailBisonClient.assignLeadToCampaign(campaignId, leadId)
-      ↓
-prisma.emailDraft.updateMany → status: "deployed"
-prisma.targetList.update → status: "deployed"
-AgentRun.create { agent: "campaign-deploy", triggeredBy: "portal-approval" }
-```
-
----
-
-## Build Order (Dependency-Driven)
-
-Dependencies flow left-to-right: each phase unblocks the next.
-
-```
-Phase 1          Phase 2          Phase 3          Phase 4
-Leads Agent  →   Schema +     →   Portal Review →  Deploy Service
-(no deps)        Promotion UI     Pages + APIs     + EB Client ext.
-                 (needs schema)   (needs schema,   (needs approved
-                                  portal auth)     list + copy)
-```
-
-### Phase 1: Leads Agent Runner
-
-**Files:** `src/lib/agents/leads.ts` (new), `src/lib/agents/orchestrator.ts` (modify wire stub)
-
-**Why first:** No external dependencies. Produces the TargetList data that everything else consumes. Can be tested via Cmd+J chat immediately. The orchestrator stub is already wired — just replace the execute body.
-
-**Test:** Open Cmd+J, say "Find 20 SaaS companies in the UK for Rise and create a list called 'UK SaaS Jan'"
-
-### Phase 2: Schema Migration + Admin Promotion UI
-
-**Files:** `prisma/schema.prisma` (add TargetList.status), `src/app/(admin)/lists/[id]/page.tsx` (add promote buttons)
-
-**Why second:** Portal review pages can't function without TargetList.status. Admin promotion UI lets you move lists from `building` → `pending_review` and drafts from `draft` → `review`. Must exist before Phase 3 can be tested.
-
-**Action:** `npx prisma db push` after schema change (consistent with existing db push approach per PROJECT.md)
-
-### Phase 3: Client Portal Review Pages + APIs
-
-**Files:**
-- `src/app/(portal)/portal/review/leads/page.tsx` (new)
-- `src/app/(portal)/portal/review/copy/page.tsx` (new)
-- `src/app/api/portal/review/leads/[id]/approve/route.ts` (new)
-- `src/app/api/portal/review/leads/[id]/reject/route.ts` (new)
-- `src/app/api/portal/review/copy/[name]/approve/route.ts` (new)
-- `src/app/api/portal/review/copy/[name]/reject/route.ts` (new)
-- `src/app/(portal)/layout.tsx` (modify: add "Review" nav link)
-
-**Why third:** Needs Phase 2 schema for status field. Portal pages are simple server components — no complex state, just DB reads + button actions. Deploy is fire-and-forget in the approval handlers (Phase 4 delivers it, but approval endpoints can stub the call for now).
-
-### Phase 4: EmailBisonClient Extensions + Deploy Service
-
-**Files:**
-- `src/lib/emailbison/client.ts` (modify: add addSequenceStep, assignLeadToCampaign)
-- `src/lib/campaign-deploy/deploy.ts` (new)
-- `src/lib/campaign-deploy/sequence-builder.ts` (new)
-- `src/app/api/lists/[id]/deploy/route.ts` (new: admin manual deploy)
-- Wire deploy into portal approval handlers from Phase 3
-
-**Why fourth:** Deploy requires approved data from Phases 2+3. Also requires EmailBisonClient extensions — these are new HTTP endpoints and their exact shape needs verification against EmailBison API docs before writing.
-
-### Phase 5: Campaign Agent Runner (Optional Enhancement)
-
-**Files:** `src/lib/agents/campaign.ts` (new), `orchestrator.ts` (modify wire delegateToCampaign)
-
-**Why last:** The full pipeline works without it (deploy can be triggered via portal approval or admin button). Campaign Agent is a convenience layer for chat-driven deployment. Low priority, high effort.
-
----
-
-## Architectural Patterns to Follow
-
-### Pattern: Agent Runner Convention
-
-All agents follow the exact same shape. leads.ts must match research.ts and writer.ts:
+The Writer Agent already has the client context machinery. Adding Creative Ideas is a new tool + a new system prompt section.
 
 ```typescript
-const leadsConfig: AgentConfig = {
-  name: "leads",
-  model: "claude-opus-4-20250514",  // Opus — complex reasoning, multi-tool chains
-  systemPrompt: LEADS_SYSTEM_PROMPT,
-  tools: leadsTools,
-  maxSteps: 15,  // Higher than research/writer — enrichment = many tool calls
+// Add to writerTools in src/lib/agents/writer.ts
+
+getCreativeIdeasExamples: tool({
+  description: "Retrieve per-client Creative Ideas examples from the knowledge base. " +
+    "Tag format: 'creative-ideas-{workspaceSlug}'. These are admin-approved examples " +
+    "for this specific client that the agent should emulate in style and constraint.",
+  inputSchema: z.object({
+    workspaceSlug: z.string(),
+    prospectVertical: z.string().optional().describe("Prospect's industry to find relevant examples"),
+    limit: z.number().optional().default(5),
+  }),
+  execute: async ({ workspaceSlug, prospectVertical, limit }) => {
+    const tags = `creative-ideas-${workspaceSlug}`;
+    const query = prospectVertical
+      ? `creative ideas ${prospectVertical} examples`
+      : "creative ideas examples constrained personalized";
+    return searchKnowledge(query, { limit, tags });
+  },
+}),
+
+saveCreativeIdeas: tool({
+  description: "Save generated Creative Ideas for a prospect to the Campaign entity.",
+  inputSchema: z.object({
+    campaignId: z.string(),
+    personId: z.string().optional(),
+    ideas: z.array(z.object({
+      title: z.string(),
+      hook: z.string(),
+      body: z.string(),
+      rationale: z.string(),
+    })),
+  }),
+  execute: async (params) => {
+    // Stores in Campaign.emailSequence as a special "creative_ideas" type
+    return saveCampaignCreativeIdeas(params);
+  },
+}),
+```
+
+### System prompt section to add
+
+```
+## Creative Ideas Mode
+Triggered when task contains "creative ideas" or mode="creative_ideas".
+
+Creative Ideas are 3 constrained, specific copy hooks for a single prospect.
+NOT generic. NOT signal-as-hook. The signal is your targeting reason (invisible).
+The hook is the creative angle that resonates with the prospect's world.
+
+Process:
+1. getCreativeIdeasExamples for this workspace + prospect vertical
+2. getWorkspaceIntelligence for client context
+3. searchKnowledgeBase for "creative ideas frameworks constrained personalization"
+4. Generate 3 ideas, each with: Title | Hook (1 sentence) | Body (under 60 words) | Rationale
+5. saveCreativeIdeas to campaign
+
+Rules:
+- Ideas must feel specific to this client's value prop (not generic)
+- Constraint: reference something the prospect already does/has/believes
+- No signal as hook — signal is targeting, not copy
+- Vary the angle: one pain, one aspiration, one social proof
+```
+
+### Knowledge base tagging for per-client examples
+
+Admin ingests Creative Ideas examples with tag `creative-ideas-{workspaceSlug}`. The ingest CLI already supports tags (`scripts/ingest-document.ts`). No new infrastructure needed — just tagging convention.
+
+---
+
+## 6. CLI Orchestrator
+
+### Why a script (not MCP extension)
+
+The existing MCP server (`src/mcp/leads-agent/`) is for Claude Code tool use — the model calls tools autonomously. The CLI orchestrator is a *human-in-the-loop* chat session where the admin types requests and the orchestrator responds interactively. These are different UX modes.
+
+MCP tools are still available as discrete operations. The CLI chat is the conversational interface.
+
+### Implementation
+
+```typescript
+// scripts/cli-chat.ts
+
+/**
+ * Interactive CLI chat session with the Outsignal Orchestrator.
+ *
+ * Usage:
+ *   npx tsx scripts/cli-chat.ts [workspace-slug]
+ *   npx tsx scripts/cli-chat.ts rise
+ *
+ * Features:
+ * - Full orchestrator (same config as Cmd+J sidebar)
+ * - Stateful conversation history within session
+ * - Workspace context pre-loaded
+ * - Ctrl+C to exit
+ */
+
+import readline from "node:readline";
+import { generateText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+// Import orchestratorConfig and orchestratorTools with relative paths
+// (path alias @/ not available in scripts)
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+async function chat(userInput: string): Promise<string> {
+  history.push({ role: "user", content: userInput });
+
+  const result = await generateText({
+    model: anthropic(orchestratorConfig.model),
+    system: orchestratorConfig.systemPrompt,
+    messages: history,
+    tools: orchestratorTools,
+    stopWhen: stepCountIs(12),
+  });
+
+  const reply = result.text;
+  history.push({ role: "assistant", content: reply });
+  return reply;
+}
+
+// readline loop — prompt → chat() → print → repeat
+```
+
+### Key difference from scripts/generate-copy.ts
+
+The existing scripts are single-shot (one task, exit). The CLI chat maintains `history` across turns, enabling multi-step orchestration:
+
+```
+> find 50 CTOs in UK manufacturing for Rise
+[Leads Agent discovers 50 leads, returns results]
+> create a list called "Rise UK Manufacturing CTOs"
+[uses previous context — knows which people to add]
+> write email copy for this campaign
+[Writer Agent uses campaign context]
+```
+
+This matches the existing `conversationContext` pattern already in `LeadsInput`.
+
+---
+
+## 7. Signal Dashboard Page
+
+### Route: `/admin/signals`
+
+New page in the `(admin)` route group, following existing page patterns.
+
+```
+src/app/(admin)/signals/
+├── page.tsx              # Main signal dashboard
+├── [id]/
+│   └── page.tsx          # Signal campaign detail + event feed
+```
+
+### API Routes
+
+```
+src/app/api/signals/
+├── campaigns/
+│   ├── route.ts          # GET list, POST create SignalCampaign
+│   └── [id]/
+│       ├── route.ts      # GET, PATCH, DELETE SignalCampaign
+│       └── check/route.ts  # POST — manual trigger signal check
+├── events/
+│   ├── route.ts          # POST — receive signal from Railway worker
+│   └── [id]/
+│       └── route.ts      # GET event, PATCH pipeline status
+└── pipeline/
+    └── trigger/route.ts  # POST — trigger auto-pipeline for a SignalEvent
+```
+
+### Dashboard UI Components
+
+```
+Signal Dashboard (page.tsx)
+├── KPI row: Signals today | Active campaigns | Pipeline queued | Deployed this week
+├── Live feed: recent SignalEvents across all workspaces (paginated, filterable by type)
+├── Per-client breakdown: table of workspaces + active signal counts
+└── Cost tracking: PredictLeads credits used this period
+
+Signal Campaign Detail ([id]/page.tsx)
+├── Campaign config (signal types, target domains, cadence)
+├── Event timeline (chronological signal events with pipeline status badges)
+└── Auto-pipeline toggle + template campaign selector
+```
+
+---
+
+## 8. Auto-Pipeline Orchestration
+
+### Pattern: Event-driven pipeline in API route (not agent)
+
+When a `SignalEvent` is created, the auto-pipeline runs as a sequential API-triggered workflow — not an agent call. The agent is only used for the copy generation step. This keeps the pipeline predictable and auditable.
+
+```
+POST /api/signals/events
+    ↓
+Validate + create SignalEvent
+    ↓
+If autoPipeline=true on SignalCampaign:
+    ↓
+POST /api/signals/pipeline/trigger (async via fetch, don't await)
+    ↓
+    Return 201 to Railway worker immediately
+
+--- pipeline runs async ---
+POST /api/signals/pipeline/trigger
+    ↓
+1. Enrich: enrichEmail() + enrichCompany() (existing waterfall)
+    update SignalEvent.personId, pipelineStatus = "enriching" → "scoring"
+2. Score: runIcpScorer() (existing)
+    if score < threshold, pipelineStatus = "skipped", stop
+3. Campaign: createCampaign() using template
+    update SignalEvent.campaignId, pipelineStatus = "draft"
+4. Copy: runWriterAgent({ mode: "creative_ideas", campaignId, personId })
+    saves creative ideas to campaign
+    pipelineStatus = "portal"
+5. Notify client: existing notification system (Slack + email)
+    "New signal campaign ready for review"
+    ↓
+Client sees campaign in portal → reviews Creative Ideas → approves
+    ↓
+Deploy to EmailBison + LinkedIn (existing deploy flow)
+```
+
+### Why async (fire-and-forget pattern)
+
+PredictLeads API delivers signals in batches. Railway worker POSTs each event and must not wait for the pipeline to complete (could take 60-300s for enrichment + AI). The worker fires the event, Vercel's `/api/signals/events` route creates the DB record and triggers the pipeline async, then returns 201.
+
+For Vercel Hobby (60s function limit), the pipeline trigger route may timeout on heavy enrichment runs. **Recommended approach**: write `SignalEvent` with `pipelineStatus = "pending"`, then a pipeline runner picks it up via a poll mechanism that the signal worker triggers by calling `/api/signals/pipeline/trigger` explicitly after posting each event — avoiding the Vercel function timeout entirely.
+
+---
+
+## Data Flow
+
+### Discovery Flow
+
+```
+User (CLI/Chat): "find 50 CFOs in UK fintech for Lime"
+    ↓
+Orchestrator → delegateToLeads
+    ↓
+Leads Agent: discoverLeads({ jobTitles: ["CFO"], industries: ["fintech"], locations: ["UK"], sources: ["apollo"] })
+    ↓
+src/lib/discovery/index.ts → apolloAdapter.search(input)
+    ↓
+Dedup: filter out emails already in Person table
+    ↓
+Import: create Person records (source = "apollo"), PersonWorkspace records
+    ↓
+Return: { imported: 42, deduped: 8, total: 50 }
+    ↓
+Leads Agent: createList → addPeopleToList
+    ↓
+User: "ok score them" → scoreList (existing)
+```
+
+### Signal Auto-Pipeline Flow
+
+```
+PredictLeads API (polled by Railway signal worker every 4h)
+    ↓
+Signal detected: "Acme Corp received Series B funding"
+    ↓
+POST /api/signals/events { type: "funding", domain: "acme.com", ... }
+    ↓ (async)
+Pipeline trigger:
+    enrichCompany(acme.com) → Company record updated
+    enrichEmail(CFO at acme.com) → Person record found/created
+    runIcpScorer(personId, workspaceSlug) → score: 82
+    createCampaign("Acme - Funding Signal") from template
+    runWriterAgent({ mode: "creative_ideas", campaignId, personId })
+    Campaign.pipelineStatus = "portal"
+    Slack notification: "New signal campaign ready"
+    ↓
+Client sees campaign in portal → reviews Creative Ideas → approves
+    ↓
+Deploy to EmailBison + LinkedIn (existing deploy flow)
+```
+
+### CLI Chat Session Flow
+
+```
+Admin: npx tsx scripts/cli-chat.ts rise
+    ↓
+readline.createInterface (stdin/stdout)
+    ↓ (loop)
+User input → generateText({ model, system, messages: history, tools: orchestratorTools })
+    → tool calls execute (same as dashboard chat)
+    → result.text printed
+    → history accumulates
+    ↓
+Ctrl+C → process.exit
+```
+
+---
+
+## Architectural Patterns
+
+### Pattern 1: Extend Existing Agent (not fork)
+
+**What:** Add new tools to `leadsTools` and `writerTools` objects. New system prompt sections are additive (append, not replace).
+
+**When to use:** Feature fits within the agent's domain. Leads Agent owns pipeline ops. Writer Agent owns copy generation.
+
+**Do not:** Create a "Discovery Agent" as a separate agent — it would duplicate orchestration logic and add a delegation hop. The Leads Agent handles discovery natively.
+
+**Example:**
+```typescript
+// CORRECT — add to leadsTools in src/lib/agents/leads.ts
+const leadsTools = {
+  searchPeople,     // existing
+  discoverLeads,    // NEW
+  searchDirectory,  // NEW
+  createList,       // existing
+  // ...
 };
+```
 
-export async function runLeadsAgent(input: LeadsInput): Promise<LeadsOutput> {
-  const result = await runAgent<LeadsOutput>(leadsConfig, buildLeadsMessage(input), {
-    triggeredBy: "orchestrator",
-    workspaceSlug: input.workspaceSlug,
+### Pattern 2: Provider Adapter (pluggable)
+
+**What:** Each discovery provider implements `DiscoveryAdapter`. The orchestrator in `discovery/index.ts` selects and runs adapters based on ICP type hint.
+
+**Mirrors:** The enrichment `EmailAdapter` / `CompanyAdapter` pattern exactly.
+
+**Example:**
+```typescript
+// src/lib/discovery/providers/apollo.ts
+export const apolloAdapter: DiscoveryAdapter = async (input) => {
+  const response = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+    method: "POST",
+    headers: { "x-api-key": process.env.APOLLO_API_KEY!, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      person_titles: input.jobTitles,
+      organization_industry_tag_ids: resolveApolloIndustries(input.industries),
+      person_locations: input.locations,
+      per_page: input.limit ?? 50,
+    }),
   });
-  return result.output;
-}
+  const data = await response.json();
+  return data.people.map(mapApolloPersonToDiscoveryResult);
+};
 ```
 
-The `runAgent()` in `runner.ts` handles: AgentRun create → generateText → steps extraction → AgentRun update. All agents get audit trails for free by using it.
+### Pattern 3: Railway Worker Extension (not new service)
 
-### Pattern: Portal Auth in API Routes
+**What:** Signal worker is a new class in `worker/src/`, launched alongside the LinkedIn worker in `index.ts`.
 
-`/api/portal/*` routes are marked as public in middleware (no admin cookie check). The route handlers must verify the portal session and enforce workspace ownership:
+**When to use:** Any continuous background monitoring that cannot be a Vercel cron.
 
+**Do not:** Deploy a second Railway service. One service, multiple worker classes running concurrently.
+
+**Example:**
 ```typescript
-export async function POST(_req: Request, context: RouteContext) {
-  // 1. Verify portal session (throws if none)
-  const { workspaceSlug } = await getPortalSession();
+// worker/src/index.ts — EXTENDED
+const linkedinWorker = new Worker({ ... });
+const signalWorker = new SignalWorker({ apiUrl: API_URL, apiSecret: API_SECRET });
 
-  // 2. Load resource and verify ownership
-  const { id } = await context.params;
-  const list = await prisma.targetList.findUnique({ where: { id } });
-
-  if (!list || list.workspaceSlug !== workspaceSlug) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  // 3. Perform action
-  await prisma.targetList.update({ where: { id }, data: { status: "approved" } });
-
-  return NextResponse.json({ ok: true });
-}
+// Run both concurrently
+Promise.all([
+  linkedinWorker.start(),
+  signalWorker.start(),
+]).catch(console.error);
 ```
 
-Never trust the ID in the URL without verifying workspace ownership. Client A must never be able to approve Client B's list.
+### Pattern 4: Knowledge Base Tags for Per-Client Context
 
-### Pattern: Fire-and-Forget Deploy
+**What:** Use tag convention `creative-ideas-{workspaceSlug}` to segregate per-client examples in the shared KB. No new DB tables needed.
 
-Campaign deploy involves many sequential EmailBison API calls (up to 200+ for a full list). This must not block the portal approval response. The Vercel Hobby function timeout is 10s; deploy will take 60-300s for a real list.
+**When to use:** Content that needs per-client isolation within the shared knowledge store.
 
-```typescript
-// In approval route — return immediately, deploy runs async
-await prisma.targetList.update({ where: { id }, data: { status: "approved" } });
-
-// Check if copy is ready
-const readyCopy = await prisma.emailDraft.count({ where: { workspaceSlug, status: "approved" } });
-if (readyCopy > 0) {
-  void deployCampaign(workspaceSlug, id);  // fire and forget
-}
-
-return NextResponse.json({ ok: true });  // client gets this immediately
-```
-
-Deploy status is trackable via AgentRun records (admin can check the runs log). Consider a simple deploy status indicator in the admin list detail page.
-
-### Pattern: Hard Email Verification Gate
-
-Inherited from v1.0 — never send unverified emails to EmailBison. In the deploy service, always filter:
-
-```typescript
-const eligiblePeople = list.people.filter(tlp => {
-  const p = tlp.person;
-  return p.email && p.email.trim() !== '';
-  // Additional: could check enrichmentData.emailVerified === true
-});
-```
-
-This is consistent with the existing CSV export gate in `/api/lists/[id]/export/route.ts`.
+**Example:** Admin runs ingest CLI with `--tags creative-ideas-rise` for Rise-specific examples. Writer Agent queries with `tags = "creative-ideas-rise"`.
 
 ---
 
-## Anti-Patterns to Avoid
+## Anti-Patterns
 
-### Anti-Pattern 1: Blocking Portal Response on Deploy
+### Anti-Pattern 1: Creating a "Discovery Agent" as a separate agent
 
-**What people do:** Await the full `deployCampaign()` call inside the approval API route.
+**What people do:** Create `src/lib/agents/discovery.ts` as a new specialist agent with its own config/tools.
 
-**Why it's wrong:** A list of 100 people = 100+ EmailBison API calls, sequential. At 100-300ms each, that's 10-30s. Vercel Hobby times out at 10s. Client sees a network error.
+**Why it's wrong:** Adds a delegation hop (Orchestrator → Leads Agent → Discovery Agent) with no benefit. The Leads Agent already owns pipeline operations. Discovery is a new *capability* of the Leads Agent, not a new domain.
 
-**Do this instead:** Return the approval response immediately. Fire deploy with `void deployCampaign()`. Use AgentRun status to expose deploy progress in admin.
+**Do this instead:** Add `discoverLeads` and `searchDirectory` tools directly to `leadsTools` in `src/lib/agents/leads.ts`.
 
-### Anti-Pattern 2: Skipping Workspace Ownership Check
+### Anti-Pattern 2: Third Vercel cron
 
-**What people do:** Trust the `listId` or `campaignName` in the URL without verifying it belongs to the session's workspace.
+**What people do:** Add signal monitoring as a third Vercel cron job.
 
-**Why it's wrong:** A logged-in portal client could approve another client's leads list by guessing IDs (CUID collision is low but the security principle is wrong either way).
+**Why it's wrong:** Vercel Hobby plan limits to 2 crons. This would silently fail or require a paid plan upgrade.
 
-**Do this instead:** Always: `findUnique({ where: { id } })` then `if (list.workspaceSlug !== workspaceSlug) return 404`. Every portal API route follows this pattern.
+**Do this instead:** Run signal monitoring in Railway alongside the LinkedIn worker. Signal events POST to the Vercel API, which is the established pattern.
 
-### Anti-Pattern 3: Overcomplicating Portal UX
+### Anti-Pattern 3: Putting discovery providers in `src/lib/enrichment/providers/`
 
-**What people do:** Build per-lead approve/reject, inline editing, comment threading on individual copy steps.
+**What people do:** Add Apollo, Exa, etc. adapters to the enrichment providers folder.
 
-**Why it's wrong:** Per-PROJECT.md, portal approval is binary (whole list, whole copy batch). Complexity adds build time and noise. Clients approve the work product, not edit it.
+**Why it's wrong:** Enrichment adapters have a different contract (`EmailAdapter`, `CompanyAdapter` — they take identifiers, return field values). Discovery adapters take search criteria and return lead lists. Mixing them breaks the type contracts and confuses the waterfall.
 
-**Do this instead:** Read-only sample view with enrichment summary. Two actions: Approve (whole list) or Request Changes (textarea → stored as feedback on reject). Admin acts on the feedback, re-submits.
+**Do this instead:** Create `src/lib/discovery/providers/` with the `DiscoveryAdapter` interface.
 
-### Anti-Pattern 4: Multiple Deploy Triggers Racing
+### Anti-Pattern 4: Blocking Railway worker on pipeline completion
 
-**What people do:** Trigger deploy from both the leads approval and the copy approval without deduplication.
+**What people do:** Have the signal worker POST an event and await the full enrich→score→copy pipeline before returning.
 
-**Why it's wrong:** If both approval routes fire deploy simultaneously, you create two campaigns in EmailBison with the same name and duplicate all the leads.
+**Why it's wrong:** The pipeline takes 60-300 seconds. The signal worker would timeout or hold up processing of subsequent signals.
 
-**Do this instead:** Only one trigger fires deploy. Convention: leads approval triggers deploy if copy is already approved. Copy approval triggers deploy if leads are already approved. Since portal review is sequential (leads first, then copy), the natural order prevents races. If concurrent access is a concern, use a TargetList.status check as a mutex (`deployed` prevents re-deploy).
+**Do this instead:** POST signal event → receive 201 → move on. Pipeline runs async. Worker only reports the signal.
 
-### Anti-Pattern 5: Embedding EmailBison API Calls Directly in Agent Tools
+### Anti-Pattern 5: New MCP server for CLI orchestrator
 
-**What people do:** Put `EmailBisonClient.createCampaign()` calls directly inside the Campaign Agent's tool `execute` functions.
+**What people do:** Create a new MCP server in `src/mcp/cli-agent/` for the CLI chat experience.
 
-**Why it's wrong:** Deploy logic becomes untestable without an agent context. Can't call deploy from portal approval or admin button without running a full agent.
+**Why it's wrong:** MCP servers are for Claude Code tool-use (the model initiates tool calls autonomously). The CLI chat is a *human-driven* interactive session. MCP protocol overhead is unnecessary.
 
-**Do this instead:** Campaign deploy is a service (`src/lib/campaign-deploy/deploy.ts`) that the Campaign Agent tools call. The agent is a thin wrapper. Same pattern as how Writer Agent calls `prisma.emailDraft.create()` directly — the agent is a driver, not the implementation.
+**Do this instead:** `scripts/cli-chat.ts` — simple readline loop calling `generateText()` with `orchestratorTools` and accumulated history. Same tools, different entry point.
 
 ---
 
-## Integration Points Summary
+## Build Order
+
+Dependencies determine sequence. Each phase unblocks the next.
+
+```
+Phase 1: Prisma schema (SignalEvent, SignalCampaign)
+    → enables all downstream data writes
+
+Phase 2: Discovery module (src/lib/discovery/)
+    → provider adapters, index.ts fan-out, dedup logic
+
+Phase 3: Leads Agent upgrade (discoverLeads + searchDirectory tools)
+    → depends on Phase 2 discovery module
+
+Phase 4: Signal API routes (src/app/api/signals/)
+    → depends on Phase 1 schema
+
+Phase 5: Signal Worker (worker/src/signal-worker.ts)
+    → depends on Phase 1 schema + Phase 4 API routes
+
+Phase 6: Auto-pipeline (/api/signals/pipeline/trigger)
+    → depends on Phase 1 schema + existing enrichment + existing writer
+
+Phase 7: Signal Dashboard page (/admin/signals)
+    → depends on Phase 4 API routes
+
+Phase 8: Writer Agent Creative Ideas mode
+    → depends on KB tagging convention only (can build anytime)
+
+Phase 9: CLI orchestrator (scripts/cli-chat.ts)
+    → depends on nothing — can be built anytime after orchestrator exists
+```
+
+Phases 8 and 9 are independent — can be parallelized with Phases 2-7.
+
+---
+
+## Integration Points
 
 ### External Services
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| EmailBison API | `EmailBisonClient` (existing) | Add `addSequenceStep()` + `assignLeadToCampaign()` — endpoint shapes need verification against EB API docs (MEDIUM confidence) |
-| Enrichment providers | Existing waterfall in `EnrichmentJob` / `EnrichmentLog` pattern | Leads Agent tools reuse same logic, called as tool wrappers |
-| Anthropic API | `runner.ts` + `generateText()` (existing) | leads.ts uses same pattern — Opus 4, 15 steps |
+| Service | Integration Pattern | Auth | Notes |
+|---------|---------------------|------|-------|
+| Apollo.io | REST POST `/v1/mixed_people/search` | `x-api-key` header | 250M+ contacts, best for enterprise firmographics |
+| Prospeo Search | REST (separate from enrichment endpoint) | API key | Different endpoint from enrichment adapter |
+| AI Ark Search | REST search endpoint | API key (LOW confidence — verify) | May differ from person enrichment endpoint |
+| Exa.ai | REST `/search` with `type: "company"` | `x-exa-api-key` | Semantic search, MCP server available |
+| Serper.dev | REST POST `/search` | `X-API-KEY` | Google + Maps + news + Reddit/Twitter |
+| Apify | REST Actor run + dataset GET | Bearer token | LinkedIn scraping actor |
+| PredictLeads | REST GET `/signals` | API key | 5 signal types, query by domain list, designed for agent polling |
 
 ### Internal Boundaries
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Chat UI → Orchestrator | POST `/api/chat` (streaming, existing) | No change needed |
-| Orchestrator → Leads Agent | `runLeadsAgent()` (replace stub) | Wire in `orchestrator.ts` |
-| Orchestrator → Campaign Agent | `runCampaignAgent()` (replace stub) | Phase 5 only |
-| Portal → Approval API | POST `/api/portal/review/*/approve` | Session cookie = workspace scope |
-| Approval API → Deploy Service | Direct function call, `void` (fire-and-forget) | Don't await |
-| Deploy Service → EmailBison | `EmailBisonClient` methods | Rate limit 429 handling already exists in client |
-| Admin UI → Deploy | POST `/api/lists/[id]/deploy` | Admin bypass — no approval status check needed |
+| Boundary | Communication | Pattern |
+|----------|---------------|---------|
+| Railway signal worker → Vercel API | HTTP POST | `ApiClient.postSignalEvent()` (same pattern as LinkedIn worker) |
+| Vercel API → pipeline trigger | Async fetch (fire-and-forget) | `fetch(url).catch(console.error)` — don't await |
+| Leads Agent → discovery module | Direct function call | `import { discoverLeads } from "@/lib/discovery"` |
+| Writer Agent → creative ideas KB | Tool call via searchKnowledge | Tag: `creative-ideas-{slug}` |
+| Signal dashboard → signal events | REST GET `/api/signals/events` | Standard App Router pattern |
+| CLI chat → orchestrator | Direct `generateText()` call | Same `orchestratorTools` object as `/api/chat` |
 
 ---
 
-## Scaling Considerations
+## Confidence Assessment
 
-| Scale | Architecture Notes |
-|-------|-------------------|
-| Current (6 workspaces, 50-200 leads/campaign) | Sequential deploy in-process is fine. Fire-and-forget with Vercel background processing. |
-| 20+ workspaces, 500+ leads/campaign | Sequential deploy will hit Vercel function timeouts. Adopt `EnrichmentJob` queue pattern — already exists in schema, batch by 50 leads per job chunk. |
-| 50+ concurrent deploys | Deploy needs background worker (Railway or Vercel Cron chunking). `EnrichmentJob` model + `resumeAt` field already supports this pattern — reuse for `CampaignDeployJob`. |
-
-The `EnrichmentJob` model (with `chunkSize`, `processedCount`, `resumeAt`) is the right template for scaling campaign deploy if sequential in-process stops working.
+| Area | Confidence | Basis |
+|------|------------|-------|
+| Agent extension pattern | HIGH | Direct read of src/lib/agents/* |
+| Railway worker extension | HIGH | Direct read of worker/src/worker.ts + index.ts |
+| Vercel cron constraint | HIGH | vercel.json confirms exactly 2 crons registered |
+| Enrichment vs discovery separation | HIGH | Direct read of enrichment/types.ts, confirmed type contract difference |
+| Prisma schema additions | HIGH | Direct read of full schema, modeled on Campaign/Workspace patterns |
+| Apollo API | MEDIUM | Official docs verified, field mappings need test at build time |
+| PredictLeads API | MEDIUM | REST API confirmed, exact endpoint shapes need verification |
+| Exa.ai company search | MEDIUM | Company Search feature confirmed via changelog |
+| Pipeline async pattern | HIGH | Matches existing enrichment queue architecture |
+| CLI readline pattern | HIGH | Standard Node.js + Vercel AI SDK generateText() pattern |
 
 ---
 
 ## Sources
 
-- `src/lib/agents/orchestrator.ts` — current delegation stubs, tool shapes (HIGH)
-- `src/lib/agents/runner.ts` — AgentRun pattern all agents must follow (HIGH)
-- `src/lib/agents/research.ts`, `writer.ts`, `types.ts` — established agent conventions (HIGH)
-- `src/lib/emailbison/client.ts` — existing EmailBison API capabilities + what's missing (HIGH)
-- `prisma/schema.prisma` — full data model including TargetList, EmailDraft, AgentRun (HIGH)
-- `src/middleware.ts` — auth boundaries, `/api/portal/` public passthrough (HIGH)
-- `src/app/(portal)/portal/page.tsx` — portal server component pattern, getPortalSession() usage (HIGH)
-- `src/app/api/lists/[id]/export/route.ts` — email verification gate to replicate in deploy (HIGH)
-- `.planning/PROJECT.md` — requirements, constraints, out-of-scope items (HIGH)
-- EmailBison sequence step + lead assignment API endpoints — not inspected directly (MEDIUM — verify endpoint shapes during Phase 4)
+- [Apollo.io People API Search](https://docs.apollo.io/reference/people-api-search)
+- [Exa.ai company search changelog](https://exa.ai/docs/changelog/company-search-launch)
+- [PredictLeads integration patterns](https://blog.predictleads.com/)
+- [Vercel AI SDK Node.js getting started](https://ai-sdk.dev/docs/getting-started/nodejs)
+- [Exa MCP server reference](https://github.com/exa-labs/exa-mcp-server)
+- Existing codebase: direct inspection of all `src/lib/agents/`, `src/lib/enrichment/`, `worker/src/`, `prisma/schema.prisma`
 
 ---
 
-*Architecture research for: Outsignal v1.1 Outbound Pipeline (Leads Agent + Portal Review + Campaign Deploy)*
-*Researched: 2026-02-27*
+*Architecture research for: Outsignal v2.0 Lead Discovery & Intelligence*
+*Researched: 2026-03-03*

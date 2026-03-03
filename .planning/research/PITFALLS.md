@@ -1,185 +1,160 @@
 # Pitfalls Research
 
-**Domain:** Cold outbound platform — agent dashboard integration, client approval portal, smart campaign auto-deployment
-**Researched:** 2026-02-27
-**Confidence:** HIGH — grounded in full codebase analysis; critical gaps verified via EmailBison docs and Vercel AI SDK documentation
+**Domain:** Multi-source lead discovery, signal monitoring, Creative Ideas copy generation — adding to existing outbound lead engine
+**Researched:** 2026-03-03
+**Confidence:** HIGH for architectural pitfalls (grounded in existing codebase); MEDIUM for third-party API limits (official docs checked; some limits undocumented publicly)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Leads Agent Tool Set Is an MCP Server — Not a Vercel AI SDK Tool Set
+### Pitfall 1: Apollo.io API — Terms Prohibit What You're Building
 
 **What goes wrong:**
-The existing Leads Agent lives in `src/mcp/leads-agent/` and is registered as an MCP server using `@modelcontextprotocol/sdk`. When wiring it into the dashboard's chat interface (which uses Vercel AI SDK's `streamText`), developers assume they can "import the tools and pass them to streamText." They cannot. MCP server tools and AI SDK `tool()` objects are incompatible types. The MCP server runs as a separate stdio process; the AI SDK chat route runs as a Next.js API handler. Attempting to bridge them without a proper adapter results in runtime errors or silent tool failures.
+You wire up Apollo's People Search and Organization Search endpoints as agent tools, run a discovery job, and get good results. Three weeks later Apollo detects that your usage pattern doesn't match a human sales rep — it looks like an automated pipeline pulling bulk results across multiple clients. Apollo rate-limits the account, then suspends it entirely. The terms explicitly prohibit: (1) using the API to replicate Apollo products/services, (2) selling or sublicensing API access, (3) using it for multiple client workspaces. Running discovery across 6 client workspaces through a shared API key violates clause 3.
 
 **Why it happens:**
-The MCP tools in `src/mcp/leads-agent/tools/` (search, enrich, score, lists, export) are registered via `server.tool(name, description, schema, handler)` — the MCP SDK's registration API. The orchestrator in `src/lib/agents/orchestrator.ts` expects `Record<string, Tool>` where `Tool` is Vercel AI SDK's type from `"ai"`. These are distinct interfaces. The pattern used for Research and Writer agents (wrapping in `tool({ inputSchema, execute })`) must be duplicated for Leads Agent — but developers will try to reuse the MCP registrations directly.
+The Apollo API Terms state the license is for "internal business purposes only" and prohibit sublicensing. Running lead discovery for 6 paying clients through one Apollo key is sublicensing. Apollo monitors for burst patterns — fetching hundreds of contacts in rapid succession flags as automation. The free tier (if using it) adds an 50 AI credits limit that evaporates in a single discovery job.
 
 **How to avoid:**
-Build a parallel Leads Agent tool set in `src/lib/agents/leads.ts` using Vercel AI SDK's `tool()` function — mirroring the MCP tool logic but implementing it as AI SDK tools. This is not a bridge or adapter; it is a second implementation of the same logic with a different registration API. The MCP server remains for Claude Code / CLI usage. The AI SDK tool set serves the dashboard chat. Both call the same underlying DB/service functions.
+Do not use Apollo as a primary bulk discovery source. Use it for targeted enrichment (one person at a time, triggered by human request) rather than programmatic search sweeps. If Apollo search is needed at scale, each client workspace must use their own Apollo API key. Build the Apollo integration with rate delays (2-3s between calls), max daily limits per workspace, and a hard cap of 50 calls/day per key to stay under detection thresholds. Make Apollo the last fallback in discovery, not the first call.
 
 **Warning signs:**
-- TypeScript error: "Argument of type X is not assignable to parameter of type Tool" when passing MCP server tools to `streamText`
-- The `delegateToLeads` tool in orchestrator.ts currently returns `status: "not_available"` — this is the placeholder that needs replacing
-- Runtime silent failures where the agent reports tool execution but no DB writes occur
+- Apollo returns 429 errors on previously working endpoints
+- Account dashboard shows "unusual activity" flag
+- Email from Apollo compliance team
+- Discovery jobs complete with 0 results despite valid search params
 
 **Phase to address:**
-Phase 1 (Leads Agent Dashboard Integration) — must resolve the tool type mismatch before any agent wiring. The refactoring plan: (1) extract shared DB logic to `src/lib/leads/operations.ts`, (2) create MCP registrations that call those functions, (3) create AI SDK tool objects that call the same functions.
+Phase 1 (Multi-Source Lead Discovery) — Set per-workspace API key requirement for Apollo from day one. Do not build with a shared key that "can be split later." The architecture is wrong from the start if it uses one shared key across clients.
 
 ---
 
-### Pitfall 2: EmailBison Has No Campaign-to-Lead Assignment API — Leads Go to Pool
+### Pitfall 2: Auto-Pipeline Without a Hard Human Gate Sends Real Campaigns
 
 **What goes wrong:**
-The smart campaign deployment flow creates a campaign in EmailBison, then calls `createLead()` for each person. The assumption is that leads pushed via `POST /leads` will land in that specific campaign. They do not. EmailBison's API creates leads in the **workspace-level lead pool**, not in any campaign. The campaign has zero leads despite a "successful" push. The "Export Complete" message in `export.ts` lines 225-237 already reflects this — step 3 says "Import the leads from the workspace lead pool into this campaign" — meaning this is a known manual step.
-
-The auto-deployment feature (client approves → campaigns deploy automatically) cannot fully automate if there is no API endpoint to assign leads to campaigns. The current workaround (duplicate a template campaign) inherits the sequence but still leaves leads unassigned to that specific campaign.
+The "evergreen signal campaign" auto-pipeline is wired as: PredictLeads signal → filter → enrich → ICP score → Creative Ideas generation → campaign create → portal notification. Everything looks controlled because it stops at "portal notification." But then someone adds auto-approve logic ("if score > 0.85 auto-approve"), or a bug in the approval check lets campaigns slip through, or a client clicks "approve all" on 200 leads from a burst funding event — and EmailBison sends to 200 companies that haven't been human-reviewed. A mis-scored lead list going out to a client's prospects kills the client relationship.
 
 **Why it happens:**
-EmailBison's API design treats leads as workspace-scoped entities, not campaign-scoped. Campaign membership is managed in the UI, not via a direct assignment endpoint. This was documented in the original export tool but has not been verified as "definitely unfixable via API" — it may exist as an undocumented endpoint, or may require a workaround (CSV import via API, or campaign-specific bulk upload).
+The existing `Campaign` model already has `status: "approved"` and the EmailBison deploy route already exists. The path from signal to send has very few actual hard stops. Developers optimize for "reducing friction" and the pipeline gradually loses its gates as iterations happen. Signal burst events (100 companies raise funding same week) generate a flood that overwhelms human review capacity, creating pressure to auto-approve.
 
 **How to avoid:**
-Before building "smart campaign deployment" as an atomic automated flow, **verify the EmailBison API surface area exhaustively**. Steps:
-1. Check the EmailBison API reference at `https://dedi.emailbison.com/api/reference` for any campaign-lead association endpoint
-2. Contact EmailBison support to confirm or deny: "Is there an API endpoint to add a specific lead (by ID) to a specific campaign?"
-3. If confirmed missing: design the deployment flow as a two-step process — (a) create campaign + push leads to pool (automated), (b) prompt admin to assign in EmailBison UI (manual gate). Surface a clear "action required" notification in the admin dashboard.
-4. If found: use it and mark the current `export.ts` "Next Steps" guidance as obsolete.
-
-The campaign duplication approach (`duplicateCampaign`) inherits sequence steps but requires manual lead assignment in the EmailBison UI regardless.
+The portal approval must be a cryptographic gate, not a status check. Specifically: (1) Campaigns created from signals must have a `requiresHumanReview: true` flag that can never be overridden by automated code — only by a human HTTP request with valid session. (2) The EmailBison deploy call must check this flag and hard-reject if `true` without a corresponding human approval event in the audit log. (3) Daily cap on signals that can enter the pipeline per client workspace (configurable, default 10/day) — excess queues without creating campaigns. (4) Signal bursts should never auto-create more than N campaigns per day per client; the rest stay in the signal feed as "pending review."
 
 **Warning signs:**
-- Export logs show `successCount > 0` but the EmailBison campaign shows `total_leads: 0`
-- Admin assumes campaign is live-ready but leads are sitting in the pool unassigned
-- Client approves content and expects sends to start automatically, but nothing happens
+- Pipeline telemetry shows campaigns moving from `created` to `approved` in < 60 seconds (no human reviewed that fast)
+- Campaign count per client spikes on days with major funding events
+- Signal monitoring cost spikes coincide with campaign creation spikes
 
 **Phase to address:**
-Phase 3 (Smart Campaign Deployment) — this is the central constraint. Do not design the auto-deploy flow until the API surface is confirmed. If no assignment endpoint exists, the roadmap must reflect a hybrid automated/manual flow.
+Phase 3 (Evergreen Signal Campaigns) — The gate architecture must be designed before auto-pipeline is built, not added as a safety net afterward. If the pipeline exists without the gate, it will ship without the gate.
 
 ---
 
-### Pitfall 3: Vercel Streaming Timeout on Multi-Step Leads Agent Runs
+### Pitfall 3: Cost Explosion from Signal Monitoring Burst Events
 
 **What goes wrong:**
-The Leads Agent dashboard runner will execute multi-step tasks (search → enrich → score → add to list → export) via `streamText` with up to 12 steps. Each step may involve DB queries, enrichment API calls (Prospeo, AI Ark), or EmailBison calls. A full pipeline run can exceed 5 minutes. On Vercel Hobby plan, the maximum function duration is 60 seconds. Even on Pro, the default is 300 seconds (5 minutes) — a complex agent run with enrichment easily exceeds this.
+PredictLeads reports 85 companies raised Series A funding on the same day. Your signal monitoring cron processes all 85, triggers enrichment waterfall for each (Prospeo → AI Ark → LeadMagic → FindyMail), finds contacts at each company, runs ICP scoring via Firecrawl, and generates Creative Ideas copy via Claude Sonnet for each. At ~$0.05/email lookup + $0.10/Firecrawl crawl + $0.30/Creative Ideas generation, 85 companies × 5 contacts each = 425 enrichment calls + 85 crawls + 425 copy generations. Single burst event: ~$30-50 in external API costs, blowing through the $10/day cap and not stopping because the cap check happens at the enrichment layer, not the signal processing layer.
 
 **Why it happens:**
-The current `/api/chat/route.ts` uses `streamText` without a `maxDuration` export. Without an explicit override, Vercel applies its plan default. The orchestrator's `stopWhen: stepCountIs(12)` means up to 12 tool calls can run sequentially. If enrichment is involved (Prospeo: 2-5s per lead, batch of 50 leads = 100-250s just for that step), the total easily exceeds the Hobby limit and can exceed the Pro default.
+The existing $10/day cost cap (from v1.0) is checked in the enrichment waterfall before each provider call. But the signal processing loop doesn't check the remaining daily budget before spawning enrichment jobs. Signals arrive as a batch from PredictLeads, each spawning independent enrichment tasks — the cap is hit in the middle of the batch, leaving half the signals partially enriched (some contacts found, some not) with inconsistent state.
 
 **How to avoid:**
-1. Add `export const maxDuration = 300` to `/api/chat/route.ts` immediately (Hobby plan cap)
-2. For multi-lead enrichment tasks, the Leads Agent tools must be non-blocking: enqueue an `EnrichmentJob` and return a job ID rather than waiting for completion. The agent reports "I've queued enrichment for 50 leads, job ID: X. Check back via the dashboard or ask me for status."
-3. For the dedicated Leads Agent runner (separate from the orchestrator chat), use `generateText` (not `streamText`) with a POST endpoint that returns when complete — and set `maxDuration = 300` there too.
-4. Flag in the roadmap: enrichment-heavy agent tasks require the job-queue pattern already established in `EnrichmentJob` model — the Leads Agent should dispatch jobs, not perform enrichment inline.
+Signal monitoring must have its own budget envelope, separate from the enrichment waterfall cap. Architecture: (1) Daily signal processing budget per client workspace (default: $2/day, configurable). (2) Before processing any signals, fetch today's signal spend from the `CostLedger` (or create one). (3) Estimate cost per signal (number of contacts to enrich × avg cost per contact), reject signals that would exceed budget. (4) Process signals in priority order (funding > hiring spike > job change > news) with budget gates between each priority tier. (5) Never process more than 10 companies from a single signal type in a single cron run — queue the rest for next run.
 
 **Warning signs:**
-- Vercel function logs show 504/FUNCTION_INVOCATION_TIMEOUT errors during agent runs
-- Agent responses cut off mid-stream without a natural ending
-- `AgentRun` records stuck in `running` status indefinitely after a timeout
+- Neon DB shows `CostLedger` rows summing to > $10 before 9am
+- Railway cron logs show a single run processing > 20 companies
+- Enrichment API dashboard shows unusual spike in calls on specific dates
+- EmailBison campaign count spikes on days with major news events
 
 **Phase to address:**
-Phase 1 (Leads Agent Dashboard Integration) — set `maxDuration` before first deployment. Design agent tools to be non-blocking before multi-step pipelines are activated.
+Phase 3 (Evergreen Signal Campaigns) — The cost governor must be implemented before the signal monitoring cron is wired to enrichment. Treat it as a prerequisite, not a follow-up optimization.
 
 ---
 
-### Pitfall 4: Portal Approval Actions Need Server-Side Auth — API Routes Without Admin Gate Leak to Clients
+### Pitfall 4: Creative Ideas AI Hallucinating Client Services That Don't Exist
 
 **What goes wrong:**
-The client portal runs on the same deployment as the admin dashboard. New API routes created for the approval flow (e.g., `POST /api/portal/approve-list`, `POST /api/portal/approve-copy`) must authenticate against the **portal session** (client-scoped), not the admin session. If a developer creates these routes under `/api/` without explicitly adding portal auth, the middleware routes them through the admin auth check — which portal users fail, getting a 401. Conversely, if they accidentally scope a portal approval route without workspace isolation, a client could approve (or view) another client's list.
-
-There is also a reverse risk: a portal-visible API endpoint that performs admin actions (e.g., triggering campaign deployment) must not be accessible via portal session alone — it should require an admin session or a scoped service token.
+The Creative Ideas agent is given the client's ICP + website research and asked to generate 3 constrained, personalized ideas. It generates: "Idea 1: Help [prospect] build a whitelabel version of your XYZ product." The client doesn't have a whitelabel product. Or: "Idea 3: Offer [prospect] your API integration with Salesforce" — client has no Salesforce integration. The idea gets approved by the client who skimmed it, goes out to 50 prospects. Prospects click through expecting to learn about the Salesforce integration. It doesn't exist. Client gets confused calls, admin gets blamed.
 
 **Why it happens:**
-The middleware in `middleware.ts` has a clear split: `/portal/*` routes → portal session, `/api/*` routes → admin session (unless in `PUBLIC_API_PREFIXES`). But `/api/portal/*` is in `PUBLIC_API_PREFIXES` — it bypasses admin auth. New portal API routes placed under `/api/portal/` will bypass admin auth entirely and must implement their own portal session verification inside the route handler. Developers forget this and ship routes with no auth.
+The Research Agent already extracts client website data into `ResearchOutput` (value props, case studies, differentiators). But Creative Ideas generation requires more constrained grounding — the agent must only reference services and capabilities that are explicitly documented in the client's research output. If the system prompt says "generate creative outreach ideas" without explicit constraints on hallucination, Claude will extrapolate from what sounds plausible for a company of that type, not what's verified.
 
 **How to avoid:**
-- All new portal-facing API routes must go under `/api/portal/` AND call `getPortalSession()` inside the handler as the first operation
-- Portal actions (approve list, approve copy) must be scoped to the `workspaceSlug` from the portal session — never accept `workspaceSlug` from the request body, always use the session value
-- Campaign deployment triggered by portal approval must be a two-step process: (1) portal marks approval in DB, (2) admin receives notification and triggers deploy (or a separate webhook/cron runs the deploy). Clients should never directly invoke EmailBison API calls via portal routes
-- Add to code review checklist: every new `/api/portal/*` route must have `getPortalSession()` as its first line
+The Creative Ideas system prompt must include: (1) Explicit enumeration of client's actual services extracted from `ResearchOutput.valuePropositions` and `ResearchOutput.differentiators`. (2) Hard instruction: "Generate ideas ONLY using the services listed above. Do not invent capabilities the client doesn't have. If you cannot generate 3 distinct ideas from these services, generate fewer." (3) Each generated idea must include a `groundedIn` field citing which service/capability from the provided list it references. (4) Admin review of first 20 generated ideas per client before automation is enabled — catch hallucination patterns early. (5) Add a KB-backed validation step: generated idea must match at least one knowledge base chunk from the client's ingested documents.
 
 **Warning signs:**
-- Portal routes returning 401 on client login (route placed outside `/api/portal/` prefix)
-- No workspace scoping on approval endpoints (client A can approve client B's list)
-- Approval triggers an immediate EmailBison API call from a portal route handler
+- Generated idea references a product/service not in `ResearchOutput.valuePropositions`
+- Prospect replies "I didn't know you offered X" when X is not a real offering
+- Client flags ideas as "we don't do that" during portal review
 
 **Phase to address:**
-Phase 2 (Client Portal Review) — establish the portal API security pattern before building any approval endpoints. Document the auth model explicitly in a comment at the top of each portal API route.
+Phase 4 (Creative Ideas Copy Framework) — The grounding constraint must be in the initial prompt design. It cannot be added after the first batch of bad ideas ships to clients. Validate with human review of 20+ examples before enabling auto-generation.
 
 ---
 
-### Pitfall 5: Binary List Approval With No "Already Contacted" Dedup = Re-Sending to Existing Contacts
+### Pitfall 5: Multi-Source Dedup Failure Creates Duplicate Sends
 
 **What goes wrong:**
-The client reviews a list of 500 leads and approves it. The system auto-deploys to EmailBison. But 80 of those leads were already contacted in a previous campaign (they're in the workspace's lead pool with `status: "contacted"` or already exist in EmailBison). The new campaign now cold-emails people who have already received outreach from the same sender, which looks unprofessional and can cause unsubscribes or spam reports.
+Apollo returns a contact: `john.doe@acme.com`, LinkedIn: `linkedin.com/in/johndoe`, name: "John Doe". Exa.ai returns the same person but with a slightly different LinkedIn URL: `linkedin.com/in/john-doe-cmo` and no email. Prospeo also returns `john.doe@acme.com` from a separate discovery job. Three records enter the pipeline. Dedup only checks `email` uniqueness (existing behavior from v1.0). The Exa result has no email so it creates a new Person record. Both Person records get added to the same TargetList. The campaign sends two emails to John Doe — one personalized to the Exa-discovered record, one to the Prospeo record. John Doe sends a "please remove me" response that becomes a spam complaint.
 
 **Why it happens:**
-The list approval flow is designed as binary (approve/reject the whole list). There is no pre-deploy dedup check against EmailBison's existing lead pool. The hard email verification gate (`getListExportReadiness`) checks for verified emails but does not check for "has this lead already been exported to EmailBison for this workspace?" The `PersonWorkspace.status` field tracks local status but is not always synced back from EmailBison after sends.
+The existing `Person` model uses email as the unique key (`@unique email`). This is correct for email-enriched records. But discovery sources return partial records — Exa and Serper.dev often return company + name + LinkedIn URL without email. These partial records cannot be deduplicated against existing email-keyed records at ingestion time. They must be deduplicated after enrichment, but the enrichment step that finds the email may happen asynchronously. If the same person is discovered by two sources before enrichment completes, both get persisted.
 
 **How to avoid:**
-Before the portal approval step renders the lead list preview:
-1. Query EmailBison's lead pool (`client.getLeads()`) to get the set of emails already in the workspace
-2. Cross-reference the TargetList members against that set
-3. Mark any matches as `already_in_emailbison` in the preview UI
-4. On deploy, skip leads already present (or surface as a warning requiring admin override)
-
-This pre-deploy check should be part of the campaign deployment step, not a client-facing concern.
+Implement a pre-enrichment staging table (`DiscoveredPerson`) that holds raw discoveries before they're committed to `Person`. Dedup logic before promotion: (1) Exact email match — same person, merge. (2) LinkedIn URL normalized match (strip trailing slash, `/in/` prefix normalization, handle both `linkedin.com/in/X` and `www.linkedin.com/in/X`) — same person if LinkedIn URL matches. (3) Name + company domain fuzzy match (only as a flag for human review, not automatic merge). (4) Only promote to `Person` after enrichment confirms a unique email. Sources that return only LinkedIn URL go into staging, not directly into `Person`.
 
 **Warning signs:**
-- EmailBison campaign shows a new lead with `status: "contacted"` on day 1 (was already sent to previously)
-- Clients receive replies from prospects referencing multiple outreach attempts from the same sender
-- `PersonWorkspace.status` shows "contacted" for leads that appear in a newly approved list
+- `Person` table has two records with different emails but identical `linkedinUrl`
+- Same person appears twice on a TargetList
+- Prospect replies "I got two emails from you" — guaranteed dedup failure
+- Discovery job logs show the same LinkedIn URL processed by two sources
 
 **Phase to address:**
-Phase 3 (Smart Campaign Deployment) — add dedup check as a pre-deploy validation step, surfaced in the admin dashboard before confirming the campaign activation.
+Phase 1 (Multi-Source Lead Discovery) — The staging table architecture must be built before any multi-source discovery is enabled. Do not enable Exa or Serper discovery against the existing `Person` table without the staging layer.
 
 ---
 
-### Pitfall 6: Campaign Duplication Produces "Copy of X" Names — Sequence Steps May Be Empty
+### Pitfall 6: Enrichment Waterfall Reorder Breaks Existing Batch Jobs Mid-Run
 
 **What goes wrong:**
-The `duplicateCampaign()` method in `client.ts` is explicitly documented: "Note: name param is IGNORED by API — always produces 'Copy of {original}'." When a campaign is duplicated for auto-deployment, it inherits this name. If the client's approval references a campaign name, the deployed campaign has a different name. More critically, if the template campaign has no sequence steps configured, the duplicated campaign also has no sequence steps — but EmailBison will still mark leads as "active" and begin sending... nothing.
+The current waterfall is `Prospeo → AI Ark → LeadMagic → FindyMail`. The reorder to `FindyMail → Prospeo → AI Ark → LeadMagic` (cheapest first) changes which provider is called first. Existing batch jobs in the Railway worker that are mid-run when the code deploys will start calling FindyMail for new records while using the old provider order for in-flight records. Since cost tracking is per-provider, the `CostLedger` entries show FindyMail costs appearing before Prospeo costs, which breaks the cost reporting dashboard that assumes Prospeo is always column 1.
 
 **Why it happens:**
-Campaign duplication is the only API-available way to inherit sequence steps. The alternative (creating a campaign and adding sequence steps via API) depends on whether EmailBison exposes a `POST /sequence-steps` endpoint — which has not been confirmed. If that endpoint exists, fresh campaign creation with sequence step injection is cleaner. If it doesn't, duplication is the only path, and its naming limitation and empty-sequence risk are inherited.
+The waterfall reorder seems like a simple config change — just swap the array order in the waterfall runner. But the waterfall state is persisted on each `Person` record (`enrichmentStatus`, provider-specific fields). Existing records that are partially enriched via Prospeo will be re-enriched by FindyMail first on the next waterfall run, wasting credits on a record that already has a Prospeo email. The cost cap logic also needs updating because FindyMail's per-credit cost differs from Prospeo's.
 
 **How to avoid:**
-1. Verify: does EmailBison expose a `POST /campaigns/{id}/sequence-steps` or equivalent endpoint? Check `https://dedi.emailbison.com/api/reference`. If yes, use fresh campaign creation with step injection (cleaner, controllable names). If no, accept duplication with the known limitations.
-2. After duplication, call `getSequenceSteps(campaign.id)` to verify the duplicated campaign has at least one step before proceeding with lead assignment or deployment notification
-3. Rename the campaign after duplication using a `PATCH /campaigns/{id}` endpoint if one exists — otherwise, store the generated name in the DB and use that as the source of truth
-4. Include a "sequence steps: N" count in the deployment confirmation UI so the admin can verify before activating
+(1) The reorder must be done in a single atomic deployment with no in-flight batch jobs. Schedule the reorder during off-hours with the Railway worker stopped. (2) Add a `lastEnrichedProvider` field to `Person` so the waterfall can skip providers that already ran for this record. (3) Update cost cap logic to use per-call cost constants (not per-provider cost constants) so reordering doesn't break the cap calculation. (4) Test the new order on 10 records in staging before running against the full 14.5k dataset.
 
 **Warning signs:**
-- Deployed campaign name is "Copy of [template name]" instead of the workspace-derived name
-- `getSequenceSteps(newCampaignId)` returns an empty array
-- EmailBison shows campaign as "active" but emails_sent remains 0 after 48 hours
+- `CostLedger` shows FindyMail charges on records that already have a Prospeo email
+- Enrichment batch job shows "already enriched" skip rate drops significantly
+- Cost per enriched lead increases after the reorder (sign of double-enrichment)
 
 **Phase to address:**
-Phase 3 (Smart Campaign Deployment) — verify the sequence step API surface before designing the deployment flow. This is a blocking discovery.
+Phase 6 (Enrichment Waterfall Reorder) — Treat this as a data migration, not a code change. Stop all running jobs, deploy, verify on sample, resume.
 
 ---
 
-### Pitfall 7: Agent Conversation State Not Preserved Across Tab Reloads in Dashboard Chat
+### Pitfall 7: Vercel 300s Timeout Kills Signal Monitoring Crons
 
 **What goes wrong:**
-The admin starts a Leads Agent task via the Cmd+J chat panel: "Find 200 ICP leads for Rise and build a list called Rise-Feb-2026." The agent starts working (multi-step: search → filter → add to list). The admin switches tabs or reloads the page. The conversation state is gone — the chat history is lost. But the agent run is still in progress (or may have completed). The admin doesn't know if the list was created, re-runs the task, and creates duplicate lists with overlapping leads.
+Signal monitoring cron triggers on Railway (correct) but the actual PredictLeads API calls + enrichment + ICP scoring pipeline takes > 5 minutes for a batch of 20 companies. The Railway worker calls back into a Vercel API route to trigger enrichment, which times out at 300s. OR: the signal monitoring cron is accidentally registered on Vercel (not Railway) — hits the 2-cron limit on Hobby plan, plus times out on batch processing.
 
 **Why it happens:**
-The current `/api/chat/route.ts` is stateless — messages are passed in the request body on each turn. There is no server-side conversation persistence for the chat interface. This is fine for the orchestrator's current use cases (quick queries, Research/Writer delegation). For a Leads Agent that performs multi-step DB writes over 30-90 seconds, the lack of conversation persistence becomes a reliability issue.
+The Vercel Hobby plan has a 2-cron limit (already hit with existing crons for email sync and enrichment). Adding a signal monitoring cron to Vercel would break one of the existing crons. Even on Pro, Vercel's serverless functions have a 300s hard timeout that makes multi-company processing unreliable. The Railway worker already handles the LinkedIn session refresh — adding signal monitoring to Railway is the correct call, but developers may default to Vercel because "the API routes are already there."
 
 **How to avoid:**
-1. Persist AgentRun IDs in localStorage or a URL parameter so the admin can reconnect to an in-progress run after reload
-2. The Leads Agent tools should be idempotent: "create list called Rise-Feb-2026" should check if a list with that name already exists for the workspace before creating a new one; `add_to_list` already uses `skipDuplicates: true`
-3. Display active AgentRun records in the chat panel sidebar so the admin can see "Leads Agent: running (started 45s ago)" even after reload
-4. Use AgentRun.status to distinguish "running" (in-progress, don't re-trigger), "complete" (show results), "failed" (safe to retry)
+Signal monitoring must run exclusively on Railway. Architecture: (1) Railway signal worker polls PredictLeads at configured intervals. (2) It writes signal events directly to Neon DB (not through Vercel API routes). (3) Enrichment triggered by signals uses the same Railway worker, calling enrichment provider SDKs directly (not via Vercel API). (4) Only final results (new Person records, campaign creation) go through a lightweight Vercel API call that's fast (< 5s). (5) Never register signal monitoring as a Vercel cron — it will silently fail on Hobby or consume the Hobby cron slots.
 
 **Warning signs:**
-- Multiple TargetLists with nearly identical names for the same workspace
-- Admin reports "I kicked off the agent twice" resulting in doubled leads in a list
-- AgentRun records in "running" state > 10 minutes (indicates orphaned runs after timeout/reload)
+- Signal monitoring cron registered in `vercel.json` (wrong)
+- Vercel function logs show 300s timeout errors on enrichment calls
+- Railway worker logs show successful signal fetch but no resulting Person records in DB
 
 **Phase to address:**
-Phase 1 (Leads Agent Dashboard Integration) — design the chat UI to surface AgentRun status before enabling multi-step tasks. Idempotency in list creation is essential from day one.
+Phase 2 (Signal Monitoring Infrastructure) — Architecture decision must be made before any code: Railway handles all signal processing, Vercel only handles HTTP endpoints for human-triggered actions.
 
 ---
 
@@ -189,11 +164,12 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Reuse MCP tool logic by duplicating it for AI SDK | Ships faster, avoids shared-module refactor | Two code paths for same logic, diverge over time; bug fixed in one not the other | Never — extract to shared `src/lib/leads/operations.ts` from the start |
-| Hard-code `workspaceSlug` from portal session into approval API | Simple, no injection risk | Need to support admin acting on behalf of portal (e.g., forced approve) | MVP only; add admin override path in Phase 4 |
-| Approval status as a string field on TargetList | No new model needed | Can't track who approved, when, with what feedback | MVP only; add ApprovalRecord model if audit trail needed |
-| Use `duplicateCampaign` with known name limitation | Only available API for inheriting sequence | Campaign names in EB don't match internal names; confusion, support overhead | Acceptable if a rename endpoint exists; document clearly otherwise |
-| Skip "already in EmailBison" dedup on first deploy | Simpler launch | First real campaigns may re-contact existing leads | Never for production; add dedup before first client-facing deploy |
+| Shared Apollo API key across workspaces | Ship faster, one integration | ToS violation, account suspension, discovery fails for all clients simultaneously | Never — each workspace needs its own key |
+| Skip `DiscoveredPerson` staging, write directly to `Person` | Simpler schema, fewer tables | Duplicate sends to prospects, dedup bugs, partial records polluting the main DB | Never — once live, fixing requires a DB migration with 14.5k records in flight |
+| Generate Creative Ideas at campaign creation (not at send time) | Simpler pipeline | Stale personalization (idea references something that happened 3 weeks ago), ideas become irrelevant | Only acceptable if ideas are re-validated within 7 days of send |
+| Using `db push` instead of `prisma migrate dev` for new signal models | No migration history needed | Cannot roll back if new model causes issues; production deploy risk increases with each `db push` | Acceptable for new additive models only; never for modifying existing models with live data |
+| Storing raw PredictLeads signal payloads as JSON in `SignalEvent.rawPayload` | Flexibility, no schema design needed | Cannot query signal details efficiently, reporting is slow, can't alert on specific signal properties | Acceptable for initial implementation; add typed fields after signal data patterns are understood |
+| Single Railway process for both LinkedIn and signal monitoring | Fewer services to manage | LinkedIn cookies expire, require restart — restart kills signal monitoring mid-batch | Acceptable for MVP; split into separate Railway services before production load |
 
 ---
 
@@ -203,13 +179,17 @@ Common mistakes when connecting to external services.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| EmailBison `createLead` | Assuming the lead lands in the campaign being created in the same flow | `POST /leads` adds to workspace pool only. Campaign assignment (if API exists) is a separate step. Always verify with `getLeads()` after push. |
-| EmailBison `duplicateCampaign` | Trusting the response `name` field to reflect the intended name | API ignores the `name` param and returns "Copy of {original}". Store returned `id` and `name` from the response, not your intended name. |
-| EmailBison sequence steps | Assuming duplicated campaign inherits a complete sequence | Always call `getSequenceSteps(newCampaignId)` post-duplication to verify step count > 0. |
-| Vercel AI SDK `streamText` | Not exporting `maxDuration` from the route file | Without explicit `maxDuration`, Hobby plan defaults to 60s, Pro to 300s. Long agent runs timeout silently mid-stream. Add `export const maxDuration = 300` to every agent route. |
-| Portal session in API routes | Reading `workspaceSlug` from request body instead of session | A client could forge the body to target another workspace. Always use `const { workspaceSlug } = await getPortalSession()` — never trust client-provided workspace. |
-| Vercel AI SDK tool calls | Passing MCP server tool registrations directly | MCP tools (`server.tool(...)`) and AI SDK tools (`tool({inputSchema, execute})`) are different APIs. They cannot be used interchangeably. Build separate AI SDK tool objects. |
-| EmailBison API (white-labeled) | Assuming responses match the official EmailBison docs exactly | The API is accessed at `app.outsignal.ai/api` — a white-labeled instance. Responses should be identical, but edge cases in white-label configuration may produce different error codes or field shapes. Test every endpoint directly against the live instance, not just against docs. |
+| Apollo.io API | Treating it as a bulk search tool across workspaces | Per-workspace API keys; max 50 calls/day/key; rate delay 2-3s per call; use for enrichment not discovery |
+| Exa.ai Websets | Requesting 100+ results in one Webset assuming fast return | Websets with > 100 results can take 1+ hour; request 20-50 at a time, poll for completion asynchronously |
+| Exa.ai Websets | Not accounting for credit burn on partial results | Credits consumed for all results found, not just returned — narrow criteria with 0 results still burns search credits |
+| PredictLeads | Polling the API faster than their data refreshes | Funding events refresh at best once/day; polling > 4x/day wastes credits on duplicate signals |
+| PredictLeads | Using news signal as a reliable funding signal | News events are extracted from blog posts and PR sites — funding signals have 1-3 day lag behind actual close date, multiple duplicate signals per round common |
+| Serper.dev | Using Maps search for B2B companies expecting accurate employee counts | Maps API returns consumer-facing business data; employee counts, website URLs, and contact info are frequently wrong for B2B companies |
+| Serper.dev | Treating social listening results as real-time | Google's index latency means Reddit/Twitter results are 1-7 days behind; not suitable for "trending now" alerts |
+| Apify LinkedIn no-cookie actors | Expecting consistent data across all profile types | No-cookie actors only access publicly visible data; profiles with privacy settings return empty results without error — silent data gaps |
+| Apify LinkedIn no-cookie actors | Running high-volume requests from single IP | Even without cookies, high request rates trigger LinkedIn's IP-based blocking; use Apify's residential proxy rotation |
+| Railway (signal worker) | Calling Vercel API routes to trigger enrichment | Adds HTTP hop + 300s timeout risk; write directly to Neon from Railway using shared Prisma client |
+| Neon PostgreSQL | Not using connection pooler for Railway long-running worker | Direct connections from Railway worker exhaust Neon's direct connection limit; always use the Neon pooled connection string in Railway |
 
 ---
 
@@ -219,11 +199,12 @@ Patterns that work at small scale but fail as usage grows.
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Agent performs synchronous enrichment during chat turn | 504 timeouts, truncated agent responses, stuck AgentRun records | Leads Agent tools dispatch `EnrichmentJob` records instead of calling provider APIs inline | Immediately with batches > 10 leads |
-| `client.getLeads()` called to check existing leads before each export | Slow — fetches ALL workspace leads page by page (could be thousands) | Cache the workspace lead email set (Redis/DB temp table) or scope the pre-deploy check to only the N leads being exported | Noticeable when workspace has > 500 leads in pool |
-| Portal page renders lead list by fetching all list members inline | Page load slow for lists > 200 people | Paginate the lead preview: show first 50 with "load more", use `summary` counts for the approval decision | Lists > 200 people |
-| Multiple simultaneous agent runs for same workspace | DB contention, duplicate list creation, redundant API calls | Guard at tool level: check for active AgentRun with same workspace before starting a new one; surface as "another run is in progress" | First time a user double-clicks the submit button |
-| Copy approval triggers immediate campaign deploy | Client sees instant "deploy" but the EmailBison call may fail silently | Use a two-phase approach: approval sets DB status, a separate async step does the deploy with retry logic and status polling | Any network hiccup during the deploy API call |
+| Generating Creative Ideas for every person in a TargetList at campaign creation | Campaign creation stalls for 10+ minutes; Claude API costs spike | Generate on-demand (when campaign is submitted to portal) or batch-generate in Railway worker with queue | At 50+ people per campaign |
+| Loading full `Person` record for every signal event to check dedup | Railway worker memory spikes; Neon connection pool exhausted | Use `SELECT email, linkedinUrl` projection; never load full record for dedup checks | At 500+ signals per batch |
+| Fetching all active signals from PredictLeads in one API call | Response timeout; large payload parsing kills Railway worker | Paginate with `page_size=100`; process pages sequentially with rate delay | At 200+ tracked companies |
+| Writing SignalEvent records synchronously in signal monitoring loop | Railway worker blocks on each DB write; total batch time multiplies | Batch insert signal events; collect all events, bulk insert once per cron run | At 50+ companies per run |
+| Using `prisma.person.findMany()` without index on `companyDomain` for signal lookups | Slow signal → person matching queries; Neon CPU spikes | Add `@@index([companyDomain])` to Person model; also index `linkedinUrl` | At 14.5k+ Person records (already there) |
+| Storing Creative Ideas as JSON in Campaign model | Ideas cannot be queried, filtered, or compared across campaigns | Create `CreativeIdea` model with typed fields; FK to Campaign and Person | At 1k+ campaigns |
 
 ---
 
@@ -233,11 +214,11 @@ Domain-specific security issues beyond general web security.
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Portal approval API routes placed outside `/api/portal/` prefix | Admin session required — portal users get 401. Or worse: if accidentally placed in a fully public prefix, unauthenticated access | All portal action routes must be under `/api/portal/` AND verify portal session inside the handler |
-| `workspaceSlug` accepted from portal request body for approval actions | Client A could approve or view client B's list by changing the body parameter | Extract `workspaceSlug` exclusively from `getPortalSession()` — ignore any body-provided value |
-| Admin API routes that trigger campaign deployment accessible from portal | A compromised portal session could trigger unintended campaign launches | Campaign deployment must be admin-only. Portal approval only sets a DB flag. A separate admin confirmation (or background job with admin audit) executes the deploy. |
-| Agent runs store full tool outputs in `AgentRun.output` JSON | If the Leads Agent returns lead data (emails, names) in its output, that PII is stored indefinitely in the `AgentRun` table | Cap output size, redact PII fields from AgentRun storage, or add a TTL/cleanup job for AgentRun records > 90 days old |
-| Portal magic link tokens not expiring | Stale tokens allow re-authentication long after intent | `MagicLinkToken` model has `expiresAt` — verify it is enforced at verify endpoint, not just stored |
+| Client workspace isolation in discovery jobs | One client's API key used to discover leads for a different workspace; cross-contamination of prospect data | Always pass `workspaceSlug` as the first filter in every discovery query; add DB constraint that prevents `TargetList` ↔ `PersonWorkspace` cross-workspace joins |
+| Signal pipeline creates campaigns without workspace attribution | Campaigns created from signals lack `workspaceSlug`; appears in wrong client portal or not at all | Signal monitoring worker must receive `workspaceSlug` as a required param; never process signals without workspace context |
+| Apollo/Exa API keys stored per-workspace in DB | API keys at rest in Neon DB; if DB is compromised, all client API keys are exposed | Encrypt per-workspace API keys at rest using AES-256 with `ENCRYPTION_SECRET` env var; never store plaintext in DB |
+| Apify actor results cached without TTL | Stale LinkedIn data served as current; profile may have changed jobs | Cache Apify results with 7-day TTL maximum; always check `lastEnrichedAt` before serving cached enrichment |
+| Signal monitoring exposes which companies you're tracking | If PredictLeads query params are logged or exposed, reveals client's prospect list | Never log PredictLeads query params in structured logs; signal monitoring logs show counts only, not company names |
 
 ---
 
@@ -247,11 +228,11 @@ Common user experience mistakes in this domain.
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Binary approve/reject with no preview of what's being approved | Client approves a list of 500 leads without knowing who they are (or who they're NOT) | Show a sample of the list (first 20, sortable by score) with enrichment summary: industry breakdown, score distribution, geographic breakdown |
-| Approval action with no confirmation state feedback | Client clicks "Approve List" and the button does nothing visibly for 3 seconds (API call in progress) | Immediate optimistic UI: button goes to "Approving..." state, then "Approved" with a timestamp. Use server action or API with loading state. |
-| No notification to admin when client approves | Admin has to manually check if clients have completed their review | Trigger a Slack/email notification to admin workspace channel on client approval (same notification system used for reply alerts) |
-| Chat panel Leads Agent asks clarifying questions the admin already answered | Admin says "find leads for Rise" and the agent asks "what workspace?" — the current workspace context should be in scope | Pass `workspaceSlug` from the current admin page context to the chat API on every turn (already scaffolded in `context.workspaceSlug` in the chat route) |
-| Client portal shows all campaigns including failed/test campaigns | Client confused by "Copy of test_campaign" artifacts from API testing | Filter portal campaign list: only show campaigns with `status: "active"` or `emails_sent > 0`. Hide draft/test campaigns. |
+| Signal dashboard shows raw PredictLeads signal types ("job_posting_added") | Admin doesn't understand what to do with the signal | Map to human labels: "Hiring Spike", "Funding Round", "Tech Adoption", "Leadership Change", "Company News" |
+| Creative Ideas shown without context of which prospect they're for | Admin reviewing ideas in bulk can't evaluate relevance without re-reading prospect profile | Show prospect's title, company, and ICP match score inline with each idea in the portal review UI |
+| Signal feed shows all signals for all clients in one view | Admin can't triage; Rise's signals mixed with Lime Recruitment's | Default to per-client view; global view is opt-in filter — never default to global feed |
+| Discovery job shows "completed" but returns 0 results | Admin assumes the ICP doesn't have matches; doesn't investigate | Show "completed with 0 results — possible causes: [too narrow criteria / API limit reached / no matches for this ICP]" with next-step actions |
+| CLI orchestrator chat has no session persistence | Conversation context lost if terminal disconnects; admin has to rebuild context | Persist CLI chat sessions to DB (`AgentRun` with `source: "cli"`) and allow `--resume [session-id]` flag |
 
 ---
 
@@ -259,14 +240,16 @@ Common user experience mistakes in this domain.
 
 Things that appear complete but are missing critical pieces.
 
-- [ ] **Leads Agent in chat:** The `delegateToLeads` tool exists in orchestrator.ts but returns `status: "not_available"`. Verify it calls a real `runLeadsAgent()` function with actual DB tools, not a stub.
-- [ ] **Campaign deployment:** Export logs show `Export Complete` and a campaign ID. Verify the campaign actually has `total_leads > 0` in EmailBison, not just that the API calls returned 200.
-- [ ] **Sequence steps on deployed campaign:** Campaign was created or duplicated. Verify `getSequenceSteps(campaign.id).length > 0` before marking deployment as complete.
-- [ ] **Portal approval scoped to correct workspace:** Client approves a list. Verify the approval in DB references `workspaceSlug` from the portal session, not a request body field.
-- [ ] **Admin notification on approval:** Client clicks "Approve." Verify Slack/email notification fires to the admin channel for that workspace.
-- [ ] **Idempotent list creation:** Leads Agent runs "create list for Rise-Feb-2026." Run it twice. Verify only one list exists, not two with the same name.
-- [ ] **Portal preview is paginated:** List has 500 people. Verify the portal page loads in < 3 seconds and shows paginated results, not all 500 inline.
-- [ ] **Campaign dedup before deploy:** 80 leads in the approved list are already in the EmailBison workspace pool. Verify the deploy step surfaces this, skips them, or prompts admin.
+- [ ] **Multi-source discovery:** Integration returns results — verify dedup staging is in place and results don't go directly to `Person` table without email confirmation
+- [ ] **Signal monitoring cron:** Cron triggers and logs show signals — verify daily budget cap is enforced before enrichment starts, not after
+- [ ] **Creative Ideas generation:** Claude generates ideas — verify each idea has `groundedIn` field referencing a specific client service from `ResearchOutput`; spot-check 10 ideas manually for hallucinations
+- [ ] **Auto-pipeline:** Pipeline creates campaigns from signals — verify no campaign can reach `approved` status without a timestamped human approval event in the audit log
+- [ ] **Exa.ai Websets:** Webset runs and returns results — verify result count matches credit deduction; check that `webset.status === "completed"` not just `"running"` before processing
+- [ ] **Apollo integration:** API calls succeed — verify per-workspace key isolation; confirm no shared key fallback exists in the code
+- [ ] **Enrichment waterfall reorder:** New order confirmed in code — verify no in-flight batch jobs were running at deploy time; check CostLedger for double-enrichment charges on existing records
+- [ ] **Railway signal worker:** Worker starts and polls — verify it uses Neon pooled connection string (not direct), and that memory usage stays flat over 24 hours of operation
+- [ ] **Per-client Creative Ideas examples:** Examples reviewed by admin — verify examples are KB-tagged and stored in knowledge base, not just in memory or a temp table
+- [ ] **CLI orchestrator chat:** Chat responds to commands — verify session is persisted to DB so context survives terminal disconnect
 
 ---
 
@@ -276,12 +259,13 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| MCP/AI SDK tool type mismatch found after integration attempt | LOW | (1) Delete the broken bridge code. (2) Extract shared logic to `src/lib/leads/operations.ts`. (3) Re-implement as AI SDK tools. No data loss. |
-| Campaign deployed with 0 leads (missed assignment step) | LOW | (1) Manually assign leads in EmailBison UI. (2) Add API check to deployment flow before marking complete. No data loss, just manual work. |
-| Campaign deployed with sequence steps missing | MEDIUM | (1) Pause the campaign immediately in EmailBison. (2) Configure sequence steps manually. (3) Resume. (4) Add post-deploy sequence step count verification. |
-| Client portal shows another client's data (workspace scoping bug) | HIGH | (1) Immediately disable the affected portal route. (2) Audit access logs for cross-client data exposure. (3) Notify affected clients if PII was visible. (4) Fix workspace scoping and redeploy. |
-| Admin is re-contacted after already being in a previous campaign | MEDIUM | (1) Identify affected leads from EmailBison reply data. (2) Pause campaign. (3) Add dedup check to all future deployments. Reputation impact depends on volume. |
-| Agent conversation lost mid-run, duplicate lists created | LOW | (1) Manually delete duplicate lists via `/lists` admin UI. (2) Add idempotent list creation check. (3) Add AgentRun status persistence to chat UI. |
+| Apollo ToS violation / account suspension | HIGH | Rotate to client-owned Apollo keys immediately; audit all discovery jobs for shared key usage; contact Apollo to appeal if < 30 days old |
+| Auto-pipeline sends unreviewed campaign | HIGH | Halt EmailBison sends via API immediately; send manual apology from workspace email to affected prospects; audit approval log to find the gate failure; add hard DB constraint before re-enabling |
+| Cost explosion from signal burst | MEDIUM | Set emergency daily cap to $0 for affected workspaces; review CostLedger to identify runaway provider; dispute charges with providers if API error caused over-consumption |
+| Creative Ideas hallucination ships to prospects | MEDIUM | Disable auto-generation immediately; manually review all in-flight campaigns; update system prompt with stricter constraints; add `groundedIn` validation before any idea is displayed in portal |
+| Multi-source dedup failure creates duplicate Person records | MEDIUM | Write de-duplication script: find Persons with same `linkedinUrl`, merge PersonWorkspace records to surviving record, delete duplicates; requires offline batch job on Neon |
+| Enrichment waterfall reorder causes double-enrichment | LOW | Add `skipIfEnrichedBy: [provider]` filter to waterfall runner; reset `lastEnrichedProvider` only for records without a valid email |
+| Signal monitoring OOMs Railway worker | LOW | Add `--max-old-space-size=512` to Railway start command; reduce batch size from 20 to 5 companies per cron run; split LinkedIn and signal workers into separate Railway services |
 
 ---
 
@@ -291,33 +275,33 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| MCP vs AI SDK tool type mismatch | Phase 1: Leads Agent Dashboard | `delegateToLeads` in orchestrator calls real `runLeadsAgent()`, TypeScript compiles without errors |
-| EmailBison no campaign assignment API | Phase 1: Discovery spike | API surface documented before Phase 3 design; deployment flow reflects what's actually possible |
-| Vercel streaming timeout on agent runs | Phase 1: Leads Agent Dashboard | `maxDuration = 300` exported from chat route; enrichment-heavy tasks dispatch jobs rather than blocking |
-| Portal auth missing on approval endpoints | Phase 2: Client Portal Review | Every `/api/portal/approve-*` route calls `getPortalSession()` on first line; workspace from session only |
-| Re-contacting existing EmailBison leads | Phase 3: Smart Campaign Deploy | Pre-deploy check compares list emails against EmailBison pool; surfaced in admin before confirmation |
-| Duplicated campaign naming + empty sequence | Phase 3: Smart Campaign Deploy | Post-duplication `getSequenceSteps()` check; campaign name verified in DB before admin notified |
-| Agent state loss on page reload | Phase 1: Leads Agent Dashboard | AgentRun status surfaced in chat UI; list creation idempotent by name+workspace |
-| Cross-workspace data in portal | Phase 2: Client Portal Review | `workspaceSlug` always from session — no request body param accepted; code review gate |
+| Apollo ToS violation (shared key) | Phase 1 (Multi-Source Discovery) | Each workspace has its own API key config; no shared key fallback in codebase |
+| Multi-source dedup failure | Phase 1 (Multi-Source Discovery) | `DiscoveredPerson` staging table exists; no direct writes to `Person` from discovery without email confirmation |
+| Signal monitoring burst cost explosion | Phase 2 (Signal Monitoring) | `SignalBudget` ledger exists; signal cron checks budget before processing each company |
+| Vercel 300s timeout on signal processing | Phase 2 (Signal Monitoring) | Signal cron is registered in Railway, not `vercel.json`; Railway worker writes directly to Neon |
+| Auto-pipeline sends unreviewed campaigns | Phase 3 (Evergreen Signal Campaigns) | Audit log shows human approval event before any campaign reaches `approved` status; automated approval code path doesn't exist |
+| Creative Ideas hallucination | Phase 4 (Creative Ideas Copy) | Every generated idea has `groundedIn` field; first 20 ideas per client are admin-reviewed before auto-generation is enabled |
+| Enrichment waterfall reorder data issues | Phase 6 (Waterfall Reorder) | Reorder done during Railway worker downtime; post-deploy `CostLedger` shows no double-enrichment charges |
+| Railway memory OOM from large signal batches | Phase 2 (Signal Monitoring) | Batch size capped at 10 companies per run; Railway metrics show flat memory usage over 24 hours |
 
 ---
 
 ## Sources
 
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/src/lib/agents/orchestrator.ts` — `delegateToLeads` stub, tool registration pattern
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/src/mcp/leads-agent/tools/export.ts` — EmailBison lead push + documented campaign assignment limitation
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/src/lib/emailbison/client.ts` — `duplicateCampaign` name limitation comment, `createLead` implementation
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/src/middleware.ts` — portal vs admin auth routing, `PUBLIC_API_PREFIXES`
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/src/lib/portal-session.ts` — `getPortalSession()` implementation
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/src/app/api/chat/route.ts` — stateless chat, no `maxDuration` export
-- Codebase analysis: `/Users/jjay/programs/outsignal-agents/prisma/schema.prisma` — TargetList, AgentRun, EmailDraft models
-- Vercel AI SDK docs: https://ai-sdk.dev/docs/troubleshooting/timeout-on-vercel — Hobby plan 60s/300s max, `maxDuration` configuration (HIGH confidence)
-- EmailBison docs: https://emailbison-306cc08e.mintlify.app/workspaces/overview — workspace-scoped API, lead pool architecture (MEDIUM confidence — docs incomplete on campaign assignment endpoint)
-- WebSearch: EmailBison campaign assignment API — no evidence of a direct lead-to-campaign assignment endpoint found in public docs (LOW confidence — absence of evidence, not confirmed absence)
-- Next.js CVE-2025-29927: https://projectdiscovery.io/blog/nextjs-middleware-authorization-bypass — middleware bypass vulnerability; not applicable (Vercel-hosted), but informs why portal auth must be in-handler not only in middleware (HIGH confidence)
-- MCP + Next.js integration: https://nextjs.org/docs/app/guides/mcp — confirms MCP server tools and AI SDK tools are distinct APIs (HIGH confidence)
+- [Apollo.io API Terms of Service](https://www.apollo.io/terms/api) — prohibition on sublicensing and competitive use
+- [Apollo.io Rate Limits](https://docs.apollo.io/reference/rate-limits) — plan-dependent, check per endpoint
+- [Exa.ai Websets FAQ](https://exa.ai/docs/websets/faq) — 10 credits per all-green result; partial results still consume credits
+- [PredictLeads FAQ](https://predictleads.com/faq) — refresh rate 2x/day to 2x/week depending on company activity; 36-hour job opening refresh
+- [PredictLeads Documentation](https://docs.predictleads.com/) — signal types and data freshness
+- [Vercel serverless timeout issues](https://vercel.com/kb/guide/what-can-i-do-about-vercel-serverless-functions-timing-out) — 300s hard max on Hobby/Pro
+- [Railway resource limits](https://docs.railway.com/pricing/cost-control) — configurable per service; Pro: 24 vCPU / 24 GB RAM per replica
+- [Neon connection pooling](https://neon.com/docs/connect/connection-pooling) — PgBouncer pooled connections required for serverless/worker scenarios
+- [Apollo.io LinkedIn scraping enforcement](https://emailscale.io/why-did-apollo-block-apifi/) — Apollo blocked from LinkedIn ecosystem in 2025
+- [AI cold email hallucination risks](https://blog.hubspot.com/sales/ai-cold-email) — HubSpot test: AI hallucinates facts, requires human verification
+- [Multi-source lead deduplication pitfalls](https://community.clay.com/x/support/2boj4s1y8b4r/improving-lead-deduplication-workflow-with-clay-an) — Clay community: email + LinkedIn URL as composite dedup key
+- [Outbound automation approval gates](https://reply.io/blog/outbound-ai/) — human-in-the-loop required before any automated send
+- [Apify LinkedIn no-cookie actors](https://apify.com/supreme_coder/linkedin-profile-scraper) — $3/1k profiles; no account risk but returns only public data
 
 ---
-
-*Pitfalls research for: v1.1 Outbound Pipeline — agent dashboard, client portal, smart campaign deployment*
-*Researched: 2026-02-27*
+*Pitfalls research for: Multi-source lead discovery, signal monitoring, Creative Ideas copy generation — v2.0 milestone*
+*Researched: 2026-03-03*
