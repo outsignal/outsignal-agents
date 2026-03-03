@@ -2,6 +2,7 @@ export interface SenderWithWorkspace {
   id: string;
   workspaceSlug: string;
   name: string;
+  inviteToken: string | null;
   emailAddress: string | null;
   emailSenderName: string | null;
   linkedinProfileUrl: string | null;

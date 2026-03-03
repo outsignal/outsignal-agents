@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { SenderFormModal } from "./sender-form-modal";
 import { SenderHealthPanel } from "./sender-health-panel";
 import type { SenderWithWorkspace } from "./types";
@@ -52,6 +52,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
   const [toggling, setToggling] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [reactivating, setReactivating] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
 
   const isPaused = sender.status === "paused";
   const isHardFlagged =
@@ -114,6 +115,13 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
     } finally {
       setReactivating(false);
     }
+  }
+
+  async function handleCopyToken() {
+    if (!sender.inviteToken) return;
+    await navigator.clipboard.writeText(sender.inviteToken);
+    setTokenCopied(true);
+    setTimeout(() => setTokenCopied(false), 2000);
   }
 
   const proxyDisplay = sender.proxyUrl
@@ -203,6 +211,29 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
 
         {/* Expandable health panel */}
         <SenderHealthPanel senderId={sender.id} isExpanded={expanded} />
+
+        {/* Invite token row */}
+        {sender.inviteToken && (
+          <div className="border-t border-border/50 px-4 py-2 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground shrink-0">Invite token</span>
+            <span className="font-mono text-[10px] text-foreground/60 truncate flex-1">
+              {sender.inviteToken.slice(0, 8)}…
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground shrink-0"
+              onClick={handleCopyToken}
+            >
+              {tokenCopied ? (
+                <Check className="h-3 w-3 text-emerald-500" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+              <span className="ml-1">{tokenCopied ? "Copied" : "Copy"}</span>
+            </Button>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div className="border-t border-border/50 px-4 py-3 flex items-center gap-2">
