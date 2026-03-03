@@ -9,7 +9,7 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import * as operations from "@/lib/leads/operations";
 
 export function registerStatusTools(server: McpServer): void {
   server.tool(
@@ -37,24 +37,16 @@ export function registerStatusTools(server: McpServer): void {
     async (params) => {
       const { person_id, status, workspace } = params;
 
-      // Update the Person record
-      const person = await prisma.person.update({
-        where: { id: person_id },
-        data: { status },
-        select: { firstName: true, lastName: true, email: true },
-      });
+      // Update the Person record (and optionally PersonWorkspace)
+      const person = await operations.updatePersonStatus(
+        person_id,
+        status,
+        workspace,
+      );
 
       const name =
         [person.firstName, person.lastName].filter(Boolean).join(" ") ||
         person.email;
-
-      // Optionally update the PersonWorkspace record
-      if (workspace) {
-        await prisma.personWorkspace.updateMany({
-          where: { personId: person_id, workspace },
-          data: { status },
-        });
-      }
 
       const text = `Updated ${name} status to '${status}'.`;
       return { content: [{ type: "text" as const, text }] };

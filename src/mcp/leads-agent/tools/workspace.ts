@@ -10,16 +10,8 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
-
-/** Map prompt_type enum values to Workspace column names. */
-const PROMPT_TYPE_TO_COLUMN = {
-  icp_criteria: "icpCriteriaPrompt",
-  normalization: "normalizationPrompt",
-  outreach_tone: "outreachTonePrompt",
-} as const;
-
-type PromptType = keyof typeof PROMPT_TYPE_TO_COLUMN;
+import * as operations from "@/lib/leads/operations";
+import type { PromptType } from "@/lib/leads/operations";
 
 export function registerWorkspaceTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
@@ -38,12 +30,11 @@ export function registerWorkspaceTools(server: McpServer): void {
     async (params) => {
       const { workspace, prompt_type, prompt_text } = params;
 
-      const columnName = PROMPT_TYPE_TO_COLUMN[prompt_type as PromptType];
-
-      await prisma.workspace.update({
-        where: { slug: workspace },
-        data: { [columnName]: prompt_text },
-      });
+      await operations.setWorkspacePrompt(
+        workspace,
+        prompt_type as PromptType,
+        prompt_text,
+      );
 
       const text = [
         `Updated ${prompt_type} prompt for workspace '${workspace}'.`,
@@ -68,15 +59,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     async (params) => {
       const { workspace } = params;
 
-      const ws = await prisma.workspace.findUniqueOrThrow({
-        where: { slug: workspace },
-        select: {
-          name: true,
-          icpCriteriaPrompt: true,
-          normalizationPrompt: true,
-          outreachTonePrompt: true,
-        },
-      });
+      const ws = await operations.getWorkspacePrompts(workspace);
 
       const format = (label: string, value: string | null) => {
         return `### ${label}\n${value ?? "_Not set_"}`;

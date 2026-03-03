@@ -1,19 +1,23 @@
 /**
- * Shared operations layer for the Leads Agent and future MCP tools.
+ * Shared operations layer for the Leads Agent and MCP tools.
  *
  * ALL Prisma queries and business logic for the lead pipeline live here.
  * Agent tools and MCP tools are thin wrappers that call these functions.
  * Never put DB queries or business logic inside agent tool closures.
  *
  * Exports: searchPeople, createList, addPeopleToList, getList, getLists,
- *          scoreList, exportListToEmailBison
+ *          scoreList, exportListToEmailBison, findWorkspaceBySlug,
+ *          findOrCreateWorkspace, getWorkspaceWithToken, findListById,
+ *          resolveEmailsToPersonIds, updatePersonStatus, getPersonById,
+ *          getEnrichmentHistory, setWorkspacePrompt, getWorkspacePrompts,
+ *          getUnscoredInWorkspace
  */
 
 import { prisma } from "@/lib/db";
 import { scorePersonIcp } from "@/lib/icp/scorer";
 import { getListExportReadiness } from "@/lib/export/verification-gate";
 import { getClientForWorkspace } from "@/lib/workspaces";
-import type { TargetList } from "@prisma/client";
+import type { TargetList, Person, Workspace } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -115,6 +119,49 @@ export interface ExportListResult {
   blocked: number;
   errors: string[];
 }
+
+export interface ResolvedEmail {
+  email: string;
+  personId: string | null;
+}
+
+export interface UpdatePersonStatusResult {
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+export interface EnrichmentHistoryEntry {
+  provider: string;
+  fieldsWritten: string | null;
+  runAt: Date;
+}
+
+export interface WorkspacePrompts {
+  name: string;
+  icpCriteriaPrompt: string | null;
+  normalizationPrompt: string | null;
+  outreachTonePrompt: string | null;
+}
+
+export interface UnscoredPersonWorkspace {
+  personId: string;
+  person: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+  };
+}
+
+/** Map prompt_type enum values to Workspace column names. */
+const PROMPT_TYPE_TO_COLUMN = {
+  icp_criteria: "icpCriteriaPrompt",
+  normalization: "normalizationPrompt",
+  outreach_tone: "outreachTonePrompt",
+} as const;
+
+export type PromptType = keyof typeof PROMPT_TYPE_TO_COLUMN;
 
 // ---------------------------------------------------------------------------
 // 1. searchPeople — search people in the DB with optional filters
@@ -651,4 +698,249 @@ export async function exportListToEmailBison(
     blocked: readiness.blockedCount,
     errors,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 8. findWorkspaceBySlug — look up a workspace by slug
+// ---------------------------------------------------------------------------
+
+/**
+ * Look up a workspace by slug. Returns null if not found.
+ *
+ * @param slug - Workspace slug
+ * @returns Workspace record or null
+ */
+export async function findWorkspaceBySlug(
+  slug: string,
+): Promise<Workspace | null> {
+  return prisma.workspace.findUnique({ where: { slug } });
+}
+
+// ---------------------------------------------------------------------------
+// 9. findOrCreateWorkspace — get or auto-create a workspace
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a workspace by slug, or create it if it does not exist.
+ * Returns the workspace and a flag indicating whether it was just created.
+ *
+ * @param slug - Workspace slug
+ * @returns { workspace, created }
+ */
+export async function findOrCreateWorkspace(
+  slug: string,
+): Promise<{ workspace: Workspace; created: boolean }> {
+  const existing = await prisma.workspace.findUnique({ where: { slug } });
+  if (existing) {
+    return { workspace: existing, created: false };
+  }
+  const created = await prisma.workspace.create({
+    data: { slug, name: slug },
+  });
+  return { workspace: created, created: true };
+}
+
+// ---------------------------------------------------------------------------
+// 10. getWorkspaceWithToken — get workspace ensuring apiToken exists
+// ---------------------------------------------------------------------------
+
+/**
+ * Get a workspace by slug and check that it has an apiToken configured.
+ * Returns null if workspace not found. Throws if apiToken is missing.
+ *
+ * @param slug - Workspace slug
+ * @returns Workspace record or null
+ */
+export async function getWorkspaceWithToken(
+  slug: string,
+): Promise<Workspace | null> {
+  return prisma.workspace.findUnique({ where: { slug } });
+}
+
+// ---------------------------------------------------------------------------
+// 11. findListById — look up a target list by ID
+// ---------------------------------------------------------------------------
+
+/**
+ * Look up a target list by ID. Returns basic info (id, name).
+ * Returns null if not found.
+ *
+ * @param listId - TargetList ID
+ * @returns { id, name } or null
+ */
+export async function findListById(
+  listId: string,
+): Promise<{ id: string; name: string } | null> {
+  return prisma.targetList.findUnique({
+    where: { id: listId },
+    select: { id: true, name: true },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 12. resolveEmailsToPersonIds — map email addresses to Person IDs
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve an array of email addresses to Person IDs.
+ * Returns all results including nulls for emails not found.
+ *
+ * @param emails - Array of email addresses
+ * @returns Array of { email, personId } (personId is null if not found)
+ */
+export async function resolveEmailsToPersonIds(
+  emails: string[],
+): Promise<ResolvedEmail[]> {
+  // Batch lookup — fetch all matching people in one query
+  const people = await prisma.person.findMany({
+    where: { email: { in: emails } },
+    select: { id: true, email: true },
+  });
+
+  const emailToId = new Map(people.map((p) => [p.email, p.id]));
+
+  return emails.map((email) => ({
+    email,
+    personId: emailToId.get(email) ?? null,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// 13. updatePersonStatus — update a person's status
+// ---------------------------------------------------------------------------
+
+/**
+ * Update a person's status. Optionally also updates the PersonWorkspace record.
+ *
+ * @param personId - Person ID
+ * @param status - New status value
+ * @param workspaceSlug - If provided, also update PersonWorkspace.status
+ * @returns { firstName, lastName, email } of the updated person
+ */
+export async function updatePersonStatus(
+  personId: string,
+  status: string,
+  workspaceSlug?: string,
+): Promise<UpdatePersonStatusResult> {
+  const person = await prisma.person.update({
+    where: { id: personId },
+    data: { status },
+    select: { firstName: true, lastName: true, email: true },
+  });
+
+  if (workspaceSlug) {
+    await prisma.personWorkspace.updateMany({
+      where: { personId, workspace: workspaceSlug },
+      data: { status },
+    });
+  }
+
+  return person;
+}
+
+// ---------------------------------------------------------------------------
+// 14. getPersonById — get a person by ID
+// ---------------------------------------------------------------------------
+
+/**
+ * Get a person record by ID. Throws if not found.
+ *
+ * @param personId - Person ID
+ * @returns Full Person record
+ */
+export async function getPersonById(personId: string): Promise<Person> {
+  return prisma.person.findUniqueOrThrow({ where: { id: personId } });
+}
+
+// ---------------------------------------------------------------------------
+// 15. getEnrichmentHistory — get successful enrichment logs for a person
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the enrichment history (successful runs) for a person.
+ *
+ * @param personId - Person ID
+ * @returns Array of { provider, fieldsWritten, runAt }
+ */
+export async function getEnrichmentHistory(
+  personId: string,
+): Promise<EnrichmentHistoryEntry[]> {
+  return prisma.enrichmentLog.findMany({
+    where: { entityId: personId, entityType: "person", status: "success" },
+    select: { provider: true, fieldsWritten: true, runAt: true },
+    orderBy: { runAt: "desc" },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 16. setWorkspacePrompt — set an AI prompt override on a workspace
+// ---------------------------------------------------------------------------
+
+/**
+ * Set a specific AI prompt override on a workspace.
+ *
+ * @param slug - Workspace slug
+ * @param promptType - Which prompt to set (icp_criteria, normalization, outreach_tone)
+ * @param promptText - The prompt text
+ */
+export async function setWorkspacePrompt(
+  slug: string,
+  promptType: PromptType,
+  promptText: string,
+): Promise<void> {
+  const columnName = PROMPT_TYPE_TO_COLUMN[promptType];
+  await prisma.workspace.update({
+    where: { slug },
+    data: { [columnName]: promptText },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 17. getWorkspacePrompts — get all AI prompt overrides for a workspace
+// ---------------------------------------------------------------------------
+
+/**
+ * Get all AI prompt overrides configured for a workspace. Throws if not found.
+ *
+ * @param slug - Workspace slug
+ * @returns { name, icpCriteriaPrompt, normalizationPrompt, outreachTonePrompt }
+ */
+export async function getWorkspacePrompts(
+  slug: string,
+): Promise<WorkspacePrompts> {
+  return prisma.workspace.findUniqueOrThrow({
+    where: { slug },
+    select: {
+      name: true,
+      icpCriteriaPrompt: true,
+      normalizationPrompt: true,
+      outreachTonePrompt: true,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 18. getUnscoredInWorkspace — find unscored people in a workspace
+// ---------------------------------------------------------------------------
+
+/**
+ * Find all unscored people (icpScore is null) in a workspace.
+ *
+ * @param workspaceSlug - Workspace slug
+ * @returns Array of PersonWorkspace records with basic person data
+ */
+export async function getUnscoredInWorkspace(
+  workspaceSlug: string,
+): Promise<UnscoredPersonWorkspace[]> {
+  return prisma.personWorkspace.findMany({
+    where: {
+      workspace: workspaceSlug,
+      icpScore: null,
+    },
+    include: {
+      person: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+    },
+  });
 }

@@ -24,6 +24,7 @@ import {
   Activity,
   Webhook,
   ListOrdered,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -66,6 +67,7 @@ const navGroups: NavItem[][] = [
   // Group 2 — Business
   [
     { href: "/clients", label: "Clients", icon: Briefcase },
+    { href: "/campaigns", label: "Campaigns", icon: Megaphone },
     { href: "/pipeline", label: "Pipeline", icon: Target },
     { href: "/onboard", label: "Proposals", icon: UserPlus },
     { href: "/onboarding", label: "Onboarding", icon: ClipboardList },

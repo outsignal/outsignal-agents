@@ -227,4 +227,3 @@ function buildLeadsMessage(input: LeadsInput): string {
   return parts.join("\n");
 }
 
-export { leadsConfig, leadsTools };

@@ -10,8 +10,8 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
 import { scorePersonIcp } from "@/lib/icp/scorer";
+import * as operations from "@/lib/leads/operations";
 
 export function registerScoreTools(server: McpServer): void {
   // ---------------------------------------------------------------------------
@@ -73,23 +73,8 @@ export function registerScoreTools(server: McpServer): void {
     async (params) => {
       const { workspace, limit, confirm } = params;
 
-      // SCOPE: batch_score_list operates at workspace level (all unscored people in workspace).
-      // This is intentionally NOT backed by operations.ts — operations.scoreList is list-scoped.
-      // Workspace-level scoring is out of scope for LEAD-05 (requires Phase 8 campaign entity).
-      // The scoring execution itself uses the shared scorePersonIcp function (no divergence there).
-
       // Find unscored people in this workspace
-      const unscoredPws = await prisma.personWorkspace.findMany({
-        where: {
-          workspace,
-          icpScore: null,
-        },
-        include: {
-          person: {
-            select: { id: true, firstName: true, lastName: true, email: true },
-          },
-        },
-      });
+      const unscoredPws = await operations.getUnscoredInWorkspace(workspace);
 
       const total = unscoredPws.length;
 

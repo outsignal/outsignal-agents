@@ -14,7 +14,6 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
 import { getListExportReadiness } from "@/lib/export/verification-gate";
 import * as operations from "@/lib/leads/operations";
 
@@ -34,7 +33,7 @@ export function registerListTools(server: McpServer): void {
       const { name, workspace, description } = params;
 
       // Validate workspace exists (friendly error, not throw)
-      const ws = await prisma.workspace.findUnique({ where: { slug: workspace } });
+      const ws = await operations.findWorkspaceBySlug(workspace);
       if (!ws) {
         return {
           content: [
@@ -83,10 +82,7 @@ export function registerListTools(server: McpServer): void {
       const { list_id, emails } = params;
 
       // Validate list exists
-      const list = await prisma.targetList.findUnique({
-        where: { id: list_id },
-        select: { id: true, name: true },
-      });
+      const list = await operations.findListById(list_id);
       if (!list) {
         return {
           content: [
@@ -95,16 +91,8 @@ export function registerListTools(server: McpServer): void {
         };
       }
 
-      // Resolve all emails to person IDs in parallel (input translation: emails → IDs)
-      const resolved = await Promise.all(
-        emails.map(async (email) => {
-          const person = await prisma.person.findUnique({
-            where: { email },
-            select: { id: true },
-          });
-          return { email, personId: person?.id ?? null };
-        }),
-      );
+      // Resolve all emails to person IDs (batch query, input translation: emails → IDs)
+      const resolved = await operations.resolveEmailsToPersonIds(emails);
 
       const found = resolved.filter(
         (r): r is { email: string; personId: string } => r.personId !== null,

@@ -35,7 +35,7 @@ export async function notifyApproval(params: {
     content_approved: "Content approved",
     content_rejected: "Changes requested for content",
     both_approved:
-      "Both leads and content approved — auto-deploy triggered",
+      "Both leads and content approved — ready for admin to deploy",
   };
 
   const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL ?? "https://portal.outsignal.ai";
@@ -86,7 +86,7 @@ export async function notifyApproval(params: {
                 type: "section" as const,
                 text: {
                   type: "mrkdwn" as const,
-                  text: ":white_check_mark: *All approvals received. Auto-deploy will begin shortly.*",
+                  text: ":white_check_mark: *All approvals received. Campaign is ready for deploy.*",
                 },
               },
             ]
@@ -186,7 +186,7 @@ ${
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                     <tr>
                       <td style="background-color:#f0fdf4;border:1px solid #bbf7d0;padding:16px 20px;border-radius:8px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;margin:0;color:#065f46;font-weight:600;">All approvals received. Auto-deploy will begin shortly.</p>
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;margin:0;color:#065f46;font-weight:600;">All approvals received. Campaign is ready for deploy.</p>
                       </td>
                     </tr>
                   </table>

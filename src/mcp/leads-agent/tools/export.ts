@@ -13,13 +13,13 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
 import {
   getListExportReadiness,
   verifyAndFilter,
 } from "@/lib/export/verification-gate";
 import { generateListCsv } from "@/lib/export/csv";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import * as operations from "@/lib/leads/operations";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
@@ -60,10 +60,7 @@ export function registerExportTools(server: McpServer): void {
         params;
 
       // ── Step 1: Look up TargetList ──────────────────────────────────────────
-      const list = await prisma.targetList.findUnique({
-        where: { id: list_id },
-        select: { id: true, name: true },
-      });
+      const list = await operations.findListById(list_id);
       if (!list) {
         return {
           content: [
@@ -76,15 +73,12 @@ export function registerExportTools(server: McpServer): void {
       }
 
       // ── Step 2: Look up or create Workspace ─────────────────────────────────
-      let ws = await prisma.workspace.findUnique({ where: { slug: workspace } });
-      let workspaceCreatedMessage = "";
-      if (!ws) {
-        // LOCKED CONTEXT.md DECISION: Agent creates workspace if it does not exist.
-        ws = await prisma.workspace.create({
-          data: { slug: workspace, name: workspace },
-        });
-        workspaceCreatedMessage = `\n> Workspace '${workspace}' was created. Note: You need to configure its apiToken before pushing leads to EmailBison.\n`;
-      }
+      // LOCKED CONTEXT.md DECISION: Agent creates workspace if it does not exist.
+      const { workspace: ws, created: wsCreated } =
+        await operations.findOrCreateWorkspace(workspace);
+      const workspaceCreatedMessage = wsCreated
+        ? `\n> Workspace '${workspace}' was created. Note: You need to configure its apiToken before pushing leads to EmailBison.\n`
+        : "";
 
       // ── Step 3: verify_unverified=true → trigger verification ───────────────
       if (verify_unverified) {
@@ -163,9 +157,7 @@ export function registerExportTools(server: McpServer): void {
         }
 
         // Re-fetch workspace to get apiToken
-        const wsWithToken = await prisma.workspace.findUnique({
-          where: { slug: workspace },
-        });
+        const wsWithToken = await operations.getWorkspaceWithToken(workspace);
         if (!wsWithToken?.apiToken) {
           return {
             content: [

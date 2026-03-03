@@ -80,17 +80,17 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 
 ### Dashboard & Admin UX
 
-- [ ] **DASH-01**: Dashboard home shows KPI cards with email stats (sent, replies, bounces), LinkedIn stats (connections, messages, pending), pipeline status (contacted, interested, meetings), and health indicators (sender status, campaign active/paused, inboxes connected vs disconnected)
-- [ ] **DASH-02**: Dashboard has a client/campaign dropdown filter that controls ALL views (KPIs, charts, alerts) — "All Campaigns" plus per-client options
-- [ ] **DASH-03**: Dashboard shows line charts for reply volume, sent/bounce trends from WebhookEvent data over time, with configurable time range (default 7 days)
-- [ ] **DASH-04**: Critical alerts section below KPIs shows flagged senders, failed agent runs, and disconnected inboxes — no activity feed noise
-- [ ] **DASH-05**: Person detail page at /people/[id] with tabbed layout — header with name/email/company/title, overview timeline, email history, LinkedIn activity, enrichment data, and workspaces tabs
-- [ ] **DASH-06**: Person overview tab shows unified chronological timeline with color-coded icons per event type (emails, LinkedIn actions, enrichment) — view-only, no inline actions
+- [x] **DASH-01**: Dashboard home shows KPI cards with email stats (sent, replies, bounces), LinkedIn stats (connections, messages, pending), pipeline status (contacted, interested, meetings), and health indicators (sender status, campaign active/paused, inboxes connected vs disconnected)
+- [x] **DASH-02**: Dashboard has a client/campaign dropdown filter that controls ALL views (KPIs, charts, alerts) — "All Campaigns" plus per-client options
+- [x] **DASH-03**: Dashboard shows line charts for reply volume, sent/bounce trends from WebhookEvent data over time, with configurable time range (default 7 days)
+- [x] **DASH-04**: Critical alerts section below KPIs shows flagged senders, failed agent runs, and disconnected inboxes — no activity feed noise
+- [x] **DASH-05**: Person detail page at /people/[id] with tabbed layout — header with name/email/company/title, overview timeline, email history, LinkedIn activity, enrichment data, and workspaces tabs
+- [x] **DASH-06**: Person overview tab shows unified chronological timeline with color-coded icons per event type (emails, LinkedIn actions, enrichment) — view-only, no inline actions
 - [x] **DASH-07**: Agent run monitoring page with compact Datadog-style table — summary rows expand into inline accordion showing full run details (input, output, steps, errors), filterable by agent type/status/workspace
-- [ ] **DASH-08**: LinkedIn action queue viewer with queue status focus — pending/scheduled/completed/failed counts, next actions, sender assignment, execution timing, filterable by status/action type/workspace/sender
-- [ ] **DASH-09**: LinkedIn sender management page with card grid layout — each sender card shows name, email, proxy URL, daily limits, status badge (active/paused/flagged), with pause/delete actions accessible from the card
-- [ ] **DASH-10**: Sender add/edit via modal dialog form — all sender fields (name, email, proxy URL, daily limits, LinkedIn profile URL, tier), consistent with proposal management pattern
-- [ ] **DASH-11**: Webhook event log viewer with search box for free text (email, subject) plus quick-filter preset chips ("Errors only", "Replies only", "Last 24h") that combine
+- [x] **DASH-08**: LinkedIn action queue viewer with queue status focus — pending/scheduled/completed/failed counts, next actions, sender assignment, execution timing, filterable by status/action type/workspace/sender
+- [x] **DASH-09**: LinkedIn sender management page with card grid layout — each sender card shows name, email, proxy URL, daily limits, status badge (active/paused/flagged), with pause/delete actions accessible from the card
+- [x] **DASH-10**: Sender add/edit via modal dialog form — all sender fields (name, email, proxy URL, daily limits, LinkedIn profile URL, tier), consistent with proposal management pattern
+- [x] **DASH-11**: Webhook event log viewer with search box for free text (email, subject) plus quick-filter preset chips ("Errors only", "Replies only", "Last 24h") that combine
 - [x] **DASH-12**: Sidebar navigation includes all new Phase 12 pages organized into logical groups with visual separators
 - [x] **DASH-13**: Proposal and onboarding pages support edit and delete via modal dialogs, consistent with sender management modal pattern
 - [x] **DASH-14**: Document upload triggers auto-parse — upload content (paste from PDF/Google Doc) and system extracts fields to pre-fill proposal/onboarding form for user review before saving
@@ -108,6 +108,23 @@ Requirements for v1.1 Outbound Pipeline milestone. Each maps to roadmap phases.
 - [x] **HEALTH-09**: Sender cards enhanced with expandable health history panel, sparkline trends, health event log, and summary metrics
 - [x] **HEALTH-10**: Admin reactivate button for hard-flagged senders (blocked, session_expired) with POST /api/senders/[id]/reactivate endpoint
 - [x] **HEALTH-11**: Dashboard sender health KPI card with healthy/total count and link to /senders page
+
+### Chrome Extension (LinkedIn Cookie Capture)
+
+- [x] **EXT-01**: Extension login endpoint accepts email + workspaceSlug + password, validates credentials, returns workspace token + sender list (and sender token if single sender)
+- [x] **EXT-02**: Extension select-sender endpoint converts workspace token to sender-scoped token
+- [x] **EXT-03**: Extension cookie save endpoint accepts cookies array with Bearer token auth, encrypts and stores on Sender.sessionData, sets sessionStatus to active and loginMethod to extension
+- [x] **EXT-04**: Extension expiry endpoint marks sender sessionStatus as expired and healthStatus as session_expired with atomic transaction
+- [x] **EXT-05**: Extension status endpoint validates token and returns sender connection status
+- [x] **EXT-06**: Extension senders endpoint returns senders for the token's workspace
+- [x] **EXT-07**: Extension popup shows login form (email, workspace slug, password) when not authenticated
+- [x] **EXT-08**: After login, popup shows sender picker if multiple senders, or auto-connects if single sender
+- [x] **EXT-09**: Connect button reads all linkedin.com cookies via chrome.cookies.getAll and POSTs to extension API
+- [x] **EXT-10**: Successful connection shows green checkmark + "LinkedIn connected" status
+- [x] **EXT-11**: Error/expired state shows red X + error message + "Reconnect" button
+- [x] **EXT-12**: Extension icon shows red badge when session is expired
+- [x] **EXT-13**: Service worker creates a periodic alarm (every 4 hours) to check LinkedIn cookie presence
+- [x] **EXT-14**: One-click on notification opens extension popup for reconnection
 
 ## Future Requirements
 
@@ -205,17 +222,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VOYAGER-03 | Phase 11 | Complete |
 | VOYAGER-04 | Phase 11 | Complete |
 | VOYAGER-05 | Phase 11 | Complete |
-| DASH-01 | Phase 12 | Pending |
-| DASH-02 | Phase 12 | Pending |
-| DASH-03 | Phase 12 | Pending |
-| DASH-04 | Phase 12 | Pending |
-| DASH-05 | Phase 12 | Pending |
-| DASH-06 | Phase 12 | Pending |
+| DASH-01 | Phase 12 | Complete |
+| DASH-02 | Phase 12 | Complete |
+| DASH-03 | Phase 12 | Complete |
+| DASH-04 | Phase 12 | Complete |
+| DASH-05 | Phase 12 | Complete |
+| DASH-06 | Phase 12 | Complete |
 | DASH-07 | Phase 12 | Complete |
-| DASH-08 | Phase 12 | Pending |
-| DASH-09 | Phase 12 | Pending |
-| DASH-10 | Phase 12 | Pending |
-| DASH-11 | Phase 12 | Pending |
+| DASH-08 | Phase 12 | Complete |
+| DASH-09 | Phase 12 | Complete |
+| DASH-10 | Phase 12 | Complete |
+| DASH-11 | Phase 12 | Complete |
 | DASH-12 | Phase 12 | Complete |
 | DASH-13 | Phase 12 | Complete |
 | DASH-14 | Phase 12 | Complete |
@@ -230,12 +247,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HEALTH-09 | Phase 13 | Complete |
 | HEALTH-10 | Phase 13 | Complete |
 | HEALTH-11 | Phase 13 | Complete |
+| EXT-01 | Phase 14 | Complete |
+| EXT-02 | Phase 14 | Complete |
+| EXT-03 | Phase 14 | Complete |
+| EXT-04 | Phase 14 | Complete |
+| EXT-05 | Phase 14 | Complete |
+| EXT-06 | Phase 14 | Complete |
+| EXT-07 | Phase 14 | Complete |
+| EXT-08 | Phase 14 | Complete |
+| EXT-09 | Phase 14 | Complete |
+| EXT-10 | Phase 14 | Complete |
+| EXT-11 | Phase 14 | Complete |
+| EXT-12 | Phase 14 | Complete |
+| EXT-13 | Phase 14 | Complete |
+| EXT-14 | Phase 14 | Complete |
 
 **Coverage:**
-- v1.1 requirements: 73 total (37 complete, 36 pending)
-- Mapped to phases: 73
+- v1.1 requirements: 87 total (87 complete, 0 pending)
+- Mapped to phases: 87
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-27*
-*Last updated: 2026-03-02 — Added HEALTH-01 to HEALTH-11 (Smart Sender Health) to Phase 13*
+*Last updated: 2026-03-03 — Marked DASH-01 through DASH-14 complete (Phase 12 VERIFICATION.md confirmed 14/14); added EXT-01 through EXT-14 (Phase 14 Chrome Extension)*

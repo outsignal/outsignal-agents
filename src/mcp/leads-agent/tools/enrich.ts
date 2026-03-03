@@ -9,13 +9,13 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
 import {
   enrichEmail,
   enrichCompany,
   createCircuitBreaker,
 } from "@/lib/enrichment/waterfall";
 import type { EmailAdapterInput } from "@/lib/enrichment/types";
+import * as operations from "@/lib/leads/operations";
 
 export function registerEnrichTools(server: McpServer): void {
   server.tool(
@@ -38,9 +38,7 @@ export function registerEnrichTools(server: McpServer): void {
       const { person_id, workspace, confirm } = params;
 
       // Fetch the person
-      const person = await prisma.person.findUniqueOrThrow({
-        where: { id: person_id },
-      });
+      const person = await operations.getPersonById(person_id);
 
       const name =
         [person.firstName, person.lastName].filter(Boolean).join(" ") ||
@@ -48,11 +46,7 @@ export function registerEnrichTools(server: McpServer): void {
 
       if (!confirm) {
         // Show a pre-flight summary before executing
-        const existingLogs = await prisma.enrichmentLog.findMany({
-          where: { entityId: person_id, entityType: "person", status: "success" },
-          select: { provider: true, fieldsWritten: true, runAt: true },
-          orderBy: { runAt: "desc" },
-        });
+        const existingLogs = await operations.getEnrichmentHistory(person_id);
 
         const enrichedProviders = [
           ...new Set(existingLogs.map((l) => l.provider)),
@@ -134,8 +128,10 @@ export function registerEnrichTools(server: McpServer): void {
       }
 
       // Re-fetch updated person
-      const updated = await prisma.person.findUnique({ where: { id: person_id } });
-      if (!updated) {
+      let updated;
+      try {
+        updated = await operations.getPersonById(person_id);
+      } catch {
         return {
           content: [
             {
