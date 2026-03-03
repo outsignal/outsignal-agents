@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { enqueueAction } from "@/lib/linkedin/queue";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
+import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { notifyDeploy } from "@/lib/notifications";
 import type { LinkedInActionType } from "@/lib/linkedin/types";
@@ -286,6 +287,15 @@ async function deployLinkedInChannel(
 
         linkedinStepCount++;
       }
+    }
+
+    // Seed CampaignSequenceRules so EMAIL_SENT webhooks can trigger LinkedIn actions
+    if (hasEmailChannel && linkedinSequence.length > 0) {
+      await createSequenceRulesForCampaign({
+        workspaceSlug,
+        campaignName: campaign.name,
+        linkedinSequence,
+      });
     }
 
     await prisma.campaignDeploy.update({
