@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Outbound Pipeline
-status: complete
+milestone: v2.0
+milestone_name: Lead Discovery & Intelligence
+status: defining_requirements
 last_updated: "2026-03-03"
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 40
-  completed_plans: 40
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -18,15 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v1.1 complete — ready for `/gsd:new-milestone`
+**Current focus:** v2.0 Lead Discovery & Intelligence — defining requirements
 
 ## Current Position
 
-Milestone: v1.1 Outbound Pipeline — COMPLETE (shipped 2026-03-03)
-Status: All 9 phases, 40 plans, 87 requirements complete. Audit passed.
-Last activity: 2026-03-03 — Milestone completion and archival.
-
-Progress: [██████████] 100% (v1.1 complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-03 — Milestone v2.0 started
 
 ## Accumulated Context
 

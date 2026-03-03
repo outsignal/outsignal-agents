@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A self-hosted outbound lead engine that replaces Clay for Outsignal's cold outbound operation. Full pipeline from enrichment to campaign deployment: multi-source enrichment (Prospeo, AI Ark, LeadMagic, FindyMail, Firecrawl), AI-powered ICP qualification, campaign creation via AI agents (leads + writer), client portal with dual approval, auto-deploy to EmailBison + LinkedIn, sender health monitoring, and Chrome extension for LinkedIn cookie management. Built on Next.js 16 with Prisma/PostgreSQL, deployed on Vercel. 48k+ LOC across 305 files.
+A self-hosted outbound lead engine that replaces Clay for Outsignal's cold outbound operation. Full pipeline from lead discovery through campaign deployment: multi-source lead discovery (Apollo, Prospeo, AI Ark, Exa.ai, Serper.dev, Apify), enrichment waterfall, AI-powered ICP qualification, signal-driven targeting (PredictLeads), Creative Ideas copy generation via AI agents, client portal with dual approval, auto-deploy to EmailBison + LinkedIn, sender health monitoring, and Chrome extension for LinkedIn cookie management. Built on Next.js 16 with Prisma/PostgreSQL, deployed on Vercel.
 
 ## Core Value
 
@@ -47,23 +47,48 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 ### Active
 
-<!-- Next milestone scope. -->
+<!-- Current milestone: v2.0 Lead Discovery & Intelligence -->
 
-(To be defined in next milestone — run `/gsd:new-milestone`)
+- [ ] Multi-source lead discovery (Apollo, Prospeo Search, AI Ark Search, Exa.ai, Serper.dev, Apify LinkedIn)
+- [ ] Agent-driven source selection based on ICP type (enterprise vs niche vs local vs ultra-niche)
+- [ ] Signal monitoring via PredictLeads (job changes, funding, hiring spikes, tech adoption, company news)
+- [ ] Social listening via Serper.dev (Reddit/Twitter competitor mentions)
+- [ ] Evergreen signal campaigns with auto-pipeline (signal → enrich → score → campaign → copy → portal)
+- [ ] Creative Ideas copy framework (3 constrained, personalized ideas per prospect)
+- [ ] Per-client Creative Ideas examples (AI-generated drafts, admin review, KB-tagged)
+- [ ] Custom directory scraping via Firecrawl for niche lists
+- [ ] Signal dashboard (live feed, per-client breakdown, cost tracking, long-term data collection)
+- [ ] CLI orchestrator chat session (interactive back-and-forth in Claude Code terminal)
+- [ ] Knowledge base tool added to Research Agent
+- [ ] Enrichment waterfall reordered to actual cheapest-first
 
 ### Out of Scope
 
-- Real-time intent signals (RB2B, Warmly, Vector, Trigify — future milestone, high complexity)
+- First-party website visitor identification (RB2B, Warmly, Vector, Trigify — requires pixel/JS install on client sites)
 - Domain infrastructure management — handled externally (PlusVibe)
 - CRM integration (HubSpot) — not needed, EmailBison is the system of record
 - Replacing EmailBison as sending infrastructure
 - Per-lead approve/reject in portal — binary list-level approval only
+- FullEnrich — redundant, we have our own enrichment waterfall
+- StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
+- Campaign builder UI — all campaign operations through chat (Cmd+J / CLI)
+
+## Current Milestone: v2.0 Lead Discovery & Intelligence
+
+**Goal:** Transform the Leads Agent from a local DB searcher into a full discovery engine that finds leads across millions of contacts, monitors signals for timing, and generates Creative Ideas copy that outperforms generic outreach.
+
+**Target features:**
+- Multi-source lead discovery (Apollo, Prospeo, AI Ark, Exa.ai, Serper.dev, Apify, Firecrawl directories)
+- Evergreen signal campaigns with full auto-pipeline (PredictLeads + social listening)
+- Creative Ideas copy framework (per-client constrained ideas, not generic "congrats on funding")
+- Signal dashboard with long-term data collection
+- CLI orchestrator chat session
 
 ## Current State
 
 **Shipped:** v1.1 Outbound Pipeline (2026-03-03) — 9 phases, 40 plans, 87/87 requirements
 **Previous:** v1.0 Lead Engine (2026-02-27) — 7 phases, 22 plans
-**Next:** TBD — run `/gsd:new-milestone`
+**Current:** v2.0 Lead Discovery & Intelligence — in progress
 
 **Codebase:** ~48,200 LOC TypeScript/TSX across 305 files
 **Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel, Railway (LinkedIn worker)
@@ -100,5 +125,13 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | Voyager API over browser automation | HTTP calls safer than headless Chrome for LinkedIn | ✓ Good — lower detection risk |
 | Chrome extension for cookie capture | One-click LinkedIn connect, no DevTools needed | ✓ Good — reduces friction for clients |
 
+| Multi-source discovery over single-provider | No single provider has all leads — agent picks best source per ICP type | — Pending |
+| Exa.ai for semantic company search | Replaces Disco/Ocean.io lookalikes, more flexible, API-first, MCP server | — Pending |
+| Signals for timing not hooks | Everyone sends "congrats on funding" — use signals invisibly for targeting, not as email hook | — Pending |
+| Creative Ideas framework | Per-client constrained ideas outperform generic signal-based copy (Growth Engine X, 3x reply rates) | — Pending |
+| PredictLeads for signal intelligence | API-first, pay-per-use, 5 signal types, 100M companies, designed for agents | — Pending |
+| Serper.dev over dedicated scrapers | One provider for Google search + Maps + social monitoring — replaces Apify Maps, StoreLeads | — Pending |
+| Railway for signal monitoring | Vercel Hobby 2-cron limit, Railway already running LinkedIn worker, needs continuous background process | — Pending |
+
 ---
-*Last updated: 2026-03-03 after v1.1 milestone completion*
+*Last updated: 2026-03-03 after v2.0 milestone start*
