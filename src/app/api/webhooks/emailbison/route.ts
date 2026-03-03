@@ -4,6 +4,7 @@ import { notifyReply } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
 import { enqueueAction, bumpPriority } from "@/lib/linkedin/queue";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
+import { evaluateSequenceRules } from "@/lib/linkedin/sequencing";
 
 async function generateReplySuggestion(params: {
   workspaceSlug: string;
@@ -80,6 +81,88 @@ export async function POST(request: NextRequest) {
         },
         data: { status: "contacted" },
       });
+    }
+
+    // Handle EMAIL_SENT — trigger LinkedIn sequence rules
+    if (eventType === "EMAIL_SENT" && leadEmail && campaignId) {
+      try {
+        // Look up the Outsignal campaign by emailBisonCampaignId
+        const outsignalCampaign = await prisma.campaign.findFirst({
+          where: { emailBisonCampaignId: parseInt(campaignId) },
+          select: { name: true, workspaceSlug: true, channels: true },
+        });
+
+        if (outsignalCampaign) {
+          const channels = JSON.parse(outsignalCampaign.channels || '["email"]') as string[];
+
+          // Only evaluate rules if campaign includes LinkedIn channel
+          if (channels.includes("linkedin")) {
+            const person = await prisma.person.findUnique({
+              where: { email: leadEmail },
+              select: {
+                id: true, firstName: true, lastName: true,
+                company: true, jobTitle: true, linkedinUrl: true, email: true,
+              },
+            });
+
+            if (person?.linkedinUrl) {
+              // Determine which email step this is (from EB webhook data)
+              // EB sends data.sequence_step or data.step_number — extract position
+              const stepNumber = data.sequence_step?.position ?? data.step_number ?? null;
+              const triggerStepRef = stepNumber ? `email_${stepNumber}` : undefined;
+
+              const actions = await evaluateSequenceRules({
+                workspaceSlug: outsignalCampaign.workspaceSlug,
+                campaignName: outsignalCampaign.name,
+                triggerEvent: "email_sent",
+                triggerStepRef,
+                personId: person.id,
+                person: {
+                  firstName: person.firstName,
+                  lastName: person.lastName,
+                  company: person.company,
+                  jobTitle: person.jobTitle,
+                  linkedinUrl: person.linkedinUrl,
+                  email: person.email,
+                },
+                emailContext: {
+                  stepRef: triggerStepRef,
+                  subject: subject ?? undefined,
+                },
+                senderEmail: senderEmail ?? undefined,
+              });
+
+              // Enqueue each action returned by the rules
+              for (const action of actions) {
+                const sender = await assignSenderForPerson(
+                  outsignalCampaign.workspaceSlug,
+                  {
+                    emailSenderAddress: senderEmail ?? undefined,
+                    mode: "email_linkedin",
+                  },
+                );
+
+                if (sender) {
+                  await enqueueAction({
+                    senderId: sender.id,
+                    personId: person.id,
+                    workspaceSlug: outsignalCampaign.workspaceSlug,
+                    actionType: action.actionType as "connect" | "message" | "profile_view",
+                    messageBody: action.messageBody ?? undefined,
+                    priority: 5,
+                    scheduledFor: new Date(Date.now() + action.delayMinutes * 60 * 1000),
+                    campaignName: outsignalCampaign.name,
+                    sequenceStepRef: action.sequenceStepRef,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("LinkedIn sequence rule trigger error:", err);
+        // Non-blocking — webhook still returns 200
+      }
     }
 
     if (leadEmail) {
