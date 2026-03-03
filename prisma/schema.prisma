@@ -442,9 +442,50 @@ model Campaign {
   deployedAt  DateTime? // When deployed to EmailBison/LinkedIn
 
   // Relations
-  workspace Workspace @relation(fields: [workspaceSlug], references: [slug])
+  workspace Workspace      @relation(fields: [workspaceSlug], references: [slug])
+  deploys   CampaignDeploy[]
 
   @@unique([workspaceSlug, name])
+  @@index([workspaceSlug])
+  @@index([status])
+}
+
+model CampaignDeploy {
+  id            String   @id @default(cuid())
+  campaignId    String
+  campaignName  String
+  workspaceSlug String
+
+  // Status: pending -> running -> complete | partial_failure | failed
+  status        String   @default("pending")
+
+  // Per-channel tracking
+  emailStatus    String?  // pending | running | complete | failed | skipped
+  linkedinStatus String?  // pending | running | complete | failed | skipped
+
+  // Counts
+  leadCount         Int @default(0)
+  emailStepCount    Int @default(0)
+  linkedinStepCount Int @default(0)
+
+  // EmailBison linkage
+  emailBisonCampaignId Int?
+
+  // Error tracking
+  emailError    String?
+  linkedinError String?
+  error         String?  // Overall error message
+
+  // Retry support
+  channels     String  // JSON array: ["email"], ["linkedin"], or ["email", "linkedin"]
+  retryChannel String?  // Which channel to retry (null for fresh deploy)
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId])
   @@index([workspaceSlug])
   @@index([status])
 }

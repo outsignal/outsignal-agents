@@ -8,6 +8,7 @@ import type {
   SequenceStep,
   CreateCampaignParams,
   CreateLeadParams,
+  CreateSequenceStepParams,
   CustomVariable,
   CreateLeadResult,
   CampaignCreateResult,
@@ -112,6 +113,26 @@ export class EmailBisonClient {
     return this.getAllPages<SequenceStep>(
       `/campaigns/${campaignId}/sequence-steps`,
     );
+  }
+
+  async createSequenceStep(
+    campaignId: number,
+    step: CreateSequenceStepParams,
+  ): Promise<SequenceStep> {
+    const res = await this.request<{ data: SequenceStep }>(
+      `/campaigns/${campaignId}/sequence-steps`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          position: step.position,
+          subject: step.subject,
+          body: step.body,
+          delay_days: step.delay_days ?? 1,
+        }),
+        revalidate: 0,
+      },
+    );
+    return res.data;
   }
 
   async testConnection(): Promise<boolean> {

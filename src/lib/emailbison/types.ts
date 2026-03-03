@@ -185,6 +185,13 @@ export interface CampaignCreateResult {
   sequence_id: number | null;
 }
 
+export interface CreateSequenceStepParams {
+  position: number;
+  subject?: string;
+  body: string;
+  delay_days?: number;
+}
+
 export interface WebhookPayload {
   event:
     | "EMAIL_SENT"
