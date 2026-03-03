@@ -46,3 +46,6 @@ prisma/dev.db-journal
 next-env.d.ts
 worker/dist/
 .env*.local
+
+# Extension build artifacts
+extension/*.zip
