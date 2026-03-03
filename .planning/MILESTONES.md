@@ -20,3 +20,24 @@
 
 ---
 
+
+## v1.1 Outbound Pipeline (Shipped: 2026-03-03)
+
+**Phases:** 9 (incl. 1 decimal insertion) | **Plans:** 40 | **Commits:** 192
+**Timeline:** 5 days (2026-02-27 → 2026-03-03)
+**LOC:** ~48,200 TypeScript/TSX | **Files:** 305
+**Requirements:** 87/87 satisfied | **Tech debt:** 0 items (all resolved)
+
+**Key accomplishments:**
+- Natural language campaign pipeline — Leads agent + AI writer generate full campaigns (leads + email/LinkedIn content) via chat
+- Client portal with dual approval — Clients review and approve leads and content separately; dual approval triggers deploy
+- Multi-channel auto-deploy — EmailBison campaigns + LinkedIn sequencing deploy on approval with status tracking
+- LinkedIn Voyager API client — HTTP-based LinkedIn automation replacing browser, with proxy and error handling
+- Admin command center dashboard — KPIs, activity charts, agent monitoring, sender management, webhook logs
+- Automated sender health — Detection, rotation removal, action reassignment, Slack/email notifications
+- Chrome extension for one-click LinkedIn cookie capture with auto-expiry detection
+
+**Tech debt carried forward:** None — all 10 items from initial audit resolved in commit d91afaa.
+
+---
+

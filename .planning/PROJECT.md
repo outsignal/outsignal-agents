@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A self-hosted lead database and enrichment engine that replaces Clay for Outsignal's cold outbound operation. Combines multi-source enrichment (Prospeo, AI Ark, LeadMagic, FindyMail, Firecrawl), AI-powered data normalization and ICP qualification, lead search/filtering, list building, and verified export to EmailBison — all on top of a 14k+ person / 17k+ company database. Includes an MCP-powered Leads Agent for natural language pipeline access. Built on Next.js 16 with Prisma/PostgreSQL, deployed on Vercel.
+A self-hosted outbound lead engine that replaces Clay for Outsignal's cold outbound operation. Full pipeline from enrichment to campaign deployment: multi-source enrichment (Prospeo, AI Ark, LeadMagic, FindyMail, Firecrawl), AI-powered ICP qualification, campaign creation via AI agents (leads + writer), client portal with dual approval, auto-deploy to EmailBison + LinkedIn, sender health monitoring, and Chrome extension for LinkedIn cookie management. Built on Next.js 16 with Prisma/PostgreSQL, deployed on Vercel. 48k+ LOC across 305 files.
 
 ## Core Value
 
@@ -36,18 +36,20 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - ✓ 5 provider integrations (Prospeo, AI Ark, LeadMagic, FindyMail, Firecrawl) — v1.0
 - ✓ MCP Leads Agent (enrich, search, score, list build, export via Claude Code) — v1.0
 - ✓ API security (CRON_SECRET auth on enrichment routes, timing-safe comparison) — v1.0
+- ✓ Leads Agent in admin dashboard — natural language campaign pipeline via chat — v1.1
+- ✓ Campaign entity with AI writer — email/LinkedIn sequence generation — v1.1
+- ✓ Client portal with dual approval — separate lead + content approval flow — v1.1
+- ✓ Smart campaign deployment — auto-deploy to EmailBison + LinkedIn on approval — v1.1
+- ✓ Admin command center — KPIs, charts, agent monitoring, sender management — v1.1
+- ✓ LinkedIn Voyager API — HTTP-based LinkedIn automation — v1.1
+- ✓ Automated sender health — detection, rotation, reassignment, notifications — v1.1
+- ✓ Chrome extension — one-click LinkedIn cookie capture with expiry detection — v1.1
 
 ### Active
 
-<!-- Current scope. Building toward these. -->
+<!-- Next milestone scope. -->
 
-- [ ] Leads Agent in admin dashboard — separate runner with enrich, search, score, list ops, export via Cmd+J chat
-- [ ] Client portal lead list preview — sample ICP preview, client approves/rejects whole list
-- [ ] Client portal content preview — Writer copy preview, client approves/rejects whole batch
-- [ ] Smart campaign deployment — auto-push to EmailBison on approve (creates new or updates existing campaigns)
-- [ ] Deploy leads + copy together or separately depending on what's available
-- [ ] LinkedIn sequencer — profile-first targeting with agent-browser (separate milestone, in progress)
-- [ ] Lead scoring 1-10 based on signal overlap (cold email framework tiers)
+(To be defined in next milestone — run `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -59,15 +61,16 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 ## Current State
 
-**Shipped:** v1.0 Lead Engine (2026-02-27) — 7 phases, 22 plans, 29/29 requirements
-**Current:** v1.1 Outbound Pipeline — Leads Agent + client portal review + smart campaign deploy
-**In progress (separate):** LinkedIn sequencer rewrite (agent-browser + profile-first targeting)
+**Shipped:** v1.1 Outbound Pipeline (2026-03-03) — 9 phases, 40 plans, 87/87 requirements
+**Previous:** v1.0 Lead Engine (2026-02-27) — 7 phases, 22 plans
+**Next:** TBD — run `/gsd:new-milestone`
 
-**Codebase:** ~26,600 LOC TypeScript/TSX across 451 files
-**Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel
+**Codebase:** ~48,200 LOC TypeScript/TSX across 305 files
+**Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel, Railway (LinkedIn worker)
 **Data:** 14,563 people, 16,941 companies, 6 client workspaces
+**Chrome extension:** Manifest V3, vanilla JS, 3 files
 
-**Tech debt (12 items, non-blocking):** AI Ark auth header LOW confidence, FindyMail schema MEDIUM confidence, costs page not in sidebar, webhook no signature verification, daily cron only (Hobby plan). Full list in `milestones/v1.0-MILESTONE-AUDIT.md`.
+**Tech debt (v1.0 carried):** AI Ark auth header LOW confidence, FindyMail schema MEDIUM confidence, costs page not in sidebar, webhook no signature verification. See `milestones/v1.0-MILESTONE-AUDIT.md`.
 
 ## Constraints
 
@@ -91,6 +94,11 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | db push over migrate dev | No migration history, 14k+ records, db push is safer | ✓ Good — used consistently across all 7 phases |
 | TargetList model for lists | Junction table over PersonWorkspace.tags for proper relational modeling | ✓ Good — clean export path, MCP consistent |
 | Hard email verification gate | No unverified emails ever exported — strict deliverability policy | ✓ Good — prevents sending to invalid addresses |
+| Campaign as first-class entity | Owns leads (TargetList) + content (email/LinkedIn sequences) + deploy tracking | ✓ Good — clean separation, supports multi-channel |
+| AI agents via Claude Code, not dashboard | Avoids Anthropic API costs — Claude Code Max Plan covers it | ✓ Good — saves $300+/mo in API costs |
+| Dual approval (leads + content separate) | Clients review independently, deploy on both approved | ✓ Good — flexible approval workflow |
+| Voyager API over browser automation | HTTP calls safer than headless Chrome for LinkedIn | ✓ Good — lower detection risk |
+| Chrome extension for cookie capture | One-click LinkedIn connect, no DevTools needed | ✓ Good — reduces friction for clients |
 
 ---
-*Last updated: 2026-02-27 after v1.1 milestone start*
+*Last updated: 2026-03-03 after v1.1 milestone completion*
