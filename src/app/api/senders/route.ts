@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 
 /**
@@ -19,6 +20,27 @@ export async function GET(request: NextRequest) {
       },
       orderBy: [{ workspaceSlug: "asc" }, { name: "asc" }],
     });
+
+    // Lazily backfill inviteToken for senders that don't have one yet
+    const backfillPromises = senders
+      .filter((s) => !s.inviteToken)
+      .map((s) =>
+        prisma.sender.update({
+          where: { id: s.id },
+          data: { inviteToken: randomUUID() },
+        }),
+      );
+
+    if (backfillPromises.length > 0) {
+      const updated = await Promise.all(backfillPromises);
+      // Patch the in-memory array so the response has the new tokens
+      const tokenMap = new Map(updated.map((s) => [s.id, s.inviteToken]));
+      for (const s of senders) {
+        if (!s.inviteToken && tokenMap.has(s.id)) {
+          s.inviteToken = tokenMap.get(s.id) ?? null;
+        }
+      }
+    }
 
     // Strip sensitive fields before returning
     const sanitized = senders.map(({ sessionData, linkedinPassword, totpSecret, ...rest }) => rest);
@@ -63,6 +85,7 @@ export async function POST(request: NextRequest) {
       data: {
         workspaceSlug,
         name,
+        inviteToken: randomUUID(),
         ...(emailAddress !== undefined && { emailAddress }),
         ...(linkedinProfileUrl !== undefined && { linkedinProfileUrl }),
         ...(linkedinEmail !== undefined && { linkedinEmail }),
