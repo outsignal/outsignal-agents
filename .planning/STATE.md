@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Outbound Pipeline
 status: unknown
-last_updated: "2026-03-03T12:03:52.797Z"
+last_updated: "2026-03-03T12:22:03.068Z"
 progress:
   total_phases: 11
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 40
-  completed_plans: 40
+  completed_plans: 41
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 Phase: 14 of 14 (LinkedIn Cookie Chrome Extension — Plan 03 COMPLETE: service worker background.js with alarm-based cookie health checks)
 Plan: 3 of ? in current phase (14-01 done: extension-auth.ts + 7 API endpoints; 14-02 done: popup.html/js/css + icons; 14-03 done: background.js service worker)
 Status: Phase 14 — Plan 03 done. Service worker complete: 4-hour alarm, li_at expiry detection, badge+notification+API expiry call.
-Last activity: 2026-03-03 — Executed Plan 03: extension/background.js MV3 service worker with 4-hour chrome.alarms cookie health check, li_at expiry detection, red badge + browser notification + POST /api/extension/senders/[id]/expiry, notification click openPopup(), message handlers (check-cookies-now, clear-badge). Extension README.txt added. .gitignore updated to exclude extension/*.zip.
+Last activity: 2026-03-03 — Executed Plan 10-05: DeployButton (conditional on status=approved, confirmation modal with stats), DeployHistory (status badges, retry per failed channel), admin campaign detail page at (admin)/campaigns/[id]. Phase 10 all 5 plans complete.
 
 Progress: [████░░░░░░] 40% (v1.1 — Phase 8 complete)
 
@@ -188,6 +188,8 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 14-linkedin-cookie-chrome-extension]: Extension expiry API call is non-fatal — badge and notification fire regardless of network failure
 - [Phase 10-auto-deploy-on-approval]: [10-03]: Deploy route uses next/server after() for fire-and-forget — response returns immediately, executeDeploy runs in background post-response
 - [Phase 10-auto-deploy-on-approval]: [10-03]: EMAIL_SENT sequence rule evaluation skips campaigns without LinkedIn channel — avoids unnecessary DB queries for email-only campaigns
+- [Phase 10-auto-deploy-on-approval]: [10-05]: DeployButton returns null when not in approved state — no placeholder rendered, header stays clean
+- [Phase 10-auto-deploy-on-approval]: [10-05]: Campaign detail page is a server component — getCampaign() called at server, avoids client-side fetch waterfall
 
 ### Blockers/Concerns
 
@@ -199,5 +201,5 @@ v1.0 decisions archived in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 10-03-PLAN.md (Deploy API routes: POST /api/campaigns/[id]/deploy trigger + retry via after(), GET /api/campaigns/[id]/deploys history, EMAIL_SENT webhook wired to CampaignSequenceRule evaluation + LinkedIn action enqueue with delayMinutes).
+Stopped at: Completed 10-05-PLAN.md (Deploy UI: DeployButton component with confirmation modal + DeployHistory table with retry buttons + admin campaign detail page at (admin)/campaigns/[id]).
 Resume file: None
