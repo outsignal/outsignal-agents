@@ -250,101 +250,108 @@ export async function notifyReply(params: {
   const label = params.interested ? "Interested Reply" : "New Reply";
   const outsignalInboxUrl = "https://app.outsignal.ai/inbox";
 
-  // Slack notification
+  // Build Slack blocks once (used for both client and admin channels)
+  const slackBlocks: KnownBlock[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `[${workspace.name}] ${label} Received`,
+      },
+    },
+    ...(params.leadName
+      ? [
+          {
+            type: "section" as const,
+            text: {
+              type: "mrkdwn" as const,
+              text: `*Name:* ${params.leadName}`,
+            },
+          },
+        ]
+      : []),
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*From:* ${params.leadEmail}`,
+      },
+    },
+    ...(params.subject
+      ? [
+          {
+            type: "section" as const,
+            text: {
+              type: "mrkdwn" as const,
+              text: `*Subject:* ${params.subject}`,
+            },
+          },
+        ]
+      : []),
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: preview,
+      },
+    },
+    ...(params.suggestedResponse
+      ? [
+          {
+            type: "divider" as const,
+          },
+          {
+            type: "section" as const,
+            text: {
+              type: "mrkdwn" as const,
+              text: `*Suggested Response:*\n${params.suggestedResponse}`,
+            },
+          },
+        ]
+      : []),
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Reply in Outsignal",
+          },
+          url: outsignalInboxUrl,
+        },
+      ],
+    },
+  ];
+
+  const slackFallback = `${label} from ${params.leadName ?? params.leadEmail}`;
+
+  // Slack notification — client channel
   if (workspace.slackChannelId) {
-    if (!verifySlackChannel(workspace.slackChannelId, "client", "notifyReply")) return;
-    try {
-      await postMessage(
-        workspace.slackChannelId,
-        `${label} from ${params.leadName ?? params.leadEmail}`,
-        [
-          {
-            type: "header",
-            text: {
-              type: "plain_text",
-              text: `${label} Received`,
-            },
-          },
-          ...(params.leadName
-            ? [
-                {
-                  type: "section" as const,
-                  text: {
-                    type: "mrkdwn" as const,
-                    text: `*Name:* ${params.leadName}`,
-                  },
-                },
-              ]
-            : []),
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `*From:* ${params.leadEmail}`,
-            },
-          },
-          ...(params.subject
-            ? [
-                {
-                  type: "section" as const,
-                  text: {
-                    type: "mrkdwn" as const,
-                    text: `*Subject:* ${params.subject}`,
-                  },
-                },
-              ]
-            : []),
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: preview,
-            },
-          },
-          ...(params.suggestedResponse
-            ? [
-                {
-                  type: "divider" as const,
-                },
-                {
-                  type: "section" as const,
-                  text: {
-                    type: "mrkdwn" as const,
-                    text: `*Suggested Response:*\n${params.suggestedResponse}`,
-                  },
-                },
-              ]
-            : []),
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Reply in Outsignal",
-                },
-                url: outsignalInboxUrl,
-              },
-            ],
-          },
-        ],
-      );
-    } catch (err) {
-      console.error("Slack notification failed:", err);
+    if (verifySlackChannel(workspace.slackChannelId, "client", "notifyReply")) {
+      try {
+        await postMessage(workspace.slackChannelId, slackFallback, slackBlocks);
+      } catch (err) {
+        console.error("Slack client notification failed:", err);
+      }
     }
   }
 
-  // Email notification
-  if (workspace.notificationEmails) {
-    try {
-      const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      const verified = verifyEmailRecipients(recipients, "client", "notifyReply");
-      if (verified.length > 0) {
-        await sendNotificationEmail({
-          to: verified,
-          subject: `[${workspace.name}] ${label} from ${params.leadName ?? params.leadEmail}`,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+  // Slack notification — admin ops channel
+  const opsSlackChannelId = process.env.OPS_SLACK_CHANNEL_ID;
+  if (opsSlackChannelId) {
+    if (verifySlackChannel(opsSlackChannelId, "admin", "notifyReply")) {
+      try {
+        await postMessage(opsSlackChannelId, slackFallback, slackBlocks);
+      } catch (err) {
+        console.error("Slack admin notification failed:", err);
+      }
+    }
+  }
+
+  // Email notification — build HTML once, send to both client and admin
+  const emailSubjectLine = `[${workspace.name}] ${label} from ${params.leadName ?? params.leadEmail}`;
+  const emailHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -452,11 +459,39 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
       </table>
     </td>
   </tr>
-</table>`,
+</table>`;
+
+  // Email — client notification emails
+  if (workspace.notificationEmails) {
+    try {
+      const recipients: string[] = JSON.parse(workspace.notificationEmails);
+      const verified = verifyEmailRecipients(recipients, "client", "notifyReply");
+      if (verified.length > 0) {
+        await sendNotificationEmail({
+          to: verified,
+          subject: emailSubjectLine,
+          html: emailHtml,
         });
       }
     } catch (err) {
-      console.error("Email notification failed:", err);
+      console.error("Email client notification failed:", err);
+    }
+  }
+
+  // Email — admin
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    try {
+      const verified = verifyEmailRecipients([adminEmail], "admin", "notifyReply");
+      if (verified.length > 0) {
+        await sendNotificationEmail({
+          to: verified,
+          subject: emailSubjectLine,
+          html: emailHtml,
+        });
+      }
+    } catch (err) {
+      console.error("Email admin notification failed:", err);
     }
   }
 }

@@ -230,7 +230,19 @@ export async function POST(request: NextRequest) {
     }
 
     const notifyEvents = ["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED"];
-    if (notifyEvents.includes(eventType) && !automatedReply) {
+
+    // Filter out non-real replies before sending notifications
+    const fromEmail = (data.reply?.from_email_address ?? "").toLowerCase();
+    const emailSubject = (subject ?? "").toLowerCase();
+    const isNonRealReply =
+      fromEmail.includes("mailer-daemon") ||
+      fromEmail.includes("postmaster") ||
+      emailSubject.includes("delivery status notification") ||
+      /out of office|automatic reply|auto-reply|autoreply/i.test(subject ?? "") ||
+      emailSubject.includes("connection test") ||
+      emailSubject.includes("test email");
+
+    if (notifyEvents.includes(eventType) && !automatedReply && !isNonRealReply) {
       let suggestedResponse: string | null = null;
 
       // Generate reply suggestion for reply/interested events (non-blocking)
