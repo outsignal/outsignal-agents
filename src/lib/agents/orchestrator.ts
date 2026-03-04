@@ -119,8 +119,25 @@ const delegateToWriter = tool({
       .string()
       .optional()
       .describe("Feedback to incorporate"),
+    copyStrategy: z
+      .enum(["creative-ideas", "pvp", "one-liner", "custom"])
+      .optional()
+      .describe("Copy strategy to use. Creative Ideas = 3 grounded email variants, PVP = Problem-Value-Proof sequence, One-liner = short punchy emails, Custom = admin-provided framework. Default: pvp"),
+    customStrategyPrompt: z
+      .string()
+      .optional()
+      .describe("Custom strategy instructions (only used when copyStrategy='custom')"),
+    signalContext: z
+      .object({
+        signalType: z.enum(["job_change", "funding", "hiring_spike", "tech_adoption", "news", "social_mention"]),
+        companyDomain: z.string(),
+        companyName: z.string().optional(),
+        isHighIntent: z.boolean(),
+      })
+      .optional()
+      .describe("Signal context for signal-triggered campaigns — internal only, never shown to recipient"),
   }),
-  execute: async ({ workspaceSlug, task, channel, campaignName, campaignId, feedback }) => {
+  execute: async ({ workspaceSlug, task, channel, campaignName, campaignId, feedback, copyStrategy, customStrategyPrompt, signalContext }) => {
     try {
       const result = await runWriterAgent({
         workspaceSlug,
@@ -129,13 +146,19 @@ const delegateToWriter = tool({
         campaignName,
         campaignId,
         feedback,
+        copyStrategy,
+        customStrategyPrompt,
+        signalContext,
       });
       return {
         status: "complete",
         campaignName: result.campaignName,
         channel: result.channel,
+        strategy: result.strategy ?? copyStrategy ?? "pvp",
         emailSteps: result.emailSteps?.length ?? 0,
         linkedinSteps: result.linkedinSteps?.length ?? 0,
+        creativeIdeas: result.creativeIdeas?.length ?? 0,
+        references: result.references ?? [],
         reviewNotes: result.reviewNotes,
       };
     } catch (error) {
@@ -602,6 +625,32 @@ This is the primary admin workflow for campaign creation and launch:
 5. "Push for client approval" → delegateToCampaign (publishes campaign for client review)
 
 When the user creates a campaign and then asks to generate content, pass the campaignId from the Campaign Agent's response to the Writer Agent delegation. Track the active campaign context throughout the conversation.
+
+## Copy Strategy Selection:
+The Writer Agent supports 4 copy strategies. Pass the strategy via the copyStrategy parameter:
+
+- **creative-ideas**: Generates 3 separate email drafts, each grounded in a specific client offering. Admin picks the best. Use when the client wants personalized, idea-driven outreach.
+- **pvp** (default): Problem → Value → Proof framework. Classic cold outreach. Use when straightforward B2B outreach is needed.
+- **one-liner**: Short, punchy emails under 50 words. Use for high-volume or follow-up campaigns where brevity wins.
+- **custom**: Admin provides their own copy framework via customStrategyPrompt. Use when none of the standard strategies fit.
+
+Examples:
+- "Write creative ideas emails for Rise" → delegateToWriter(copyStrategy="creative-ideas")
+- "Write a PVP sequence for Lime" → delegateToWriter(copyStrategy="pvp")
+- "Write short one-liners for MyAcq" → delegateToWriter(copyStrategy="one-liner")
+- "Write copy using this approach: [admin text]" → delegateToWriter(copyStrategy="custom", customStrategyPrompt="[admin text]")
+
+## Multi-Strategy Variants (A/B testing):
+To generate multiple strategy variants for the same campaign:
+1. Call delegateToWriter with copyStrategy="creative-ideas" and the campaignId
+2. Call delegateToWriter again with copyStrategy="pvp" and the same campaignId
+3. Each call saves sequences under the respective strategy label
+4. Admin picks the best variant for deployment
+
+Example: "Write creative ideas AND pvp variants for the Rise Q2 campaign" → make 2 separate delegateToWriter calls with different strategies.
+
+## Signal-Triggered Copy:
+When generating copy for a signal campaign, pass signalContext to the Writer Agent. The writer uses this internally to select the right angle — signals are NEVER mentioned to the recipient.
 
 ## Signal Campaign Workflow (Cmd+J):
 Signal campaigns are evergreen — they run indefinitely, automatically discovering and deploying leads when signals fire.
