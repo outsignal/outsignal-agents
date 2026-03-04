@@ -9,8 +9,8 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 
 ### Discovery
 
-- [ ] **DISC-01**: Leads Agent can search Apollo.io People API (275M contacts, free) by title, seniority, industry, location, company size and return paginated results
-- [ ] **DISC-02**: Leads Agent can search Prospeo Search Person API with 20+ filters (title, seniority, department, location, company industry, headcount, funding stage)
+- [x] **DISC-01**: Leads Agent can search Apollo.io People API (275M contacts, free) by title, seniority, industry, location, company size and return paginated results
+- [x] **DISC-02**: Leads Agent can search Prospeo Search Person API with 20+ filters (title, seniority, department, location, company industry, headcount, funding stage)
 - [ ] **DISC-03**: Leads Agent can search AI Ark People Search API by role, seniority, department, location, keywords
 - [ ] **DISC-04**: Leads Agent can search Serper.dev for Google web results, Maps results, and social mentions (Reddit/Twitter) via natural language queries
 - [ ] **DISC-05**: Leads Agent can scrape custom directories via Firecrawl /extract endpoint with structured JSON schema (association member lists, government databases, etc.)
@@ -135,8 +135,8 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | CFG-04 | Phase 15 | Complete |
 | CFG-05 | Phase 15 | Complete |
 | CFG-06 | Phase 15 | Complete |
-| DISC-01 | Phase 16 | Pending |
-| DISC-02 | Phase 16 | Pending |
+| DISC-01 | Phase 16 | Complete |
+| DISC-02 | Phase 16 | Complete |
 | DISC-03 | Phase 16 | Pending |
 | DISC-04 | Phase 16 | Pending |
 | DISC-05 | Phase 16 | Pending |

@@ -152,7 +152,7 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 1-6 | v1.0 | 22/22 | Complete | 2026-02-27 |
 | 7-14 | v1.1 | 40/40 | Complete | 2026-03-03 |
 | 15. Foundation | 4/4 | Complete    | 2026-03-04 | - |
-| 16. Discovery Sources | v2.0 | 0/TBD | Not started | - |
+| 16. Discovery Sources | 2/3 | In Progress|  | - |
 | 17. Leads Agent Discovery Upgrade | v2.0 | 0/TBD | Not started | - |
 | 18. Signal Monitoring Infrastructure | v2.0 | 0/TBD | Not started | - |
 | 19. Evergreen Signal Campaign Auto-Pipeline | v2.0 | 0/TBD | Not started | - |

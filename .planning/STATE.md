@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Discovery & Intelligence
 status: unknown
-last_updated: "2026-03-04T10:46:44.934Z"
+last_updated: "2026-03-04T12:14:00.531Z"
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 10
-  total_plans: 44
-  completed_plans: 45
+  total_plans: 47
+  completed_plans: 47
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v2.0 Phase 15 — Foundation
+**Current focus:** v2.0 Phase 16 — Discovery Sources
 
 ## Current Position
 
-Phase: 15 of 21 (Foundation)
-Plan: 03 complete (now all of 01-04 done), 05+ pending
+Phase: 16 of 21 (Discovery Sources)
+Plan: 02 complete, 03 pending
 Status: In progress
-Last activity: 2026-03-04 — 15-03 complete (Campaign Agent package enforcement, Orchestrator quota surfacing, updateWorkspacePackage tool)
+Last activity: 2026-03-04 — 16-02 complete (AI Ark Search adapter, Serper web/maps/social adapter, Firecrawl Directory extraction adapter)
 
 Progress: [░░░░░░░░░░] ~3% (v2.0)
 
@@ -50,6 +50,13 @@ Progress: [░░░░░░░░░░] ~3% (v2.0)
 - [15-04 admin-ui]: No auth guard on package API route — consistent with all other workspace API routes in this project
 - [15-03 agents]: Campaign allowance is soft limit — canProceedWithConfirmation pattern, not hard block
 - [15-03 agents]: updateWorkspacePackage placed in dashboardTools (direct exec), not as delegation tool — admin management, not specialist task
+- [16-01 discovery]: Apollo search returns no emails — email field always undefined; enrichment deferred to Phase 17
+- [16-01 discovery]: stageDiscoveredPeople uses skipDuplicates: false intentionally — dedup is Phase 17 responsibility
+- [16-01 discovery]: ProspeoSearchAdapter.search() has optional extras param for Prospeo-specific filters (company_funding, person_department) beyond the DiscoveryAdapter interface
+- [16-01 discovery]: prisma db push applied rawResponse column safely (no migration history)
+- [Phase 16-discovery-sources]: Serper adapter exports const object (not class), does NOT implement DiscoveryAdapter — query-based search, not filter-based
+- [Phase 16-discovery-sources]: Social search results (searchSocial) returned raw — NOT staged to DiscoveredPerson; signal data reserved for Phase 18 SignalEvent creation
+- [Phase 16-discovery-sources]: Maps results are company-level records with null person fields — staged with discoverySource: serper-maps in Plan 03
 
 ### Blockers/Concerns
 
@@ -64,5 +71,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 15-03-PLAN.md (Campaign Agent enforcement, Orchestrator quota surfacing, updateWorkspacePackage tool)
-Resume file: .planning/phases/15-foundation/15-05-PLAN.md (next plan, if exists)
+Stopped at: Completed 16-01-PLAN.md (rawResponse column, stageDiscoveredPeople, Apollo adapter, Prospeo Search adapter)
+Resume file: .planning/phases/16-discovery-sources/16-02-PLAN.md (next plan)
