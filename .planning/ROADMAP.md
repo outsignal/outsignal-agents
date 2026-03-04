@@ -44,7 +44,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 
 **Milestone Goal:** Transform the Leads Agent from a local DB searcher into a full discovery engine that finds leads across millions of contacts, monitors signals for timing, and generates Creative Ideas copy that outperforms generic outreach.
 
-- [ ] **Phase 15: Foundation** - Schema additions, discovery adapter interface, workspace config packages, per-workspace Apollo key architecture, quick fixes
+- [x] **Phase 15: Foundation** - Schema additions, discovery adapter interface, workspace config packages, per-workspace Apollo key architecture, quick fixes (completed 2026-03-04)
 - [ ] **Phase 16: Discovery Sources** - Apollo, Prospeo Search, AI Ark Search, Serper.dev, and Firecrawl directory adapters wired into discovery module
 - [ ] **Phase 17: Leads Agent Discovery Upgrade** - discoverLeads/searchDirectory tools, dedup against staging table, ICP-to-source routing, plan approval flow, quota enforcement
 - [ ] **Phase 18: Signal Monitoring Infrastructure** - Railway signal worker, PredictLeads integration (5 signal types), Serper social listening, SignalEvent ingestion, budget governor
@@ -151,7 +151,7 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 |-------|-----------|----------------|--------|-----------|
 | 1-6 | v1.0 | 22/22 | Complete | 2026-02-27 |
 | 7-14 | v1.1 | 40/40 | Complete | 2026-03-03 |
-| 15. Foundation | 3/4 | In Progress|  | - |
+| 15. Foundation | 4/4 | Complete   | 2026-03-04 | - |
 | 16. Discovery Sources | v2.0 | 0/TBD | Not started | - |
 | 17. Leads Agent Discovery Upgrade | v2.0 | 0/TBD | Not started | - |
 | 18. Signal Monitoring Infrastructure | v2.0 | 0/TBD | Not started | - |

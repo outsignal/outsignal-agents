@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Discovery & Intelligence
 status: unknown
-last_updated: "2026-03-04T10:39:38Z"
+last_updated: "2026-03-04T10:40:24Z"
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 44
-  completed_plans: 43
+  completed_plans: 44
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 15 of 21 (Foundation)
-Plan: 04 complete, 05+ pending (note: 03 not yet run — skipped to 04 by executor)
+Plan: 03 complete (now all of 01-04 done), 05+ pending
 Status: In progress
-Last activity: 2026-03-04 — 15-04 complete (admin packages overview page, workspace settings Package & Quotas section, /api/workspaces/[slug]/package endpoint)
+Last activity: 2026-03-04 — 15-03 complete (Campaign Agent package enforcement, Orchestrator quota surfacing, updateWorkspacePackage tool)
 
 Progress: [░░░░░░░░░░] ~3% (v2.0)
 
@@ -48,6 +48,8 @@ Progress: [░░░░░░░░░░] ~3% (v2.0)
 - [Phase 15-foundation]: DiscoveredPerson uses soft references only — no FK constraints for audit trail flexibility
 - [15-04 admin-ui]: API route /api/workspaces/[slug]/package created in Plan 04 (not Plan 03) — Plan 03 not yet run, was blocking dependency
 - [15-04 admin-ui]: No auth guard on package API route — consistent with all other workspace API routes in this project
+- [15-03 agents]: Campaign allowance is soft limit — canProceedWithConfirmation pattern, not hard block
+- [15-03 agents]: updateWorkspacePackage placed in dashboardTools (direct exec), not as delegation tool — admin management, not specialist task
 
 ### Blockers/Concerns
 
@@ -62,5 +64,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 15-04-PLAN.md (admin packages overview, workspace Package & Quotas section, package API endpoint)
-Resume file: .planning/phases/15-foundation/15-03-PLAN.md (still pending — skipped this session)
+Stopped at: Completed 15-03-PLAN.md (Campaign Agent enforcement, Orchestrator quota surfacing, updateWorkspacePackage tool)
+Resume file: .planning/phases/15-foundation/15-05-PLAN.md (next plan, if exists)
