@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -21,9 +21,11 @@ import {
   ListOrdered,
   Megaphone,
   Package,
-  ChevronsUpDown,
-  Check,
   Mail,
+  DollarSign,
+  ClipboardList,
+  CircleDot,
+  CircleDashed,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -73,17 +75,27 @@ interface NavGroup {
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 const GROUPS_STORAGE_KEY = "sidebar-collapsed-groups";
 
-const NAV_GROUPS: NavGroup[] = [
+const STATIC_NAV_GROUPS: NavGroup[] = [
   {
-    key: "main",
-    label: "Main",
+    key: "overview",
+    label: "Overview",
     collapsible: false,
     tier: "primary",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-      { href: "/clients", label: "Clients", icon: Briefcase },
+      { href: "/notifications", label: "Notifications", icon: Bell },
+    ],
+  },
+  {
+    key: "sales",
+    label: "Sales",
+    collapsible: true,
+    tier: "secondary",
+    items: [
       { href: "/pipeline", label: "Pipeline", icon: Target },
+      { href: "/onboard", label: "Onboard", icon: ClipboardList },
+      { href: "/clients", label: "Clients", icon: Briefcase },
     ],
   },
   {
@@ -98,6 +110,16 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    key: "email",
+    label: "Email",
+    collapsible: true,
+    tier: "secondary",
+    items: [
+      { href: "/email", label: "Email Health", icon: Mail },
+      { href: "/webhook-log", label: "Webhook Log", icon: Webhook },
+    ],
+  },
+  {
     key: "linkedin",
     label: "LinkedIn",
     collapsible: true,
@@ -107,6 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/linkedin-queue", label: "LinkedIn Queue", icon: ListOrdered },
     ],
   },
+  // WORKSPACES group is inserted dynamically by buildNavGroups()
   {
     key: "system",
     label: "System",
@@ -115,8 +138,7 @@ const NAV_GROUPS: NavGroup[] = [
     tier: "system",
     items: [
       { href: "/agent-runs", label: "Agent Runs", icon: Activity },
-      { href: "/webhook-log", label: "Webhook Log", icon: Webhook },
-      { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/enrichment-costs", label: "Enrichment Costs", icon: DollarSign },
       { href: "/packages", label: "Packages", icon: Package },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
@@ -124,121 +146,31 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Workspace Switcher
+// Build nav groups with dynamic WORKSPACES group
 // ---------------------------------------------------------------------------
 
-function WorkspaceSwitcher({
-  workspaces,
-  isCollapsed,
-}: {
-  workspaces: WorkspaceItem[];
-  isCollapsed: boolean;
-}) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
+function buildNavGroups(workspaces: WorkspaceItem[]): NavGroup[] {
+  const workspacesGroup: NavGroup = {
+    key: "workspaces",
+    label: "Workspaces",
+    collapsible: true,
+    tier: "secondary",
+    items: workspaces.map((ws) => ({
+      href: `/workspace/${ws.slug}`,
+      label: ws.name,
+      icon: ws.hasApiToken ? CircleDot : CircleDashed,
+    })),
+  };
 
-  // Determine the currently-active workspace from the URL
-  const activeWs = workspaces.find((ws) =>
-    pathname.startsWith(`/workspace/${ws.slug}`),
-  );
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open]);
-
-  if (isCollapsed) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={() => setOpen(!open)}
-            className="relative flex w-full items-center justify-center rounded-lg px-2 py-2 text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
-          >
-            <Mail className="h-4 w-4 shrink-0" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" sideOffset={8}>
-          {activeWs ? activeWs.name : "Select workspace"}
-        </TooltipContent>
-      </Tooltip>
-    );
+  // Insert workspaces group before the system group (last static group)
+  const groups = [...STATIC_NAV_GROUPS];
+  const systemIndex = groups.findIndex((g) => g.key === "system");
+  if (systemIndex !== -1) {
+    groups.splice(systemIndex, 0, workspacesGroup);
+  } else {
+    groups.push(workspacesGroup);
   }
-
-  return (
-    <div className="relative" ref={popoverRef}>
-      <button
-        onClick={() => setOpen(!open)}
-        className={cn(
-          "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-          "text-sidebar-foreground hover:bg-sidebar-accent/50",
-          "border border-sidebar-border/60",
-        )}
-      >
-        <Mail className="h-4 w-4 shrink-0 text-sidebar-foreground/50" />
-        <span className="flex-1 truncate text-left">
-          {activeWs ? activeWs.name : "Select workspace"}
-        </span>
-        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40" />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-sidebar-border bg-sidebar shadow-xl">
-          <div className="p-1">
-            {workspaces.map((ws) => {
-              const isActive = activeWs?.slug === ws.slug;
-              const isPending = !ws.hasApiToken;
-              return (
-                <button
-                  key={ws.slug}
-                  onClick={() => {
-                    router.push(`/workspace/${ws.slug}`);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                    isPending && "opacity-70",
-                  )}
-                >
-                  <span className="flex-1 truncate text-left">{ws.name}</span>
-                  {isPending && (
-                    <span className="text-[10px] font-medium bg-yellow-500/20 text-yellow-300 rounded px-1.5 py-0.5">
-                      Setup
-                    </span>
-                  )}
-                  {isActive && !isPending && (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return groups;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +199,7 @@ function CollapsibleGroup({
     );
   }
 
-  // Non-collapsible groups (Main): just show items, no header
+  // Non-collapsible groups (Overview): just show items, no header
   if (!group.collapsible) {
     return (
       <div className="space-y-0.5">
@@ -320,6 +252,8 @@ export function Sidebar({ workspaces }: SidebarProps) {
   const [mounted, setMounted] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
+  const navGroups = buildNavGroups(workspaces);
+
   // Hydrate collapsed states from localStorage after mount
   useEffect(() => {
     try {
@@ -335,7 +269,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
       } else {
         // Set defaults: collapse groups marked defaultCollapsed
         const defaults: Record<string, boolean> = {};
-        for (const g of NAV_GROUPS) {
+        for (const g of STATIC_NAV_GROUPS) {
           if (g.defaultCollapsed) defaults[g.key] = true;
         }
         setCollapsedGroups(defaults);
@@ -434,7 +368,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
         )}
       >
         <item.icon className={cn("shrink-0", tierIcon)} />
-        {!isCollapsed && <span>{item.label}</span>}
+        {!isCollapsed && <span className="truncate">{item.label}</span>}
         {isNotification && unreadCount > 0 && (
           <span
             className={cn(
@@ -488,20 +422,10 @@ export function Sidebar({ workspaces }: SidebarProps) {
         )}
       </div>
 
-      {/* Workspace switcher */}
-      <div
-        className={cn(
-          "border-b border-sidebar-border/50",
-          isCollapsed ? "px-1.5 py-2" : "px-3 py-3",
-        )}
-      >
-        <WorkspaceSwitcher workspaces={workspaces} isCollapsed={isCollapsed} />
-      </div>
-
       {/* Scrollable nav */}
       <ScrollArea className={cn("flex-1 py-3", isCollapsed ? "px-1.5" : "px-3")}>
         <nav className="space-y-3">
-          {NAV_GROUPS.map((group) => {
+          {navGroups.map((group) => {
             const isGroupOpen = !collapsedGroups[group.key];
             return (
               <CollapsibleGroup
