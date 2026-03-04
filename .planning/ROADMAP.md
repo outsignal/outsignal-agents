@@ -50,7 +50,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 - [x] **Phase 18: Signal Monitoring Infrastructure** - Railway signal worker, PredictLeads integration (5 signal types), Serper social listening, SignalEvent ingestion, budget governor (completed 2026-03-04)
 - [x] **Phase 19: Evergreen Signal Campaign Auto-Pipeline** - Signal campaign schema + dual state machine, Campaign Agent signal tools, signal-to-deploy pipeline processor, worker trigger + admin UI (4 plans) (completed 2026-03-04)
 - [x] **Phase 20: Copy Strategy Framework** - Writer Agent multi-strategy support (Creative Ideas, PVP, one-liner, custom), per-client KB examples by strategy, groundedIn validation, full KB consultation (completed 2026-03-04)
-- [ ] **Phase 21: Signal Dashboard + CLI Chat** - /admin/signals live feed and breakdown, CLI orchestrator chat via scripts/cli-chat.ts
+- [ ] **Phase 21: Signal Dashboard + CLI Chat** - /admin/signals live feed and breakdown, CLI orchestrator chat via scripts/chat.ts (2 plans)
 - [ ] **Phase 22: Client Financials & Invoicing** - Quote/invoice management, PDF generation, revenue dashboard, client portal billing view — replacing Google Docs manual process
 
 ## Phase Details
@@ -147,7 +147,9 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   3. Dashboard shows daily and weekly cost for signal monitoring per workspace so admin can track spend
   4. Admin can run `npm run chat` from the terminal and have a multi-turn conversation with the orchestrator that supports all existing agent capabilities (Research, Leads, Writer, Campaign)
   5. CLI session conversation history persists across multiple turns within a session and each session is recorded as an AgentRun in the database
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 21-01-PLAN.md -- Signal dashboard: GET /api/signals aggregated endpoint, /admin/signals page with polling, summary cards, bar chart, feed table, per-workspace breakdown, sidebar nav link
+- [ ] 21-02-PLAN.md -- CLI chat: scripts/chat.ts interactive orchestrator REPL with workspace picker, multi-turn conversation, session persistence as AgentRun
 
 ### Phase 22: Client Financials & Invoicing
 **Goal**: Admins can create quotes and invoices for clients directly in the dashboard, generate branded PDFs, email quotes for client acceptance, track payment status, and view revenue analytics — eliminating the current Google Docs manual invoicing process
@@ -176,5 +178,5 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 18. Signal Monitoring Infrastructure | 4/4 | Complete    | 2026-03-04 | - |
 | 19. Evergreen Signal Campaign Auto-Pipeline | 4/4 | Complete    | 2026-03-04 | - |
 | 20. Creative Ideas Copy Framework | 2/2 | Complete    | 2026-03-04 | - |
-| 21. Signal Dashboard + CLI Chat | v2.0 | 0/TBD | Not started | - |
+| 21. Signal Dashboard + CLI Chat | v2.0 | 0/2 | Planned | - |
 | 22. Client Financials & Invoicing | v2.0 | 0/TBD | Not started | - |
