@@ -15,9 +15,10 @@ export async function sendOverdueReminderEmail(
   recipientEmail: string
 ): Promise<void> {
   const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL ?? "https://portal.outsignal.ai";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
   const viewUrl = invoice.viewToken
-    ? `${portalBase}/portal/invoices/${invoice.viewToken}`
-    : `${portalBase}/portal/invoices`;
+    ? `${baseUrl}/api/invoices/${invoice.id}/pdf?token=${invoice.viewToken}`
+    : `${portalBase}/portal/billing`;
 
   const subject = `Reminder: Invoice ${invoice.invoiceNumber} is overdue`;
 
