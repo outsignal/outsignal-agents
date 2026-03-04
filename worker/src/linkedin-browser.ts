@@ -54,7 +54,12 @@ export class LinkedInBrowser {
   private proxyUrl: string | undefined;
   private launched = false;
   private urnCache: Map<string, CachedProfile> = new Map();
-  private voyagerCookies: { liAt: string; jsessionId: string } | null = null;
+  private _voyagerCookies: { liAt: string; jsessionId: string } | null = null;
+
+  /** Returns extracted Voyager cookies (li_at + JSESSIONID) after a successful login. */
+  getVoyagerCookies(): { liAt: string; jsessionId: string } | null {
+    return this._voyagerCookies;
+  }
 
   /** URN cache TTL: 30 minutes */
   private static readonly URN_CACHE_TTL = 30 * 60 * 1000;
@@ -1707,8 +1712,8 @@ export class LinkedInBrowser {
         this.launched = true;
 
         // Extract Voyager API cookies for HTTP-based actions
-        this.voyagerCookies = await this.extractVoyagerCookies();
-        if (this.voyagerCookies) {
+        this._voyagerCookies = await this.extractVoyagerCookies();
+        if (this._voyagerCookies) {
           this.log("Voyager cookies extracted successfully");
         } else {
           console.warn("[LinkedInBrowser] Failed to extract Voyager cookies — HTTP actions will not work");

@@ -163,6 +163,22 @@ export class SessionServer {
           );
         }
 
+        // Save Voyager-format cookies for the worker's VoyagerClient
+        try {
+          const voyagerCookies = browser.getVoyagerCookies();
+          if (voyagerCookies) {
+            await this.api.saveVoyagerCookies(senderId, voyagerCookies);
+            console.log("[SessionServer] Saved Voyager cookies (li_at + JSESSIONID)");
+          } else {
+            console.warn("[SessionServer] No Voyager cookies available to save");
+          }
+        } catch (voyagerError) {
+          console.error(
+            "[SessionServer] Failed to save Voyager cookies:",
+            voyagerError instanceof Error ? voyagerError.message : String(voyagerError),
+          );
+        }
+
         this.jsonResponse(res, 200, {
           success: true,
           cookieCount,
