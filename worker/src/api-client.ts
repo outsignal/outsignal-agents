@@ -201,4 +201,41 @@ export class ApiClient {
       body: JSON.stringify({ healthStatus }),
     });
   }
+
+  /**
+   * Get pending connections that need a live status check for a workspace.
+   */
+  async getConnectionsToCheck(
+    workspaceSlug: string,
+  ): Promise<
+    {
+      connectionId: string;
+      senderId: string;
+      personId: string;
+      personLinkedinUrl: string;
+    }[]
+  > {
+    const result = await this.request<{
+      connections: {
+        connectionId: string;
+        senderId: string;
+        personId: string;
+        personLinkedinUrl: string;
+      }[];
+    }>(`/api/linkedin/connections/check?workspace=${workspaceSlug}`);
+    return result.connections;
+  }
+
+  /**
+   * Report the result of a connection status check.
+   */
+  async reportConnectionResult(
+    connectionId: string,
+    status: "connected" | "pending" | "not_connected",
+  ): Promise<void> {
+    await this.request(`/api/linkedin/connections/${connectionId}/result`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+  }
 }

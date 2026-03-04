@@ -12,7 +12,7 @@
 
 import { ApiClient } from "./api-client.js";
 import { VoyagerClient } from "./voyager-client.js";
-import type { ActionResult } from "./voyager-client.js";
+import type { ActionResult, ConnectionStatus } from "./voyager-client.js";
 import {
   isWithinBusinessHours,
   msUntilBusinessHours,
@@ -54,6 +54,9 @@ export class Worker {
   private options: WorkerOptions;
   private running = false;
   private activeClients: Map<string, VoyagerClient> = new Map();
+  /** Last successful session test per sender (epoch ms). */
+  private lastSessionCheck: Map<string, number> = new Map();
+  private static readonly SESSION_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -93,6 +96,7 @@ export class Worker {
     console.log("[Worker] Stopping...");
     this.running = false;
     this.activeClients.clear();
+    this.lastSessionCheck.clear();
   }
 
   /**
@@ -144,6 +148,100 @@ export class Worker {
       if (!this.running) break;
       await this.processSender(sender);
     }
+
+    // After processing action queues, poll pending connections
+    await this.pollConnections(workspaceSlug, activeSenders);
+  }
+
+  /**
+   * Poll pending connections — check live status via VoyagerClient
+   * and report results so follow-up messages can fire.
+   */
+  private async pollConnections(
+    workspaceSlug: string,
+    activeSenders: SenderConfig[],
+  ): Promise<void> {
+    let connections: {
+      connectionId: string;
+      senderId: string;
+      personId: string;
+      personLinkedinUrl: string;
+    }[];
+
+    try {
+      connections = await this.api.getConnectionsToCheck(workspaceSlug);
+    } catch (error) {
+      console.error(
+        `[Worker] Failed to get connections to check for ${workspaceSlug}:`,
+        error,
+      );
+      return;
+    }
+
+    if (connections.length === 0) return;
+
+    console.log(
+      `[Worker] ${connections.length} pending connection(s) to check for ${workspaceSlug}`,
+    );
+
+    // Group by sender to reuse VoyagerClient instances
+    const bySender = new Map<string, typeof connections>();
+    for (const conn of connections) {
+      const list = bySender.get(conn.senderId) ?? [];
+      list.push(conn);
+      bySender.set(conn.senderId, list);
+    }
+
+    for (const [senderId, senderConnections] of bySender) {
+      if (!this.running) break;
+
+      const senderConfig = activeSenders.find((s) => s.id === senderId);
+      if (!senderConfig) continue;
+
+      let client: VoyagerClient;
+      try {
+        client = await this.getOrCreateVoyagerClient(senderConfig);
+      } catch (error) {
+        console.error(
+          `[Worker] Failed to get VoyagerClient for ${senderConfig.name} during connection polling:`,
+          error,
+        );
+        continue;
+      }
+
+      for (const conn of senderConnections) {
+        if (!this.running) break;
+
+        try {
+          const rawStatus: ConnectionStatus = await client.checkConnectionStatus(
+            conn.personLinkedinUrl,
+          );
+
+          console.log(
+            `[Worker] Connection ${conn.connectionId} (person ${conn.personId}): ${rawStatus}`,
+          );
+
+          // Only report actionable statuses — skip "unknown" and "not_connectable"
+          if (
+            rawStatus === "connected" ||
+            rawStatus === "pending" ||
+            rawStatus === "not_connected"
+          ) {
+            await this.api.reportConnectionResult(conn.connectionId, rawStatus);
+          }
+        } catch (error) {
+          console.error(
+            `[Worker] Failed to check connection ${conn.connectionId}:`,
+            error,
+          );
+        }
+
+        // Small delay between checks to avoid rate limiting
+        if (this.running) {
+          await sleep(3000 + Math.random() * 2000);
+        }
+      }
+    }
   }
 
   /**
@@ -179,6 +277,32 @@ export class Worker {
         await this.safeMarkFailed(action.id, `VoyagerClient creation failed: ${error}`);
       }
       return;
+    }
+
+    // Session health check — only if 30+ minutes since last successful test
+    const lastCheck = this.lastSessionCheck.get(sender.id) ?? 0;
+    const now = Date.now();
+    if (now - lastCheck > Worker.SESSION_CHECK_INTERVAL_MS) {
+      console.log(`[Worker] Testing session health for ${sender.name}...`);
+      const sessionValid = await client.testSession();
+
+      if (!sessionValid) {
+        console.warn(
+          `[Worker] Session health check FAILED for ${sender.name} — marking session_expired`,
+        );
+        this.activeClients.delete(sender.id);
+        this.lastSessionCheck.delete(sender.id);
+        await this.api.updateSenderHealth(sender.id, "session_expired").catch((err) =>
+          console.error(`[Worker] Failed to update sender health:`, err),
+        );
+        for (const action of actions) {
+          await this.safeMarkFailed(action.id, "session_expired");
+        }
+        return;
+      }
+
+      console.log(`[Worker] Session OK for ${sender.name}`);
+      this.lastSessionCheck.set(sender.id, now);
     }
 
     // Execute each action with delays between them

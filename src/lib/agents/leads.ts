@@ -10,7 +10,10 @@ import { aiarkSearchAdapter } from "@/lib/discovery/adapters/aiark-search";
 import { serperAdapter } from "@/lib/discovery/adapters/serper";
 import { firecrawlDirectoryAdapter } from "@/lib/discovery/adapters/firecrawl-directory";
 import { stageDiscoveredPeople } from "@/lib/discovery/staging";
-import { incrementDailySpend } from "@/lib/enrichment/costs";
+import { incrementDailySpend, PROVIDER_COSTS } from "@/lib/enrichment/costs";
+import { getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
+import { deduplicateAndPromote as runDeduplicateAndPromote } from "@/lib/discovery/promotion";
+import { prisma } from "@/lib/db";
 
 // --- Leads Agent Tools ---
 
@@ -149,6 +152,103 @@ const leadsTools = {
     }),
     execute: async ({ listId, workspaceSlug }) => {
       return operations.exportListToEmailBison(listId, workspaceSlug);
+    },
+  }),
+
+  buildDiscoveryPlan: tool({
+    description:
+      "Build a discovery plan showing sources, estimated cost, estimated volume, and quota impact. ALWAYS call this before executing any discovery searches. Does NOT make external API calls — just computes projections from workspace quota data. Present the returned plan to admin and wait for approval before calling search tools.",
+    inputSchema: z.object({
+      workspaceSlug: z.string().describe("Workspace slug for quota lookup"),
+      sources: z.array(
+        z.object({
+          name: z.enum([
+            "apollo",
+            "prospeo",
+            "aiark",
+            "serper-web",
+            "serper-maps",
+            "firecrawl",
+          ]),
+          reasoning: z
+            .string()
+            .describe("1-line explanation of why this source was chosen"),
+          estimatedVolume: z
+            .number()
+            .describe("Estimated leads this source will return"),
+          filters: z
+            .record(z.string(), z.unknown())
+            .describe("Source-specific filters as JSON"),
+        }),
+      ),
+    }),
+    execute: async (params) => {
+      const usage = await getWorkspaceQuotaUsage(params.workspaceSlug);
+      const workspace = await prisma.workspace.findUnique({
+        where: { slug: params.workspaceSlug },
+        select: { monthlyLeadQuota: true },
+      });
+      const quotaLimit = workspace?.monthlyLeadQuota ?? 2000;
+      const totalEstimatedLeads = params.sources.reduce(
+        (sum, s) => sum + s.estimatedVolume,
+        0,
+      );
+
+      // Cost estimation per source using PROVIDER_COSTS
+      const SOURCE_COST_MAP: Record<string, string> = {
+        apollo: "apollo-search",
+        prospeo: "prospeo-search",
+        aiark: "aiark-search",
+        "serper-web": "serper-web",
+        "serper-maps": "serper-maps",
+        firecrawl: "firecrawl-extract",
+      };
+
+      const sourcesWithCost = params.sources.map((s) => {
+        const costKey = SOURCE_COST_MAP[s.name] ?? s.name;
+        const costPerCall = PROVIDER_COSTS[costKey] ?? 0;
+        // Apollo is free. Others: ~1 API call per 25 results.
+        const estimatedCalls =
+          s.name === "apollo"
+            ? 0
+            : Math.max(1, Math.ceil(s.estimatedVolume / 25));
+        const estimatedCost = costPerCall * estimatedCalls;
+        return { ...s, estimatedCost };
+      });
+
+      const totalCost = sourcesWithCost.reduce(
+        (sum, s) => sum + s.estimatedCost,
+        0,
+      );
+      const quotaAfter = usage.totalLeadsUsed + totalEstimatedLeads;
+      const overQuota = quotaAfter > quotaLimit;
+
+      return {
+        sources: sourcesWithCost,
+        totalEstimatedLeads,
+        totalCost,
+        quotaBefore: usage.totalLeadsUsed,
+        quotaAfter,
+        quotaLimit,
+        overQuota,
+      };
+    },
+  }),
+
+  deduplicateAndPromote: tool({
+    description:
+      "After discovery searches complete for an approved plan, deduplicate staged leads against the Person DB and promote non-duplicates. Triggers enrichment waterfall for promoted leads. Call this AFTER all search tools for an approved plan have finished.",
+    inputSchema: z.object({
+      workspaceSlug: z.string().describe("Workspace running the discovery"),
+      discoveryRunIds: z
+        .array(z.string())
+        .describe("Run IDs returned by each search tool call"),
+    }),
+    execute: async (params) => {
+      return runDeduplicateAndPromote(
+        params.workspaceSlug,
+        params.discoveryRunIds,
+      );
     },
   }),
 

@@ -7,7 +7,13 @@ import { decrypt } from "@/lib/crypto";
  * GET /api/linkedin/senders/[id]/cookies
  * Returns decrypted session cookies for a sender.
  * Worker-only endpoint — used to load Voyager API cookies (li_at + JSESSIONID).
- * Follows the same pattern as the credentials endpoint.
+ *
+ * Cookie format bridge:
+ * The Chrome extension saves cookies as a browser array:
+ *   [{ name: "li_at", value: "...", domain: ".linkedin.com" }, ...]
+ * The worker expects voyager format:
+ *   [{ type: "voyager", liAt: "...", jsessionId: "..." }]
+ * This endpoint detects the browser array format and transforms it automatically.
  */
 export async function GET(
   request: NextRequest,
@@ -38,10 +44,10 @@ export async function GET(
     }
 
     // Decrypt session data
-    let cookies: unknown[];
+    let parsed: unknown;
     try {
       const decrypted = decrypt(sender.sessionData);
-      cookies = JSON.parse(decrypted);
+      parsed = JSON.parse(decrypted);
     } catch {
       return NextResponse.json(
         { error: "Failed to decrypt session data" },
@@ -49,7 +55,37 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ cookies });
+    // Bridge: Chrome extension saves cookies as browser array
+    // [{ name: "li_at", value: "...", domain: ".linkedin.com" }, ...]
+    // but the worker expects voyager format: { type: "voyager", liAt, jsessionId }
+    if (Array.isArray(parsed)) {
+      const liAtEntry = parsed.find(
+        (c: Record<string, unknown>) => c?.name === "li_at",
+      );
+      const jsessionEntry = parsed.find(
+        (c: Record<string, unknown>) => c?.name === "JSESSIONID",
+      );
+
+      const liAt = typeof liAtEntry?.value === "string" ? liAtEntry.value : null;
+      const jsessionId = typeof jsessionEntry?.value === "string" ? jsessionEntry.value : null;
+
+      if (!liAt || !jsessionId) {
+        return NextResponse.json(
+          {
+            error: "Session cookies missing required values (li_at or JSESSIONID)",
+            detail: { hasLiAt: !!liAt, hasJsessionId: !!jsessionId },
+          },
+          { status: 422 },
+        );
+      }
+
+      return NextResponse.json({
+        cookies: [{ type: "voyager" as const, liAt, jsessionId }],
+      });
+    }
+
+    // Already in expected format — return as-is
+    return NextResponse.json({ cookies: Array.isArray(parsed) ? parsed : [parsed] });
   } catch (error) {
     console.error("Get cookies error:", error);
     return NextResponse.json(

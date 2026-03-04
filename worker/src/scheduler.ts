@@ -16,11 +16,12 @@ interface ScheduleConfig {
   activeDays: number[];
 }
 
+/** UK business hours (Jonathan's LinkedIn account). Mon-Fri 8 AM – 6 PM London time. */
 const DEFAULT_CONFIG: ScheduleConfig = {
   timezone: "Europe/London",
-  startHour: 0,
-  endHour: 24,
-  activeDays: [0, 1, 2, 3, 4, 5, 6], // All days — TEMP for testing
+  startHour: 8,
+  endHour: 18,
+  activeDays: [1, 2, 3, 4, 5], // Mon-Fri
 };
 
 /**

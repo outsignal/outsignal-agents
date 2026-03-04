@@ -125,6 +125,26 @@ export class VoyagerClient {
   }
 
   /**
+   * Lightweight session health check.
+   * Fetches /me (own mini-profile) — zero side effects, no rate limit pressure.
+   * Returns true if cookies + proxy are working, false on any error.
+   */
+  async testSession(): Promise<boolean> {
+    try {
+      const response = await this.request("/me");
+      if (
+        response.url.includes("/checkpoint/") ||
+        response.url.includes("/challenge/")
+      ) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Extract the profileId slug from a LinkedIn profile URL.
    * e.g. "https://www.linkedin.com/in/april-newman-27713482" → "april-newman-27713482"
    */
