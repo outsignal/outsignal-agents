@@ -57,16 +57,20 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 - [ ] **CFG-05**: Monthly lead quota per workspace (e.g., 2,000 leads/month) — agent enforces quota across all campaigns (static + signal)
 - [ ] **CFG-06**: Lead quota usage visible in agent responses and discovery plans
 
-### Creative Ideas
+### Copy Strategy
 
-- [ ] **COPY-01**: Writer Agent generates 3 constrained, personalized ideas per prospect based on company research and client offerings
-- [ ] **COPY-02**: Each idea is constrained to a specific client offering/capability (AI cannot make up services the client doesn't provide)
-- [ ] **COPY-03**: Ideas are personalized using prospect's company description, website analysis, and ICP data — not generic
-- [ ] **COPY-04**: Writer produces both 3-idea format (full) and one-liner variant ("If I were looking at your business, I'd help by...")
-- [ ] **COPY-05**: Per-client Creative Ideas examples are stored in Knowledge Base with tag `creative-ideas-{workspaceSlug}`
-- [ ] **COPY-06**: AI generates draft Creative Ideas examples from Research Agent website analysis of client, admin reviews and refines before ingestion
-- [ ] **COPY-07**: Writer validates `groundedIn` field — every idea must trace to a real client offering (hallucination prevention)
-- [ ] **COPY-08**: Signal-triggered emails use signals for timing only — signals are invisible to the recipient, copy leads with value
+- [ ] **COPY-01**: Writer Agent supports multiple copy strategies (Creative Ideas, PVP, one-liner, custom) and admin/agent selects which to use per campaign
+- [ ] **COPY-02**: Creative Ideas strategy generates 3 constrained, personalized ideas per prospect based on company research and client offerings
+- [ ] **COPY-03**: Each Creative Idea is constrained to a specific client offering/capability (AI cannot make up services the client doesn't provide)
+- [ ] **COPY-04**: Ideas are personalized using prospect's company description, website analysis, and ICP data — not generic
+- [ ] **COPY-05**: Writer produces both 3-idea format (full) and one-liner variant ("If I were looking at your business, I'd help by...")
+- [ ] **COPY-06**: Per-client copy examples are stored in Knowledge Base with tags (e.g., `creative-ideas-{workspaceSlug}`, `pvp-{workspaceSlug}`) — agent retrieves relevant examples based on selected strategy
+- [ ] **COPY-07**: AI generates draft copy examples from Research Agent website analysis of client, admin reviews and refines before ingestion
+- [ ] **COPY-08**: Writer validates `groundedIn` field for Creative Ideas — every idea must trace to a real client offering (hallucination prevention)
+- [ ] **COPY-09**: Signal-triggered emails use signals for timing only — signals are invisible to the recipient, copy leads with value
+- [ ] **COPY-10**: Writer consults full Knowledge Base (46+ docs) for best practices regardless of selected strategy — frameworks, subject lines, follow-up patterns, personalization techniques
+- [ ] **COPY-11**: Writer generates multiple strategy variants for the same campaign (e.g., Creative Ideas vs PVP vs one-liner) for A/B split testing
+- [ ] **COPY-12**: Campaign tracks which strategy variant each lead receives so performance can be compared per strategy
 
 ### Signal Dashboard
 
@@ -120,13 +124,68 @@ Deferred to next milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (To be filled by roadmapper) | | |
+| FIX-01 | Phase 15 | Pending |
+| FIX-02 | Phase 15 | Pending |
+| DISC-06 | Phase 15 | Pending |
+| DISC-09 | Phase 15 | Pending |
+| DISC-10 | Phase 15 | Pending |
+| CFG-01 | Phase 15 | Pending |
+| CFG-02 | Phase 15 | Pending |
+| CFG-03 | Phase 15 | Pending |
+| CFG-04 | Phase 15 | Pending |
+| CFG-05 | Phase 15 | Pending |
+| CFG-06 | Phase 15 | Pending |
+| DISC-01 | Phase 16 | Pending |
+| DISC-02 | Phase 16 | Pending |
+| DISC-03 | Phase 16 | Pending |
+| DISC-04 | Phase 16 | Pending |
+| DISC-05 | Phase 16 | Pending |
+| DISC-07 | Phase 17 | Pending |
+| DISC-08 | Phase 17 | Pending |
+| DISC-11 | Phase 17 | Pending |
+| DISC-12 | Phase 17 | Pending |
+| DISC-13 | Phase 17 | Pending |
+| SIG-01 | Phase 18 | Pending |
+| SIG-02 | Phase 18 | Pending |
+| SIG-03 | Phase 18 | Pending |
+| SIG-04 | Phase 18 | Pending |
+| SIG-05 | Phase 18 | Pending |
+| SIG-06 | Phase 18 | Pending |
+| SIG-07 | Phase 18 | Pending |
+| SIG-08 | Phase 18 | Pending |
+| SIG-09 | Phase 18 | Pending |
+| SIG-10 | Phase 18 | Pending |
+| PIPE-01 | Phase 19 | Pending |
+| PIPE-02 | Phase 19 | Pending |
+| PIPE-03 | Phase 19 | Pending |
+| PIPE-04 | Phase 19 | Pending |
+| PIPE-05 | Phase 19 | Pending |
+| PIPE-06 | Phase 19 | Pending |
+| PIPE-07 | Phase 19 | Pending |
+| PIPE-08 | Phase 19 | Pending |
+| PIPE-09 | Phase 19 | Pending |
+| COPY-01 | Phase 20 | Pending |
+| COPY-02 | Phase 20 | Pending |
+| COPY-03 | Phase 20 | Pending |
+| COPY-04 | Phase 20 | Pending |
+| COPY-05 | Phase 20 | Pending |
+| COPY-06 | Phase 20 | Pending |
+| COPY-07 | Phase 20 | Pending |
+| COPY-08 | Phase 20 | Pending |
+| DASH-01 | Phase 21 | Pending |
+| DASH-02 | Phase 21 | Pending |
+| DASH-03 | Phase 21 | Pending |
+| DASH-04 | Phase 21 | Pending |
+| DASH-05 | Phase 21 | Pending |
+| CLI-01 | Phase 21 | Pending |
+| CLI-02 | Phase 21 | Pending |
+| CLI-03 | Phase 21 | Pending |
 
 **Coverage:**
-- v2.0 requirements: 47 total
-- Mapped to phases: 0
-- Unmapped: 47 ⚠️
+- v2.0 requirements: 56 total
+- Mapped to phases: 56
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 after initial definition*
+*Last updated: 2026-03-04 after roadmap creation*

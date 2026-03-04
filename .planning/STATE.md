@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Lead Discovery & Intelligence
-status: defining_requirements
-last_updated: "2026-03-03"
+status: ready_to_plan
+last_updated: "2026-03-04"
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -15,29 +15,41 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-03)
+See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v2.0 Lead Discovery & Intelligence — defining requirements
+**Current focus:** v2.0 Phase 15 — Foundation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 15 of 21 (Foundation)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-03 — Milestone v2.0 started
+Status: Ready to plan
+Last activity: 2026-03-04 — v2.0 roadmap created (7 phases, 56 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0% (v2.0)
 
 ## Accumulated Context
 
-v1.0 and v1.1 decisions archived in milestone ROADMAP files.
-See: `.planning/milestones/v1.0-ROADMAP.md` and `.planning/milestones/v1.1-ROADMAP.md`
+### Decisions
+
+- [v2.0 Roadmap]: Phase 20 (Creative Ideas) and Phase 21 (CLI Chat) are independent of Phase 18-19 (signal pipeline) — can be parallelized
+- [v2.0 Roadmap]: Phase 15 groups FIX-01/02, schema additions, workspace config, and adapter interface — all are blocking dependencies
+- [v2.0 Roadmap]: Apollo per-workspace key architecture locked in Phase 15 schema — cannot retrofit later
+- [v2.0 Roadmap]: Signal budget governor is Phase 18 prerequisite, not an optimization
 
 ### Blockers/Concerns
 
-None active. All previous blockers resolved during v1.1.
+- PredictLeads paid pricing beyond 100 free requests/month is demo-only — confirm before Phase 18 polling frequency design
+- AI Ark People Search endpoint LOW confidence — verify in AI Ark dashboard before Phase 16 implementation (fallback: skip DISC-03 if unconfirmed)
+- Vercel at 2-cron Hobby limit — signal worker must run on Railway only, not Vercel
+
+### Pending Todos
+
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: v1.1 milestone completed and archived.
+Last session: 2026-03-04
+Stopped at: v2.0 roadmap written. 7 phases (15-21), 56 requirements mapped, STATE.md and REQUIREMENTS.md updated.
 Resume file: None
