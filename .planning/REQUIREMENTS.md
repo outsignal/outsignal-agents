@@ -38,8 +38,8 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 
 ### Pipeline
 
-- [ ] **PIPE-01**: Admin can create a signal campaign via chat specifying ICP criteria, signal types to monitor, and channel (email/LinkedIn/both)
-- [ ] **PIPE-02**: Signal campaign setup requires content template approval (admin review + client dual approval in portal) before going live
+- [x] **PIPE-01**: Admin can create a signal campaign via chat specifying ICP criteria, signal types to monitor, and channel (email/LinkedIn/both)
+- [x] **PIPE-02**: Signal campaign setup requires content template approval (admin review + client dual approval in portal) before going live
 - [ ] **PIPE-03**: When a signal fires on a live campaign, leads at the matching company are auto-enriched via existing waterfall
 - [ ] **PIPE-04**: Auto-enriched leads are ICP scored and added to the signal campaign's target list
 - [ ] **PIPE-05**: New leads auto-deploy to EmailBison/LinkedIn using the campaign's approved content template
@@ -155,8 +155,8 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | SIG-08 | Phase 18 | Complete |
 | SIG-09 | Phase 18 | Complete |
 | SIG-10 | Phase 18 | Complete |
-| PIPE-01 | Phase 19 | Pending |
-| PIPE-02 | Phase 19 | Pending |
+| PIPE-01 | Phase 19 | Complete |
+| PIPE-02 | Phase 19 | Complete |
 | PIPE-03 | Phase 19 | Pending |
 | PIPE-04 | Phase 19 | Pending |
 | PIPE-05 | Phase 19 | Pending |

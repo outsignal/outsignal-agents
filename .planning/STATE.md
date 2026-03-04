@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 19 of 21 (Evergreen Signal Campaign Auto-Pipeline) -- IN PROGRESS
-Plan: 01 of 06 complete
-Status: Phase 19 plan 01 complete — Campaign schema extended with signal fields + dual state machine
-Last activity: 2026-03-04 -- 19-01 complete (Campaign type/ICP/signal fields, SignalCampaignLead junction table, dual state machine in operations.ts)
+Plan: 02 of 06 complete
+Status: Phase 19 plan 02 complete — Campaign Agent signal tools + orchestrator signal delegation patterns
+Last activity: 2026-03-04 -- 19-02 complete (createSignalCampaign, activateSignalCampaign, pauseResumeSignalCampaign tools; generateObject ICP extraction; orchestrator signal workflow docs)
 
 Progress: [######░░░░] ~7% (v2.0)
 
@@ -89,6 +89,10 @@ Progress: [######░░░░] ~7% (v2.0)
 - [19-01 schema]: SignalCampaignLead uses soft ref for signalEventId (no FK) — consistent with project pattern of avoiding FK constraints
 - [19-01 schema]: icpCriteria stored as JSON string in TEXT column — consistent with existing JSON-in-string pattern throughout schema
 - [19-01 schema]: createCampaign only writes signal fields when type=signal — static campaigns remain unaffected by new optional fields
+- [19-02 campaign-agent]: icpCriteria passed as JSON string throughout — operations.ts accepts string | null, not Record<string, unknown>
+- [19-02 campaign-agent]: activateSignalCampaign bypasses operations state machine to allow direct DB update with signalEmailBisonCampaignId + lastSignalProcessedAt in one transaction
+- [19-02 campaign-agent]: extractIcpCriteria uses claude-haiku-4-5 — ICP extraction is a simple structured task; signal type validation happens before LLM call to fail fast on invalid requests
+- [19-02 campaign-agent]: maxSteps bumped 8 -> 10 in Campaign Agent to provide headroom for signal campaign creation (ICP extraction adds one step)
 - [20-01 writer-agent]: PVP framework moved from shared quality rules into PVP-only strategy block — Creative Ideas, One-liner, Custom no longer forced to use PVP structure
 - [20-01 writer-agent]: groundedIn is hard-reject — if creative idea cannot be traced to real offering (coreOffers/differentiators/caseStudies/KB), it must NOT be output; fewer than 3 drafts acceptable
 - [20-01 writer-agent]: Signal context injected via [INTERNAL SIGNAL CONTEXT] prefix in user message — writer uses for angle selection but NEVER surfaces to recipient copy
@@ -108,5 +112,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 20-01-PLAN.md (Phase 20 Plan 01 -- Writer Agent multi-strategy prompting, Campaign.copyStrategy schema, type contracts)
-Resume file: .planning/phases/20-copy-strategy-framework/20-02-PLAN.md (or Phase 19 plans running in parallel)
+Stopped at: Completed 19-02-PLAN.md (Phase 19 Plan 02 -- Campaign Agent signal tools: createSignalCampaign, activateSignalCampaign, pauseResumeSignalCampaign)
+Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-03-PLAN.md

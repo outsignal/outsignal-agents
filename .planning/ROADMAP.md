@@ -174,7 +174,7 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 16. Discovery Sources | v2.0 | Complete    | 2026-03-04 | 2026-03-04 |
 | 17. Leads Agent Discovery Upgrade | 2/2 | Complete    | 2026-03-04 | - |
 | 18. Signal Monitoring Infrastructure | 4/4 | Complete    | 2026-03-04 | - |
-| 19. Evergreen Signal Campaign Auto-Pipeline | 1/4 | In Progress|  | - |
+| 19. Evergreen Signal Campaign Auto-Pipeline | 2/4 | In Progress|  | - |
 | 20. Creative Ideas Copy Framework | 1/2 | In Progress|  | - |
 | 21. Signal Dashboard + CLI Chat | v2.0 | 0/TBD | Not started | - |
 | 22. Client Financials & Invoicing | v2.0 | 0/TBD | Not started | - |

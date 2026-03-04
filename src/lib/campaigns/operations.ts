@@ -56,6 +56,7 @@ export interface CampaignDetail extends CampaignSummary {
   description: string | null;
   emailSequence: unknown[] | null; // parsed JSON
   linkedinSequence: unknown[] | null; // parsed JSON
+  copyStrategy: string | null; // "creative-ideas" | "pvp" | "one-liner" | "custom" | null
   targetListId: string | null;
   targetListPeopleCount: number;
   leadsFeedback: string | null;
@@ -130,6 +131,7 @@ function formatCampaignDetail(
     description: string | null;
     emailSequence: string | null;
     linkedinSequence: string | null;
+    copyStrategy: string | null;
     targetListId: string | null;
     leadsApproved: boolean;
     leadsFeedback: string | null;
@@ -170,6 +172,7 @@ function formatCampaignDetail(
     description: raw.description,
     emailSequence: parseJsonArray(raw.emailSequence),
     linkedinSequence: parseJsonArray(raw.linkedinSequence),
+    copyStrategy: raw.copyStrategy ?? null,
     targetListId: raw.targetListId,
     targetListPeopleCount: raw.targetList?._count.people ?? 0,
     leadsFeedback: raw.leadsFeedback,
@@ -544,7 +547,7 @@ export async function publishForReview(id: string): Promise<CampaignDetail> {
  */
 export async function saveCampaignSequences(
   id: string,
-  data: { emailSequence?: unknown[]; linkedinSequence?: unknown[] },
+  data: { emailSequence?: unknown[]; linkedinSequence?: unknown[]; copyStrategy?: string },
 ): Promise<CampaignDetail> {
   const { emailSequence, linkedinSequence } = data;
 
@@ -554,6 +557,9 @@ export async function saveCampaignSequences(
   }
   if (linkedinSequence !== undefined) {
     updateData.linkedinSequence = JSON.stringify(linkedinSequence);
+  }
+  if (data.copyStrategy !== undefined) {
+    updateData.copyStrategy = data.copyStrategy;
   }
 
   const campaign = await prisma.campaign.update({
