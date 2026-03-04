@@ -26,6 +26,7 @@ import {
   ClipboardList,
   CircleDot,
   CircleDashed,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -84,6 +85,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+      { href: "/signals", label: "Signals", icon: Zap },
       { href: "/notifications", label: "Notifications", icon: Bell },
     ],
   },
