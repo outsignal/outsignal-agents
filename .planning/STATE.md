@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v2.0 Phase 18 — Signal Monitoring Infrastructure
+**Current focus:** v2.0 Phase 19 — Evergreen Signal Campaign Auto-Pipeline
 
 ## Current Position
 
-Phase: 18 of 21 (Signal Monitoring Infrastructure) -- COMPLETE
-Plan: 04 of 04 complete
-Status: Phase 18 complete — all 4 plans done, signal worker functionally complete
-Last activity: 2026-03-04 -- 18-04 complete (budget governor, Serper social listening, URL dedup, workspace config loader, cycle orchestrator, wired entry point)
+Phase: 19 of 21 (Evergreen Signal Campaign Auto-Pipeline) -- IN PROGRESS
+Plan: 01 of 06 complete
+Status: Phase 19 plan 01 complete — Campaign schema extended with signal fields + dual state machine
+Last activity: 2026-03-04 -- 19-01 complete (Campaign type/ICP/signal fields, SignalCampaignLead junction table, dual state machine in operations.ts)
 
 Progress: [######░░░░] ~7% (v2.0)
 
@@ -85,6 +85,10 @@ Progress: [######░░░░] ~7% (v2.0)
 - [18-04 cycle-orchestration]: Fisher-Yates domain shuffle — ensures fair budget coverage when a workspace hits its cap mid-cycle
 - [18-04 cycle-orchestration]: ADMIN_SLACK_CHANNEL_ID for budget alerts, not workspace channel — budget alerts are operational/admin, not client-facing
 - [18-04 cycle-orchestration]: Hiring spike uses externalId=null — synthetic aggregate signal, always creates (no stable external ID to dedup on)
+- [19-01 schema]: Signal campaigns use simplified 3-state machine (draft -> active -> paused/archived) independent of static 7-state machine
+- [19-01 schema]: SignalCampaignLead uses soft ref for signalEventId (no FK) — consistent with project pattern of avoiding FK constraints
+- [19-01 schema]: icpCriteria stored as JSON string in TEXT column — consistent with existing JSON-in-string pattern throughout schema
+- [19-01 schema]: createCampaign only writes signal fields when type=signal — static campaigns remain unaffected by new optional fields
 
 ### Blockers/Concerns
 
@@ -99,5 +103,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 18-04-PLAN.md (Phase 18 Plan 04 -- budget governor, cycle orchestrator, signal worker complete)
-Resume file: .planning/phases/19-signal-dashboard/19-01-PLAN.md (or next unstarted plan)
+Stopped at: Completed 19-01-PLAN.md (Phase 19 Plan 01 -- Campaign schema signal fields + SignalCampaignLead + dual state machine)
+Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-02-PLAN.md

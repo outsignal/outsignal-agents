@@ -51,6 +51,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 - [ ] **Phase 19: Evergreen Signal Campaign Auto-Pipeline** - Signal campaign schema + dual state machine, Campaign Agent signal tools, signal-to-deploy pipeline processor, worker trigger + admin UI (4 plans)
 - [ ] **Phase 20: Copy Strategy Framework** - Writer Agent multi-strategy support (Creative Ideas, PVP, one-liner, custom), per-client KB examples by strategy, groundedIn validation, full KB consultation
 - [ ] **Phase 21: Signal Dashboard + CLI Chat** - /admin/signals live feed and breakdown, CLI orchestrator chat via scripts/cli-chat.ts
+- [ ] **Phase 22: Client Financials & Invoicing** - Quote/invoice management, PDF generation, revenue dashboard, client portal billing view — replacing Google Docs manual process
 
 ## Phase Details
 
@@ -148,6 +149,18 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   5. CLI session conversation history persists across multiple turns within a session and each session is recorded as an AgentRun in the database
 **Plans**: TBD
 
+### Phase 22: Client Financials & Invoicing
+**Goal**: Admins can create quotes and invoices for clients directly in the dashboard, generate branded PDFs, email quotes for client acceptance, track payment status, and view revenue analytics — eliminating the current Google Docs manual invoicing process
+**Depends on**: Nothing (independent of v2.0 signal/discovery work)
+**Requirements**: TBD (context gathering needed)
+**Success Criteria** (what must be TRUE):
+  1. Admin can create a quote or invoice for any workspace client with line items, tax, and auto-generated document numbers (QT-2026-001, INV-2026-001)
+  2. Admin can generate and download a branded PDF for any quote or invoice
+  3. Admin can email a quote to a client, and the client can view and accept/reject it via a secure portal link
+  4. Dashboard shows revenue KPIs (Total Quoted, Total Invoiced, Total Paid, Outstanding) with monthly breakdown chart
+  5. Invoice/quote status workflow enforces valid transitions (DRAFT → SENT → ACCEPTED → PAID) and auto-detects overdue documents
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
@@ -161,6 +174,7 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 16. Discovery Sources | v2.0 | Complete    | 2026-03-04 | 2026-03-04 |
 | 17. Leads Agent Discovery Upgrade | 2/2 | Complete    | 2026-03-04 | - |
 | 18. Signal Monitoring Infrastructure | 4/4 | Complete    | 2026-03-04 | - |
-| 19. Evergreen Signal Campaign Auto-Pipeline | v2.0 | 0/4 | Planned | - |
+| 19. Evergreen Signal Campaign Auto-Pipeline | 1/4 | In Progress|  | - |
 | 20. Creative Ideas Copy Framework | v2.0 | 0/2 | Planned | - |
 | 21. Signal Dashboard + CLI Chat | v2.0 | 0/TBD | Not started | - |
+| 22. Client Financials & Invoicing | v2.0 | 0/TBD | Not started | - |
