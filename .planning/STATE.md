@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Discovery & Intelligence
 status: unknown
-last_updated: "2026-03-04T20:36:01.992Z"
+last_updated: "2026-03-04T22:25:00.000Z"
 progress:
   total_phases: 15
   completed_phases: 13
   total_plans: 53
-  completed_plans: 54
+  completed_plans: 56
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v2.0 Phase 19 — Evergreen Signal Campaign Auto-Pipeline
+**Current focus:** v2.0 Phase 20 — Copy Strategy Framework (parallel with Phase 19)
 
 ## Current Position
 
-Phase: 19 of 21 (Evergreen Signal Campaign Auto-Pipeline) -- IN PROGRESS
-Plan: 02 of 06 complete
-Status: Phase 19 plan 02 complete — Campaign Agent signal tools + orchestrator signal delegation patterns
-Last activity: 2026-03-04 -- 19-02 complete (createSignalCampaign, activateSignalCampaign, pauseResumeSignalCampaign tools; generateObject ICP extraction; orchestrator signal workflow docs)
+Phase: 20 of 21 (Copy Strategy Framework) -- IN PROGRESS (all plans complete)
+Plan: 02 of 02 complete
+Status: Phase 20 plan 02 complete — Orchestrator wiring (delegateToWriter strategy params + system prompt sections) + saveCampaignSequences copyStrategy persistence
+Last activity: 2026-03-04 -- 20-02 complete (delegateToWriter extended with copyStrategy/customStrategyPrompt/signalContext, orchestrator system prompt Copy Strategy + Multi-Strategy + Signal-Triggered sections, CampaignDetail.copyStrategy, saveCampaignSequences persists strategy)
 
 Progress: [######░░░░] ~7% (v2.0)
 
@@ -98,6 +98,9 @@ Progress: [######░░░░] ~7% (v2.0)
 - [20-01 writer-agent]: Signal context injected via [INTERNAL SIGNAL CONTEXT] prefix in user message — writer uses for angle selection but NEVER surfaces to recipient copy
 - [20-01 writer-agent]: Tiered KB uses strategy+industry tags first (e.g. creative-ideas-branded-merchandise), fallback to strategy-only, then always-run general best practices
 - [20-01 writer-agent]: generateKBExamples tool returns text for admin review only — does NOT auto-ingest; admin runs ingest-document.ts CLI after review
+- [20-02 orchestrator]: delegateToWriter return includes strategy, creativeIdeas count, references — richer orchestrator feedback to admin after copy generation
+- [20-02 orchestrator]: saveCampaignSequences accepts copyStrategy as string (not enum) in data param — constraint lives at tool schema layer, operation layer stays flexible
+- [20-02 orchestrator]: Backtick inside system prompt template literal causes TS parse error — use plain text "copyStrategy parameter" not markdown inline code in template literals
 
 ### Blockers/Concerns
 
@@ -112,5 +115,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 19-02-PLAN.md (Phase 19 Plan 02 -- Campaign Agent signal tools: createSignalCampaign, activateSignalCampaign, pauseResumeSignalCampaign)
-Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-03-PLAN.md
+Stopped at: Completed 20-02-PLAN.md (Phase 20 Plan 02 -- Orchestrator wiring: delegateToWriter strategy params, system prompt Copy Strategy/Multi-Strategy/Signal-Triggered sections, saveCampaignSequences copyStrategy persistence, CampaignDetail.copyStrategy field)
+Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-03-PLAN.md (Phase 19 continues; Phase 20 fully complete)

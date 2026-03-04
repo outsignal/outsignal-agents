@@ -69,8 +69,8 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 - [x] **COPY-08**: Writer validates `groundedIn` field for Creative Ideas — every idea must trace to a real client offering (hallucination prevention)
 - [x] **COPY-09**: Signal-triggered emails use signals for timing only — signals are invisible to the recipient, copy leads with value
 - [x] **COPY-10**: Writer consults full Knowledge Base (46+ docs) for best practices regardless of selected strategy — frameworks, subject lines, follow-up patterns, personalization techniques
-- [ ] **COPY-11**: Writer generates multiple strategy variants for the same campaign (e.g., Creative Ideas vs PVP vs one-liner) for A/B split testing
-- [ ] **COPY-12**: Campaign tracks which strategy variant each lead receives so performance can be compared per strategy
+- [x] **COPY-11**: Writer generates multiple strategy variants for the same campaign (e.g., Creative Ideas vs PVP vs one-liner) for A/B split testing
+- [x] **COPY-12**: Campaign tracks which strategy variant each lead receives so performance can be compared per strategy
 
 ### Signal Dashboard
 
