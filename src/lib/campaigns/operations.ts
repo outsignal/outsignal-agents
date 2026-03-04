@@ -25,8 +25,8 @@ export interface CreateCampaignParams {
   targetListId?: string;
   // Signal campaign fields
   type?: "static" | "signal";
-  icpCriteria?: Record<string, unknown> | null; // structured JSON
-  signalTypes?: string[] | null; // subset of signalEnabledTypes
+  icpCriteria?: string | null; // JSON string (pass JSON.stringify(icpCriteriaObject))
+  signalTypes?: string | null; // JSON string (pass JSON.stringify(signalTypesArray))
   dailyLeadCap?: number;
   icpScoreThreshold?: number;
 }
@@ -70,6 +70,7 @@ export interface CampaignDetail extends CampaignSummary {
   signalTypes: string[] | null; // parsed JSON array
   dailyLeadCap: number;
   icpScoreThreshold: number;
+  signalEmailBisonCampaignId: number | null;
   lastSignalProcessedAt: Date | null;
 }
 
@@ -146,6 +147,7 @@ function formatCampaignDetail(
     signalTypes: string | null;
     dailyLeadCap: number;
     icpScoreThreshold: number;
+    signalEmailBisonCampaignId: number | null;
     lastSignalProcessedAt: Date | null;
     targetList: {
       name: string;
@@ -182,6 +184,7 @@ function formatCampaignDetail(
     signalTypes: parseJsonArray(raw.signalTypes) as string[] | null,
     dailyLeadCap: raw.dailyLeadCap,
     icpScoreThreshold: raw.icpScoreThreshold,
+    signalEmailBisonCampaignId: raw.signalEmailBisonCampaignId,
     lastSignalProcessedAt: raw.lastSignalProcessedAt,
   };
 }
@@ -252,8 +255,8 @@ export async function createCampaign(
       targetListId: targetListId ?? null,
       type: resolvedType,
       ...(resolvedType === "signal" && {
-        icpCriteria: icpCriteria ? JSON.stringify(icpCriteria) : null,
-        signalTypes: signalTypes ? JSON.stringify(signalTypes) : null,
+        icpCriteria: icpCriteria ?? null,
+        signalTypes: signalTypes ?? null,
         ...(dailyLeadCap !== undefined && { dailyLeadCap }),
         ...(icpScoreThreshold !== undefined && { icpScoreThreshold }),
       }),
