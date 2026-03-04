@@ -16,12 +16,12 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 - [x] **DISC-05**: Leads Agent can scrape custom directories via Firecrawl /extract endpoint with structured JSON schema (association member lists, government databases, etc.)
 - [x] **DISC-06**: Discovery results are written to a DiscoveredPerson staging table (not directly to Person) for dedup before promotion
 - [x] **DISC-07**: Agent deduplicates discovered leads against local Person DB (by LinkedIn URL, email, or name+company match) before enrichment
-- [ ] **DISC-08**: Agent automatically selects best discovery sources based on ICP type (enterprise B2B → Apollo/Prospeo, niche → Serper/Firecrawl directories, local/SMB → Serper Maps)
+- [x] **DISC-08**: Agent automatically selects best discovery sources based on ICP type (enterprise B2B → Apollo/Prospeo, niche → Serper/Firecrawl directories, local/SMB → Serper Maps)
 - [x] **DISC-09**: Per-workspace API keys for Apollo.io (ToS requirement — no shared keys across workspaces)
 - [x] **DISC-10**: Discovery adapter pattern (DiscoveryAdapter interface) so new sources can be added without restructuring
-- [ ] **DISC-11**: Agent generates a discovery plan (sources selected, reasoning, estimated cost, estimated lead volume per source) and presents for admin approval before executing searches
-- [ ] **DISC-12**: Admin can adjust the discovery plan (add/remove sources, change filters) before approving execution
-- [ ] **DISC-13**: Discovery plan shows how campaign lead volume tracks against workspace monthly lead quota (e.g., "500 of 2,000 monthly leads used")
+- [x] **DISC-11**: Agent generates a discovery plan (sources selected, reasoning, estimated cost, estimated lead volume per source) and presents for admin approval before executing searches
+- [x] **DISC-12**: Admin can adjust the discovery plan (add/remove sources, change filters) before approving execution
+- [x] **DISC-13**: Discovery plan shows how campaign lead volume tracks against workspace monthly lead quota (e.g., "500 of 2,000 monthly leads used")
 
 ### Signal Monitoring
 
@@ -141,10 +141,10 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | DISC-04 | Phase 16 | Complete |
 | DISC-05 | Phase 16 | Complete |
 | DISC-07 | Phase 17 | Complete |
-| DISC-08 | Phase 17 | Pending |
-| DISC-11 | Phase 17 | Pending |
-| DISC-12 | Phase 17 | Pending |
-| DISC-13 | Phase 17 | Pending |
+| DISC-08 | Phase 17 | Complete |
+| DISC-11 | Phase 17 | Complete |
+| DISC-12 | Phase 17 | Complete |
+| DISC-13 | Phase 17 | Complete |
 | SIG-01 | Phase 18 | Pending |
 | SIG-02 | Phase 18 | Pending |
 | SIG-03 | Phase 18 | Pending |

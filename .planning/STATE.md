@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Discovery & Intelligence
 status: unknown
-last_updated: "2026-03-04T13:40:57Z"
+last_updated: "2026-03-04T13:59:00Z"
 progress:
   total_phases: 13
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 47
-  completed_plans: 49
+  completed_plans: 50
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 ## Current Position
 
-Phase: 17 of 21 (Leads Agent Discovery Upgrade)
-Plan: 01 complete
-Status: In progress
-Last activity: 2026-03-04 — 17-01 complete (dedup + promotion engine built, waterfall enrichment trigger wired)
+Phase: 17 of 21 (Leads Agent Discovery Upgrade) -- COMPLETE
+Plan: 02 of 02 complete
+Status: Phase 17 complete
+Last activity: 2026-03-04 -- 17-02 complete (buildDiscoveryPlan + deduplicateAndPromote tools, system prompt rewrite, maxSteps 15)
 
-Progress: [░░░░░░░░░░] ~3% (v2.0)
+Progress: [######░░░░] ~6% (v2.0)
 
 ## Accumulated Context
 
@@ -64,6 +64,10 @@ Progress: [░░░░░░░░░░] ~3% (v2.0)
 - [17-01 promotion]: "waterfall" sentinel provider value used for enrichment queue — cron calls enrichEmail() for all person jobs regardless of provider
 - [17-01 promotion]: Placeholder email pattern placeholder-{uuid}@discovery.internal for leads without email to satisfy Person.email unique constraint
 - [17-01 promotion]: Fuzzy name match threshold 0.85 Levenshtein similarity — only fires when firstName + lastName + companyDomain all present
+- [17-02 agent-tools]: AI Ark positioned as equal peer to Apollo/Prospeo in system prompt -- not a fallback source
+- [17-02 agent-tools]: Quota exceeded = soft warning only, agent does not block execution (user decision)
+- [17-02 agent-tools]: maxSteps 15 provides headroom for plan + 5 search calls + dedup + adjustments
+- [17-02 agent-tools]: z.record(z.string(), z.unknown()) for source filters -- Zod v3 requires explicit key type
 
 ### Blockers/Concerns
 
@@ -78,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 17-01-PLAN.md (dedup + promotion engine, waterfall enrichment trigger, Provider type extended)
-Resume file: .planning/phases/17-leads-agent-discovery-upgrade/ (plan 02 next)
+Stopped at: Completed 17-02-PLAN.md (Phase 17 complete -- agent tools + system prompt + maxSteps)
+Resume file: .planning/phases/ (Phase 18 next)
