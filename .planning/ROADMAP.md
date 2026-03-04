@@ -152,21 +152,26 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 - [ ] 21-02-PLAN.md -- CLI chat: scripts/chat.ts interactive orchestrator REPL with workspace picker, multi-turn conversation, session persistence as AgentRun
 
 ### Phase 22: Client Financials & Invoicing
-**Goal**: Admins can create quotes and invoices for clients directly in the dashboard, generate branded PDFs, email quotes for client acceptance, track payment status, and view revenue analytics — eliminating the current Google Docs manual invoicing process
+**Goal**: Admins can create invoices for clients directly in the dashboard, generate branded PDFs, email invoices with PDF attached, track payment status, and view revenue analytics — eliminating the current Google Docs manual invoicing process
 **Depends on**: Nothing (independent of v2.0 signal/discovery work)
-**Requirements**: TBD (context gathering needed)
+**Requirements**: INV-01, INV-02, INV-03, INV-04, INV-05, INV-06, INV-07, INV-08, INV-09, INV-10, INV-11, INV-12
 **Success Criteria** (what must be TRUE):
-  1. Admin can create a quote or invoice for any workspace client with line items, tax, and auto-generated document numbers (QT-2026-001, INV-2026-001)
-  2. Admin can generate and download a branded PDF for any quote or invoice
-  3. Admin can email a quote to a client, and the client can view and accept/reject it via a secure portal link
-  4. Dashboard shows revenue KPIs (Total Quoted, Total Invoiced, Total Paid, Outstanding) with monthly breakdown chart
-  5. Invoice/quote status workflow enforces valid transitions (DRAFT → SENT → ACCEPTED → PAID) and auto-detects overdue documents
-**Plans**: TBD
+  1. Admin can create an invoice for any workspace client with line items, tax, and auto-generated document numbers (client prefix + sequential, e.g. PS03)
+  2. Admin can generate and download a branded PDF for any invoice
+  3. Admin can email an invoice to a client via Resend with PDF attached, and the client can view and download it via the portal billing tab
+  4. Dashboard shows revenue KPIs (Total Revenue, Outstanding, MRR, Overdue) with monthly breakdown chart and per-client breakdown
+  5. Invoice status workflow enforces valid transitions (DRAFT → SENT → PAID) with OVERDUE auto-detection, reminder emails, and 48h unpaid renewal alerts
+**Plans**: 5 plans
+- [ ] 22-01-PLAN.md — Schema foundation: Invoice/LineItem/Sequence/SenderSettings models, Workspace billing fields, types, GBP utils, invoice numbering
+- [ ] 22-02-PLAN.md — Invoice API routes: CRUD, PDF generation (@react-pdf/renderer), send email, sender settings API
+- [ ] 22-03-PLAN.md — Auto-generation cron + overdue detection: merge into existing inbox-health/check, notifications, 48h unpaid alert
+- [ ] 22-04-PLAN.md — Admin UI: Sidebar Financials group, invoice list page, invoice create form, revenue dashboard + API
+- [ ] 22-05-PLAN.md — Portal billing tab: portal sidebar update, billing page, token-gated PDF access
 
 ## Progress
 
 **Execution Order:**
-v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
+v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21 → 22
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -179,4 +184,5 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 19. Evergreen Signal Campaign Auto-Pipeline | 4/4 | Complete    | 2026-03-04 | - |
 | 20. Creative Ideas Copy Framework | 2/2 | Complete    | 2026-03-04 | - |
 | 21. Signal Dashboard + CLI Chat | v2.0 | 0/2 | Planned | - |
+| 22. Client Financials & Invoicing | v2.0 | 0/5 | Planned | - |
 | 22. Client Financials & Invoicing | v2.0 | 0/TBD | Not started | - |
