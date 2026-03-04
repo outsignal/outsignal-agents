@@ -542,6 +542,30 @@ model Campaign {
   emailBisonCampaignId Int?
   emailBisonSequenceId Int?
 
+  // --- Signal Campaign fields (Phase 19) ---
+  type                String  @default("static") // "static" | "signal"
+
+  // ICP criteria for signal campaigns (structured JSON — deterministic matching, not LLM)
+  // { industries: string[], titles: string[], companySizes: string[], locations: string[], keywords?: string[] }
+  icpCriteria         String? // JSON
+
+  // Which signal types trigger this campaign (subset of workspace signalEnabledTypes)
+  // e.g. ["funding", "hiring_spike"]
+  signalTypes         String? // JSON array
+
+  // Daily lead cap — pipeline stops adding leads after N per calendar day (default 20)
+  dailyLeadCap        Int     @default(20)
+
+  // ICP score threshold — leads below this are logged but not added to target list (default 70)
+  icpScoreThreshold   Int     @default(70)
+
+  // Pre-provisioned EmailBison campaign ID for signal auto-deploy
+  // Created when signal campaign transitions to "active"
+  signalEmailBisonCampaignId Int?
+
+  // Timestamp of last signal processing run — processor finds signals newer than this
+  lastSignalProcessedAt DateTime?
+
   // Timestamps
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -549,12 +573,14 @@ model Campaign {
   deployedAt  DateTime? // When deployed to EmailBison/LinkedIn
 
   // Relations
-  workspace Workspace      @relation(fields: [workspaceSlug], references: [slug])
-  deploys   CampaignDeploy[]
+  workspace    Workspace            @relation(fields: [workspaceSlug], references: [slug])
+  deploys      CampaignDeploy[]
+  signalLeads  SignalCampaignLead[]
 
   @@unique([workspaceSlug, name])
   @@index([workspaceSlug])
   @@index([status])
+  @@index([type, status])
 }
 
 model CampaignDeploy {
@@ -595,6 +621,29 @@ model CampaignDeploy {
   @@index([campaignId])
   @@index([workspaceSlug])
   @@index([status])
+}
+
+model SignalCampaignLead {
+  id         String   @id @default(cuid())
+  campaignId String
+  personId   String
+  addedAt    DateTime @default(now())
+
+  // Outcome: "added" (passed threshold, deployed), "below_threshold" (scored but failed), "enriching" (in progress)
+  outcome    String   @default("added")
+
+  // ICP score at time of evaluation
+  icpScore   Int?
+
+  // Which signal triggered this (SignalEvent ID — soft ref, no FK)
+  signalEventId String?
+  companyDomain String?
+
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, personId])
+  @@index([campaignId, addedAt])
+  @@index([personId])
 }
 
 // --- LinkedIn Sequencer ---
