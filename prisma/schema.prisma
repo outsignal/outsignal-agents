@@ -66,6 +66,14 @@ model Workspace {
   normalizationPrompt  String?  // e.g. "Classify 'promo products' as 'Branded Merchandise'"
   outreachTonePrompt   String?  // e.g. "Professional but friendly"
 
+  // --- Package Configuration (v2.0 Phase 15) ---
+  enabledModules           String   @default("[\"email\"]")  // JSON array: ["email","email-signals","linkedin","linkedin-signals"]
+  monthlyLeadQuota         Int      @default(2000)           // Total monthly lead discovery quota
+  monthlyLeadQuotaStatic   Int      @default(2000)           // Static campaign pool
+  monthlyLeadQuotaSignal   Int      @default(0)              // Signal campaign pool (0 = signals not enabled)
+  monthlyCampaignAllowance Int      @default(2)              // Soft limit — agent warns but allows override
+  billingCycleAnchor       DateTime?                         // Rolling 30-day window start; null = use createdAt
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -145,6 +153,46 @@ model Company {
 
   @@index([industry])
   @@index([headcount])
+}
+
+model DiscoveredPerson {
+  id              String   @id @default(cuid())
+
+  // Core identity fields (populated by discovery source)
+  email           String?
+  firstName       String?
+  lastName        String?
+  jobTitle        String?
+  company         String?
+  companyDomain   String?
+  linkedinUrl     String?
+  phone           String?
+  location        String?
+
+  // Provenance tracking
+  discoverySource  String   // "apollo" | "prospeo" | "serper" | "firecrawl" | "aiark" etc.
+  searchQuery      String?  // The query/filters used to find this person (JSON or text)
+  workspaceSlug    String   // Which workspace's discovery run produced this record
+
+  // Status lifecycle: staged → promoted | duplicate | rejected
+  status          String   @default("staged")
+
+  // Promotion linkage (soft reference — no FK constraint)
+  personId        String?  // Set when promoted or marked duplicate
+  promotedAt      DateTime? // Used for quota window queries
+
+  // Batch tracking
+  discoveryRunId  String?  // Groups records from the same discovery batch
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceSlug, status])
+  @@index([email])
+  @@index([linkedinUrl])
+  @@index([discoveryRunId])
+  @@index([personId])
+  @@index([workspaceSlug, promotedAt])
 }
 
 model WebhookEvent {
