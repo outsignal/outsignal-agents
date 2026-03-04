@@ -16,6 +16,8 @@ import {
 import { SenderCard } from "@/components/senders/sender-card";
 import { SenderFormModal } from "@/components/senders/sender-form-modal";
 import type { SenderWithWorkspace } from "@/components/senders/types";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LinkedinIcon } from "lucide-react";
 
 function SenderCardSkeleton() {
   return (
@@ -149,22 +151,12 @@ export default function SendersPage() {
 
         {/* Empty state */}
         {!loading && !error && visibleSenders.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 py-16 text-center">
-            <p className="text-sm text-muted-foreground">
-              No LinkedIn senders configured.
-            </p>
-            <p className="text-xs text-muted-foreground/70 mt-1">
-              Add your first sender to get started.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAddOpen(true)}
-            >
-              Add Sender
-            </Button>
-          </div>
+          <EmptyState
+            icon={LinkedinIcon}
+            title="No senders connected"
+            description="Add your first LinkedIn sender account to start automating outreach across your workspaces."
+            action={{ label: "Add Sender", onClick: () => setAddOpen(true) }}
+          />
         )}
 
         {/* Sender cards grid */}

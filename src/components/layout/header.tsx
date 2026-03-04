@@ -9,16 +9,16 @@ interface HeaderProps {
 
 export function Header({ title, description, actions }: HeaderProps) {
   return (
-    <header className="flex items-center justify-between border-b border-border/50 px-8 py-5">
-      <div>
-        <h1 className="text-xl font-heading font-semibold tracking-tight">
+    <header className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-5">
+      <div className="min-w-0">
+        <h1 className="text-xl font-heading font-semibold tracking-tight truncate">
           {title}
         </h1>
         {description && (
-          <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
+          <p className="text-sm text-muted-foreground mt-0.5 truncate">{description}</p>
         )}
       </div>
-      <div className="flex items-center gap-2">{actions}</div>
+      <div className="flex items-center gap-2 shrink-0">{actions}</div>
     </header>
   );
 }

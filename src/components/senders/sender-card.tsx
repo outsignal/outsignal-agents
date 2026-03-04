@@ -12,7 +12,26 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Check,
+  MoreHorizontal,
+  Pause,
+  Play,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  Key,
+} from "lucide-react";
 import { SenderFormModal } from "./sender-form-modal";
 import { SenderHealthPanel } from "./sender-health-panel";
 import type { SenderWithWorkspace } from "./types";
@@ -212,30 +231,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
         {/* Expandable health panel */}
         <SenderHealthPanel senderId={sender.id} isExpanded={expanded} />
 
-        {/* Invite token row */}
-        {sender.inviteToken && (
-          <div className="border-t border-border/50 px-4 py-2 flex items-center gap-2">
-            <span className="text-xs text-muted-foreground shrink-0">Invite token</span>
-            <span className="font-mono text-[10px] text-foreground/60 truncate flex-1">
-              {sender.inviteToken.slice(0, 8)}…
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground shrink-0"
-              onClick={handleCopyToken}
-            >
-              {tokenCopied ? (
-                <Check className="h-3 w-3 text-emerald-500" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
-              <span className="ml-1">{tokenCopied ? "Copied" : "Copy"}</span>
-            </Button>
-          </div>
-        )}
-
-        {/* Action buttons */}
+        {/* Action bar */}
         <div className="border-t border-border/50 px-4 py-3 flex items-center gap-2">
           <Button
             variant="outline"
@@ -243,36 +239,58 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
             className="h-7 text-xs"
             onClick={() => setEditOpen(true)}
           >
+            <Pencil className="h-3 w-3 mr-1" />
             Edit
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={handleTogglePause}
-            disabled={toggling || sender.status === "disabled" || sender.status === "setup"}
-          >
-            {toggling ? "..." : isPaused ? "Resume" : "Pause"}
-          </Button>
-          {isHardFlagged && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs text-emerald-600 border-emerald-600/30 hover:bg-emerald-600/10 hover:text-emerald-600"
-              onClick={handleReactivate}
-              disabled={reactivating}
-            >
-              {reactivating ? "Reactivating..." : "Reactivate"}
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 ml-auto"
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete
-          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-xs" className="ml-auto">
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">More actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={handleTogglePause}
+                disabled={toggling || sender.status === "disabled" || sender.status === "setup"}
+              >
+                {isPaused ? (
+                  <Play className="h-4 w-4" />
+                ) : (
+                  <Pause className="h-4 w-4" />
+                )}
+                {toggling ? "..." : isPaused ? "Resume" : "Pause"}
+              </DropdownMenuItem>
+              {isHardFlagged && (
+                <DropdownMenuItem
+                  onClick={handleReactivate}
+                  disabled={reactivating}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {reactivating ? "Reactivating..." : "Reactivate"}
+                </DropdownMenuItem>
+              )}
+              {sender.inviteToken && (
+                <DropdownMenuItem onClick={handleCopyToken}>
+                  {tokenCopied ? (
+                    <Check className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <Key className="h-4 w-4" />
+                  )}
+                  {tokenCopied ? "Token Copied!" : "Copy Invite Token"}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </Card>
 

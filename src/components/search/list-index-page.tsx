@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ListChecks } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -200,11 +201,19 @@ export function ListIndexPage() {
               <TableRow className="border-border">
                 <TableCell
                   colSpan={6}
-                  className="text-center text-muted-foreground py-12"
+                  className="text-center py-16"
                 >
-                  {searchQuery
-                    ? `No lists matching "${searchQuery}"`
-                    : "No lists yet. Add people from search results to create your first list."}
+                  <div className="flex flex-col items-center gap-2">
+                    <ListChecks className="h-12 w-12 text-muted-foreground/50" />
+                    <p className="text-lg font-medium text-foreground">
+                      {searchQuery ? "No matching lists" : "No lists created"}
+                    </p>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                      {searchQuery
+                        ? `No lists matching "${searchQuery}". Try a different search term.`
+                        : "Create your first list by selecting people from the People page and adding them to a new list."}
+                    </p>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (

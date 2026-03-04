@@ -7,6 +7,10 @@ interface MetricCardProps {
   value: string | number;
   trend?: "up" | "down" | "warning" | "neutral";
   detail?: string;
+  density?: "default" | "compact";
+  /** When true, renders the value larger and the card with a subtle highlight */
+  featured?: boolean;
+  className?: string;
 }
 
 const trendBorderColor: Record<string, string> = {
@@ -15,22 +19,25 @@ const trendBorderColor: Record<string, string> = {
   warning: "oklch(0.795 0.184 86.047)", // amber-500
 };
 
-export function MetricCard({ label, value, trend, detail }: MetricCardProps) {
+export function MetricCard({ label, value, trend, detail, density = "default", featured, className }: MetricCardProps) {
   return (
     <Card
+      density={density}
+      className={className}
       style={{
         borderTopWidth: "2px",
         borderTopColor: (trend && trendBorderColor[trend]) || "transparent",
       }}
     >
-      <CardContent className="pt-6">
+      <CardContent className={density === "compact" ? "pt-3" : "pt-6"}>
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </p>
         <div className="flex items-center gap-1 mt-1">
           <p
             className={cn(
-              "text-2xl font-heading font-semibold tabular-nums tracking-tight",
+              "font-heading font-semibold tabular-nums tracking-tight",
+              featured ? "text-3xl" : "text-2xl",
               trend === "warning" && "text-amber-600",
               trend === "down" && "text-red-600",
               trend === "up" && "text-emerald-600",

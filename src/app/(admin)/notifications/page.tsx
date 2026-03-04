@@ -248,7 +248,7 @@ export default function NotificationsPage() {
 
       <div className="p-6 space-y-6">
         {/* Filters */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-3 mb-6">
           <Select
             value={typeFilter}
             onValueChange={(val) => {
@@ -387,7 +387,7 @@ export default function NotificationsPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-xs">
+                      <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
                         {n.message
                           ? n.message.length > 100
                             ? n.message.slice(0, 100) + "..."

@@ -178,7 +178,7 @@ export default function WebhookLogPage() {
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Search + workspace filter row */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Search box */}
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />

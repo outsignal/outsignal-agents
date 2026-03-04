@@ -1,6 +1,13 @@
 import { notFound } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { DeployButton } from "./DeployButton";
 import { DeployHistory } from "./DeployHistory";
@@ -68,119 +75,136 @@ export default async function CampaignDetailPage({
       />
 
       <div className="p-6 space-y-6">
-        {/* ─── Campaign overview ─────────────────────────────────────────────── */}
-        <section>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-              <p className="text-xs text-zinc-400 mb-1">Status</p>
-              <p className="text-sm font-semibold text-zinc-100 capitalize">
-                {campaign.status.replace(/_/g, " ")}
-              </p>
+        {/* ─── Campaign overview (stats) ─────────────────────────────────────── */}
+        <Card density="compact">
+          <CardHeader>
+            <CardTitle>Overview</CardTitle>
+            <CardDescription>Campaign configuration at a glance</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Status</p>
+                <p className="text-sm font-semibold capitalize">
+                  {campaign.status.replace(/_/g, " ")}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Channels</p>
+                <p className="text-sm font-semibold">
+                  {campaign.channels.join(", ")}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Target List</p>
+                <p className="text-sm font-semibold">
+                  {campaign.targetListName ?? "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Leads</p>
+                <p className="text-sm font-semibold">
+                  {leadCount.toLocaleString()}
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-              <p className="text-xs text-zinc-400 mb-1">Channels</p>
-              <p className="text-sm font-semibold text-zinc-100">
-                {campaign.channels.join(", ")}
-              </p>
-            </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-              <p className="text-xs text-zinc-400 mb-1">Target List</p>
-              <p className="text-sm font-semibold text-zinc-100">
-                {campaign.targetListName ?? "—"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-              <p className="text-xs text-zinc-400 mb-1">Leads</p>
-              <p className="text-sm font-semibold text-zinc-100">
-                {leadCount.toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
         {/* ─── Approval status ───────────────────────────────────────────────── */}
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-300 mb-3 uppercase tracking-wide">
-            Approvals
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className={`h-2 w-2 rounded-full ${campaign.leadsApproved ? "bg-emerald-400" : "bg-zinc-600"}`}
-                />
-                <p className="text-xs font-medium text-zinc-300">
-                  Leads Approved
+        <Card density="compact">
+          <CardHeader>
+            <CardTitle>Approvals</CardTitle>
+            <CardDescription>Lead and content sign-off status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className={`h-2 w-2 rounded-full ${campaign.leadsApproved ? "bg-emerald-400" : "bg-zinc-600"}`}
+                  />
+                  <p className="text-xs font-medium">Leads Approved</p>
+                </div>
+                <p className="text-xs text-muted-foreground ml-4">
+                  {campaign.leadsApproved
+                    ? campaign.leadsApprovedAt
+                      ? new Date(campaign.leadsApprovedAt).toLocaleDateString()
+                      : "Yes"
+                    : campaign.leadsFeedback
+                      ? `Feedback: ${campaign.leadsFeedback}`
+                      : "Pending"}
                 </p>
               </div>
-              <p className="text-xs text-zinc-500 ml-4">
-                {campaign.leadsApproved
-                  ? campaign.leadsApprovedAt
-                    ? new Date(campaign.leadsApprovedAt).toLocaleDateString()
-                    : "Yes"
-                  : campaign.leadsFeedback
-                    ? `Feedback: ${campaign.leadsFeedback}`
-                    : "Pending"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className={`h-2 w-2 rounded-full ${campaign.contentApproved ? "bg-emerald-400" : "bg-zinc-600"}`}
-                />
-                <p className="text-xs font-medium text-zinc-300">
-                  Content Approved
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className={`h-2 w-2 rounded-full ${campaign.contentApproved ? "bg-emerald-400" : "bg-zinc-600"}`}
+                  />
+                  <p className="text-xs font-medium">Content Approved</p>
+                </div>
+                <p className="text-xs text-muted-foreground ml-4">
+                  {campaign.contentApproved
+                    ? campaign.contentApprovedAt
+                      ? new Date(
+                          campaign.contentApprovedAt
+                        ).toLocaleDateString()
+                      : "Yes"
+                    : campaign.contentFeedback
+                      ? `Feedback: ${campaign.contentFeedback}`
+                      : "Pending"}
                 </p>
               </div>
-              <p className="text-xs text-zinc-500 ml-4">
-                {campaign.contentApproved
-                  ? campaign.contentApprovedAt
-                    ? new Date(campaign.contentApprovedAt).toLocaleDateString()
-                    : "Yes"
-                  : campaign.contentFeedback
-                    ? `Feedback: ${campaign.contentFeedback}`
-                    : "Pending"}
-              </p>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
         {/* ─── Sequence summary ──────────────────────────────────────────────── */}
         {(emailStepCount > 0 || linkedinStepCount > 0) && (
-          <section>
-            <h2 className="text-sm font-semibold text-zinc-300 mb-3 uppercase tracking-wide">
-              Sequence
-            </h2>
-            <div className="grid grid-cols-2 gap-4">
-              {emailStepCount > 0 && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                  <p className="text-xs text-zinc-400 mb-1">Email Steps</p>
-                  <p className="text-sm font-semibold text-zinc-100">
-                    {emailStepCount}
-                  </p>
-                </div>
-              )}
-              {linkedinStepCount > 0 && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-                  <p className="text-xs text-zinc-400 mb-1">LinkedIn Steps</p>
-                  <p className="text-sm font-semibold text-zinc-100">
-                    {linkedinStepCount}
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
+          <Card density="compact">
+            <CardHeader>
+              <CardTitle>Sequence</CardTitle>
+              <CardDescription>
+                Outreach steps configured for this campaign
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                {emailStepCount > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Email Steps
+                    </p>
+                    <p className="text-sm font-semibold">{emailStepCount}</p>
+                  </div>
+                )}
+                {linkedinStepCount > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      LinkedIn Steps
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {linkedinStepCount}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* ─── Deploy history ────────────────────────────────────────────────── */}
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-300 mb-3 uppercase tracking-wide">
-            Deploy History
-          </h2>
-          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+        <Card>
+          <CardHeader>
+            <CardTitle>Deploy History</CardTitle>
+            <CardDescription>
+              All deployments for this campaign
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-0">
             <DeployHistory campaignId={campaign.id} />
-          </div>
-        </section>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

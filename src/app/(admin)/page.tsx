@@ -5,8 +5,10 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState, useCallback } from "react";
 import { useQueryState } from "nuqs";
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Header } from "@/components/layout/header";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ClientFilter } from "@/components/dashboard/client-filter";
@@ -23,6 +25,7 @@ import type {
   DashboardAlert,
   WorkspaceOption,
 } from "@/app/api/dashboard/stats/route";
+import { cn } from "@/lib/utils";
 
 // Fallback empty KPIs
 const emptyKpis: DashboardKPIs = {
@@ -72,6 +75,71 @@ function buildWorkspaceSummaries(
 
 function KpiSkeleton() {
   return <Skeleton className="h-[88px] rounded-lg" />;
+}
+
+function SecondaryKpis({
+  kpis,
+  bounceRate,
+}: {
+  kpis: DashboardKPIs;
+  bounceRate: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs text-muted-foreground hover:text-foreground gap-1.5"
+      >
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 transition-transform duration-200",
+            open && "rotate-180"
+          )}
+        />
+        {open ? "Hide details" : "More stats"}
+      </Button>
+      {open && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-2">
+          <MetricCard
+            label="Bounces"
+            value={kpis.emailBounced.toLocaleString()}
+            trend={kpis.emailBounced > 0 ? "down" : "neutral"}
+            detail={kpis.emailBounced > 0 ? `${bounceRate}% bounce rate` : "Clean"}
+            density="compact"
+          />
+          <MetricCard
+            label="Contacted"
+            value={kpis.pipelineContacted.toLocaleString()}
+            trend="neutral"
+            density="compact"
+          />
+          <MetricCard
+            label="LI Connections"
+            value={kpis.linkedinConnect.toLocaleString()}
+            trend={kpis.linkedinConnect > 0 ? "up" : "neutral"}
+            density="compact"
+          />
+          <MetricCard
+            label="LI Messages"
+            value={kpis.linkedinMessage.toLocaleString()}
+            trend={kpis.linkedinMessage > 0 ? "up" : "neutral"}
+            density="compact"
+          />
+          <MetricCard
+            label="Inboxes"
+            value={kpis.inboxesConnected.toLocaleString()}
+            trend={kpis.inboxesDisconnected > 0 ? "warning" : "up"}
+            detail={kpis.inboxesDisconnected > 0 ? `${kpis.inboxesDisconnected} disconnected` : "All connected"}
+            density="compact"
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -134,92 +202,62 @@ export default function DashboardPage() {
           <AlertsSection alerts={alerts} />
         )}
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+        {/* Primary KPIs — the 6 metrics that matter most */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {loading ? (
-            Array.from({ length: 12 }).map((_, i) => <KpiSkeleton key={i} />)
+            Array.from({ length: 6 }).map((_, i) => <KpiSkeleton key={i} />)
           ) : (
             <>
-              {/* Email KPIs */}
+              <MetricCard
+                label="Reply Rate"
+                value={replyRate === "—" ? "—" : `${replyRate}%`}
+                trend={totalReplies > 0 ? "up" : "neutral"}
+                detail={`${totalReplies.toLocaleString()} replies from ${kpis.emailSent.toLocaleString()} sent`}
+                density="compact"
+                featured
+              />
               <MetricCard
                 label="Emails Sent"
                 value={kpis.emailSent.toLocaleString()}
                 trend="neutral"
-              />
-              <MetricCard
-                label="Replies"
-                value={totalReplies.toLocaleString()}
-                trend={totalReplies > 0 ? "up" : "neutral"}
-                detail={`${replyRate}% reply rate`}
-              />
-              <MetricCard
-                label="Bounces"
-                value={kpis.emailBounced.toLocaleString()}
-                trend={kpis.emailBounced > 0 ? "down" : "neutral"}
-                detail={kpis.emailBounced > 0 ? `${bounceRate}% bounce rate` : "Clean"}
-              />
-
-              {/* LinkedIn KPIs */}
-              <MetricCard
-                label="LI Connections"
-                value={kpis.linkedinConnect.toLocaleString()}
-                trend={kpis.linkedinConnect > 0 ? "up" : "neutral"}
-              />
-              <MetricCard
-                label="LI Messages"
-                value={kpis.linkedinMessage.toLocaleString()}
-                trend={kpis.linkedinMessage > 0 ? "up" : "neutral"}
-              />
-              <MetricCard
-                label="LI Pending"
-                value={kpis.linkedinPending.toLocaleString()}
-                trend={kpis.linkedinFailed > 0 ? "warning" : "neutral"}
-                detail={kpis.linkedinFailed > 0 ? `${kpis.linkedinFailed} failed` : undefined}
-              />
-
-              {/* Pipeline KPIs */}
-              <MetricCard
-                label="Contacted"
-                value={kpis.pipelineContacted.toLocaleString()}
-                trend="neutral"
+                density="compact"
               />
               <MetricCard
                 label="Interested"
                 value={kpis.pipelineInterested.toLocaleString()}
                 trend={kpis.pipelineInterested > 0 ? "up" : "neutral"}
+                density="compact"
               />
               <MetricCard
-                label="Meetings"
+                label="Meetings Booked"
                 value={kpis.pipelineMeetings.toLocaleString()}
                 trend={kpis.pipelineMeetings > 0 ? "up" : "neutral"}
+                density="compact"
               />
-
-              {/* Health KPIs */}
-              <Link href="/senders" className="block cursor-pointer">
+              <MetricCard
+                label="Active Campaigns"
+                value={kpis.campaignsActive.toLocaleString()}
+                trend={kpis.campaignsActive > 0 ? "up" : "neutral"}
+                detail={kpis.campaignsPaused > 0 ? `${kpis.campaignsPaused} paused` : undefined}
+                density="compact"
+              />
+              <Link href="/senders" className="block">
                 <MetricCard
                   label="Sender Health"
                   value={`${kpis.sendersHealthy}/${kpis.sendersActiveTotal || kpis.sendersHealthy + unhealthySenders}`}
                   trend={unhealthySenders > 0 ? "warning" : "up"}
                   detail={unhealthySenders > 0 ? `${unhealthySenders} need attention` : "All healthy"}
+                  density="compact"
                 />
               </Link>
-              <MetricCard
-                label="Campaigns Active"
-                value={kpis.campaignsActive.toLocaleString()}
-                trend={kpis.campaignsActive > 0 ? "up" : "neutral"}
-                detail={kpis.campaignsPaused > 0 ? `${kpis.campaignsPaused} paused` : undefined}
-              />
-
-              {/* Inbox KPIs */}
-              <MetricCard
-                label="Inboxes Connected"
-                value={kpis.inboxesConnected.toLocaleString()}
-                trend={kpis.inboxesDisconnected > 0 ? "warning" : "up"}
-                detail={kpis.inboxesDisconnected > 0 ? `${kpis.inboxesDisconnected} disconnected` : "All connected"}
-              />
             </>
           )}
         </div>
+
+        {/* Secondary KPIs — expandable for deeper drill-down */}
+        {!loading && (
+          <SecondaryKpis kpis={kpis} bounceRate={bounceRate} />
+        )}
 
         {/* Activity Chart */}
         <Card>

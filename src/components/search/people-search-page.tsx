@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryStates, parseAsString, parseAsArrayOf, parseAsInteger } from "nuqs";
 import { useDebouncedCallback } from "use-debounce";
-import { Search } from "lucide-react";
+import { Search, Users } from "lucide-react";
 import Link from "next/link";
 import {
   Table,
@@ -294,7 +294,7 @@ export function PeopleSearchPage() {
   return (
     <div>
       {/* Header */}
-      <div className="border-b border-border px-6 py-5">
+      <div className="border-b border-border px-4 py-4 sm:px-6 sm:py-5">
         <div>
           <h1 className="text-xl font-semibold text-foreground">People</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -307,7 +307,7 @@ export function PeopleSearchPage() {
         </div>
       </div>
 
-      <div className="flex gap-6 p-6">
+      <div className="flex gap-6 p-4 sm:p-6">
         {/* Left sidebar */}
         <FilterSidebar
           verticals={filterOptions.verticals}
@@ -453,9 +453,19 @@ export function PeopleSearchPage() {
                   <TableRow className="border-border">
                     <TableCell
                       colSpan={7}
-                      className="text-center py-12 text-muted-foreground text-sm"
+                      className="text-center py-16"
                     >
-                      No people found matching your search
+                      <div className="flex flex-col items-center gap-2">
+                        <Users className="h-12 w-12 text-muted-foreground/50" />
+                        <p className="text-lg font-medium text-foreground">
+                          No people found
+                        </p>
+                        <p className="text-sm text-muted-foreground max-w-sm">
+                          {params.q || activeChips.length > 0
+                            ? "Try adjusting your search or filters to find what you're looking for."
+                            : "People will appear here once they're imported or synced from your campaigns."}
+                        </p>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (

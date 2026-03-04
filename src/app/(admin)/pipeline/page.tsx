@@ -681,7 +681,21 @@ export default function PipelinePage() {
         </div>
 
         {/* Kanban board */}
-        {loading ? (
+        {!loading && prospects.length === 0 && !search ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Building2 className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-1">
+              No pipeline deals
+            </h3>
+            <p className="text-sm text-muted-foreground text-center max-w-sm mb-5">
+              Add your first prospect to start tracking deals through the sales pipeline.
+            </p>
+            <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Prospect
+            </Button>
+          </div>
+        ) : loading ? (
           <>
             {/* Desktop skeleton */}
             <div className="hidden lg:flex gap-4 overflow-x-auto pb-4">

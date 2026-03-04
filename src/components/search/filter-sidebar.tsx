@@ -48,7 +48,7 @@ export function FilterSidebar({
   }, 300);
 
   return (
-    <aside className="w-60 flex-shrink-0 space-y-6">
+    <aside className="hidden md:block w-60 flex-shrink-0 space-y-6">
       {/* Vertical filter */}
       {verticals.length > 0 && (
         <div>
