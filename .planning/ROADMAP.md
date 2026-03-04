@@ -184,5 +184,5 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21 
 | 19. Evergreen Signal Campaign Auto-Pipeline | 4/4 | Complete    | 2026-03-04 | - |
 | 20. Creative Ideas Copy Framework | 2/2 | Complete    | 2026-03-04 | - |
 | 21. Signal Dashboard + CLI Chat | 2/2 | Complete    | 2026-03-04 | - |
-| 22. Client Financials & Invoicing | 5/5 | Complete   | 2026-03-04 | - |
+| 22. Client Financials & Invoicing | 5/5 | Complete    | 2026-03-04 | - |
 | 22. Client Financials & Invoicing | v2.0 | 0/TBD | Not started | - |
