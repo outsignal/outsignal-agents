@@ -16,7 +16,7 @@ export default function PortalError({
       </pre>
       <button
         onClick={reset}
-        className="px-4 py-2 bg-brand text-brand-foreground rounded hover:bg-brand-strong font-medium"
+        className="px-4 py-2 bg-foreground text-background rounded hover:bg-brand hover:text-foreground font-medium transition-colors duration-200"
       >
         Try again
       </button>

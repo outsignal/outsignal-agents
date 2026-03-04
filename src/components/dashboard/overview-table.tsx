@@ -94,7 +94,7 @@ export function OverviewTable({ summaries }: OverviewTableProps) {
                 </Badge>
               ) : (
                 <Badge
-                  className="text-xs bg-brand text-brand-foreground hover:bg-brand/90"
+                  className="text-xs bg-foreground text-background hover:bg-brand hover:text-foreground transition-colors duration-200"
                 >
                   Connected
                 </Badge>

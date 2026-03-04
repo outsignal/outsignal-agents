@@ -19,7 +19,7 @@ const badgeVariants = cva(
         ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         link: "text-primary underline-offset-4 [a&]:hover:underline",
         brand:
-          "bg-brand/15 text-brand-foreground border-brand/20",
+          "bg-foreground/90 text-background border-foreground/20",
         success:
           "bg-emerald-50 text-emerald-700 border-emerald-200",
         warning:

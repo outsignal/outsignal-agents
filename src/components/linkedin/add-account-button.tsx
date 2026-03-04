@@ -35,7 +35,7 @@ export function AddAccountButton({ workspaceSlug }: AddAccountButtonProps) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md bg-brand text-brand-foreground hover:bg-brand-strong px-3 py-1.5 text-sm font-medium transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background hover:bg-brand hover:text-foreground px-3 py-1.5 text-sm font-medium transition-colors duration-200"
       >
         + Add LinkedIn Account
       </button>
@@ -55,7 +55,7 @@ export function AddAccountButton({ workspaceSlug }: AddAccountButtonProps) {
       <button
         type="submit"
         disabled={loading || !name.trim()}
-        className="rounded-md bg-brand text-brand-foreground hover:bg-brand-strong px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+        className="rounded-md bg-foreground text-background hover:bg-brand hover:text-foreground px-3 py-1.5 text-sm font-medium transition-colors duration-200 disabled:opacity-50"
       >
         {loading ? "Adding..." : "Add"}
       </button>
