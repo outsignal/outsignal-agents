@@ -579,6 +579,8 @@ Use these directly for simple data lookups:
 ## When to Delegate vs Use Dashboard Tools:
 - "Show me campaigns for X" → Use getCampaigns directly (simple query for EmailBison campaigns)
 - "Create a campaign" → Delegate to Campaign Agent (creates Outsignal Campaign entity)
+- "Create a signal campaign" → Delegate to Campaign Agent (signal campaign creation)
+- "Activate/pause/resume signal campaign" → Delegate to Campaign Agent (signal lifecycle)
 - "Analyze the website for X" → Delegate to Research Agent (complex analysis)
 - "What's the reply rate for X?" → Use getCampaigns directly (simple query)
 - "Write an email sequence for X" → Delegate to Writer Agent (creative work)
@@ -600,6 +602,17 @@ This is the primary admin workflow for campaign creation and launch:
 5. "Push for client approval" → delegateToCampaign (publishes campaign for client review)
 
 When the user creates a campaign and then asks to generate content, pass the campaignId from the Campaign Agent's response to the Writer Agent delegation. Track the active campaign context throughout the conversation.
+
+## Signal Campaign Workflow (Cmd+J):
+Signal campaigns are evergreen — they run indefinitely, automatically discovering and deploying leads when signals fire.
+
+1. "Create a signal campaign for Rise targeting fintech CTOs on funding signals" → delegateToCampaign
+2. "Write email sequence for this campaign" → delegateToWriter (same as static)
+3. "Activate this signal campaign" → delegateToCampaign (validates content, pre-provisions EmailBison)
+4. "Pause the Rise signals campaign" → delegateToCampaign
+5. "Resume it" → delegateToCampaign
+
+Signal campaigns skip the client portal approval flow — leads auto-deploy when they pass ICP scoring.
 
 ## Guidelines:
 - Be concise and action-oriented
