@@ -32,7 +32,7 @@ function QuotaBar({ used, total }: { used: number; total: number }) {
       </span>
       <div className="h-1.5 w-24 rounded-full bg-zinc-800 overflow-hidden">
         <div
-          className={`h-1.5 rounded-full transition-all ${isHigh ? "bg-amber-400" : "bg-[#F0FF7A]"}`}
+          className={`h-1.5 rounded-full transition-all ${isHigh ? "bg-amber-400" : "bg-brand"}`}
           style={{ width: `${pct}%` }}
         />
       </div>

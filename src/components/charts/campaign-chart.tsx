@@ -23,11 +23,11 @@ export function CampaignBarChart({ data }: { data: BarChartData[] }) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+        <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0 0)" />
         <XAxis dataKey="name" fontSize={12} />
         <YAxis fontSize={12} />
         <Tooltip />
-        <Bar dataKey="value" fill="#F0FF7A" stroke="#000" strokeWidth={1} />
+        <Bar dataKey="value" fill="oklch(0.95 0.15 110)" stroke="#000" strokeWidth={1} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -38,7 +38,7 @@ interface PieChartData {
   value: number;
 }
 
-const COLORS = ["#F0FF7A", "#000000", "#666666", "#999999", "#cccccc"];
+const COLORS = ["oklch(0.95 0.15 110)", "#000000", "#666666", "#999999", "#cccccc"];
 
 export function CampaignPieChart({ data }: { data: PieChartData[] }) {
   return (

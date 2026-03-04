@@ -42,7 +42,7 @@ function ToggleChip({ label, active, onClick }: ToggleChipProps) {
       className={cn(
         "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors focus:outline-none",
         active
-          ? "bg-[#F0FF7A] text-[#3a4000] border-[#c8d900]"
+          ? "bg-brand text-brand-foreground border-brand-strong"
           : "bg-secondary text-muted-foreground border-border hover:bg-muted hover:text-foreground",
       )}
     >

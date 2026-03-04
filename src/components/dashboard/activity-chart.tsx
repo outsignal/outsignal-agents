@@ -61,12 +61,12 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
 };
 
 export function ActivityChart({ data }: ActivityChartProps) {
-  // Use hex fallbacks since recharts can't use CSS variables directly
+  // Recharts requires raw color values — these mirror the CSS variables from globals.css
   const colors = {
-    sent: "#000000",       // chart-2 / black
-    replies: "#c8d94e",    // chart-1 / brand yellow-green (darker for contrast)
-    bounces: "#ef4444",    // destructive / red
-    opens: "#a3a3a3",      // chart-4 / medium gray
+    sent: "oklch(0 0 0)",            // --chart-2 / black
+    replies: "oklch(0.85 0.12 110)", // --chart-5 / brand accent (darker for contrast)
+    bounces: "oklch(0.577 0.245 27.325)", // --destructive / red
+    opens: "oklch(0.7 0 0)",         // --chart-4 / medium gray
   };
 
   return (
@@ -95,7 +95,7 @@ export function ActivityChart({ data }: ActivityChartProps) {
         </defs>
         <CartesianGrid
           strokeDasharray="3 3"
-          stroke="#e5e5e5"
+          stroke="oklch(0.92 0 0)"
           vertical={false}
         />
         <XAxis
@@ -104,14 +104,14 @@ export function ActivityChart({ data }: ActivityChartProps) {
           tickLine={false}
           axisLine={false}
           tickFormatter={formatDate}
-          tick={{ fill: "#737373" }}
+          tick={{ fill: "oklch(0.45 0 0)" }}
           interval="preserveStartEnd"
         />
         <YAxis
           fontSize={11}
           tickLine={false}
           axisLine={false}
-          tick={{ fill: "#737373" }}
+          tick={{ fill: "oklch(0.45 0 0)" }}
           allowDecimals={false}
           width={36}
         />
@@ -160,10 +160,10 @@ export function ActivityChart({ data }: ActivityChartProps) {
 // Legend for the chart
 export function ActivityChartLegend() {
   const items = [
-    { label: "Sent", color: "#000000" },
-    { label: "Replies", color: "#c8d94e" },
-    { label: "Bounces", color: "#ef4444" },
-    { label: "Opens", color: "#a3a3a3" },
+    { label: "Sent", color: "oklch(0 0 0)" },
+    { label: "Replies", color: "oklch(0.85 0.12 110)" },
+    { label: "Bounces", color: "oklch(0.577 0.245 27.325)" },
+    { label: "Opens", color: "oklch(0.7 0 0)" },
   ];
 
   return (

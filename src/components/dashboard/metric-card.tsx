@@ -10,9 +10,9 @@ interface MetricCardProps {
 }
 
 const trendBorderColor: Record<string, string> = {
-  up: "#10b981",
-  down: "#ef4444",
-  warning: "#f59e0b",
+  up: "oklch(0.696 0.17 162.48)",    // emerald-500
+  down: "oklch(0.637 0.237 25.331)", // red-500
+  warning: "oklch(0.795 0.184 86.047)", // amber-500
 };
 
 export function MetricCard({ label, value, trend, detail }: MetricCardProps) {

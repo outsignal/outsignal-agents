@@ -72,8 +72,7 @@ export function DeployButton({
           setSuccess(false);
           setModalOpen(true);
         }}
-        className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-zinc-900 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2"
-        style={{ backgroundColor: "#F0FF7A" }}
+        className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2"
       >
         <Rocket className="h-4 w-4" />
         Deploy Campaign
@@ -163,8 +162,7 @@ export function DeployButton({
                 type="button"
                 onClick={handleDeploy}
                 disabled={loading || success}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-zinc-900 transition-opacity hover:opacity-90 disabled:opacity-50"
-                style={{ backgroundColor: "#F0FF7A" }}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {loading ? (
                   <>

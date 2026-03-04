@@ -125,7 +125,7 @@ export function SenderHealthPanel({ senderId, isExpanded }: SenderHealthPanelPro
   // Determine sparkline color from latest data point
   const latestStatusNum = sparkline[sparkline.length - 1]?.statusNum ?? 0;
   const sparklineColor =
-    latestStatusNum === 0 ? "#22c55e" : latestStatusNum === 1 ? "#eab308" : "#ef4444";
+    latestStatusNum === 0 ? "oklch(0.723 0.219 142.136)" : latestStatusNum === 1 ? "oklch(0.795 0.184 86.047)" : "oklch(0.637 0.237 25.331)";
 
   return (
     <div className="border-t border-border/50 px-4 pt-3 pb-2 space-y-3">

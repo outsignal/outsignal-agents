@@ -189,7 +189,7 @@ export default function EnrichmentCostsPage() {
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
                   Today&apos;s Spend
                 </p>
-                <p className={`text-2xl font-bold ${data.capHit ? "" : "text-brand-strong"}`} style={data.capHit ? { color: "#FF6B6B" } : undefined}>
+                <p className={`text-2xl font-bold ${data.capHit ? "text-destructive" : "text-brand-strong"}`}>
                   {fmtShort(data.todaySpend)}
                 </p>
                 <p className="text-xs text-muted-foreground mb-2">
@@ -198,11 +198,8 @@ export default function EnrichmentCostsPage() {
                 {/* Progress bar */}
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${data.capHit ? "" : "bg-brand"}`}
-                    style={{
-                      width: `${spendPct}%`,
-                      ...(data.capHit ? { backgroundColor: "#FF6B6B" } : {}),
-                    }}
+                    className={`h-full rounded-full transition-all ${data.capHit ? "bg-destructive" : "bg-brand"}`}
+                    style={{ width: `${spendPct}%` }}
                   />
                 </div>
               </div>
@@ -223,8 +220,7 @@ export default function EnrichmentCostsPage() {
                   Cap Status
                 </p>
                 <p
-                  className="text-2xl font-bold"
-                  style={{ color: data.capHit ? "#FF6B6B" : "#4ECDC4" }}
+                  className={`text-2xl font-bold ${data.capHit ? "text-destructive" : "text-emerald-500"}`}
                 >
                   {data.capHit ? "Cap Hit" : "Active"}
                 </p>
@@ -384,11 +380,11 @@ export default function EnrichmentCostsPage() {
                 {data && (
                   <ReferenceLine
                     y={data.dailyCap}
-                    stroke="#FF6B6B"
+                    stroke="oklch(0.577 0.245 27.325)"
                     strokeDasharray="4 2"
                     label={{
                       value: `Cap: ${fmtShort(data.dailyCap)}`,
-                      fill: "#FF6B6B",
+                      fill: "oklch(0.577 0.245 27.325)",
                       fontSize: 11,
                       position: "insideTopRight",
                     }}

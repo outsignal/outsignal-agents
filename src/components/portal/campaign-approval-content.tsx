@@ -80,7 +80,7 @@ function PreviewText({ raw }: { raw: string }) {
       parts.push(
         <mark
           key={key++}
-          className="bg-[#F0FF7A]/30 text-foreground rounded px-0.5"
+          className="bg-brand/30 text-foreground rounded px-0.5"
           title={`{${token}}`}
         >
           {replacement}

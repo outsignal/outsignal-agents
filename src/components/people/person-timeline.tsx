@@ -41,7 +41,7 @@ function eventConfig(type: TimelineEvent["type"]) {
     case "email_opened":
       return { icon: Eye, color: "text-green-500", dot: "bg-green-500" };
     case "email_replied":
-      return { icon: MessageSquare, color: "text-[#F0FF7A]", dot: "bg-[#F0FF7A]" };
+      return { icon: MessageSquare, color: "text-brand", dot: "bg-brand" };
     case "email_bounced":
       return { icon: AlertCircle, color: "text-red-500", dot: "bg-red-500" };
     case "linkedin_connect":

@@ -24,9 +24,9 @@ const ENRICHMENT_OPTIONS = [
 ];
 
 const ENRICHMENT_COLORS: Record<string, string> = {
-  full: "#4ECDC4",
-  partial: "#F0FF7A",
-  missing: "#FF6B6B",
+  full: "oklch(0.696 0.17 162.48)",    // emerald-500
+  partial: "oklch(0.95 0.15 110)",     // brand
+  missing: "oklch(0.577 0.245 27.325)", // destructive
 };
 
 export function FilterSidebar({

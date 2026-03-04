@@ -1,15 +1,33 @@
 import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+const cardVariants = cva(
+  "bg-card text-card-foreground flex flex-col rounded-lg border shadow-none",
+  {
+    variants: {
+      density: {
+        default: "gap-5 py-5",
+        compact: "gap-3 py-3",
+      },
+    },
+    defaultVariants: {
+      density: "default",
+    },
+  }
+)
+
+function Card({
+  className,
+  density = "default",
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
   return (
     <div
       data-slot="card"
-      className={cn(
-        "bg-card text-card-foreground flex flex-col gap-5 rounded-lg border py-5 shadow-none",
-        className
-      )}
+      data-density={density}
+      className={cn(cardVariants({ density }), className)}
       {...props}
     />
   )
@@ -20,7 +38,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6 [[data-density=compact]_&]:px-4 [[data-density=compact]_&]:gap-1.5 [[data-density=compact]_&]:[.border-b]:pb-4",
         className
       )}
       {...props}
@@ -65,7 +83,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-6", className)}
+      className={cn("px-6 [[data-density=compact]_&]:px-4", className)}
       {...props}
     />
   )
@@ -75,7 +93,10 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
-      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      className={cn(
+        "flex items-center px-6 [.border-t]:pt-6 [[data-density=compact]_&]:px-4 [[data-density=compact]_&]:[.border-t]:pt-4",
+        className
+      )}
       {...props}
     />
   )
@@ -89,4 +110,5 @@ export {
   CardAction,
   CardDescription,
   CardContent,
+  cardVariants,
 }

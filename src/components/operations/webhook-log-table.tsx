@@ -71,7 +71,7 @@ const EVENT_TYPE_STYLES: Record<
   },
   LEAD_REPLIED: {
     label: "Replied",
-    className: "bg-[#F0FF7A]/20 text-[#5a6300] border-[#F0FF7A]/50",
+    className: "bg-brand/20 text-brand-foreground border-brand/50",
   },
   LEAD_INTERESTED: {
     label: "Interested",
