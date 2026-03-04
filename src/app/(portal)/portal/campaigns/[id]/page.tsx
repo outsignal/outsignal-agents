@@ -4,7 +4,8 @@ import { getCampaign, getCampaignLeadSample } from "@/lib/campaigns/operations";
 import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
 import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Mail, Linkedin } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, Mail, Linkedin, Clock, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -46,36 +47,70 @@ export default async function PortalCampaignDetailPage({
     className: "bg-gray-100 text-gray-800",
   };
 
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  const formatDateTime = (date: Date) =>
+    `${formatDate(date)} at ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Back link + header */}
       <div>
         <Link
           href="/portal/campaigns"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Campaigns
         </Link>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-heading font-bold">{campaign.name}</h1>
-          <Badge className={cn("text-xs", config.className)}>{config.label}</Badge>
-        </div>
-        {campaign.description && (
-          <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
-        )}
-        <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-          {campaign.channels.includes("email") && (
-            <span className="inline-flex items-center gap-1">
-              <Mail className="h-3.5 w-3.5" /> Email
-            </span>
-          )}
-          {campaign.channels.includes("linkedin") && (
-            <span className="inline-flex items-center gap-1">
-              <Linkedin className="h-3.5 w-3.5" /> LinkedIn
-            </span>
-          )}
-        </div>
+
+        {/* Campaign header card */}
+        <Card>
+          <CardContent className="pt-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h1 className="text-2xl font-heading font-bold">{campaign.name}</h1>
+                  <Badge className={cn("text-xs", config.className)}>
+                    {config.label}
+                  </Badge>
+                </div>
+                {campaign.description && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {campaign.description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Meta row */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 pt-4 border-t text-sm text-muted-foreground">
+              {campaign.channels.includes("email") && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" /> Email
+                </span>
+              )}
+              {campaign.channels.includes("linkedin") && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Linkedin className="h-3.5 w-3.5" /> LinkedIn
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Created {formatDate(campaign.createdAt)}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Last updated {formatDateTime(campaign.updatedAt)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Leads Section */}

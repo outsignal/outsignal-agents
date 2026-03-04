@@ -275,7 +275,7 @@ export function CampaignApprovalContent({
               <Button
                 onClick={handleApprove}
                 disabled={loading}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                variant="brand"
               >
                 Approve Content
               </Button>
