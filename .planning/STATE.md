@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Discovery & Intelligence
 status: unknown
-last_updated: "2026-03-04T22:29:49.932Z"
+last_updated: "2026-03-04T22:29:59.680Z"
 progress:
   total_phases: 18
   completed_phases: 15
@@ -106,6 +106,8 @@ Progress: [######░░░░] ~7% (v2.0)
 - [19-04 admin-ui]: signalLeadCount queries prisma.signalCampaignLead with outcome=added — only counts successfully added leads
 - [20-02 orchestrator]: Backtick inside system prompt template literal causes TS parse error — use plain text "copyStrategy parameter" not markdown inline code in template literals
 - [Phase 19]: processSignalCampaigns updates lastSignalProcessedAt even with 0 signals — prevents re-processing old signals on every run
+- [Phase 19]: Pipeline auth fails closed — PIPELINE_INTERNAL_SECRET unset means all requests rejected
+- [Phase 19]: Signal campaign domain dedup via SignalCampaignLead.companyDomain — prevents reprocessing same company across multiple signal cycles
 
 ### Blockers/Concerns
 
@@ -120,5 +122,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 19-04-PLAN.md (Phase 19 Plan 04 -- Worker pipeline trigger + signal campaign dashboard controls: triggerSignalPipeline in worker-signals, PATCH signal-status API, SignalStatusButton, Type column, Signal Stats card)
-Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-03-PLAN.md (Phase 19 continues; Phase 20 fully complete)
+Stopped at: Completed 19-03-PLAN.md (Phase 19 Plan 03 -- Signal campaign pipeline processor: processSignalCampaigns, POST /api/pipeline/signal-campaigns/process)
+Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-05-PLAN.md (Phase 19 Plans 01-04 all complete)

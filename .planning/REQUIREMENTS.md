@@ -40,10 +40,10 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 
 - [x] **PIPE-01**: Admin can create a signal campaign via chat specifying ICP criteria, signal types to monitor, and channel (email/LinkedIn/both)
 - [x] **PIPE-02**: Signal campaign setup requires content template approval (admin review + client dual approval in portal) before going live
-- [ ] **PIPE-03**: When a signal fires on a live campaign, leads at the matching company are auto-enriched via existing waterfall
-- [ ] **PIPE-04**: Auto-enriched leads are ICP scored and added to the signal campaign's target list
-- [ ] **PIPE-05**: New leads auto-deploy to EmailBison/LinkedIn using the campaign's approved content template
-- [ ] **PIPE-06**: Admin receives Slack notification when leads are added to a signal campaign ("3 leads added to Rise Fintech Signals")
+- [x] **PIPE-03**: When a signal fires on a live campaign, leads at the matching company are auto-enriched via existing waterfall
+- [x] **PIPE-04**: Auto-enriched leads are ICP scored and added to the signal campaign's target list
+- [x] **PIPE-05**: New leads auto-deploy to EmailBison/LinkedIn using the campaign's approved content template
+- [x] **PIPE-06**: Admin receives Slack notification when leads are added to a signal campaign ("3 leads added to Rise Fintech Signals")
 - [x] **PIPE-07**: Signal campaigns have a daily lead cap (configurable per campaign) to prevent burst floods
 - [x] **PIPE-08**: Signal campaigns can be paused/resumed instantly by admin
 - [x] **PIPE-09**: Static campaigns (one-off list build → copy → deploy) continue to work as before alongside signal campaigns
@@ -157,10 +157,10 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | SIG-10 | Phase 18 | Complete |
 | PIPE-01 | Phase 19 | Complete |
 | PIPE-02 | Phase 19 | Complete |
-| PIPE-03 | Phase 19 | Pending |
-| PIPE-04 | Phase 19 | Pending |
-| PIPE-05 | Phase 19 | Pending |
-| PIPE-06 | Phase 19 | Pending |
+| PIPE-03 | Phase 19 | Complete |
+| PIPE-04 | Phase 19 | Complete |
+| PIPE-05 | Phase 19 | Complete |
+| PIPE-06 | Phase 19 | Complete |
 | PIPE-07 | Phase 19 | Complete |
 | PIPE-08 | Phase 19 | Complete |
 | PIPE-09 | Phase 19 | Complete |
