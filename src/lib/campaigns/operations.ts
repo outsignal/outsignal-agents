@@ -23,6 +23,12 @@ export interface CreateCampaignParams {
   description?: string;
   channels?: string[]; // ["email"], ["linkedin"], or ["email", "linkedin"]
   targetListId?: string;
+  // Signal campaign fields
+  type?: "static" | "signal";
+  icpCriteria?: Record<string, unknown> | null; // structured JSON
+  signalTypes?: string[] | null; // subset of signalEnabledTypes
+  dailyLeadCap?: number;
+  icpScoreThreshold?: number;
 }
 
 export interface UpdateCampaignParams {
@@ -36,6 +42,7 @@ export interface CampaignSummary {
   id: string;
   name: string;
   workspaceSlug: string;
+  type: string;
   status: string;
   channels: string[];
   targetListName: string | null;
@@ -58,6 +65,12 @@ export interface CampaignDetail extends CampaignSummary {
   emailBisonCampaignId: number | null;
   publishedAt: Date | null;
   deployedAt: Date | null;
+  // Signal campaign fields
+  icpCriteria: unknown | null; // parsed JSON
+  signalTypes: string[] | null; // parsed JSON array
+  dailyLeadCap: number;
+  icpScoreThreshold: number;
+  lastSignalProcessedAt: Date | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +85,17 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   deployed: ["active"],
   active: ["paused", "completed"],
   paused: ["active", "completed"],
+};
+
+// Signal campaigns use a simplified state machine (per CONTEXT.md decision):
+//   draft -> active (admin activates after review)
+//   active -> paused | archived
+//   paused -> active | archived
+// Static campaigns keep existing machine unchanged.
+const SIGNAL_CAMPAIGN_TRANSITIONS: Record<string, string[]> = {
+  draft: ["active"],
+  active: ["paused", "archived"],
+  paused: ["active", "archived"],
 };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +123,7 @@ function formatCampaignDetail(
     id: string;
     name: string;
     workspaceSlug: string;
+    type: string;
     status: string;
     channels: string;
     description: string | null;
@@ -116,6 +141,12 @@ function formatCampaignDetail(
     deployedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    // Signal campaign fields
+    icpCriteria: string | null;
+    signalTypes: string | null;
+    dailyLeadCap: number;
+    icpScoreThreshold: number;
+    lastSignalProcessedAt: Date | null;
     targetList: {
       name: string;
       _count: { people: number };
@@ -126,6 +157,7 @@ function formatCampaignDetail(
     id: raw.id,
     name: raw.name,
     workspaceSlug: raw.workspaceSlug,
+    type: raw.type,
     status: raw.status,
     channels: parseJsonArray(raw.channels) as string[] ?? ["email"],
     targetListName: raw.targetList?.name ?? null,
@@ -145,6 +177,12 @@ function formatCampaignDetail(
     emailBisonCampaignId: raw.emailBisonCampaignId,
     publishedAt: raw.publishedAt,
     deployedAt: raw.deployedAt,
+    // Signal campaign fields
+    icpCriteria: raw.icpCriteria ? (() => { try { return JSON.parse(raw.icpCriteria!); } catch { return null; } })() : null,
+    signalTypes: parseJsonArray(raw.signalTypes) as string[] | null,
+    dailyLeadCap: raw.dailyLeadCap,
+    icpScoreThreshold: raw.icpScoreThreshold,
+    lastSignalProcessedAt: raw.lastSignalProcessedAt,
   };
 }
 
@@ -179,7 +217,18 @@ const targetListInclude = {
 export async function createCampaign(
   params: CreateCampaignParams,
 ): Promise<CampaignDetail> {
-  const { workspaceSlug, name, description, channels, targetListId } = params;
+  const {
+    workspaceSlug,
+    name,
+    description,
+    channels,
+    targetListId,
+    type,
+    icpCriteria,
+    signalTypes,
+    dailyLeadCap,
+    icpScoreThreshold,
+  } = params;
 
   // Validate workspace exists
   const workspace = await prisma.workspace.findUnique({
@@ -192,6 +241,7 @@ export async function createCampaign(
   }
 
   const resolvedChannels = channels && channels.length > 0 ? channels : ["email"];
+  const resolvedType = type ?? "static";
 
   const campaign = await prisma.campaign.create({
     data: {
@@ -200,6 +250,13 @@ export async function createCampaign(
       description,
       channels: JSON.stringify(resolvedChannels),
       targetListId: targetListId ?? null,
+      type: resolvedType,
+      ...(resolvedType === "signal" && {
+        icpCriteria: icpCriteria ? JSON.stringify(icpCriteria) : null,
+        signalTypes: signalTypes ? JSON.stringify(signalTypes) : null,
+        ...(dailyLeadCap !== undefined && { dailyLeadCap }),
+        ...(icpScoreThreshold !== undefined && { icpScoreThreshold }),
+      }),
     },
     include: targetListInclude,
   });
@@ -255,6 +312,7 @@ export async function listCampaigns(
     id: c.id,
     name: c.name,
     workspaceSlug: c.workspaceSlug,
+    type: c.type,
     status: c.status,
     channels: parseJsonArray(c.channels) as string[] ?? ["email"],
     targetListName: c.targetList?.name ?? null,
@@ -326,7 +384,7 @@ export async function updateCampaignStatus(
 ): Promise<CampaignDetail> {
   const current = await prisma.campaign.findUnique({
     where: { id },
-    select: { status: true },
+    select: { status: true, type: true },
   });
 
   if (!current) {
@@ -334,10 +392,12 @@ export async function updateCampaignStatus(
   }
 
   const currentStatus = current.status;
+  const isSignal = (current as { type?: string }).type === "signal";
+  const transitions = isSignal ? SIGNAL_CAMPAIGN_TRANSITIONS : VALID_TRANSITIONS;
 
   // Allow any -> completed
   if (newStatus !== "completed") {
-    const allowedTransitions = VALID_TRANSITIONS[currentStatus] ?? [];
+    const allowedTransitions = transitions[currentStatus] ?? [];
     if (!allowedTransitions.includes(newStatus)) {
       throw new Error(
         `Invalid status transition: '${currentStatus}' -> '${newStatus}'. ` +
