@@ -54,8 +54,8 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 - [ ] **CFG-02**: Agent enforces workspace package — cannot create signal campaigns if workspace is not approved for signals
 - [ ] **CFG-03**: Monthly campaign allowance tracked per workspace (e.g., 2 static campaigns/month)
 - [ ] **CFG-04**: Admin can upgrade/downgrade workspace package via chat or API
-- [ ] **CFG-05**: Monthly lead quota per workspace (e.g., 2,000 leads/month) — agent enforces quota across all campaigns (static + signal)
-- [ ] **CFG-06**: Lead quota usage visible in agent responses and discovery plans
+- [x] **CFG-05**: Monthly lead quota per workspace (e.g., 2,000 leads/month) — agent enforces quota across all campaigns (static + signal)
+- [x] **CFG-06**: Lead quota usage visible in agent responses and discovery plans
 
 ### Copy Strategy
 
@@ -133,8 +133,8 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | CFG-02 | Phase 15 | Pending |
 | CFG-03 | Phase 15 | Pending |
 | CFG-04 | Phase 15 | Pending |
-| CFG-05 | Phase 15 | Pending |
-| CFG-06 | Phase 15 | Pending |
+| CFG-05 | Phase 15 | Complete |
+| CFG-06 | Phase 15 | Complete |
 | DISC-01 | Phase 16 | Pending |
 | DISC-02 | Phase 16 | Pending |
 | DISC-03 | Phase 16 | Pending |
