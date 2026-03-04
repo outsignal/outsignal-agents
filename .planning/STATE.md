@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v2.0 Phase 22 — Client Financials & Invoicing (plan 01 of N complete)
+**Current focus:** v2.0 Phase 22 — Client Financials & Invoicing (plan 03 of 5 complete)
 
 ## Current Position
 
 Phase: 22 of 22 (Client Financials & Invoicing) -- IN PROGRESS
-Plan: 01 of N complete
-Status: Phase 22 plan 01 complete — Prisma invoice schema (4 models, 13 Workspace billing fields) + TypeScript types, GBP utilities, atomic invoice numbering, and CRUD operations
-Last activity: 2026-03-04 -- 22-01 complete (Invoice/InvoiceLineItem/InvoiceSequence/InvoiceSenderSettings models, src/lib/invoices/)
+Plan: 03 of 5 complete
+Status: Phase 22 plan 03 complete — Invoice auto-generation cron (7-day window, idempotency guard), overdue detection with branded reminder email, 48h unpaid renewal Slack alerts, all merged into existing daily cron
+Last activity: 2026-03-04 -- 22-03 complete (src/lib/invoices/generator.ts, src/lib/invoices/overdue.ts, /api/inbox-health/check extended)
 
 Progress: [######░░░░] ~7% (v2.0)
 
@@ -113,6 +113,10 @@ Progress: [######░░░░] ~7% (v2.0)
 - [22-01 schema]: Invoice snapshots sender + client details at creation time for immutability — changes to workspace billing fields don't retroactively alter issued invoices
 - [22-01 operations]: viewToken uses crypto.randomUUID() for portal access — no auth required, token-based
 - [22-01 operations]: advanceRenewalDate is month-end safe (Jan 31 -> Feb 28/29) — uses setDate(0) rollback pattern
+- [22-03 generator]: generateDueInvoices uses 7-day look-ahead window; idempotency guard on workspaceSlug + renewalDate with status in [draft, sent]
+- [22-03 generator]: alertUnpaidBeforeRenewal targets OPS_SLACK_CHANNEL_ID via notify() — billing urgency is admin-internal, not client-facing
+- [22-03 overdue]: reminderSentAt guard ensures overdue reminder email sent exactly once per invoice regardless of cron frequency
+- [22-03 overdue]: subtractOneMonth() mirrors advanceRenewalDate() using same setDate(0) rollback pattern for month-end safety
 - [21-02 cli-chat]: AI SDK v6 uses stopWhen/stepCountIs not maxSteps on generateText — plan referenced deprecated API, updated to match runner.ts pattern
 - [21-02 cli-chat]: ModelMessage (not CoreMessage) is the correct type for multi-turn messages in AI SDK v6
 - [21-02 cli-chat]: chalk@4 was pre-installed (v4.1.2) — CommonJS-compatible, no install step needed
@@ -134,5 +138,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 21-02-PLAN.md (Phase 21 Plan 02 -- Interactive CLI chat for Outsignal Orchestrator: scripts/chat.ts, npm run chat)
-Resume file: .planning/phases/22-client-financials-invoicing/22-02-PLAN.md (if it exists)
+Stopped at: Completed 22-03-PLAN.md (Phase 22 Plan 03 -- Invoice auto-generation cron, overdue detection, 48h unpaid alerts)
+Resume file: .planning/phases/22-client-financials-invoicing/22-04-PLAN.md (if it exists)
