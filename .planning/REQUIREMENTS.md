@@ -88,8 +88,8 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 
 ### Quick Fixes
 
-- [ ] **FIX-01**: Research Agent has access to searchKnowledgeBase tool (currently missing — only Writer, Leads, Orchestrator have it)
-- [ ] **FIX-02**: Enrichment waterfall reordered to actual cheapest-first: FindyMail ($0.001) → Prospeo ($0.002) → AI Ark ($0.003) → LeadMagic ($0.005)
+- [x] **FIX-01**: Research Agent has access to searchKnowledgeBase tool (currently missing — only Writer, Leads, Orchestrator have it)
+- [x] **FIX-02**: Enrichment waterfall reordered to actual cheapest-first: FindyMail ($0.001) → Prospeo ($0.002) → AI Ark ($0.003) → LeadMagic ($0.005)
 
 ## v2.1 Requirements
 
@@ -124,8 +124,8 @@ Deferred to next milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FIX-01 | Phase 15 | Pending |
-| FIX-02 | Phase 15 | Pending |
+| FIX-01 | Phase 15 | Complete |
+| FIX-02 | Phase 15 | Complete |
 | DISC-06 | Phase 15 | Pending |
 | DISC-09 | Phase 15 | Pending |
 | DISC-10 | Phase 15 | Pending |

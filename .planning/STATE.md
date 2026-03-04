@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Lead Discovery & Intelligence
-status: ready_to_plan
+status: in_progress
 last_updated: "2026-03-04"
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 0
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 15 of 21 (Foundation)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-04 — v2.0 roadmap created (7 phases, 56 requirements mapped)
+Plan: 01 complete, 02+ pending
+Status: In progress
+Last activity: 2026-03-04 — 15-01 complete (FIX-01: Research Agent KB tool, FIX-02: cheapest-first waterfall)
 
-Progress: [░░░░░░░░░░] 0% (v2.0)
+Progress: [░░░░░░░░░░] ~1% (v2.0)
 
 ## Accumulated Context
 
@@ -41,6 +41,8 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 - [Phase 15 Context]: Two approval gates for discovery: plan approval before API spend, batch review before enrichment
 - [Phase 15 Context]: Separate quota pools for signal vs static campaigns, rolling 30-day reset
 - [v2.0 Roadmap]: Signal budget governor is Phase 18 prerequisite, not an optimization
+- [15-01 FIX-01]: searchKnowledgeBase added to Research Agent so it can ground ICP recommendations in documented best practices
+- [15-01 FIX-02]: Waterfall reordered FindyMail ($0.001) → Prospeo ($0.002) → LeadMagic ($0.005) for ~50% cost savings; LinkedIn gate uses named filter to skip FindyMail safely
 
 ### Blockers/Concerns
 
@@ -55,5 +57,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Phase 15 context gathered. All gray areas discussed (workspace packages, staging table, admin config UX, quota enforcement).
-Resume file: .planning/phases/15-foundation/15-CONTEXT.md
+Stopped at: Completed 15-01-PLAN.md (FIX-01 + FIX-02 both resolved)
+Resume file: .planning/phases/15-foundation/15-02-PLAN.md (next plan)
