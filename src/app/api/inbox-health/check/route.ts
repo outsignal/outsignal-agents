@@ -5,6 +5,8 @@ import { notifyInboxDisconnect, notifySenderHealth, sendSenderHealthDigest } fro
 import { notify } from "@/lib/notify";
 import { runSenderHealthCheck } from "@/lib/linkedin/health-check";
 import { refreshStaleSessions } from "@/lib/linkedin/session-refresh";
+import { generateDueInvoices, alertUnpaidBeforeRenewal } from "@/lib/invoices/generator";
+import { markAndNotifyOverdueInvoices } from "@/lib/invoices/overdue";
 
 export async function GET(request: Request) {
   if (!validateCronSecret(request)) {
@@ -149,6 +151,24 @@ export async function GET(request: Request) {
       console.log(`[${timestamp}] Session refresh: flagged ${sessionRefreshResult.count} stale sessions`);
     }
 
+    // --- Invoice Auto-Generation ---
+    const invoiceGenResult = await generateDueInvoices();
+    console.log(
+      `[${timestamp}] Invoice generation: ${invoiceGenResult.created} created, ${invoiceGenResult.skipped} skipped`
+    );
+
+    // --- Overdue Invoice Detection ---
+    const overdueCount = await markAndNotifyOverdueInvoices();
+    if (overdueCount > 0) {
+      console.log(`[${timestamp}] Overdue invoices: ${overdueCount} marked overdue`);
+    }
+
+    // --- 48h Unpaid Renewal Alert ---
+    const unpaidAlertCount = await alertUnpaidBeforeRenewal();
+    if (unpaidAlertCount > 0) {
+      console.log(`[${timestamp}] Unpaid renewal alerts: ${unpaidAlertCount} sent`);
+    }
+
     return NextResponse.json({
       checked: changes.length,
       workspacesWithChanges: changes.map((c) => ({
@@ -161,6 +181,10 @@ export async function GET(request: Request) {
       healthCritical: criticalCount,
       healthWarnings: warningCount,
       sessionRefreshCount: sessionRefreshResult.count,
+      invoicesGenerated: invoiceGenResult.created,
+      invoicesSkipped: invoiceGenResult.skipped,
+      overdueInvoices: overdueCount,
+      unpaidRenewalAlerts: unpaidAlertCount,
     });
   } catch (error) {
     console.error("[inbox-health/check] Error:", error);
