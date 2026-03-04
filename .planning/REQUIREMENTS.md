@@ -74,11 +74,11 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 
 ### Signal Dashboard
 
-- [ ] **DASH-01**: Admin can view live signal feed showing recent signals across all clients
-- [ ] **DASH-02**: Dashboard shows per-client signal breakdown (signals fired, leads generated, cost)
-- [ ] **DASH-03**: Dashboard shows signal type distribution (funding, job changes, hiring, tech, news, social)
-- [ ] **DASH-04**: Dashboard shows daily/weekly cost tracking for signal monitoring per workspace
-- [ ] **DASH-05**: SignalEvent data persists for long-term pattern analysis (signal → conversion correlation over time)
+- [x] **DASH-01**: Admin can view live signal feed showing recent signals across all clients
+- [x] **DASH-02**: Dashboard shows per-client signal breakdown (signals fired, leads generated, cost)
+- [x] **DASH-03**: Dashboard shows signal type distribution (funding, job changes, hiring, tech, news, social)
+- [x] **DASH-04**: Dashboard shows daily/weekly cost tracking for signal monitoring per workspace
+- [x] **DASH-05**: SignalEvent data persists for long-term pattern analysis (signal → conversion correlation over time)
 
 ### CLI Orchestrator
 
@@ -172,11 +172,11 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | COPY-06 | Phase 20 | Complete |
 | COPY-07 | Phase 20 | Complete |
 | COPY-08 | Phase 20 | Complete |
-| DASH-01 | Phase 21 | Pending |
-| DASH-02 | Phase 21 | Pending |
-| DASH-03 | Phase 21 | Pending |
-| DASH-04 | Phase 21 | Pending |
-| DASH-05 | Phase 21 | Pending |
+| DASH-01 | Phase 21 | Complete |
+| DASH-02 | Phase 21 | Complete |
+| DASH-03 | Phase 21 | Complete |
+| DASH-04 | Phase 21 | Complete |
+| DASH-05 | Phase 21 | Complete |
 | CLI-01 | Phase 21 | Complete |
 | CLI-02 | Phase 21 | Complete |
 | CLI-03 | Phase 21 | Complete |
