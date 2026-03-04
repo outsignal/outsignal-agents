@@ -36,6 +36,10 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 - [v2.0 Roadmap]: Phase 20 (Creative Ideas) and Phase 21 (CLI Chat) are independent of Phase 18-19 (signal pipeline) — can be parallelized
 - [v2.0 Roadmap]: Phase 15 groups FIX-01/02, schema additions, workspace config, and adapter interface — all are blocking dependencies
 - [v2.0 Roadmap]: Apollo per-workspace key architecture locked in Phase 15 schema — cannot retrofit later
+- [Phase 15 Context]: Apollo key is single Outsignal-level env var, NOT per-workspace — DISC-09 simplified
+- [Phase 15 Context]: Workspace packages are modular (email, email-signals, linkedin, linkedin-signals) — no fixed tiers
+- [Phase 15 Context]: Two approval gates for discovery: plan approval before API spend, batch review before enrichment
+- [Phase 15 Context]: Separate quota pools for signal vs static campaigns, rolling 30-day reset
 - [v2.0 Roadmap]: Signal budget governor is Phase 18 prerequisite, not an optimization
 
 ### Blockers/Concerns
@@ -51,5 +55,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: v2.0 roadmap written. 7 phases (15-21), 56 requirements mapped, STATE.md and REQUIREMENTS.md updated.
-Resume file: None
+Stopped at: Phase 15 context gathered. All gray areas discussed (workspace packages, staging table, admin config UX, quota enforcement).
+Resume file: .planning/phases/15-foundation/15-CONTEXT.md
