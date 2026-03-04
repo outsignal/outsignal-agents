@@ -1750,8 +1750,56 @@ export class LinkedInBrowser {
 
           await this.sleep(5000);
         } else {
-          this.log("2FA input not found — no textbox or input on challenge page");
-          return false;
+          // No TOTP input found — LinkedIn may be showing a "verify via app"
+          // push notification flow. Poll the URL waiting for mobile approval.
+          this.log("No TOTP input found — waiting for mobile app approval (up to 60s)...");
+          let approved = false;
+          for (let i = 0; i < 12; i++) {
+            await this.sleep(5000);
+            const pollUrl = this.exec("get url");
+            this.log(`Mobile approval poll ${i + 1}/12: ${pollUrl}`);
+            if (
+              pollUrl.includes("/feed") ||
+              pollUrl.includes("/mynetwork") ||
+              pollUrl.includes("/messaging") ||
+              pollUrl.includes("/in/")
+            ) {
+              this.log("Login approved via mobile — redirected to feed");
+              approved = true;
+              break;
+            }
+            // Also re-check if a TOTP input appeared (page may have updated)
+            const retrySnapshot = this.exec("snapshot -i");
+            const retryElements = this.parseSnapshot(retrySnapshot);
+            const retryInput = retryElements.find(
+              (el) =>
+                el.role === "textbox" ||
+                el.role === "input" ||
+                el.raw.toLowerCase().includes("textbox") ||
+                el.raw.toLowerCase().includes("input"),
+            );
+            if (retryInput) {
+              this.log(`TOTP input appeared on retry: ref=${retryInput.ref}`);
+              const { TOTP } = await import("otpauth");
+              const freshTotp = new TOTP({
+                secret: totpSecret,
+                digits: 6,
+                period: 30,
+                algorithm: "SHA1",
+              });
+              const freshCode = freshTotp.generate();
+              this.exec(`fill ${retryInput.ref} "${freshCode}"`);
+              await this.sleep(500);
+              this.exec("press Enter");
+              await this.sleep(5000);
+              approved = true;
+              break;
+            }
+          }
+          if (!approved) {
+            this.log("Mobile approval timed out after 60s");
+            return false;
+          }
         }
       }
 
