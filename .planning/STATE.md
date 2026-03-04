@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lead Discovery & Intelligence
 status: unknown
-last_updated: "2026-03-04T20:16:00.000Z"
+last_updated: "2026-03-04T20:29:54Z"
 progress:
   total_phases: 14
   completed_phases: 12
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 ## Current Position
 
-Phase: 18 of 21 (Signal Monitoring Infrastructure) -- IN PROGRESS
-Plan: 03 of 04 complete
-Status: Phase 18 in progress
-Last activity: 2026-03-04 -- 18-03 complete (PredictLeads signal adapters: job openings, financing, news, tech adoption; signals.ts write/stacking/TTL logic)
+Phase: 18 of 21 (Signal Monitoring Infrastructure) -- COMPLETE
+Plan: 04 of 04 complete
+Status: Phase 18 complete — all 4 plans done, signal worker functionally complete
+Last activity: 2026-03-04 -- 18-04 complete (budget governor, Serper social listening, URL dedup, workspace config loader, cycle orchestrator, wired entry point)
 
 Progress: [######░░░░] ~7% (v2.0)
 
@@ -81,6 +81,10 @@ Progress: [######░░░░] ~7% (v2.0)
 - [18-03 signal-adapters]: fetchJobOpenings returns totalJobCount for hiring spike detection (>10 threshold) — no extra API call needed
 - [18-03 signal-adapters]: checkAndFlagHighIntent sets isHighIntent=false when distinctTypes < 2 — actively clears stale flags as signals expire
 - [18-03 signal-adapters]: upsert extends expiresAt on re-detection — active signals get fresh 90-day TTL each cycle
+- [18-04 cycle-orchestration]: Shared db.ts singleton — avoids N PrismaClient connection pools when N modules each import prisma
+- [18-04 cycle-orchestration]: Fisher-Yates domain shuffle — ensures fair budget coverage when a workspace hits its cap mid-cycle
+- [18-04 cycle-orchestration]: ADMIN_SLACK_CHANNEL_ID for budget alerts, not workspace channel — budget alerts are operational/admin, not client-facing
+- [18-04 cycle-orchestration]: Hiring spike uses externalId=null — synthetic aggregate signal, always creates (no stable external ID to dedup on)
 
 ### Blockers/Concerns
 
@@ -95,5 +99,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 18-03-PLAN.md (Phase 18 Plan 03 -- PredictLeads signal adapters + signals.ts DB write/stacking/TTL)
-Resume file: .planning/phases/18-signal-monitoring-infrastructure/18-04-PLAN.md
+Stopped at: Completed 18-04-PLAN.md (Phase 18 Plan 04 -- budget governor, cycle orchestrator, signal worker complete)
+Resume file: .planning/phases/19-signal-dashboard/19-01-PLAN.md (or next unstarted plan)
