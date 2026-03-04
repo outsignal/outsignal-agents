@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { crawlWebsite, scrapeUrl } from "@/lib/firecrawl/client";
 import { notify } from "@/lib/notify";
 import { runAgent } from "./runner";
+import { searchKnowledgeBase } from "./shared-tools";
 import type { AgentConfig, ResearchInput, ResearchOutput } from "./types";
 
 // --- Research Agent Tools ---
@@ -160,6 +161,8 @@ const researchTools = {
       };
     },
   }),
+
+  searchKnowledgeBase,
 };
 
 // --- Agent Configuration ---
@@ -228,7 +231,10 @@ Your analysis JSON should follow this structure:
   "pricingSignals": "...",
   "contentTone": "...",
   "suggestions": ["...", "..."]
-}`;
+}
+
+## Knowledge Base
+You have access to the Knowledge Base via \`searchKnowledgeBase\`. Use it to look up cold outreach best practices, proven frameworks, and client-specific examples when analyzing websites or suggesting ICP targeting strategies. Always ground your recommendations in documented knowledge when available.`;
 
 const researchConfig: AgentConfig = {
   name: "research",
