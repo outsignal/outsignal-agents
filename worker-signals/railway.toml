@@ -1,0 +1,6 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "./worker-signals/Dockerfile"
+
+[deploy]
+cronSchedule = "0 */6 * * *"
