@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { generateProposalToken } from "@/lib/tokens";
 import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { searchKnowledgeBase } from "./shared-tools";
+import { getWorkspaceQuotaUsage, parseModules } from "@/lib/workspaces/quota";
 import type { AgentConfig } from "./types";
 
 // --- Delegation Tools ---
@@ -203,13 +204,15 @@ const dashboardTools = {
 
   getWorkspaceInfo: tool({
     description:
-      "Get full workspace details including ICP targeting, sender info, campaign brief, and configuration",
+      "Get full workspace details including ICP targeting, sender info, campaign brief, configuration, package config, and current quota usage",
     inputSchema: z.object({
       slug: z.string().describe("The workspace slug"),
     }),
     execute: async ({ slug }) => {
       const ws = await getWorkspaceDetails(slug);
       if (!ws) return { error: `Workspace '${slug}' not found` };
+      // Package configuration (v2.0)
+      const quotaUsage = await getWorkspaceQuotaUsage(ws.slug);
       return {
         name: ws.name,
         slug: ws.slug,
@@ -232,6 +235,60 @@ const dashboardTools = {
         caseStudies: ws.caseStudies,
         leadMagnets: ws.leadMagnets,
         targetVolume: ws.targetVolume,
+        // Package configuration (v2.0)
+        enabledModules: parseModules(ws.enabledModules),
+        monthlyLeadQuota: ws.monthlyLeadQuota,
+        monthlyLeadQuotaStatic: ws.monthlyLeadQuotaStatic,
+        monthlyLeadQuotaSignal: ws.monthlyLeadQuotaSignal,
+        monthlyCampaignAllowance: ws.monthlyCampaignAllowance,
+        // Quota usage (live)
+        quotaUsage,
+      };
+    },
+  }),
+
+  updateWorkspacePackage: tool({
+    description:
+      "Update a workspace's campaign package configuration. Can change enabled modules (email, email-signals, linkedin, linkedin-signals), monthly lead quotas (total, static, signal pools), and campaign allowance. Admin use only.",
+    inputSchema: z.object({
+      workspaceSlug: z.string().describe("The workspace slug"),
+      enabledModules: z
+        .array(z.enum(["email", "email-signals", "linkedin", "linkedin-signals"]))
+        .optional()
+        .describe("Set the enabled capability modules"),
+      monthlyLeadQuota: z.number().optional().describe("Total monthly lead quota"),
+      monthlyLeadQuotaStatic: z.number().optional().describe("Static campaign lead pool"),
+      monthlyLeadQuotaSignal: z.number().optional().describe("Signal campaign lead pool"),
+      monthlyCampaignAllowance: z.number().optional().describe("Monthly campaign allowance (soft limit)"),
+    }),
+    execute: async ({ workspaceSlug, enabledModules, ...rest }) => {
+      const ws = await prisma.workspace.findUnique({ where: { slug: workspaceSlug } });
+      if (!ws) return { error: `Workspace '${workspaceSlug}' not found` };
+
+      const updateData: Record<string, unknown> = {};
+      if (enabledModules !== undefined) {
+        updateData.enabledModules = JSON.stringify(enabledModules);
+      }
+      for (const [key, value] of Object.entries(rest)) {
+        if (value !== undefined) updateData[key] = value;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return { error: "No fields to update" };
+      }
+
+      const updated = await prisma.workspace.update({
+        where: { slug: workspaceSlug },
+        data: updateData,
+      });
+
+      return {
+        updated: Object.keys(updateData),
+        enabledModules: parseModules(updated.enabledModules),
+        monthlyLeadQuota: updated.monthlyLeadQuota,
+        monthlyLeadQuotaStatic: updated.monthlyLeadQuotaStatic,
+        monthlyLeadQuotaSignal: updated.monthlyLeadQuotaSignal,
+        monthlyCampaignAllowance: updated.monthlyCampaignAllowance,
       };
     },
   }),
@@ -517,6 +574,7 @@ Use these to delegate work to specialist agents:
 ## 2. Dashboard Tools (for quick queries)
 Use these directly for simple data lookups:
 - listWorkspaces, getWorkspaceInfo, getCampaigns, getReplies, getSenderHealth, queryPeople, listProposals, createProposal
+- **updateWorkspacePackage**: Update a workspace's campaign package — enabled modules, lead quotas, campaign allowance
 
 ## When to Delegate vs Use Dashboard Tools:
 - "Show me campaigns for X" → Use getCampaigns directly (simple query for EmailBison campaigns)
@@ -549,7 +607,8 @@ When the user creates a campaign and then asks to generate content, pass the cam
 - Monetary values from the database are in pence — divide by 100 for pounds (£)
 - When the user asks about 'this workspace' or 'campaigns', use the current workspace context
 - When a specialist agent returns results, summarize them clearly for the user
-- If a specialist agent returns an error, explain what went wrong and suggest alternatives`;
+- If a specialist agent returns an error, explain what went wrong and suggest alternatives
+- When showing workspace info, always mention the package configuration and current quota usage so the admin knows their limits`;
 
 export const orchestratorConfig: AgentConfig = {
   name: "orchestrator",

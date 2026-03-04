@@ -4,6 +4,8 @@ import * as campaignOperations from "@/lib/campaigns/operations";
 import * as leadsOperations from "@/lib/leads/operations";
 import { runAgent } from "./runner";
 import type { AgentConfig, CampaignInput, CampaignOutput } from "./types";
+import { prisma } from "@/lib/db";
+import { hasModule, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
 
 // --- Campaign Agent Tools ---
 
@@ -25,6 +27,36 @@ const campaignTools = {
         .describe("ID of the target list to link (resolve name to ID with findTargetList first)"),
     }),
     execute: async ({ workspaceSlug, name, description, channels, targetListId }) => {
+      // Package enforcement (CFG-02): check enabled modules before creating campaign
+      const ws = await prisma.workspace.findUnique({ where: { slug: workspaceSlug } });
+      if (!ws) return { error: `Workspace '${workspaceSlug}' not found` };
+
+      const requestedChannels = channels ?? ["email"];
+
+      // Check if any requested channel requires signal modules
+      // Note: signal campaign detection will be refined in Phase 19 when signal campaigns exist.
+      // For now, block if workspace lacks the base channel modules.
+      for (const channel of requestedChannels) {
+        if (!hasModule(ws.enabledModules, channel as "email" | "linkedin" | "email-signals" | "linkedin-signals")) {
+          return {
+            error: `Workspace '${workspaceSlug}' does not have the '${channel}' module enabled. Current modules: ${ws.enabledModules}. Use updateWorkspacePackage to enable it first.`,
+          };
+        }
+      }
+
+      // Campaign allowance soft warning (CFG-03)
+      const usage = await getWorkspaceQuotaUsage(workspaceSlug);
+      if (usage.campaignsUsed >= ws.monthlyCampaignAllowance) {
+        // Soft limit — return warning, don't block
+        // The orchestrator should relay this warning and ask admin to confirm
+        return {
+          warning: `Campaign allowance reached: ${usage.campaignsUsed}/${ws.monthlyCampaignAllowance} campaigns this billing period. Proceeding will exceed the allowance. Confirm with the admin before creating.`,
+          campaignsUsed: usage.campaignsUsed,
+          allowance: ws.monthlyCampaignAllowance,
+          canProceedWithConfirmation: true,
+        };
+      }
+
       return campaignOperations.createCampaign({
         workspaceSlug,
         name,
@@ -112,6 +144,10 @@ const CAMPAIGN_SYSTEM_PROMPT = `You are the Outsignal Campaign Agent — respons
 
 ## Capabilities
 You can: create campaigns, list campaigns, get campaign details, link target lists, update campaign status, and publish campaigns for client review.
+
+## Package Enforcement
+- **Module check (hard limit)**: createCampaign will refuse if the workspace lacks the required channel module. If blocked, tell the admin which module is missing and suggest using updateWorkspacePackage to enable it.
+- **Campaign allowance (soft limit)**: If the workspace has hit its monthly campaign allowance, createCampaign returns a warning with canProceedWithConfirmation: true. Relay the warning to the admin and ask for explicit confirmation before retrying.
 
 ## Interaction Rules
 - **Always confirm before creating**: Before calling createCampaign, show the admin a preview of the campaign details (name, channels, target list if known) and ask for confirmation.
