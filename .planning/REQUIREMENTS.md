@@ -44,9 +44,9 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 - [ ] **PIPE-04**: Auto-enriched leads are ICP scored and added to the signal campaign's target list
 - [ ] **PIPE-05**: New leads auto-deploy to EmailBison/LinkedIn using the campaign's approved content template
 - [ ] **PIPE-06**: Admin receives Slack notification when leads are added to a signal campaign ("3 leads added to Rise Fintech Signals")
-- [ ] **PIPE-07**: Signal campaigns have a daily lead cap (configurable per campaign) to prevent burst floods
-- [ ] **PIPE-08**: Signal campaigns can be paused/resumed instantly by admin
-- [ ] **PIPE-09**: Static campaigns (one-off list build → copy → deploy) continue to work as before alongside signal campaigns
+- [x] **PIPE-07**: Signal campaigns have a daily lead cap (configurable per campaign) to prevent burst floods
+- [x] **PIPE-08**: Signal campaigns can be paused/resumed instantly by admin
+- [x] **PIPE-09**: Static campaigns (one-off list build → copy → deploy) continue to work as before alongside signal campaigns
 
 ### Workspace Configuration
 
@@ -59,16 +59,16 @@ Requirements for Lead Discovery & Intelligence milestone. Each maps to roadmap p
 
 ### Copy Strategy
 
-- [ ] **COPY-01**: Writer Agent supports multiple copy strategies (Creative Ideas, PVP, one-liner, custom) and admin/agent selects which to use per campaign
-- [ ] **COPY-02**: Creative Ideas strategy generates 3 constrained, personalized ideas per prospect based on company research and client offerings
-- [ ] **COPY-03**: Each Creative Idea is constrained to a specific client offering/capability (AI cannot make up services the client doesn't provide)
-- [ ] **COPY-04**: Ideas are personalized using prospect's company description, website analysis, and ICP data — not generic
-- [ ] **COPY-05**: Writer produces both 3-idea format (full) and one-liner variant ("If I were looking at your business, I'd help by...")
-- [ ] **COPY-06**: Per-client copy examples are stored in Knowledge Base with tags (e.g., `creative-ideas-{workspaceSlug}`, `pvp-{workspaceSlug}`) — agent retrieves relevant examples based on selected strategy
-- [ ] **COPY-07**: AI generates draft copy examples from Research Agent website analysis of client, admin reviews and refines before ingestion
-- [ ] **COPY-08**: Writer validates `groundedIn` field for Creative Ideas — every idea must trace to a real client offering (hallucination prevention)
-- [ ] **COPY-09**: Signal-triggered emails use signals for timing only — signals are invisible to the recipient, copy leads with value
-- [ ] **COPY-10**: Writer consults full Knowledge Base (46+ docs) for best practices regardless of selected strategy — frameworks, subject lines, follow-up patterns, personalization techniques
+- [x] **COPY-01**: Writer Agent supports multiple copy strategies (Creative Ideas, PVP, one-liner, custom) and admin/agent selects which to use per campaign
+- [x] **COPY-02**: Creative Ideas strategy generates 3 constrained, personalized ideas per prospect based on company research and client offerings
+- [x] **COPY-03**: Each Creative Idea is constrained to a specific client offering/capability (AI cannot make up services the client doesn't provide)
+- [x] **COPY-04**: Ideas are personalized using prospect's company description, website analysis, and ICP data — not generic
+- [x] **COPY-05**: Writer produces both 3-idea format (full) and one-liner variant ("If I were looking at your business, I'd help by...")
+- [x] **COPY-06**: Per-client copy examples are stored in Knowledge Base with tags (e.g., `creative-ideas-{workspaceSlug}`, `pvp-{workspaceSlug}`) — agent retrieves relevant examples based on selected strategy
+- [x] **COPY-07**: AI generates draft copy examples from Research Agent website analysis of client, admin reviews and refines before ingestion
+- [x] **COPY-08**: Writer validates `groundedIn` field for Creative Ideas — every idea must trace to a real client offering (hallucination prevention)
+- [x] **COPY-09**: Signal-triggered emails use signals for timing only — signals are invisible to the recipient, copy leads with value
+- [x] **COPY-10**: Writer consults full Knowledge Base (46+ docs) for best practices regardless of selected strategy — frameworks, subject lines, follow-up patterns, personalization techniques
 - [ ] **COPY-11**: Writer generates multiple strategy variants for the same campaign (e.g., Creative Ideas vs PVP vs one-liner) for A/B split testing
 - [ ] **COPY-12**: Campaign tracks which strategy variant each lead receives so performance can be compared per strategy
 
@@ -161,17 +161,17 @@ Deferred to next milestone. Tracked but not in current roadmap.
 | PIPE-04 | Phase 19 | Pending |
 | PIPE-05 | Phase 19 | Pending |
 | PIPE-06 | Phase 19 | Pending |
-| PIPE-07 | Phase 19 | Pending |
-| PIPE-08 | Phase 19 | Pending |
-| PIPE-09 | Phase 19 | Pending |
-| COPY-01 | Phase 20 | Pending |
-| COPY-02 | Phase 20 | Pending |
-| COPY-03 | Phase 20 | Pending |
-| COPY-04 | Phase 20 | Pending |
-| COPY-05 | Phase 20 | Pending |
-| COPY-06 | Phase 20 | Pending |
-| COPY-07 | Phase 20 | Pending |
-| COPY-08 | Phase 20 | Pending |
+| PIPE-07 | Phase 19 | Complete |
+| PIPE-08 | Phase 19 | Complete |
+| PIPE-09 | Phase 19 | Complete |
+| COPY-01 | Phase 20 | Complete |
+| COPY-02 | Phase 20 | Complete |
+| COPY-03 | Phase 20 | Complete |
+| COPY-04 | Phase 20 | Complete |
+| COPY-05 | Phase 20 | Complete |
+| COPY-06 | Phase 20 | Complete |
+| COPY-07 | Phase 20 | Complete |
+| COPY-08 | Phase 20 | Complete |
 | DASH-01 | Phase 21 | Pending |
 | DASH-02 | Phase 21 | Pending |
 | DASH-03 | Phase 21 | Pending |

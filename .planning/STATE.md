@@ -89,6 +89,11 @@ Progress: [######░░░░] ~7% (v2.0)
 - [19-01 schema]: SignalCampaignLead uses soft ref for signalEventId (no FK) — consistent with project pattern of avoiding FK constraints
 - [19-01 schema]: icpCriteria stored as JSON string in TEXT column — consistent with existing JSON-in-string pattern throughout schema
 - [19-01 schema]: createCampaign only writes signal fields when type=signal — static campaigns remain unaffected by new optional fields
+- [20-01 writer-agent]: PVP framework moved from shared quality rules into PVP-only strategy block — Creative Ideas, One-liner, Custom no longer forced to use PVP structure
+- [20-01 writer-agent]: groundedIn is hard-reject — if creative idea cannot be traced to real offering (coreOffers/differentiators/caseStudies/KB), it must NOT be output; fewer than 3 drafts acceptable
+- [20-01 writer-agent]: Signal context injected via [INTERNAL SIGNAL CONTEXT] prefix in user message — writer uses for angle selection but NEVER surfaces to recipient copy
+- [20-01 writer-agent]: Tiered KB uses strategy+industry tags first (e.g. creative-ideas-branded-merchandise), fallback to strategy-only, then always-run general best practices
+- [20-01 writer-agent]: generateKBExamples tool returns text for admin review only — does NOT auto-ingest; admin runs ingest-document.ts CLI after review
 
 ### Blockers/Concerns
 
@@ -103,5 +108,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 19-01-PLAN.md (Phase 19 Plan 01 -- Campaign schema signal fields + SignalCampaignLead + dual state machine)
-Resume file: .planning/phases/19-evergreen-signal-campaign-auto-pipeline/19-02-PLAN.md
+Stopped at: Completed 20-01-PLAN.md (Phase 20 Plan 01 -- Writer Agent multi-strategy prompting, Campaign.copyStrategy schema, type contracts)
+Resume file: .planning/phases/20-copy-strategy-framework/20-02-PLAN.md (or Phase 19 plans running in parallel)
