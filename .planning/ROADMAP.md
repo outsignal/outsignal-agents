@@ -153,7 +153,7 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 7-14 | v1.1 | 40/40 | Complete | 2026-03-03 |
 | 15. Foundation | 4/4 | Complete    | 2026-03-04 | - |
 | 16. Discovery Sources | v2.0 | Complete    | 2026-03-04 | 2026-03-04 |
-| 17. Leads Agent Discovery Upgrade | 2/2 | Complete   | 2026-03-04 | - |
+| 17. Leads Agent Discovery Upgrade | 2/2 | Complete    | 2026-03-04 | - |
 | 18. Signal Monitoring Infrastructure | v2.0 | 0/TBD | Not started | - |
 | 19. Evergreen Signal Campaign Auto-Pipeline | v2.0 | 0/TBD | Not started | - |
 | 20. Creative Ideas Copy Framework | v2.0 | 0/TBD | Not started | - |
