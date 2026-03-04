@@ -12,6 +12,14 @@ export const PROVIDER_COSTS: Record<string, number> = {
   findymail: 0.001,
   aiark: 0.003,
   firecrawl: 0.001,
+  // Discovery source costs
+  "apollo-search": 0,        // Apollo search is free
+  "prospeo-search": 0.002,   // 1 credit per search request
+  "aiark-search": 0.003,     // Same as enrichment per-call cost
+  "serper-web": 0.001,       // 1 credit per search
+  "serper-maps": 0.001,      // 1 credit per search
+  "serper-social": 0.001,    // 1 credit per search
+  "firecrawl-extract": 0.001, // 1 credit per extract
 };
 
 const DEFAULT_DAILY_CAP_USD = 10.0;
