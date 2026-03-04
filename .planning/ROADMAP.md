@@ -128,7 +128,9 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   3. Per-client copy examples are stored in KB with strategy-specific tags (creative-ideas-{slug}, pvp-{slug}) and the agent retrieves the right examples for the selected strategy
   4. Writer consults the full Knowledge Base (46+ docs) for best practices regardless of which strategy is selected — subject lines, follow-up patterns, personalization techniques
   5. Signal-triggered copy never mentions the triggering signal to the recipient — the copy leads with value, not "I saw you raised a round"
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 20-01-PLAN.md — Schema + types + Writer Agent multi-strategy system prompt (Creative Ideas, PVP, One-liner, Custom), tiered KB retrieval, groundedIn validation, signal-aware copy rules, generateKBExamples tool
+- [ ] 20-02-PLAN.md — Orchestrator wiring (delegateToWriter strategy params, multi-variant workflow), saveCampaignSequences copyStrategy persistence
 
 ### Phase 21: Signal Dashboard + CLI Chat
 **Goal**: Admins have a signal intelligence dashboard showing live signal feed, per-client breakdown, cost tracking, and signal type distribution — and can run the full orchestrator as an interactive CLI chat from the terminal for rapid campaign work without opening the browser
@@ -156,5 +158,5 @@ v2.0 phases: 15 → 16 → 17 → 18 → 19 → 20 (parallel with 18-19) → 21
 | 17. Leads Agent Discovery Upgrade | 2/2 | Complete    | 2026-03-04 | - |
 | 18. Signal Monitoring Infrastructure | 4/4 | Complete    | 2026-03-04 | - |
 | 19. Evergreen Signal Campaign Auto-Pipeline | v2.0 | 0/TBD | Not started | - |
-| 20. Creative Ideas Copy Framework | v2.0 | 0/TBD | Not started | - |
+| 20. Creative Ideas Copy Framework | v2.0 | 0/2 | Planned | - |
 | 21. Signal Dashboard + CLI Chat | v2.0 | 0/TBD | Not started | - |
