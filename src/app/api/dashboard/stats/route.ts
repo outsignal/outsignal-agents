@@ -240,7 +240,7 @@ export async function GET(request: NextRequest) {
         type: "flagged_sender",
         title: `Sender flagged: ${sender.name}`,
         detail: `Health status: ${sender.healthStatus} — workspace: ${sender.workspaceSlug}`,
-        link: `/workspace/${sender.workspaceSlug}/senders`,
+        link: `/senders`,
         severity: sender.healthStatus === "blocked" || sender.healthStatus === "session_expired" ? "error" : "warning",
       });
     }

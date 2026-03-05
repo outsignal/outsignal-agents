@@ -225,7 +225,7 @@ export default function ClientDetailPage() {
         actions={
           <>
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/clients/${clientId}/edit`}>
+              <Link href={`/clients/${clientId}?edit=true`}>
                 <Pencil className="h-4 w-4 mr-1.5" />
                 Edit
               </Link>

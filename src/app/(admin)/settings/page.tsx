@@ -183,7 +183,7 @@ export default async function SettingsPage() {
             <div className="rounded-lg bg-muted p-4">
               <p className="font-medium text-foreground mb-1">Webhook URL:</p>
               <code className="text-xs">
-                https://your-domain.vercel.app/api/webhooks/emailbison
+                {`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/emailbison?workspace={slug}`}
               </code>
             </div>
             <p className="text-muted-foreground">
