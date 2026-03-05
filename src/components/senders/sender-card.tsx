@@ -225,20 +225,27 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
             </span>
           </div>
 
-          {/* Last seen (worker heartbeat) */}
-          <div className="flex items-start gap-2">
-            <span className="text-muted-foreground w-20 shrink-0">Last seen</span>
+          {/* Worker heartbeat */}
+          <div className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full shrink-0",
+                sender.lastPolledAt && Date.now() - new Date(sender.lastPolledAt).getTime() < 10 * 60_000
+                  ? "bg-emerald-500 animate-pulse"
+                  : "bg-red-500"
+              )}
+            />
             <span className={cn(
-              "text-foreground/80",
-              sender.lastPolledAt
-                ? (Date.now() - new Date(sender.lastPolledAt).getTime() < 10 * 60_000
-                    ? "text-emerald-600"
-                    : Date.now() - new Date(sender.lastPolledAt).getTime() < 60 * 60_000
-                    ? "text-amber-600"
-                    : "text-muted-foreground")
-                : "text-muted-foreground"
+              "font-medium",
+              sender.lastPolledAt && Date.now() - new Date(sender.lastPolledAt).getTime() < 10 * 60_000
+                ? "text-emerald-600"
+                : "text-red-500"
             )}>
-              {sender.lastPolledAt ? formatTimeAgo(sender.lastPolledAt) : "Never"}
+              {sender.lastPolledAt
+                ? Date.now() - new Date(sender.lastPolledAt).getTime() < 10 * 60_000
+                  ? `Online · ${formatTimeAgo(sender.lastPolledAt)}`
+                  : `Offline · ${formatTimeAgo(sender.lastPolledAt)}`
+                : "Offline · Never seen"}
             </span>
           </div>
 
