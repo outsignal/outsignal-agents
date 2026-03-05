@@ -27,6 +27,22 @@ import type {
 } from "@/app/api/dashboard/stats/route";
 import { cn } from "@/lib/utils";
 
+function WorkerStatusChip({ online }: { online: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span
+        className={cn(
+          "h-2 w-2 rounded-full shrink-0",
+          online ? "bg-emerald-500 animate-pulse" : "bg-red-500"
+        )}
+      />
+      <span className={cn("font-medium", online ? "text-emerald-600" : "text-red-500")}>
+        {online ? "Worker Online" : "Worker Offline"}
+      </span>
+    </div>
+  );
+}
+
 // Fallback empty KPIs
 const emptyKpis: DashboardKPIs = {
   emailSent: 0,
@@ -54,6 +70,8 @@ const emptyKpis: DashboardKPIs = {
   campaignsDraft: 0,
   inboxesConnected: 0,
   inboxesDisconnected: 0,
+  workerOnline: false,
+  workerLastPollAt: null,
 };
 
 function buildWorkspaceSummaries(
@@ -193,7 +211,12 @@ export default function DashboardPage() {
       <Header
         title="Dashboard"
         description={`${days === "7" ? "Last 7 days" : days === "14" ? "Last 14 days" : days === "30" ? "Last 30 days" : "Last 90 days"} ${workspace !== "all" ? `· ${workspace}` : "· all campaigns"}`}
-        actions={<ClientFilter workspaces={workspaces} />}
+        actions={
+          <div className="flex items-center gap-3">
+            <WorkerStatusChip online={kpis.workerOnline} />
+            <ClientFilter workspaces={workspaces} />
+          </div>
+        }
       />
 
       <div className="p-6 space-y-6">
