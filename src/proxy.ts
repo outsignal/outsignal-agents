@@ -12,17 +12,20 @@ const PORTAL_COOKIE_NAME = "portal_session";
 // These routes have their own authentication (API keys, signatures,
 // worker tokens, cron secrets) and must remain publicly accessible.
 const PUBLIC_API_PREFIXES = [
-  "/api/portal/",          // Portal auth (magic link login/verify/logout)
-  "/api/admin/",           // Admin login/logout endpoints
-  "/api/webhooks/",        // EmailBison webhooks
-  "/api/people/enrich",    // Clay person enrichment webhook
-  "/api/companies/enrich", // Clay company enrichment webhook
-  "/api/stripe/",          // Stripe webhook + checkout (customer-facing)
-  "/api/linkedin/",        // LinkedIn worker API (Bearer token auth)
-  // /api/onboard removed — now requires admin session
-  "/api/domains/",         // Domain suggestions (customer onboarding)
-  "/api/enrichment/jobs/", // Cron-triggered enrichment processing
-  "/api/inbox-health/",    // Cron-triggered inbox health monitoring
+  "/api/admin/login",      // Public login endpoint
+  "/api/admin/logout",     // Logout endpoint (has own session check)
+  "/api/webhooks/",        // EmailBison webhooks (HMAC auth)
+  "/api/extension/",       // Chrome extension (JWT auth)
+  "/api/portal/",          // Client portal (magic link session)
+  "/api/cron/",            // Vercel cron (CRON_SECRET)
+  "/api/inbox-health/",    // Cron job (CRON_SECRET)
+  "/api/enrichment/jobs/", // Cron job (CRON_SECRET)
+  "/api/linkedin/",        // Worker API (WORKER_API_SECRET) + cron maintenance
+  "/api/pipeline/",        // Railway worker (PIPELINE_INTERNAL_SECRET)
+  "/api/people/enrich",    // Clay webhook (x-api-key)
+  "/api/companies/enrich", // Clay webhook (x-api-key)
+  "/api/stripe/",          // Stripe webhook (signature verification)
+  "/api/onboard",          // Public onboarding form (has own x-api-key check)
 ];
 
 // Proposal accept is customer-facing (POST /api/proposals/:id/accept)
@@ -52,6 +55,19 @@ const ADMIN_PAGE_PREFIXES = [
   "/onboard",
   "/onboarding",
   "/workspace",
+  "/campaigns",
+  "/signals",
+  "/notifications",
+  "/pipeline",
+  "/clients",
+  "/email",
+  "/webhook-log",
+  "/senders",
+  "/linkedin-queue",
+  "/financials",
+  "/revenue",
+  "/agent-runs",
+  "/packages",
 ];
 
 function isAdminPageRoute(pathname: string): boolean {
@@ -184,6 +200,19 @@ export const config = {
     "/onboard/:path*",
     "/onboarding/:path*",
     "/workspace/:path*",
+    "/campaigns/:path*",
+    "/signals/:path*",
+    "/notifications/:path*",
+    "/pipeline/:path*",
+    "/clients/:path*",
+    "/email/:path*",
+    "/webhook-log/:path*",
+    "/senders/:path*",
+    "/linkedin-queue/:path*",
+    "/financials/:path*",
+    "/revenue/:path*",
+    "/agent-runs/:path*",
+    "/packages/:path*",
     // API routes (all — public ones are filtered in proxy logic)
     "/api/:path*",
   ],
