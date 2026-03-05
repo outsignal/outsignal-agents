@@ -34,6 +34,9 @@ export interface DashboardKPIs {
   // Inbox KPIs
   inboxesConnected: number;
   inboxesDisconnected: number;
+  // Worker status
+  workerOnline: boolean;
+  workerLastPollAt: string | null;
 }
 
 export interface TimeSeriesPoint {
@@ -170,6 +173,17 @@ export async function GET(request: NextRequest) {
     const inboxesConnected = allWorkspaces.filter((w) => w.apiToken).length;
     const inboxesDisconnected = allWorkspaces.filter((w) => !w.apiToken).length;
 
+    // Worker heartbeat: most recently polled sender
+    const latestPoll = await prisma.sender.findFirst({
+      where: workspaceFilter !== "all" ? { workspaceSlug: workspaceFilter } : undefined,
+      orderBy: { lastPolledAt: "desc" },
+      select: { lastPolledAt: true },
+    });
+    const workerLastPollAt = latestPoll?.lastPolledAt ?? null;
+    const workerOnline = workerLastPollAt
+      ? Date.now() - new Date(workerLastPollAt).getTime() < 10 * 60 * 1000
+      : false;
+
     // 7. Time-series data from WebhookEvent grouped by date
     const webhookEvents = await prisma.webhookEvent.findMany({
       where: {
@@ -295,6 +309,8 @@ export async function GET(request: NextRequest) {
       campaignsDraft: campaignMap["draft"] ?? 0,
       inboxesConnected,
       inboxesDisconnected,
+      workerOnline,
+      workerLastPollAt: workerLastPollAt?.toISOString() ?? null,
     };
 
     // Workspace list for filter dropdown
