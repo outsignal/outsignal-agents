@@ -206,6 +206,16 @@ function CollapsibleGroup({
 }) {
   // When sidebar is collapsed, never show group headers -- just show icons
   if (isSidebarCollapsed) {
+    // Non-collapsible groups (Overview) always show
+    if (!group.collapsible) {
+      return (
+        <div className="space-y-0.5">
+          {group.items.map((item) => renderItem(item, group.tier))}
+        </div>
+      );
+    }
+    // Collapsible groups: only show items if group is open
+    if (!isGroupOpen) return null;
     return (
       <div className="space-y-0.5">
         {group.items.map((item) => renderItem(item, group.tier))}
@@ -430,7 +440,9 @@ export function Sidebar({ workspaces }: SidebarProps) {
         )}
       >
         {isCollapsed ? (
-          <OutsignalLogo variant="mark" className="h-7 w-7" />
+          <button onClick={toggleCollapsed} className="cursor-pointer" title="Expand sidebar">
+            <OutsignalLogo variant="mark" className="h-7 w-7" />
+          </button>
         ) : (
           <OutsignalLogo className="h-7 w-auto" />
         )}
