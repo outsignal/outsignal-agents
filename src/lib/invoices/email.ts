@@ -6,7 +6,7 @@ import { InvoiceWithLineItems } from "./types";
 import { formatGBP, formatInvoiceDate } from "./format";
 
 function getBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_BASE_URL ?? "https://admin.outsignal.ai";
+  return process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
 }
 
 /**
