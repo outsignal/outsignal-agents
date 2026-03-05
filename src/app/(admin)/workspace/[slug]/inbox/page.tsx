@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   Table,
   TableBody,
@@ -57,11 +58,7 @@ export default async function InboxPage({ params }: InboxPageProps) {
         description={`${workspace.name} - ${replies.length} total replies`}
       />
       <div className="p-8 space-y-6">
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <MetricCard label="Total Replies" value={replies.length} />

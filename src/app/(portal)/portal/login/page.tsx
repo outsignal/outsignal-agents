@@ -6,6 +6,7 @@ import { OutsignalLogo } from "@/components/brand/outsignal-logo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -51,11 +52,7 @@ function LoginForm() {
     </div>
   ) : (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
       <div>
         <label htmlFor="email" className="block text-sm font-medium mb-1.5">

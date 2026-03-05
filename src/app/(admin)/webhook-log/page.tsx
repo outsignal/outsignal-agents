@@ -7,6 +7,7 @@ import { Search, Webhook } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   WebhookLogTable,
   type WebhookEvent,
@@ -271,18 +272,7 @@ export default function WebhookLogPage() {
 
         {/* Error state */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
-            <p className="text-red-800 text-sm">
-              Failed to load events: {error}
-            </p>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => void fetchData()}
-            >
-              Retry
-            </Button>
-          </div>
+          <ErrorBanner message={`Failed to load events: ${error}`} onRetry={() => void fetchData()} />
         )}
 
         {/* Table */}

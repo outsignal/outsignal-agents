@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   ArrowLeft,
   Pencil,
@@ -187,9 +188,7 @@ export default function ClientDetailPage() {
       <div>
         <Header title="Client Not Found" />
         <div className="p-6 space-y-6">
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            {error ?? "Client not found"}
-          </div>
+          <ErrorBanner message={error ?? "Client not found"} />
           <Link
             href="/clients"
             className="mt-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"

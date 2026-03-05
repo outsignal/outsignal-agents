@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 
 const PACKAGES = [
   { value: "email", label: "Email Outbound" },
@@ -132,11 +133,7 @@ export default function CreateProposalPage() {
     <div>
       <Header title="Create Proposal" description="Set up a new client proposal" />
       <div className="p-8 max-w-2xl">
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>

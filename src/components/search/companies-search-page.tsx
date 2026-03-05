@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBanner } from "@/components/ui/error-banner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -270,11 +271,7 @@ export function CompaniesSearchPage() {
           )}
 
           <div className="px-6 py-4">
-            {error && (
-              <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-600 mb-4">
-                {error}
-              </div>
-            )}
+            {error && <ErrorBanner message={error} />}
 
             {/* Table */}
             <div className="rounded-md border border-border overflow-hidden">

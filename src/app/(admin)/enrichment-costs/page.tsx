@@ -18,6 +18,7 @@ import {
 import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -172,16 +173,7 @@ export default function EnrichmentCostsPage() {
       <div className="p-6 space-y-6">
         {/* Error state */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
-            <p className="text-red-800 text-sm">Failed to load data: {error}</p>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => void fetchData()}
-            >
-              Retry
-            </Button>
-          </div>
+          <ErrorBanner message={`Failed to load data: ${error}`} onRetry={() => void fetchData()} />
         )}
 
         {/* Summary cards */}
