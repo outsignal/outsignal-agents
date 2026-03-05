@@ -62,6 +62,18 @@ async function pickWorkspace(rl: readline.Interface): Promise<string> {
   return workspaces[idx].slug;
 }
 
+// --- Context window management ---
+
+const MAX_MESSAGES = 40; // ~20 back-and-forth turns
+
+function trimMessages<T extends { role: string }>(msgs: T[]): T[] {
+  if (msgs.length <= MAX_MESSAGES) return msgs;
+  // Always keep system messages + last MAX_MESSAGES non-system messages
+  const system = msgs.filter(m => m.role === 'system');
+  const rest = msgs.filter(m => m.role !== 'system');
+  return [...system, ...rest.slice(-MAX_MESSAGES)];
+}
+
 // --- Orchestrator call ---
 
 async function chat(userInput: string): Promise<string> {
@@ -72,7 +84,7 @@ async function chat(userInput: string): Promise<string> {
     system:
       orchestratorConfig.systemPrompt +
       `\n\nCurrent workspace: ${workspaceSlug}\nInterface: CLI chat (no browser available)`,
-    messages,
+    messages: trimMessages(messages),
     tools: orchestratorTools,
     stopWhen: stepCountIs(orchestratorConfig.maxSteps ?? 12),
   });

@@ -25,6 +25,16 @@ function buildSystemPrompt(context: ChatContext): string {
   return lines.join("\n");
 }
 
+const MAX_MESSAGES = 40; // ~20 back-and-forth turns
+
+function trimMessages<T extends { role: string }>(msgs: T[]): T[] {
+  if (msgs.length <= MAX_MESSAGES) return msgs;
+  // Always keep system messages + last MAX_MESSAGES non-system messages
+  const system = msgs.filter(m => m.role === 'system');
+  const rest = msgs.filter(m => m.role !== 'system');
+  return [...system, ...rest.slice(-MAX_MESSAGES)];
+}
+
 export async function POST(request: Request) {
   const { messages, context } = await request.json();
 
@@ -35,7 +45,7 @@ export async function POST(request: Request) {
   const result = streamText({
     model: anthropic(orchestratorConfig.model),
     system: buildSystemPrompt(context ?? {}),
-    messages: modelMessages,
+    messages: trimMessages(modelMessages),
     tools: orchestratorTools,
     stopWhen: stepCountIs(12),
   });
