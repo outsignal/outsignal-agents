@@ -92,11 +92,8 @@ async function checkLeadMagic(): Promise<ProviderStatus> {
       status: "connected",
       configured: true,
       credits: {
-        used: data?.used ?? data?.credits_used,
-        remaining: data?.remaining ?? data?.credits_remaining,
-        total: data?.total ?? data?.credits_total,
+        remaining: data?.credits,
       },
-      plan: data?.plan,
       dashboardUrl: "https://app.leadmagic.io",
       lastChecked: now,
     };
@@ -132,7 +129,7 @@ async function checkProspeo(): Promise<ProviderStatus> {
 
   try {
     const res = await fetchWithTimeout(
-      "https://api.prospeo.io/account-info",
+      "https://api.prospeo.io/account-information",
       { headers: { "X-KEY": apiKey } }
     );
     const data = await res.json();
@@ -144,14 +141,15 @@ async function checkProspeo(): Promise<ProviderStatus> {
       status: "connected",
       configured: true,
       credits: {
-        used: data?.used_credits ?? data?.credits_used,
-        remaining: data?.remaining_credits ?? data?.credits_remaining,
-        total: data?.total_credits ?? data?.credits_total,
+        used: data?.response?.used_credits,
+        remaining: data?.response?.remaining_credits,
+        total: data?.response?.remaining_credits != null && data?.response?.used_credits != null
+          ? data.response.remaining_credits + data.response.used_credits
+          : undefined,
       },
-      plan: data?.plan ?? data?.subscription,
+      plan: data?.response?.current_plan,
       billing: {
-        nextDate: data?.next_billing_date ?? data?.billing?.next_date,
-        period: data?.billing_period ?? data?.billing?.period,
+        nextDate: data?.response?.next_quota_renewal_date,
       },
       dashboardUrl: "https://app.prospeo.io",
       lastChecked: now,
@@ -188,7 +186,7 @@ async function checkFindyMail(): Promise<ProviderStatus> {
 
   try {
     const res = await fetchWithTimeout(
-      "https://app.findymail.com/api/v1/get_credits",
+      "https://app.findymail.com/api/credits",
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
     const data = await res.json();
@@ -200,11 +198,9 @@ async function checkFindyMail(): Promise<ProviderStatus> {
       status: "connected",
       configured: true,
       credits: {
-        used: data?.used_credits ?? data?.credits_used,
-        remaining: data?.remaining_credits ?? data?.credits,
-        total: data?.total_credits,
+        remaining: data?.credits,
       },
-      plan: data?.plan,
+      plan: data?.pricing,
       dashboardUrl: "https://app.findymail.com",
       lastChecked: now,
     };
@@ -252,14 +248,12 @@ async function checkFirecrawl(): Promise<ProviderStatus> {
       status: "connected",
       configured: true,
       credits: {
-        used: data?.used ?? data?.credits_used,
-        remaining: data?.remaining ?? data?.credits_remaining,
-        total: data?.total ?? data?.credits_total,
+        remaining: data?.data?.remaining_credits,
+        total: data?.data?.plan_credits || undefined,
       },
-      plan: data?.plan,
+      plan: undefined,
       billing: {
-        nextDate: data?.billing?.next_date ?? data?.next_billing_date,
-        period: data?.billing?.period ?? data?.billing_period,
+        nextDate: data?.data?.billing_period_end ?? undefined,
       },
       dashboardUrl: "https://www.firecrawl.dev/app",
       lastChecked: now,
@@ -305,18 +299,8 @@ async function checkApollo(): Promise<ProviderStatus> {
       id: "apollo",
       name: "Apollo",
       category: "discovery",
-      status: "connected",
+      status: data?.is_logged_in ? "connected" as const : "degraded" as const,
       configured: true,
-      credits: {
-        used: data?.credits_used,
-        remaining: data?.credits_remaining ?? data?.credits,
-        total: data?.credits_total,
-      },
-      plan: data?.plan?.name ?? data?.plan,
-      billing: {
-        nextDate: data?.plan?.renewal_date ?? data?.billing?.next_date,
-        period: data?.plan?.period ?? data?.billing?.period,
-      },
       dashboardUrl: "https://app.apollo.io",
       lastChecked: now,
     };
@@ -368,19 +352,53 @@ function checkAiArk(): ProviderStatus {
   };
 }
 
-function checkSerper(): ProviderStatus {
+async function checkSerper(): Promise<ProviderStatus> {
   const now = new Date().toISOString();
-  const configured = !!process.env.SERPER_API_KEY;
+  const apiKey = process.env.SERPER_API_KEY;
 
-  return {
-    id: "serper",
-    name: "Serper",
-    category: "discovery",
-    status: configured ? "no_api" : "disconnected",
-    configured,
-    dashboardUrl: "https://serper.dev/dashboard",
-    lastChecked: now,
-  };
+  if (!apiKey) {
+    return {
+      id: "serper",
+      name: "Serper",
+      category: "discovery",
+      status: "disconnected",
+      configured: false,
+      dashboardUrl: "https://serper.dev/dashboard",
+      lastChecked: now,
+    };
+  }
+
+  try {
+    const res = await fetchWithTimeout(
+      "https://google.serper.dev/account",
+      { headers: { "X-API-KEY": apiKey } }
+    );
+    const data = await res.json();
+
+    return {
+      id: "serper",
+      name: "Serper",
+      category: "discovery",
+      status: "connected",
+      configured: true,
+      credits: {
+        remaining: data?.balance,
+      },
+      dashboardUrl: "https://serper.dev/dashboard",
+      lastChecked: now,
+    };
+  } catch (err) {
+    return {
+      id: "serper",
+      name: "Serper",
+      category: "discovery",
+      status: "degraded",
+      configured: true,
+      dashboardUrl: "https://serper.dev/dashboard",
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastChecked: now,
+    };
+  }
 }
 
 function checkPredictLeads(): ProviderStatus {
@@ -511,6 +529,7 @@ export async function GET() {
       checkFindyMail(),
       checkFirecrawl(),
       checkApollo(),
+      checkSerper(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
@@ -535,7 +554,6 @@ export async function GET() {
     const envProviders: ProviderStatus[] = [
       checkOpenAI(),
       checkAiArk(),
-      checkSerper(),
       checkPredictLeads(),
       checkAnthropic(),
       checkResend(),
