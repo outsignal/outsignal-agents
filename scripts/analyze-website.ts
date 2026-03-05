@@ -1,3 +1,6 @@
+// DEPRECATED: Use `npm run chat` and delegate to the Research agent instead.
+// This standalone script uses outdated prompts and analysis patterns.
+
 /**
  * Research Agent CLI — Analyze a client website and extract business intelligence.
  *

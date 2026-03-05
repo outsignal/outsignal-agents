@@ -1,3 +1,6 @@
+// DEPRECATED: Use `npm run chat` and delegate to the Writer agent instead.
+// This standalone script uses outdated prompts and KB search.
+
 /**
  * Writer Agent CLI — Generate email and/or LinkedIn copy for a workspace.
  *
