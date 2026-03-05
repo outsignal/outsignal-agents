@@ -587,31 +587,33 @@ export async function saveCampaignSequences(
  * @throws If campaign not found
  */
 export async function approveCampaignLeads(id: string): Promise<CampaignDetail> {
-  const current = await prisma.campaign.findUnique({
-    where: { id },
-    select: { contentApproved: true, status: true },
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.campaign.findUnique({
+      where: { id },
+      select: { contentApproved: true, status: true },
+    });
+
+    if (!current) throw new Error(`Campaign not found: '${id}'`);
+
+    const updateData: Record<string, unknown> = {
+      leadsApproved: true,
+      leadsApprovedAt: new Date(),
+      leadsFeedback: null, // clear previous feedback on approval
+    };
+
+    // Dual approval check: if content is ALSO already approved, transition to 'approved'
+    if (current.contentApproved && current.status === "pending_approval") {
+      updateData.status = "approved";
+    }
+
+    const campaign = await tx.campaign.update({
+      where: { id },
+      data: updateData,
+      include: targetListInclude,
+    });
+
+    return formatCampaignDetail(campaign);
   });
-
-  if (!current) throw new Error(`Campaign not found: '${id}'`);
-
-  const updateData: Record<string, unknown> = {
-    leadsApproved: true,
-    leadsApprovedAt: new Date(),
-    leadsFeedback: null, // clear previous feedback on approval
-  };
-
-  // Dual approval check: if content is ALSO already approved, transition to 'approved'
-  if (current.contentApproved && current.status === "pending_approval") {
-    updateData.status = "approved";
-  }
-
-  const campaign = await prisma.campaign.update({
-    where: { id },
-    data: updateData,
-    include: targetListInclude,
-  });
-
-  return formatCampaignDetail(campaign);
 }
 
 // ---------------------------------------------------------------------------
@@ -656,30 +658,32 @@ export async function rejectCampaignLeads(
  * @throws If campaign not found
  */
 export async function approveCampaignContent(id: string): Promise<CampaignDetail> {
-  const current = await prisma.campaign.findUnique({
-    where: { id },
-    select: { leadsApproved: true, status: true },
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.campaign.findUnique({
+      where: { id },
+      select: { leadsApproved: true, status: true },
+    });
+
+    if (!current) throw new Error(`Campaign not found: '${id}'`);
+
+    const updateData: Record<string, unknown> = {
+      contentApproved: true,
+      contentApprovedAt: new Date(),
+      contentFeedback: null,
+    };
+
+    if (current.leadsApproved && current.status === "pending_approval") {
+      updateData.status = "approved";
+    }
+
+    const campaign = await tx.campaign.update({
+      where: { id },
+      data: updateData,
+      include: targetListInclude,
+    });
+
+    return formatCampaignDetail(campaign);
   });
-
-  if (!current) throw new Error(`Campaign not found: '${id}'`);
-
-  const updateData: Record<string, unknown> = {
-    contentApproved: true,
-    contentApprovedAt: new Date(),
-    contentFeedback: null,
-  };
-
-  if (current.leadsApproved && current.status === "pending_approval") {
-    updateData.status = "approved";
-  }
-
-  const campaign = await prisma.campaign.update({
-    where: { id },
-    data: updateData,
-    include: targetListInclude,
-  });
-
-  return formatCampaignDetail(campaign);
 }
 
 // ---------------------------------------------------------------------------

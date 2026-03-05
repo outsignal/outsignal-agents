@@ -772,7 +772,7 @@ model LinkedInAction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sender Sender @relation(fields: [senderId], references: [id])
+  sender Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([status, scheduledFor])
   @@index([senderId, status])
@@ -795,7 +795,7 @@ model LinkedInDailyUsage {
   captchaDetected   Boolean @default(false)
   restrictionNotice Boolean @default(false)
 
-  sender Sender @relation(fields: [senderId], references: [id])
+  sender Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, date])
   @@index([date])
@@ -813,7 +813,7 @@ model LinkedInConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sender Sender @relation(fields: [senderId], references: [id])
+  sender Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, personId])
   @@index([status])

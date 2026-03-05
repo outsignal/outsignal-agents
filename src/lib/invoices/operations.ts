@@ -242,26 +242,28 @@ export async function updateInvoiceStatus(
     updateData.paidAt = now;
   }
 
-  const updated = await prisma.invoice.update({
-    where: { id },
-    data: updateData,
-    include: { lineItems: true },
-  });
-
-  // When paid, advance workspace billingRenewalDate by 1 calendar month
-  if (newStatus === "paid") {
-    const workspace = await prisma.workspace.findUnique({
-      where: { slug: invoice.workspaceSlug },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.invoice.update({
+      where: { id },
+      data: updateData,
+      include: { lineItems: true },
     });
 
-    if (workspace?.billingRenewalDate) {
-      const nextRenewalDate = advanceRenewalDate(workspace.billingRenewalDate);
-      await prisma.workspace.update({
+    // When paid, advance workspace billingRenewalDate by 1 calendar month
+    if (newStatus === "paid") {
+      const workspace = await tx.workspace.findUnique({
         where: { slug: invoice.workspaceSlug },
-        data: { billingRenewalDate: nextRenewalDate },
       });
-    }
-  }
 
-  return updated as InvoiceWithLineItems;
+      if (workspace?.billingRenewalDate) {
+        const nextRenewalDate = advanceRenewalDate(workspace.billingRenewalDate);
+        await tx.workspace.update({
+          where: { slug: invoice.workspaceSlug },
+          data: { billingRenewalDate: nextRenewalDate },
+        });
+      }
+    }
+
+    return updated as InvoiceWithLineItems;
+  });
 }

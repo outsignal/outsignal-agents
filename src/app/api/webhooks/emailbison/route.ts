@@ -151,18 +151,20 @@ export async function POST(request: NextRequest) {
 
     // Handle EMAIL_SENT — update person status to "contacted"
     if (eventType === "EMAIL_SENT" && leadEmail) {
-      await prisma.person.updateMany({
-        where: { email: leadEmail, status: "new" },
-        data: { status: "contacted" },
-      });
+      await prisma.$transaction(async (tx) => {
+        await tx.person.updateMany({
+          where: { email: leadEmail, status: "new" },
+          data: { status: "contacted" },
+        });
 
-      await prisma.personWorkspace.updateMany({
-        where: {
-          workspace: workspaceSlug,
-          person: { email: leadEmail },
-          status: "new",
-        },
-        data: { status: "contacted" },
+        await tx.personWorkspace.updateMany({
+          where: {
+            workspace: workspaceSlug,
+            person: { email: leadEmail },
+            status: "new",
+          },
+          data: { status: "contacted" },
+        });
       });
     }
 
@@ -256,18 +258,20 @@ export async function POST(request: NextRequest) {
       };
       const newStatus = statusMap[eventType];
       if (newStatus) {
-        await prisma.person.updateMany({
-          where: { email: leadEmail },
-          data: { status: newStatus },
-        });
+        await prisma.$transaction(async (tx) => {
+          await tx.person.updateMany({
+            where: { email: leadEmail },
+            data: { status: newStatus },
+          });
 
-        // Update workspace-specific status
-        await prisma.personWorkspace.updateMany({
-          where: {
-            workspace: workspaceSlug,
-            person: { email: leadEmail },
-          },
-          data: { status: newStatus },
+          // Update workspace-specific status
+          await tx.personWorkspace.updateMany({
+            where: {
+              workspace: workspaceSlug,
+              person: { email: leadEmail },
+            },
+            data: { status: newStatus },
+          });
         });
       }
     }

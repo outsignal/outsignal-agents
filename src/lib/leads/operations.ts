@@ -822,20 +822,22 @@ export async function updatePersonStatus(
   status: string,
   workspaceSlug?: string,
 ): Promise<UpdatePersonStatusResult> {
-  const person = await prisma.person.update({
-    where: { id: personId },
-    data: { status },
-    select: { firstName: true, lastName: true, email: true },
-  });
-
-  if (workspaceSlug) {
-    await prisma.personWorkspace.updateMany({
-      where: { personId, workspace: workspaceSlug },
+  return prisma.$transaction(async (tx) => {
+    const person = await tx.person.update({
+      where: { id: personId },
       data: { status },
+      select: { firstName: true, lastName: true, email: true },
     });
-  }
 
-  return person;
+    if (workspaceSlug) {
+      await tx.personWorkspace.updateMany({
+        where: { personId, workspace: workspaceSlug },
+        data: { status },
+      });
+    }
+
+    return person;
+  });
 }
 
 // ---------------------------------------------------------------------------
