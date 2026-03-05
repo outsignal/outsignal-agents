@@ -55,10 +55,17 @@ export async function GET(
       );
     }
 
-    // Bridge: Chrome extension saves cookies as browser array
-    // [{ name: "li_at", value: "...", domain: ".linkedin.com" }, ...]
-    // but the worker expects voyager format: { type: "voyager", liAt, jsessionId }
     if (Array.isArray(parsed)) {
+      // Check if already in voyager format: [{ type: "voyager", liAt, jsessionId }]
+      const voyagerEntry = parsed.find(
+        (c: Record<string, unknown>) => c?.type === "voyager" && c?.liAt && c?.jsessionId,
+      );
+      if (voyagerEntry) {
+        return NextResponse.json({ cookies: [voyagerEntry] });
+      }
+
+      // Bridge: Chrome extension saves cookies as browser array
+      // [{ name: "li_at", value: "...", domain: ".linkedin.com" }, ...]
       const liAtEntry = parsed.find(
         (c: Record<string, unknown>) => c?.name === "li_at",
       );
