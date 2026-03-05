@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
         ...wsFilter,
         receivedAt: { gte: sinceDate },
         eventType: {
-          in: ["EMAIL_SENT", "EMAIL_OPENED", "LEAD_REPLIED", "LEAD_INTERESTED", "BOUNCED"],
+          in: ["EMAIL_SENT", "EMAIL_OPENED", "LEAD_REPLIED", "LEAD_INTERESTED", "BOUNCE"],
         },
       },
       select: {
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
       else if (event.eventType === "EMAIL_OPENED") timeSeriesMap[dateStr].opens++;
       else if (event.eventType === "LEAD_REPLIED") timeSeriesMap[dateStr].replies++;
       else if (event.eventType === "LEAD_INTERESTED") timeSeriesMap[dateStr].replies++;
-      else if (event.eventType === "BOUNCED") timeSeriesMap[dateStr].bounces++;
+      else if (event.eventType === "BOUNCE") timeSeriesMap[dateStr].bounces++;
     }
 
     // Fill in all days in range (including zeros)
@@ -287,7 +287,7 @@ export async function GET(request: NextRequest) {
       emailOpened: emailMap["EMAIL_OPENED"] ?? 0,
       emailReplied: emailMap["LEAD_REPLIED"] ?? 0,
       emailInterested: emailMap["LEAD_INTERESTED"] ?? 0,
-      emailBounced: emailMap["BOUNCED"] ?? 0,
+      emailBounced: emailMap["BOUNCE"] ?? 0,
       linkedinConnect: linkedInTypeMap["connect"] ?? 0,
       linkedinMessage: linkedInTypeMap["message"] ?? 0,
       linkedinProfileView: linkedInTypeMap["profile_view"] ?? 0,
