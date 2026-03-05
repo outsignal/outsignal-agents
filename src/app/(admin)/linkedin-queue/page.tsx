@@ -149,7 +149,7 @@ export default function LinkedInQueuePage() {
 
       <div className="flex-1 p-6 space-y-6">
         {/* Status count cards */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard
             label="Pending"
             value={counts?.pending ?? 0}
