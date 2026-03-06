@@ -169,9 +169,9 @@ function InlineSkeleton() {
 
 function IntegrationCard({ provider }: { provider: ProviderStatus }) {
   const hasCredits =
-    provider.credits &&
-    provider.credits.remaining !== undefined &&
-    provider.credits.total !== undefined;
+    provider.credits && provider.credits.remaining != null;
+  const hasTotal =
+    hasCredits && provider.credits!.total != null && provider.credits!.total! > 0;
 
   return (
     <Card density="compact">
@@ -196,30 +196,34 @@ function IntegrationCard({ provider }: { provider: ProviderStatus }) {
           )}
         </div>
 
-        {/* Credits bar */}
+        {/* Credits */}
         {hasCredits && (
           <div className="mt-3 space-y-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Credits</span>
-              <span>
-                {provider.credits!.remaining!.toLocaleString()} /{" "}
-                {provider.credits!.total!.toLocaleString()}
+              <span className="font-mono">
+                {provider.credits!.remaining!.toLocaleString()}
+                {hasTotal && (
+                  <span> / {provider.credits!.total!.toLocaleString()}</span>
+                )}
               </span>
             </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  creditBarColor(
-                    provider.credits!.remaining!,
-                    provider.credits!.total!,
-                  ),
-                )}
-                style={{
-                  width: `${Math.min(100, (provider.credits!.remaining! / provider.credits!.total!) * 100)}%`,
-                }}
-              />
-            </div>
+            {hasTotal && (
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    creditBarColor(
+                      provider.credits!.remaining!,
+                      provider.credits!.total!,
+                    ),
+                  )}
+                  style={{
+                    width: `${Math.min(100, (provider.credits!.remaining! / provider.credits!.total!) * 100)}%`,
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
