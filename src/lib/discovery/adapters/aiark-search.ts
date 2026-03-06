@@ -18,14 +18,20 @@
  *   account.domain            — HIGH CONFIDENCE, should work (same any/include pattern)
  *   contact.experience.current.title — HIGH CONFIDENCE, works with {mode,content} format
  *   contact.department        — BUGGED: returns all records ignoring the filter
- *   account.keyword           — BROKEN: returns 400 "request not readable"
- *   contact.keyword           — BROKEN: returns 400 "request not readable"
+ *   contact.keyword           — BROKEN: returns 400 "request not readable" (no workaround)
+ *
+ * companyKeywords workaround:
+ *   account.keyword on /v1/people returns 500 "cannot serialize", but the same
+ *   keyword filter works on /v1/companies. So we do a two-step search: first
+ *   fetch matching company domains via /v1/companies, then use those domains
+ *   as an account.domain filter on /v1/people.
  */
 
 import { z } from "zod";
 import type { DiscoveredPersonResult, DiscoveryAdapter, DiscoveryFilter, DiscoveryResult } from "../types";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
+const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
 
 /** Auth header name — confirmed working via live testing. */
 const AUTH_HEADER_NAME = "X-TOKEN";
@@ -133,6 +139,54 @@ const AiArkSearchResponseSchema = z
   })
   .passthrough();
 
+const AiArkCompanySchema = z
+  .object({
+    id: z.string().optional(),
+    summary: z
+      .object({
+        name: z.string().optional().nullable(),
+        industry: z.string().optional().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    link: z
+      .object({
+        domain: z.string().optional().nullable(),
+        linkedin: z.string().optional().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    staff: z
+      .object({
+        total: z.number().optional().nullable(),
+        range: z
+          .object({
+            start: z.number().optional(),
+            end: z.number().optional(),
+          })
+          .optional()
+          .nullable(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const AiArkCompaniesResponseSchema = z
+  .object({
+    content: z.array(AiArkCompanySchema).optional().default([]),
+    totalElements: z.number().optional().nullable(),
+    totalPages: z.number().optional().nullable(),
+    pageable: z
+      .object({
+        pageNumber: z.number().optional(),
+        pageSize: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -204,10 +258,8 @@ function buildRequestBody(
     account.domain = { any: { include: filters.companyDomains } };
   }
 
-  // keywords → SKIP: both account.keyword and contact.keyword return
-  // 400 "request not readable". Do not send.
-
-  // companyKeywords → SKIP: same issue as keywords above.
+  // keywords → not sent (contact.keyword returns 400, no workaround)
+  // companyKeywords → handled via two-step workaround in search() method
 
   // Merge adapter-specific extras into the contact/account objects
   if (extras) {
@@ -262,6 +314,70 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
    */
   readonly estimatedCostPerResult = 0.003;
 
+  /**
+   * Two-step workaround: search /v1/companies by keyword to get domains,
+   * then use those domains as a filter on /v1/people.
+   */
+  private async searchCompanyDomainsByKeyword(keywords: string[]): Promise<string[]> {
+    const apiKey = getApiKey();
+
+    const requestBody = {
+      account: {
+        keyword: {
+          sources: [{ mode: "INCLUDE", source: "KEYWORD" }],
+          content: keywords,
+        },
+      },
+      page: 0,
+      size: 100,
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    let raw: unknown;
+
+    try {
+      const response = await fetch(AIARK_COMPANIES_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [AUTH_HEADER_NAME]: apiKey,
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn(
+          `AI Ark companies keyword search failed: HTTP ${response.status}`,
+        );
+        return [];
+      }
+
+      raw = await response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn("AI Ark companies keyword search error:", err);
+      return [];
+    }
+
+    const parsed = AiArkCompaniesResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.warn("AI Ark companies: response did not match schema:", parsed.error.message);
+      return [];
+    }
+
+    // Extract unique domains, filtering out nulls/undefined
+    const domains = parsed.data.content
+      .map((c) => c.link?.domain)
+      .filter((d): d is string => !!d);
+
+    return Array.from(new Set(domains));
+  }
+
   async search(
     filters: DiscoveryFilter,
     limit: number,
@@ -269,6 +385,22 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
     extras?: Record<string, unknown>,
   ): Promise<DiscoveryResult> {
     const apiKey = getApiKey();
+
+    // Track extra cost from the companies keyword lookup
+    let extraCost = 0;
+
+    // Two-step workaround: resolve companyKeywords → domains first
+    if (filters.companyKeywords?.length) {
+      const keywordDomains = await this.searchCompanyDomainsByKeyword(filters.companyKeywords);
+      extraCost = 0.003; // one extra API call
+
+      if (keywordDomains.length) {
+        // Merge with any user-provided companyDomains, dedup
+        const existing = filters.companyDomains ?? [];
+        const merged = Array.from(new Set(existing.concat(keywordDomains)));
+        filters = { ...filters, companyDomains: merged };
+      }
+    }
 
     // Page is zero-based; pageToken is a stringified integer
     const page = pageToken ? parseInt(pageToken, 10) : 0;
@@ -328,7 +460,7 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
         people: [],
         totalAvailable: 0,
         hasMore: false,
-        costUsd: 0.003,
+        costUsd: 0.003 + extraCost,
         rawResponse: raw,
       };
     }
@@ -356,8 +488,8 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
       totalAvailable: totalElements || undefined,
       hasMore,
       nextPageToken,
-      // Cost: one credit per API call regardless of results returned
-      costUsd: 0.003,
+      // Cost: one credit per people API call + optional companies keyword call
+      costUsd: 0.003 + extraCost,
       // Include trackId in rawResponse for potential email finding later
       rawResponse: raw,
     };
