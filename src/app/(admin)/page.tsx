@@ -27,23 +27,6 @@ import type {
   DashboardAlert,
   WorkspaceOption,
 } from "@/app/api/dashboard/stats/route";
-import { cn } from "@/lib/utils";
-
-function WorkerStatusChip({ online }: { online: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5 text-xs">
-      <span
-        className={cn(
-          "h-2 w-2 rounded-full shrink-0",
-          online ? "bg-emerald-500 animate-pulse" : "bg-red-500"
-        )}
-      />
-      <span className={cn("font-medium", online ? "text-emerald-600" : "text-red-500")}>
-        {online ? "Worker Online" : "Worker Offline"}
-      </span>
-    </div>
-  );
-}
 
 // Fallback empty KPIs
 const emptyKpis: DashboardKPIs = {
@@ -101,8 +84,8 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-6">
       {/* Health row */}
-      <div className="grid grid-cols-3 gap-3">
-        {Array.from({ length: 3 }).map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
           <KpiSkeleton key={i} />
         ))}
       </div>
@@ -177,21 +160,13 @@ export default function DashboardPage() {
       ? ((kpis.emailBounced / kpis.emailSent) * 100).toFixed(1)
       : "—";
 
-  const unhealthySenders =
-    kpis.sendersWarning + kpis.sendersPaused + kpis.sendersBlocked + kpis.sendersSessionExpired;
-
   return (
     <div>
       {/* Header */}
       <Header
         title="Dashboard"
         description={`${days === "7" ? "Last 7 days" : days === "14" ? "Last 14 days" : days === "30" ? "Last 30 days" : "Last 90 days"} ${workspace !== "all" ? `· ${workspace}` : "· all campaigns"}`}
-        actions={
-          <div className="flex items-center gap-3">
-            <WorkerStatusChip online={kpis.workerOnline} />
-            <ClientFilter workspaces={workspaces} />
-          </div>
-        }
+        actions={<ClientFilter workspaces={workspaces} />}
       />
 
       <div className="p-6 space-y-6">
@@ -211,39 +186,66 @@ export default function DashboardPage() {
         ) : !error ? (
           <>
             {/* Section 1: Health & Alerts */}
-            <div className="grid grid-cols-3 gap-3">
-              <Link href="/senders" className="block">
-                <MetricCard
-                  label="Senders"
-                  value={`${kpis.sendersHealthy}/${kpis.sendersActiveTotal || kpis.sendersHealthy + unhealthySenders}`}
-                  trend={unhealthySenders > 0 || kpis.linkedinAccountsExpired > 0 ? "warning" : "up"}
-                  detail={
-                    unhealthySenders > 0 && kpis.linkedinAccountsExpired > 0
-                      ? `${unhealthySenders} need attention, ${kpis.linkedinAccountsExpired} sessions expired`
-                      : unhealthySenders > 0
-                        ? `${unhealthySenders} need attention`
-                        : kpis.linkedinAccountsExpired > 0
-                          ? `${kpis.linkedinAccountsExpired} sessions expired`
-                          : "All healthy"
-                  }
-                  density="compact"
-                />
-              </Link>
-              <MetricCard
-                label="Inboxes"
-                value={kpis.inboxesConnected.toLocaleString()}
-                trend={kpis.inboxesDisconnected > 0 ? "warning" : "up"}
-                detail={kpis.inboxesDisconnected > 0 ? `${kpis.inboxesDisconnected} disconnected` : "All connected"}
-                density="compact"
-              />
-              <MetricCard
-                label="Active Campaigns"
-                value={kpis.campaignsActive.toLocaleString()}
-                trend={kpis.campaignsActive > 0 ? "up" : "neutral"}
-                detail={`${kpis.campaignsPaused} paused, ${kpis.campaignsDraft} drafts`}
-                density="compact"
-              />
-            </div>
+            {(() => {
+              const workerDetail = kpis.workerLastPollAt
+                ? `Last poll ${(() => {
+                    const mins = Math.round((Date.now() - new Date(kpis.workerLastPollAt).getTime()) / 60000);
+                    if (mins < 1) return "just now";
+                    if (mins < 60) return `${mins}m ago`;
+                    const hrs = Math.round(mins / 60);
+                    return `${hrs}h ago`;
+                  })()}`
+                : "Never polled";
+
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <Link href="/senders" className="block">
+                    <MetricCard
+                      label="Senders"
+                      value={`${kpis.linkedinAccountsActive} active`}
+                      trend={kpis.linkedinAccountsExpired > 0 ? "warning" : kpis.linkedinAccountsActive > 0 ? "up" : "neutral"}
+                      detail={`${kpis.linkedinAccountsTotal} total${kpis.linkedinAccountsExpired > 0 ? ` · ${kpis.linkedinAccountsExpired} expired` : ""}`}
+                      density="compact"
+                    />
+                  </Link>
+                  <MetricCard
+                    label="Inboxes"
+                    value={`${kpis.inboxesConnected} connected`}
+                    trend={kpis.inboxesDisconnected > 0 ? "warning" : "up"}
+                    detail={`${kpis.inboxesConnected + kpis.inboxesDisconnected} total${kpis.inboxesDisconnected > 0 ? ` · ${kpis.inboxesDisconnected} disconnected` : ""}${Number(bounceRate) > 5 ? ` · ${bounceRate}% bounce` : ""}`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Campaigns"
+                    value={`${kpis.campaignsActive + kpis.campaignsPaused + kpis.campaignsDraft} total`}
+                    trend={kpis.campaignsActive > 0 ? "up" : "neutral"}
+                    detail={`${kpis.campaignsActive} active · ${kpis.campaignsPaused} paused · ${kpis.campaignsDraft} draft`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Emails"
+                    value={kpis.emailSent.toLocaleString() + " sent"}
+                    trend={kpis.emailBounced > 0 ? "warning" : kpis.emailSent > 0 ? "up" : "neutral"}
+                    detail={`${kpis.emailBounced.toLocaleString()} bounced · ${kpis.emailReplied.toLocaleString()} replies`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="LinkedIn"
+                    value={`${(kpis.linkedinProfileView + kpis.linkedinConnect + kpis.linkedinMessage).toLocaleString()} actions`}
+                    trend={kpis.linkedinFailed > 0 ? "warning" : (kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView) > 0 ? "up" : "neutral"}
+                    detail={`${kpis.linkedinProfileView} views · ${kpis.linkedinConnect} connects · ${kpis.linkedinMessage} messages`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Worker"
+                    value={kpis.workerOnline ? "Online" : "Offline"}
+                    trend={kpis.workerOnline ? "up" : "down"}
+                    detail={workerDetail}
+                    density="compact"
+                  />
+                </div>
+              );
+            })()}
 
             {/* Section 2: Combined Activity Chart */}
             <Card>
