@@ -336,10 +336,14 @@ async function checkTheirStack(): Promise<ProviderStatus> {
 
   try {
     const res = await fetchWithTimeout(
-      "https://api.theirstack.com/billing/credit_balance_v0",
+      "https://api.theirstack.com/v0/billing/credit-balance",
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
     const data = await res.json();
+
+    const remaining = data?.api_credits != null && data?.used_api_credits != null
+      ? data.api_credits - data.used_api_credits
+      : undefined;
 
     return {
       id: "theirstack",
@@ -348,7 +352,9 @@ async function checkTheirStack(): Promise<ProviderStatus> {
       status: "connected",
       configured: true,
       credits: {
-        remaining: data?.credits,
+        used: data?.used_api_credits,
+        remaining,
+        total: data?.api_credits,
       },
       dashboardUrl: "https://app.theirstack.com",
       lastChecked: now,
