@@ -109,47 +109,45 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     const apiKey = getApiKey();
     const page = pageToken ? parseInt(pageToken, 10) : 1;
 
-    // Build Prospeo request body using include/exclude array format
-    const body: Record<string, unknown> = {
-      page,
-    };
+    // Build Prospeo request body — all filter fields go inside a `filters` wrapper
+    const f: Record<string, unknown> = {};
 
     if (filters.jobTitles?.length) {
-      body.person_job_title = { include: filters.jobTitles };
+      f.person_job_title = { include: filters.jobTitles };
     }
 
     if (filters.seniority?.length) {
-      body.person_seniority = { include: filters.seniority };
+      f.person_seniority = { include: filters.seniority };
     }
 
     if (filters.locations?.length) {
       // Prospeo requires "Country Name #CC" format (e.g., "United Kingdom #GB")
-      body.person_location_search = { include: filters.locations };
+      f.person_location_search = { include: filters.locations };
     }
 
     if (filters.industries?.length) {
-      body.company_industry = { include: filters.industries };
+      f.company_industry = { include: filters.industries };
     }
 
     if (filters.companySizes?.length) {
       // Prospeo accepts size strings as-is: "51-200", "201-500"
-      body.company_headcount_range = { include: filters.companySizes };
+      f.company_headcount_range = { include: filters.companySizes };
     }
 
     if (filters.companyDomains?.length) {
-      body.company_domain = { include: filters.companyDomains };
+      f.company_domain = { include: filters.companyDomains };
     }
 
     if (filters.keywords?.length) {
-      body.keywords = { include: filters.keywords };
+      f.keywords = { include: filters.keywords };
     }
 
     if (filters.companyKeywords?.length) {
-      body.company_keywords = { include: filters.companyKeywords };
+      f.company_keywords = { include: filters.companyKeywords };
     }
 
     if (filters.revenueMin || filters.revenueMax) {
-      body.company_revenue = {
+      f.company_revenue = {
         min: filters.revenueMin,
         max: filters.revenueMax,
         include_unknown_revenue: false,
@@ -157,7 +155,7 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.fundingStages?.length || filters.fundingTotalMin || filters.fundingTotalMax) {
-      body.company_funding = {
+      f.company_funding = {
         ...(filters.fundingStages?.length ? { stage: filters.fundingStages } : {}),
         ...(filters.fundingTotalMin || filters.fundingTotalMax
           ? { total_funding: { min: filters.fundingTotalMin, max: filters.fundingTotalMax } }
@@ -166,15 +164,15 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.technologies?.length) {
-      body.company_technology = { include: filters.technologies };
+      f.company_technology = { include: filters.technologies };
     }
 
     if (filters.companyType?.length) {
-      body.company_type = filters.companyType[0];
+      f.company_type = filters.companyType[0];
     }
 
     if (filters.foundedYearMin || filters.foundedYearMax) {
-      body.company_founded = {
+      f.company_founded = {
         min: filters.foundedYearMin,
         max: filters.foundedYearMax,
         include_unknown_founded: true,
@@ -182,28 +180,30 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.naicsCodes?.length) {
-      body.company_naics = { include: filters.naicsCodes };
+      f.company_naics = { include: filters.naicsCodes };
     }
 
     if (filters.sicCodes?.length) {
-      body.company_sics = { include: filters.sicCodes };
+      f.company_sics = { include: filters.sicCodes };
     }
 
     if (filters.departments?.length) {
-      body.person_department = { include: filters.departments };
+      f.person_department = { include: filters.departments };
     }
 
     if (filters.yearsExperienceMin !== undefined || filters.yearsExperienceMax !== undefined) {
-      body.person_year_of_experience = {
+      f.person_year_of_experience = {
         min: filters.yearsExperienceMin,
         max: filters.yearsExperienceMax,
       };
     }
 
-    // Merge Prospeo-specific extras (e.g., company_funding, person_department)
+    // Merge Prospeo-specific extras into the filters object
     if (extras) {
-      Object.assign(body, extras);
+      Object.assign(f, extras);
     }
+
+    const body: Record<string, unknown> = { filters: f, page };
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
