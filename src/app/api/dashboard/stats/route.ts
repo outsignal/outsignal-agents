@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const workspaceFilter = searchParams.get("workspace") ?? "all";
   const daysParam = parseInt(searchParams.get("days") ?? "7", 10);
-  const days = [7, 14, 30, 90].includes(daysParam) ? daysParam : 7;
+  const days = [1, 3, 7, 14, 30, 60, 90].includes(daysParam) ? daysParam : 7;
 
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - days);
