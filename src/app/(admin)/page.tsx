@@ -211,9 +211,9 @@ export default function DashboardPage() {
                   </Link>
                   <MetricCard
                     label="Inboxes"
-                    value={`${kpis.inboxesActive} active`}
-                    trend={kpis.inboxesIssues > 0 ? "warning" : kpis.inboxesActive > 0 ? "up" : "neutral"}
-                    detail={`${kpis.inboxesTotal} total${kpis.inboxesIssues > 0 ? ` · ${kpis.inboxesIssues} issues` : ""}${Number(bounceRate) > 5 ? ` · ${bounceRate}% bounce` : ""}`}
+                    value={`${kpis.inboxesTotal} total`}
+                    trend={kpis.inboxesIssues > 0 || Number(bounceRate) > 5 ? "warning" : kpis.inboxesActive > 0 ? "up" : "neutral"}
+                    detail={`${kpis.inboxesActive} connected · ${kpis.inboxesIssues} disconnected${Number(bounceRate) > 5 ? ` · ${bounceRate}% bounce` : ""}`}
                     density="compact"
                   />
                   <MetricCard
