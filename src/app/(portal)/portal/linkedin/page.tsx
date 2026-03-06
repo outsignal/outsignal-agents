@@ -191,14 +191,41 @@ export default async function PortalLinkedInPage() {
                             className={healthColors[sender.healthStatus] ?? ""}
                           />
                         </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                          {usage?.connectionsSent ?? 0}
+                        <TableCell className="text-right text-sm tabular-nums">
+                          <span className={
+                            (usage?.connectionsSent ?? 0) >= sender.dailyConnectionLimit
+                              ? "text-red-500"
+                              : (usage?.connectionsSent ?? 0) >= sender.dailyConnectionLimit * 0.8
+                                ? "text-amber-500"
+                                : "text-muted-foreground"
+                          }>
+                            {usage?.connectionsSent ?? 0}
+                          </span>
+                          <span className="text-muted-foreground/50">/{sender.dailyConnectionLimit}</span>
                         </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                          {usage?.messagesSent ?? 0}
+                        <TableCell className="text-right text-sm tabular-nums">
+                          <span className={
+                            (usage?.messagesSent ?? 0) >= sender.dailyMessageLimit
+                              ? "text-red-500"
+                              : (usage?.messagesSent ?? 0) >= sender.dailyMessageLimit * 0.8
+                                ? "text-amber-500"
+                                : "text-muted-foreground"
+                          }>
+                            {usage?.messagesSent ?? 0}
+                          </span>
+                          <span className="text-muted-foreground/50">/{sender.dailyMessageLimit}</span>
                         </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                          {usage?.profileViews ?? 0}
+                        <TableCell className="text-right text-sm tabular-nums">
+                          <span className={
+                            (usage?.profileViews ?? 0) >= sender.dailyProfileViewLimit
+                              ? "text-red-500"
+                              : (usage?.profileViews ?? 0) >= sender.dailyProfileViewLimit * 0.8
+                                ? "text-amber-500"
+                                : "text-muted-foreground"
+                          }>
+                            {usage?.profileViews ?? 0}
+                          </span>
+                          <span className="text-muted-foreground/50">/{sender.dailyProfileViewLimit}</span>
                         </TableCell>
                         <TableCell>
                           <ConnectButton

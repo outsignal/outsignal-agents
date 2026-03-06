@@ -33,6 +33,7 @@ import {
   Key,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DailyLimitsBar } from "./daily-limits-bar";
 import { SenderFormModal } from "./sender-form-modal";
 import { SenderHealthPanel } from "./sender-health-panel";
 import type { SenderWithWorkspace } from "./types";
@@ -196,12 +197,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
           </div>
 
           {/* Daily limits */}
-          <div className="flex items-start gap-2">
-            <span className="text-muted-foreground w-20 shrink-0">Limits</span>
-            <span className="text-foreground/80">
-              {sender.dailyConnectionLimit}c / {sender.dailyMessageLimit}m / {sender.dailyProfileViewLimit}pv
-            </span>
-          </div>
+          <DailyLimitsBar senderId={sender.id} />
 
           {/* LinkedIn tier */}
           <div className="flex items-start gap-2">
