@@ -55,8 +55,9 @@ const emptyKpis: DashboardKPIs = {
   campaignsActive: 0,
   campaignsPaused: 0,
   campaignsDraft: 0,
-  inboxesConnected: 0,
-  inboxesDisconnected: 0,
+  inboxesActive: 0,
+  inboxesTotal: 0,
+  inboxesIssues: 0,
   workerOnline: false,
   workerLastPollAt: null,
 };
@@ -210,9 +211,9 @@ export default function DashboardPage() {
                   </Link>
                   <MetricCard
                     label="Inboxes"
-                    value={`${kpis.inboxesConnected} connected`}
-                    trend={kpis.inboxesDisconnected > 0 ? "warning" : "up"}
-                    detail={`${kpis.inboxesConnected + kpis.inboxesDisconnected} total${kpis.inboxesDisconnected > 0 ? ` · ${kpis.inboxesDisconnected} disconnected` : ""}${Number(bounceRate) > 5 ? ` · ${bounceRate}% bounce` : ""}`}
+                    value={`${kpis.inboxesActive} active`}
+                    trend={kpis.inboxesIssues > 0 ? "warning" : kpis.inboxesActive > 0 ? "up" : "neutral"}
+                    detail={`${kpis.inboxesTotal} total${kpis.inboxesIssues > 0 ? ` · ${kpis.inboxesIssues} issues` : ""}${Number(bounceRate) > 5 ? ` · ${bounceRate}% bounce` : ""}`}
                     density="compact"
                   />
                   <MetricCard

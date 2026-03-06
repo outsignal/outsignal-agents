@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { EmailBisonClient } from "@/lib/emailbison/client";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +36,10 @@ export interface DashboardKPIs {
   campaignsActive: number;
   campaignsPaused: number;
   campaignsDraft: number;
-  // Inbox KPIs
-  inboxesConnected: number;
-  inboxesDisconnected: number;
+  // Inbox KPIs (sender email accounts from EmailBison)
+  inboxesActive: number;
+  inboxesTotal: number;
+  inboxesIssues: number;
   // Worker status
   workerOnline: boolean;
   workerLastPollAt: string | null;
@@ -198,13 +200,42 @@ export async function GET(request: NextRequest) {
       campaignMap[item.status] = item._count.status;
     }
 
-    // 6. Inbox connected/disconnected: workspaces with/without apiToken
+    // 6. Inbox KPIs: fetch sender emails from EmailBison across all workspaces
     const allWorkspaces = await prisma.workspace.findMany({
       select: { slug: true, name: true, apiToken: true, status: true },
     });
 
-    const inboxesConnected = allWorkspaces.filter((w) => w.apiToken).length;
-    const inboxesDisconnected = allWorkspaces.filter((w) => !w.apiToken).length;
+    const workspacesWithToken = allWorkspaces.filter((w) => w.apiToken);
+    const filteredWsForInbox =
+      workspaceFilter !== "all"
+        ? workspacesWithToken.filter((w) => w.slug === workspaceFilter)
+        : workspacesWithToken;
+
+    const senderEmailResults = await Promise.allSettled(
+      filteredWsForInbox.map(async (ws) => {
+        const client = new EmailBisonClient(ws.apiToken as string);
+        return client.getSenderEmails();
+      })
+    );
+
+    let inboxesTotal = 0;
+    let inboxesActive = 0;
+    let inboxesIssues = 0;
+    for (const result of senderEmailResults) {
+      if (result.status === "fulfilled") {
+        const senders = result.value;
+        inboxesTotal += senders.length;
+        for (const s of senders) {
+          const status = (s.status ?? "").toLowerCase();
+          if (status === "connected" || status === "active") {
+            inboxesActive++;
+          } else {
+            inboxesIssues++;
+          }
+        }
+      }
+      // Failed requests are silently skipped — they don't break the dashboard
+    }
 
     // Worker heartbeat: most recently polled sender
     const latestPoll = await prisma.sender.findFirst({
@@ -402,8 +433,9 @@ export async function GET(request: NextRequest) {
       campaignsActive: campaignMap["active"] ?? 0,
       campaignsPaused: campaignMap["paused"] ?? 0,
       campaignsDraft: campaignMap["draft"] ?? 0,
-      inboxesConnected,
-      inboxesDisconnected,
+      inboxesActive,
+      inboxesTotal,
+      inboxesIssues,
       workerOnline,
       workerLastPollAt: workerLastPollAt?.toISOString() ?? null,
     };
