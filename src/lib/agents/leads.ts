@@ -341,7 +341,7 @@ const leadsTools = {
 
   searchProspeo: tool({
     description:
-      "Search Prospeo for people matching ICP filters. Supports 20+ filters including funding stage and headcount. COSTS 1 CREDIT PER REQUEST. Returns identity data only (no emails). Use for B2B discovery with funding/headcount filters.",
+      "Search Prospeo for people matching ICP filters. Supports 20+ filters including funding, revenue, technologies, departments, NAICS/SIC codes, and years of experience. COSTS 1 CREDIT PER REQUEST. Returns identity data only (no emails).",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
       jobTitles: z
@@ -388,6 +388,19 @@ const leadsTools = {
         .describe(
           "Departments: 'engineering', 'product', 'sales', 'marketing'",
         ),
+      companyKeywords: z.array(z.string()).optional().describe("Company keywords (e.g., 'fit-out', 'interior design')"),
+      revenueMin: z.string().optional().describe("Min revenue: '<100K', '1M', '10M', '100M', '1B', '10B+'"),
+      revenueMax: z.string().optional().describe("Max revenue: '<100K', '1M', '10M', '100M', '1B', '10B+'"),
+      fundingTotalMin: z.string().optional().describe("Min total funding amount"),
+      fundingTotalMax: z.string().optional().describe("Max total funding amount"),
+      technologies: z.array(z.string()).optional().describe("Technologies used by company (e.g., ['Salesforce', 'HubSpot', 'AWS'])"),
+      companyType: z.array(z.string()).optional().describe("Company type: 'Private', 'Public', 'Non Profit', 'Other'"),
+      foundedYearMin: z.number().optional().describe("Min company founded year"),
+      foundedYearMax: z.number().optional().describe("Max company founded year"),
+      naicsCodes: z.array(z.string()).optional().describe("NAICS industry codes"),
+      sicCodes: z.array(z.string()).optional().describe("SIC industry codes"),
+      yearsExperienceMin: z.number().optional().describe("Min years of experience"),
+      yearsExperienceMax: z.number().optional().describe("Max years of experience"),
       limit: z
         .number()
         .default(25)
@@ -406,31 +419,33 @@ const leadsTools = {
         companySizes: params.companySizes,
         companyDomains: params.companyDomains,
         keywords: params.keywords,
+        companyKeywords: params.companyKeywords,
+        fundingStages: params.fundingStages,
+        fundingTotalMin: params.fundingTotalMin,
+        fundingTotalMax: params.fundingTotalMax,
+        departments: params.departments,
+        revenueMin: params.revenueMin,
+        revenueMax: params.revenueMax,
+        technologies: params.technologies,
+        companyType: params.companyType,
+        foundedYearMin: params.foundedYearMin,
+        foundedYearMax: params.foundedYearMax,
+        naicsCodes: params.naicsCodes,
+        sicCodes: params.sicCodes,
+        yearsExperienceMin: params.yearsExperienceMin,
+        yearsExperienceMax: params.yearsExperienceMax,
       };
-      // Build Prospeo-specific extras for funding stage and department filters
-      const extras: Record<string, unknown> = {};
-      if (params.fundingStages?.length) {
-        extras.company_funding = { include: params.fundingStages };
-      }
-      if (params.departments?.length) {
-        extras.person_department = { include: params.departments };
-      }
       const result = await prospeoSearchAdapter.search(
         filters,
         params.limit,
         params.pageToken,
-        Object.keys(extras).length > 0 ? extras : undefined,
       );
       await incrementDailySpend("prospeo-search", result.costUsd);
       const { staged, runId } = await stageDiscoveredPeople({
         people: result.people,
         discoverySource: "prospeo",
         workspaceSlug: params.workspaceSlug,
-        searchQuery: JSON.stringify({
-          ...filters,
-          fundingStages: params.fundingStages,
-          departments: params.departments,
-        }),
+        searchQuery: JSON.stringify(filters),
       });
       return {
         source: "prospeo",
@@ -453,7 +468,7 @@ const leadsTools = {
 
   searchAiArk: tool({
     description:
-      "Search AI Ark for people by role, seniority, department, location, keywords. COSTS CREDITS. Similar to Apollo but may have different coverage. Use as secondary B2B source.",
+      "Search AI Ark for people matching ICP filters. Supports title, seniority, industry, location, company size, revenue, funding, technologies, company type, NAICS codes, and company keywords. COSTS CREDITS (~$0.003/call). Returns identity data only (no emails).",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
       jobTitles: z
@@ -471,6 +486,19 @@ const leadsTools = {
         .optional()
         .describe("Company size ranges"),
       keywords: z.array(z.string()).optional().describe("Keywords"),
+      companyDomains: z.array(z.string()).optional().describe("Target specific company domains"),
+      companyKeywords: z.array(z.string()).optional().describe("Company keywords (e.g., 'fit-out', 'interior design') — uses /v1/companies workaround"),
+      revenueMin: z.string().optional().describe("Min revenue: '<100K', '1M', '10M', '100M', '1B', '10B+'"),
+      revenueMax: z.string().optional().describe("Max revenue: '<100K', '1M', '10M', '100M', '1B', '10B+'"),
+      fundingStages: z.array(z.string()).optional().describe("Funding stages: 'SEED', 'SERIES_A', 'SERIES_B', 'SERIES_C', 'VENTURE_ROUND', 'ANGEL', 'IPO'"),
+      fundingTotalMin: z.string().optional().describe("Min total funding: '1M', '5M', '50M'"),
+      fundingTotalMax: z.string().optional().describe("Max total funding: '1M', '5M', '50M'"),
+      technologies: z.array(z.string()).optional().describe("Technologies used by company (e.g., ['Salesforce', 'AWS', 'React'])"),
+      companyType: z.array(z.string()).optional().describe("Company types: 'PRIVATELY_HELD', 'PUBLIC_COMPANY', 'NON_PROFIT', 'SELF_OWNED', 'PARTNERSHIP'"),
+      foundedYearMin: z.number().optional().describe("Min company founded year"),
+      foundedYearMax: z.number().optional().describe("Max company founded year"),
+      naicsCodes: z.array(z.string()).optional().describe("NAICS industry codes"),
+      departments: z.array(z.string()).optional().describe("Person departments (NOTE: AI Ark currently ignores this filter)"),
       limit: z
         .number()
         .default(25)
@@ -488,6 +516,19 @@ const leadsTools = {
         locations: params.locations,
         companySizes: params.companySizes,
         keywords: params.keywords,
+        companyDomains: params.companyDomains,
+        companyKeywords: params.companyKeywords,
+        revenueMin: params.revenueMin,
+        revenueMax: params.revenueMax,
+        fundingStages: params.fundingStages,
+        fundingTotalMin: params.fundingTotalMin,
+        fundingTotalMax: params.fundingTotalMax,
+        technologies: params.technologies,
+        companyType: params.companyType,
+        foundedYearMin: params.foundedYearMin,
+        foundedYearMax: params.foundedYearMax,
+        naicsCodes: params.naicsCodes,
+        departments: params.departments,
       };
       const result = await aiarkSearchAdapter.search(
         filters,
@@ -687,9 +728,17 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
 You decide which sources to use -- there are no rigid categories. Use these as starting points:
 
 **Enterprise B2B (title + seniority + industry + location + company size):**
-- searchApollo -- 275M contacts, FREE search, best coverage for enterprise B2B
-- searchProspeo -- Strong B2B coverage, COSTS CREDITS, unique funding stage and headcount filters
-- searchAiArk -- B2B people search, COSTS CREDITS, equal coverage to Apollo/Prospeo (not a fallback -- a full peer)
+- searchApollo -- 275M contacts, FREE search, best coverage for enterprise B2B. Basic filters only.
+- searchProspeo -- Strong B2B coverage, COSTS CREDITS. Advanced filters: funding stage/amount, revenue, technologies, company type, NAICS/SIC codes, departments, years of experience.
+- searchAiArk -- B2B people search, COSTS CREDITS. Advanced filters: revenue, funding stage/amount, technologies, company type, NAICS codes, company keywords, founded year. Equal coverage to Apollo/Prospeo (not a fallback -- a full peer).
+
+**When to use which paid source:**
+- Need revenue/funding filters? Both Prospeo and AI Ark support them.
+- Need technology stack filters? Both Prospeo and AI Ark support them.
+- Need company keywords (e.g., "fit-out", "interior design")? AI Ark has a working workaround, Prospeo supports it natively.
+- Need NAICS/SIC codes? Both support NAICS; only Prospeo supports SIC.
+- Need years of experience? Only Prospeo.
+- Need departments? Prospeo works; AI Ark's department filter is currently bugged.
 
 **Niche/Association/Government directories:**
 - searchGoogle (web mode) -- Find directory URLs first
