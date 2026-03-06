@@ -318,6 +318,55 @@ async function checkApollo(): Promise<ProviderStatus> {
   }
 }
 
+async function checkTheirStack(): Promise<ProviderStatus> {
+  const now = new Date().toISOString();
+  const apiKey = process.env.THEIRSTACK_API_KEY;
+
+  if (!apiKey) {
+    return {
+      id: "theirstack",
+      name: "TheirStack",
+      category: "discovery",
+      status: "disconnected",
+      configured: false,
+      dashboardUrl: "https://app.theirstack.com",
+      lastChecked: now,
+    };
+  }
+
+  try {
+    const res = await fetchWithTimeout(
+      "https://api.theirstack.com/billing/credit_balance_v0",
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    const data = await res.json();
+
+    return {
+      id: "theirstack",
+      name: "TheirStack",
+      category: "discovery",
+      status: "connected",
+      configured: true,
+      credits: {
+        remaining: data?.credits,
+      },
+      dashboardUrl: "https://app.theirstack.com",
+      lastChecked: now,
+    };
+  } catch (err) {
+    return {
+      id: "theirstack",
+      name: "TheirStack",
+      category: "discovery",
+      status: "degraded",
+      configured: true,
+      dashboardUrl: "https://app.theirstack.com",
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastChecked: now,
+    };
+  }
+}
+
 // =============================================================================
 // Env-var-only provider checks (no API call)
 // =============================================================================
@@ -530,6 +579,7 @@ export async function GET() {
       checkFirecrawl(),
       checkApollo(),
       checkSerper(),
+      checkTheirStack(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
