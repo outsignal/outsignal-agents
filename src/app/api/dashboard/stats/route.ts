@@ -10,6 +10,7 @@ export interface DashboardKPIs {
   emailSent: number;
   emailOpened: number;
   emailReplied: number;
+  emailAutoReplied: number;
   emailInterested: number;
   emailBounced: number;
   // LinkedIn KPIs
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
   try {
     // 1. Email KPIs from WebhookEvent
     const emailEvents = await prisma.webhookEvent.groupBy({
-      by: ["eventType"],
+      by: ["eventType", "isAutomated"],
       where: {
         ...wsFilter,
         receivedAt: { gte: sinceDate },
@@ -116,7 +117,8 @@ export async function GET(request: NextRequest) {
 
     const emailMap: Record<string, number> = {};
     for (const ev of emailEvents) {
-      emailMap[ev.eventType] = ev._count.eventType;
+      const key = ev.isAutomated ? `${ev.eventType}_auto` : ev.eventType;
+      emailMap[key] = (emailMap[key] ?? 0) + ev._count.eventType;
     }
 
     // 2. LinkedIn KPIs from LinkedInAction
@@ -276,6 +278,7 @@ export async function GET(request: NextRequest) {
       where: {
         ...wsFilter,
         receivedAt: { gte: sinceDate },
+        isAutomated: false,
         eventType: {
           in: ["EMAIL_SENT", "EMAIL_OPENED", "LEAD_REPLIED", "LEAD_INTERESTED", "BOUNCE"],
         },
@@ -433,6 +436,7 @@ export async function GET(request: NextRequest) {
       emailSent: emailMap["EMAIL_SENT"] ?? 0,
       emailOpened: emailMap["EMAIL_OPENED"] ?? 0,
       emailReplied: emailMap["LEAD_REPLIED"] ?? 0,
+      emailAutoReplied: emailMap["LEAD_REPLIED_auto"] ?? 0,
       emailInterested: emailMap["LEAD_INTERESTED"] ?? 0,
       emailBounced: emailMap["BOUNCE"] ?? 0,
       linkedinConnect: linkedInTypeMap["connect"] ?? 0,

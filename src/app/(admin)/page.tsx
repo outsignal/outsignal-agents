@@ -33,6 +33,7 @@ const emptyKpis: DashboardKPIs = {
   emailSent: 0,
   emailOpened: 0,
   emailReplied: 0,
+  emailAutoReplied: 0,
   emailInterested: 0,
   emailBounced: 0,
   linkedinConnect: 0,
@@ -232,7 +233,7 @@ export default function DashboardPage() {
                     label="Emails"
                     value={kpis.emailSent.toLocaleString() + " sent"}
                     trend={kpis.emailBounced > 0 ? "warning" : kpis.emailSent > 0 ? "up" : "neutral"}
-                    detail={`${kpis.emailBounced.toLocaleString()} bounced · ${kpis.emailReplied.toLocaleString()} replies`}
+                    detail={`${(kpis.emailReplied + kpis.emailInterested).toLocaleString()} replies · ${kpis.emailAutoReplied} auto${kpis.emailBounced > 0 ? ` · ${kpis.emailBounced} bounced` : ""}`}
                     density="compact"
                     className="h-full"
                   />
@@ -313,7 +314,7 @@ export default function DashboardPage() {
                     label="Reply Rate"
                     value={replyRate === "—" ? "—" : `${replyRate}%`}
                     trend={Number(replyRate) > 0 ? "up" : "neutral"}
-                    detail={`${totalReplies.toLocaleString()} replies from ${kpis.emailSent.toLocaleString()} sent`}
+                    detail={`${totalReplies.toLocaleString()} replies · ${kpis.emailAutoReplied} OOO/auto`}
                     density="compact"
                     featured
                   />

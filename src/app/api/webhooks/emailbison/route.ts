@@ -131,6 +131,18 @@ export async function POST(request: NextRequest) {
     const interested = data.reply?.interested ?? false;
     const leadName = [data.lead?.first_name, data.lead?.last_name].filter(Boolean).join(" ") || null;
 
+    // Detect OOO / non-real replies early so we can persist the flag
+    const fromEmail = (data.reply?.from_email_address ?? "").toLowerCase();
+    const emailSubject = (subject ?? "").toLowerCase();
+    const isNonRealReply =
+      fromEmail.includes("mailer-daemon") ||
+      fromEmail.includes("postmaster") ||
+      emailSubject.includes("delivery status notification") ||
+      /out of office|automatic reply|auto-reply|autoreply/i.test(subject ?? "") ||
+      emailSubject.includes("connection test") ||
+      emailSubject.includes("test email");
+    const isAutomatedFlag = automatedReply || isNonRealReply;
+
     await prisma.webhookEvent.create({
       data: {
         workspace: workspaceSlug,
@@ -139,6 +151,7 @@ export async function POST(request: NextRequest) {
         leadEmail,
         senderEmail,
         payload: JSON.stringify(payload),
+        isAutomated: isAutomatedFlag,
       },
     });
 
@@ -311,18 +324,7 @@ export async function POST(request: NextRequest) {
 
     const notifyEvents = ["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED"];
 
-    // Filter out non-real replies before sending notifications
-    const fromEmail = (data.reply?.from_email_address ?? "").toLowerCase();
-    const emailSubject = (subject ?? "").toLowerCase();
-    const isNonRealReply =
-      fromEmail.includes("mailer-daemon") ||
-      fromEmail.includes("postmaster") ||
-      emailSubject.includes("delivery status notification") ||
-      /out of office|automatic reply|auto-reply|autoreply/i.test(subject ?? "") ||
-      emailSubject.includes("connection test") ||
-      emailSubject.includes("test email");
-
-    if (notifyEvents.includes(eventType) && !automatedReply && !isNonRealReply) {
+    if (notifyEvents.includes(eventType) && !isAutomatedFlag) {
       // 1. Send notification IMMEDIATELY (no waiting for AI)
       try {
         await notifyReply({

@@ -227,6 +227,7 @@ model WebhookEvent {
   leadEmail   String?
   senderEmail String?
   payload     String
+  isAutomated Boolean  @default(false)
   receivedAt  DateTime @default(now())
 
   @@index([workspace, eventType])
