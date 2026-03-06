@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
+import { CampaignFilters } from "@/components/campaigns/campaign-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -50,27 +51,49 @@ function formatDate(date: Date): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default async function CampaignsPage() {
-  const campaigns = await prisma.campaign.findMany({
-    include: {
-      workspace: {
-        select: { name: true },
+interface CampaignsPageProps {
+  searchParams: Promise<{ workspace?: string; status?: string }>;
+}
+
+export default async function CampaignsPage({
+  searchParams,
+}: CampaignsPageProps) {
+  const { workspace, status } = await searchParams;
+
+  const workspaceFilter = workspace && workspace !== "all" ? workspace : undefined;
+  const statusFilter = status && status !== "all" ? status : undefined;
+
+  const [campaigns, workspaces] = await Promise.all([
+    prisma.campaign.findMany({
+      where: {
+        ...(workspaceFilter ? { workspaceSlug: workspaceFilter } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
-      targetList: {
-        select: {
-          name: true,
-          _count: { select: { people: true } },
+      include: {
+        workspace: {
+          select: { name: true },
+        },
+        targetList: {
+          select: {
+            name: true,
+            _count: { select: { people: true } },
+          },
         },
       },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.workspace.findMany({
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <div>
       <Header
         title="Campaigns"
         description="All campaigns across workspaces"
+        actions={<CampaignFilters workspaces={workspaces} />}
       />
 
       <div className="p-6 space-y-6">
