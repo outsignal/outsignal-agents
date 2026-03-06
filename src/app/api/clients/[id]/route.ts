@@ -5,6 +5,8 @@ import {
   deleteClient,
 } from "@/lib/clients/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updateClientSchema } from "@/lib/validations/clients";
+import { auditLog } from "@/lib/audit";
 
 // GET /api/clients/[id] — client detail with tasks
 export async function GET(
@@ -51,8 +53,16 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const result = updateClientSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+    }
 
-    const client = await updateClient(id, body);
+    // Convert null values to undefined (Zod nullable() produces null, operations expect undefined)
+    const cleaned = Object.fromEntries(
+      Object.entries(result.data).map(([k, v]) => [k, v === null ? undefined : v])
+    );
+    const client = await updateClient(id, cleaned);
 
     return NextResponse.json({ client });
   } catch (err) {
@@ -78,6 +88,13 @@ export async function DELETE(
     const { id } = await params;
 
     await deleteClient(id);
+
+    auditLog({
+      action: "client.delete",
+      entityType: "Client",
+      entityId: id,
+      adminEmail: session.email,
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {

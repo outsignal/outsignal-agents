@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updateSignalsSchema } from "@/lib/validations/workspaces";
 
 const VALID_SIGNAL_TYPES = [
   "job_change",
@@ -73,11 +74,16 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    const parseResult = updateSignalsSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const validated = parseResult.data;
     const updateData: Record<string, unknown> = {};
 
     // Validate signalDailyCapUsd
-    if (body.signalDailyCapUsd !== undefined) {
-      const val = Number(body.signalDailyCapUsd);
+    if (validated.signalDailyCapUsd !== undefined) {
+      const val = Number(validated.signalDailyCapUsd);
       if (!Number.isFinite(val) || val < 0) {
         return NextResponse.json(
           { error: "signalDailyCapUsd must be a number >= 0" },
@@ -88,14 +94,14 @@ export async function PATCH(
     }
 
     // Validate signalEnabledTypes
-    if (body.signalEnabledTypes !== undefined) {
-      if (!Array.isArray(body.signalEnabledTypes)) {
+    if (validated.signalEnabledTypes !== undefined) {
+      if (!Array.isArray(validated.signalEnabledTypes)) {
         return NextResponse.json(
           { error: "signalEnabledTypes must be an array" },
           { status: 400 },
         );
       }
-      const invalid = (body.signalEnabledTypes as string[]).filter(
+      const invalid = (validated.signalEnabledTypes as string[]).filter(
         (t) => !VALID_SIGNAL_TYPES.includes(t as ValidSignalType),
       );
       if (invalid.length > 0) {
@@ -106,18 +112,18 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      updateData.signalEnabledTypes = JSON.stringify(body.signalEnabledTypes);
+      updateData.signalEnabledTypes = JSON.stringify(validated.signalEnabledTypes);
     }
 
     // Validate signalCompetitors
-    if (body.signalCompetitors !== undefined) {
-      if (!Array.isArray(body.signalCompetitors)) {
+    if (validated.signalCompetitors !== undefined) {
+      if (!Array.isArray(validated.signalCompetitors)) {
         return NextResponse.json(
           { error: "signalCompetitors must be an array of strings" },
           { status: 400 },
         );
       }
-      const hasNonString = (body.signalCompetitors as unknown[]).some(
+      const hasNonString = (validated.signalCompetitors as unknown[]).some(
         (v) => typeof v !== "string",
       );
       if (hasNonString) {
@@ -126,18 +132,18 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      updateData.signalCompetitors = JSON.stringify(body.signalCompetitors);
+      updateData.signalCompetitors = JSON.stringify(validated.signalCompetitors);
     }
 
     // Validate signalWatchlistDomains
-    if (body.signalWatchlistDomains !== undefined) {
-      if (!Array.isArray(body.signalWatchlistDomains)) {
+    if (validated.signalWatchlistDomains !== undefined) {
+      if (!Array.isArray(validated.signalWatchlistDomains)) {
         return NextResponse.json(
           { error: "signalWatchlistDomains must be an array of strings" },
           { status: 400 },
         );
       }
-      const hasNonString = (body.signalWatchlistDomains as unknown[]).some(
+      const hasNonString = (validated.signalWatchlistDomains as unknown[]).some(
         (v) => typeof v !== "string",
       );
       if (hasNonString) {
@@ -147,7 +153,7 @@ export async function PATCH(
         );
       }
       updateData.signalWatchlistDomains = JSON.stringify(
-        body.signalWatchlistDomains,
+        validated.signalWatchlistDomains,
       );
     }
 

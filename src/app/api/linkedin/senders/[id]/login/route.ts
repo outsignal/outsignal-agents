@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { getPortalSession } from "@/lib/portal-session";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { linkedinLoginSchema } from "@/lib/validations/linkedin";
 
 const WORKER_URL = process.env.LINKEDIN_WORKER_URL;
 const WORKER_SECRET = process.env.WORKER_API_SECRET;
@@ -43,14 +44,11 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { email, password, totpSecret, verificationCode, method } = body;
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: "email and password are required" },
-        { status: 400 },
-      );
+    const result = linkedinLoginSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { email, password, totpSecret, verificationCode, method } = result.data;
 
     // Store encrypted credentials on the sender
     const updateData: Record<string, string> = {
@@ -97,7 +95,7 @@ export async function POST(
   } catch (error) {
     console.error("Login API error:", error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Login failed" },
+      { success: false, error: "Login failed" },
       { status: 200 },
     );
   }

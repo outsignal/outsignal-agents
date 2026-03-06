@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { invoiceSettingsSchema } from "@/lib/validations/invoices";
 
 // GET /api/invoice-settings — fetch global sender settings
 export async function GET() {
@@ -30,22 +31,12 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
+    const result = invoiceSettingsSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+    }
     const { senderName, senderAddress, senderEmail, accountNumber, sortCode } =
-      body;
-
-    if (!senderName || typeof senderName !== "string") {
-      return NextResponse.json(
-        { error: "senderName is required" },
-        { status: 400 },
-      );
-    }
-
-    if (!senderEmail || typeof senderEmail !== "string") {
-      return NextResponse.json(
-        { error: "senderEmail is required" },
-        { status: 400 },
-      );
-    }
+      result.data;
 
     // Fetch existing record to determine upsert behavior
     const existing = await prisma.invoiceSenderSettings.findFirst();

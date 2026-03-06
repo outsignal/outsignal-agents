@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { markNotificationsSchema } from "@/lib/validations/notifications";
 
 export async function GET(request: NextRequest) {
   const session = await requireAdminAuth();
@@ -41,8 +42,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json();
+  const result = markNotificationsSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+  }
 
-  if (body.markAllRead) {
+  if ("markAllRead" in result.data && result.data.markAllRead) {
     await prisma.notification.updateMany({
       where: { read: false },
       data: { read: true },
@@ -50,9 +55,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  if (body.ids && Array.isArray(body.ids)) {
+  if ("ids" in result.data && result.data.ids) {
     await prisma.notification.updateMany({
-      where: { id: { in: body.ids } },
+      where: { id: { in: result.data.ids } },
       data: { read: true },
     });
     return NextResponse.json({ ok: true });

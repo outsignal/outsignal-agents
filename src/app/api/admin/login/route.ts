@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
 
   const session: AdminSession = {
     role: "admin",
+    email: "admin@outsignal.ai",
     exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
   };
 

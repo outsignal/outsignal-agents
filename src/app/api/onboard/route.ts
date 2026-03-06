@@ -7,6 +7,7 @@ import {
   verifyAdminSession,
   ADMIN_COOKIE_NAME,
 } from "@/lib/admin-auth";
+import { onboardSchema } from "@/lib/validations/onboarding";
 
 function slugify(text: string): string {
   return text
@@ -27,16 +28,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-
-    const { name, senderFullName } = body;
-    if (!name || !senderFullName) {
-      return NextResponse.json(
-        { error: "Company name and sender name are required" },
-        { status: 400 },
-      );
+    const parseResult = onboardSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const shouldCreateWorkspace = body.createWorkspace !== false;
+    const { name, senderFullName } = parseResult.data;
+
+    const shouldCreateWorkspace = parseResult.data.createWorkspace !== false;
     let workspaceSlug: string | null = null;
     let workspaceStatus = "pending_emailbison";
 
@@ -56,8 +55,8 @@ export async function POST(request: NextRequest) {
       let slackChannelId: string | null = null;
       try {
         const channelEmails = ["jonathan@outsignal.ai"];
-        if (body.notificationEmails) {
-          const clientEmails = body.notificationEmails
+        if (parseResult.data.notificationEmails) {
+          const clientEmails = parseResult.data.notificationEmails
             .split(",")
             .map((e: string) => e.trim())
             .filter(Boolean);
@@ -72,9 +71,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Parse notification emails
-      const notificationEmails = body.notificationEmails
+      const notificationEmails = parseResult.data.notificationEmails
         ? JSON.stringify(
-            body.notificationEmails
+            parseResult.data.notificationEmails
               .split(",")
               .map((e: string) => e.trim())
               .filter(Boolean),
@@ -85,38 +84,38 @@ export async function POST(request: NextRequest) {
       const workspace = await prisma.workspace.create({
         data: {
           slug,
-          name: body.name,
-          vertical: body.vertical || null,
+          name: parseResult.data.name,
+          vertical: parseResult.data.vertical || null,
           status: "pending_emailbison",
           slackChannelId,
           notificationEmails,
-          linkedinUsername: body.linkedinUsername || null,
-          linkedinPasswordNote: body.linkedinPasswordNote || null,
-          senderFullName: body.senderFullName,
-          senderJobTitle: body.senderJobTitle || null,
-          senderPhone: body.senderPhone || null,
-          senderAddress: body.senderAddress || null,
-          icpCountries: body.icpCountries || null,
-          icpIndustries: body.icpIndustries || null,
-          icpCompanySize: body.icpCompanySize || null,
-          icpDecisionMakerTitles: body.icpDecisionMakerTitles || null,
-          icpKeywords: body.icpKeywords || null,
-          icpExclusionCriteria: body.icpExclusionCriteria || null,
-          coreOffers: body.coreOffers || null,
-          pricingSalesCycle: body.pricingSalesCycle || null,
-          differentiators: body.differentiators || null,
-          painPoints: body.painPoints || null,
-          caseStudies: body.caseStudies || null,
-          leadMagnets: body.leadMagnets || null,
-          existingMessaging: body.existingMessaging || null,
-          supportingMaterials: body.supportingMaterials || null,
-          exclusionList: body.exclusionList || null,
-          website: body.website || null,
-          senderEmailDomains: body.senderEmailDomains
-            ? JSON.stringify(body.senderEmailDomains)
+          linkedinUsername: parseResult.data.linkedinUsername || null,
+          linkedinPasswordNote: parseResult.data.linkedinPasswordNote || null,
+          senderFullName: parseResult.data.senderFullName,
+          senderJobTitle: parseResult.data.senderJobTitle || null,
+          senderPhone: parseResult.data.senderPhone || null,
+          senderAddress: parseResult.data.senderAddress || null,
+          icpCountries: parseResult.data.icpCountries || null,
+          icpIndustries: parseResult.data.icpIndustries || null,
+          icpCompanySize: parseResult.data.icpCompanySize || null,
+          icpDecisionMakerTitles: parseResult.data.icpDecisionMakerTitles || null,
+          icpKeywords: parseResult.data.icpKeywords || null,
+          icpExclusionCriteria: parseResult.data.icpExclusionCriteria || null,
+          coreOffers: parseResult.data.coreOffers || null,
+          pricingSalesCycle: parseResult.data.pricingSalesCycle || null,
+          differentiators: parseResult.data.differentiators || null,
+          painPoints: parseResult.data.painPoints || null,
+          caseStudies: parseResult.data.caseStudies || null,
+          leadMagnets: parseResult.data.leadMagnets || null,
+          existingMessaging: parseResult.data.existingMessaging || null,
+          supportingMaterials: parseResult.data.supportingMaterials || null,
+          exclusionList: parseResult.data.exclusionList || null,
+          website: parseResult.data.website || null,
+          senderEmailDomains: parseResult.data.senderEmailDomains
+            ? JSON.stringify(parseResult.data.senderEmailDomains)
             : null,
-          targetVolume: body.targetVolume || null,
-          onboardingNotes: body.onboardingNotes || null,
+          targetVolume: parseResult.data.targetVolume || null,
+          onboardingNotes: parseResult.data.onboardingNotes || null,
           clientEmails: notificationEmails,
         },
       });
@@ -136,7 +135,7 @@ export async function POST(request: NextRequest) {
           const createRes = await fetch(`${ebBase}/workspaces`, {
             method: "POST",
             headers: adminHeaders,
-            body: JSON.stringify({ name: body.name }),
+            body: JSON.stringify({ name: parseResult.data.name }),
           });
           if (!createRes.ok) throw new Error(`EB create workspace: ${createRes.status}`);
           const { data: ebWorkspace } = await createRes.json();
@@ -204,10 +203,10 @@ export async function POST(request: NextRequest) {
     }
 
     // If submitted from a proposal, update the proposal status
-    if (body.proposalToken) {
+    if (parseResult.data.proposalToken) {
       try {
         await prisma.proposal.updateMany({
-          where: { token: body.proposalToken, status: "paid" },
+          where: { token: parseResult.data.proposalToken, status: "paid" },
           data: {
             status: "onboarding_complete",
             ...(workspaceSlug ? { workspaceSlug } : {}),
@@ -219,11 +218,11 @@ export async function POST(request: NextRequest) {
     }
 
     // If submitted from an onboarding invite, update the invite status
-    if (body.onboardingInviteToken) {
+    if (parseResult.data.onboardingInviteToken) {
       try {
         await prisma.onboardingInvite.updateMany({
           where: {
-            token: body.onboardingInviteToken,
+            token: parseResult.data.onboardingInviteToken,
             status: { not: "completed" },
           },
           data: {
@@ -237,10 +236,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Fire-and-forget: Research Agent analyzes the client's website
-    if (workspaceSlug && body.website) {
-      const websiteUrl = body.website.startsWith("http")
-        ? body.website
-        : `https://${body.website}`;
+    if (workspaceSlug && parseResult.data.website) {
+      const websiteUrl = parseResult.data.website.startsWith("http")
+        ? parseResult.data.website
+        : `https://${parseResult.data.website}`;
       runResearchAgent({
         workspaceSlug,
         url: websiteUrl,

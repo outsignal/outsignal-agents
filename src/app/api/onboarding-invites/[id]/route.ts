@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendOnboardingInviteEmail } from "@/lib/resend";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updateOnboardingInviteSchema } from "@/lib/validations/onboarding";
 
 export async function GET(
   _request: NextRequest,
@@ -31,6 +32,11 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
+  const parseResult = updateOnboardingInviteSchema.safeParse(body);
+  if (!parseResult.success) {
+    return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+  }
+  const validated = parseResult.data;
 
   const invite = await prisma.onboardingInvite.findUnique({ where: { id } });
   if (!invite) {
@@ -40,7 +46,7 @@ export async function PATCH(
   const updateData: Record<string, unknown> = {};
 
   // Send or resend email
-  if (body.sendEmail === true && invite.clientEmail) {
+  if (validated.sendEmail === true && invite.clientEmail) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const inviteUrl = `${appUrl}/o/${invite.token}`;
 
@@ -56,11 +62,11 @@ export async function PATCH(
   }
 
   // Update editable fields
-  if (body.clientName) updateData.clientName = body.clientName;
-  if (body.clientEmail !== undefined) updateData.clientEmail = body.clientEmail;
-  if (body.status !== undefined && !body.sendEmail) updateData.status = body.status;
-  if (body.createWorkspace !== undefined) updateData.createWorkspace = body.createWorkspace;
-  if (body.workspaceSlug !== undefined) updateData.workspaceSlug = body.workspaceSlug;
+  if (validated.clientName) updateData.clientName = validated.clientName;
+  if (validated.clientEmail !== undefined) updateData.clientEmail = validated.clientEmail;
+  if (validated.status !== undefined && !validated.sendEmail) updateData.status = validated.status;
+  if (validated.createWorkspace !== undefined) updateData.createWorkspace = validated.createWorkspace;
+  if (validated.workspaceSlug !== undefined) updateData.workspaceSlug = validated.workspaceSlug;
 
   const updated = await prisma.onboardingInvite.update({
     where: { id },

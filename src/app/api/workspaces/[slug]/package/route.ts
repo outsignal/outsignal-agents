@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { parseModules, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
 import type { WorkspaceModule } from "@/lib/workspaces/quota";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updatePackageSchema } from "@/lib/validations/workspaces";
 
 const VALID_MODULES: WorkspaceModule[] = [
   "email",
@@ -68,17 +69,22 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+    const parseResult = updatePackageSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const validated = parseResult.data;
     const updateData: Record<string, unknown> = {};
 
     // Validate and set enabledModules
-    if (body.enabledModules !== undefined) {
-      if (!Array.isArray(body.enabledModules)) {
+    if (validated.enabledModules !== undefined) {
+      if (!Array.isArray(validated.enabledModules)) {
         return NextResponse.json(
           { error: "enabledModules must be an array" },
           { status: 400 },
         );
       }
-      const invalid = (body.enabledModules as string[]).filter(
+      const invalid = (validated.enabledModules as string[]).filter(
         (m) => !VALID_MODULES.includes(m as WorkspaceModule),
       );
       if (invalid.length > 0) {
@@ -87,13 +93,13 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      if ((body.enabledModules as string[]).length === 0) {
+      if ((validated.enabledModules as string[]).length === 0) {
         return NextResponse.json(
           { error: "At least one module must be enabled" },
           { status: 400 },
         );
       }
-      updateData.enabledModules = JSON.stringify(body.enabledModules);
+      updateData.enabledModules = JSON.stringify(validated.enabledModules);
     }
 
     // Validate and set numeric fields
@@ -105,8 +111,8 @@ export async function PATCH(
     ] as const;
 
     for (const field of numericFields) {
-      if (body[field] !== undefined) {
-        const val = Number(body[field]);
+      if (validated[field as keyof typeof validated] !== undefined) {
+        const val = Number(validated[field as keyof typeof validated]);
         if (!Number.isFinite(val) || val < 0) {
           return NextResponse.json(
             { error: `${field} must be a non-negative number` },

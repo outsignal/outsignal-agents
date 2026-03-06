@@ -5,6 +5,8 @@ import {
   deleteCampaign,
 } from "@/lib/campaigns/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updateCampaignSchema } from "@/lib/validations/campaigns";
+import { auditLog } from "@/lib/audit";
 
 // GET /api/campaigns/[id] — campaign detail
 export async function GET(
@@ -51,13 +53,17 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, channels, targetListId } = body;
+    const result = updateCampaignSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const { name, description, channels, targetListId } = result.data;
 
     const campaign = await updateCampaign(id, {
       name,
-      description,
+      description: description ?? undefined,
       channels,
-      targetListId,
+      targetListId: targetListId ?? undefined,
     });
 
     return NextResponse.json({ campaign });
@@ -84,6 +90,13 @@ export async function DELETE(
     const { id } = await params;
 
     await deleteCampaign(id);
+
+    auditLog({
+      action: "campaign.delete",
+      entityType: "Campaign",
+      entityId: id,
+      adminEmail: session.email,
+    });
 
     return new NextResponse(null, { status: 204 });
   } catch (err) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { removePeopleFromListSchema } from "@/lib/validations/lists";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -137,14 +138,11 @@ export async function DELETE(request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const { personId } = body;
-
-    if (!personId || typeof personId !== "string") {
-      return NextResponse.json(
-        { error: "personId is required" },
-        { status: 400 }
-      );
+    const result = removePeopleFromListSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { personId } = result.data;
 
     const entry = await prisma.targetListPerson.findUnique({
       where: {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { createListSchema } from "@/lib/validations/lists";
 
 export async function GET(request: Request) {
   const session = await requireAdminAuth();
@@ -81,21 +82,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, workspaceSlug, description } = body;
-
-    if (!name || typeof name !== "string" || !name.trim()) {
-      return NextResponse.json(
-        { error: "name is required" },
-        { status: 400 }
-      );
+    const result = createListSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
-
-    if (!workspaceSlug || typeof workspaceSlug !== "string" || !workspaceSlug.trim()) {
-      return NextResponse.json(
-        { error: "workspaceSlug is required" },
-        { status: 400 }
-      );
-    }
+    const { name, workspaceSlug, description } = result.data;
 
     const list = await prisma.targetList.create({
       data: {

@@ -4,6 +4,7 @@ import { generateProposalToken } from "@/lib/tokens";
 import { sendOnboardingInviteEmail } from "@/lib/resend";
 import { notify } from "@/lib/notify";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { createOnboardingInviteSchema } from "@/lib/validations/onboarding";
 
 export async function GET() {
   const session = await requireAdminAuth();
@@ -25,14 +26,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { clientName, clientEmail, proposalId, createWorkspace } = body;
-
-    if (!clientName) {
-      return NextResponse.json(
-        { error: "clientName is required" },
-        { status: 400 },
-      );
+    const result = createOnboardingInviteSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { clientName, clientEmail, proposalId, createWorkspace } = result.data;
 
     const token = generateProposalToken();
 

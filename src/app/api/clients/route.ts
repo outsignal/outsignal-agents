@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listClients, createClient } from "@/lib/clients/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { createClientSchema } from "@/lib/validations/clients";
 
 // GET /api/clients?pipelineStatus=closed_won&search=&hasWorkspace=true&isPipeline=false
 export async function GET(request: NextRequest) {
@@ -39,10 +40,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    if (!body.name) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    const result = createClientSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
-    const client = await createClient(body);
+    const client = await createClient(result.data);
     return NextResponse.json({ client }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/clients]", err);

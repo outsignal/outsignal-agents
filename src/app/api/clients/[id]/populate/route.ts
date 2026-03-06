@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { populateClientTasks, getClient } from "@/lib/clients/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { populateClientTasksSchema } from "@/lib/validations/clients";
 
 // POST /api/clients/[id]/populate — populate tasks from template
 // Body: { templateType?: "email" | "email_linkedin" | "scale" }
@@ -34,7 +35,11 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => ({}));
-    const templateType = body.templateType || undefined;
+    const result = populateClientTasksSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const templateType = result.data.templateType || "email";
 
     const tasks = await populateClientTasks(id, templateType);
 

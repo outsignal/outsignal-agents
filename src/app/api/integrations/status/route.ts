@@ -99,6 +99,7 @@ async function checkLeadMagic(): Promise<ProviderStatus> {
       lastChecked: now,
     };
   } catch (err) {
+    console.error("[integrations/status] LeadMagic check failed:", err);
     return {
       id: "leadmagic",
       name: "LeadMagic",
@@ -106,7 +107,7 @@ async function checkLeadMagic(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://app.leadmagic.io",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -156,6 +157,7 @@ async function checkProspeo(): Promise<ProviderStatus> {
       lastChecked: now,
     };
   } catch (err) {
+    console.error("[integrations/status] Prospeo check failed:", err);
     return {
       id: "prospeo",
       name: "Prospeo",
@@ -163,7 +165,7 @@ async function checkProspeo(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://app.prospeo.io",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -213,7 +215,7 @@ async function checkFindyMail(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://app.findymail.com",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -267,7 +269,7 @@ async function checkFirecrawl(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://www.firecrawl.dev/app",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -313,7 +315,7 @@ async function checkApollo(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://app.apollo.io",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -368,7 +370,7 @@ async function checkTheirStack(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://app.theirstack.com",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -451,7 +453,7 @@ async function checkSerper(): Promise<ProviderStatus> {
       status: "degraded",
       configured: true,
       dashboardUrl: "https://serper.dev/dashboard",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Connection check failed",
       lastChecked: now,
     };
   }
@@ -607,7 +609,7 @@ export async function GET() {
         category: "enrichment" as const,
         status: "degraded" as const,
         configured: false,
-        error: result.reason?.message ?? "Promise rejected unexpectedly",
+        error: "Connection check failed",
         lastChecked: new Date().toISOString(),
       };
     });
@@ -668,7 +670,6 @@ export async function GET() {
     return NextResponse.json(
       {
         error: "Failed to check integration status",
-        message: err instanceof Error ? err.message : "Unknown error",
       },
       { status: 500 }
     );

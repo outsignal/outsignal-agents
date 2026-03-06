@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { executeDeploy, retryDeployChannel } from "@/lib/campaigns/deploy";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { auditLog } from "@/lib/audit";
 
 export const maxDuration = 300; // 5 minutes for background execution
 
@@ -49,6 +50,14 @@ export async function POST(
       await retryDeployChannel(latestDeploy.id, retryChannel);
     });
 
+    auditLog({
+      action: "campaign.deploy.retry",
+      entityType: "Campaign",
+      entityId: id,
+      adminEmail: session.email,
+      metadata: { campaignName: campaign.name, workspaceSlug: campaign.workspaceSlug, retryChannel },
+    });
+
     return NextResponse.json({ deployId: latestDeploy.id, status: "retrying", channel: retryChannel });
   }
 
@@ -92,6 +101,14 @@ export async function POST(
   after(async () => {
     await executeDeploy(id, deploy.id);
   });
+
+  auditLog({
+      action: "campaign.deploy",
+      entityType: "Campaign",
+      entityId: id,
+      adminEmail: session.email,
+      metadata: { campaignName: campaign.name, workspaceSlug: campaign.workspaceSlug, channels },
+    });
 
   return NextResponse.json({ deployId: deploy.id, status: "pending" });
 }

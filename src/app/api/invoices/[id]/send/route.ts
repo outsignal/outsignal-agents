@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getInvoice, updateInvoiceStatus } from "@/lib/invoices/operations";
 import { sendInvoiceEmail } from "@/lib/invoices/email";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { auditLog } from "@/lib/audit";
 
 // POST /api/invoices/[id]/send — email invoice to workspace billing contact
 export async function POST(
@@ -43,11 +44,17 @@ export async function POST(
     // Update invoice status to "sent" (also sets sentAt timestamp)
     await updateInvoiceStatus(id, "sent");
 
+    auditLog({
+      action: "invoice.send",
+      entityType: "Invoice",
+      entityId: id,
+      adminEmail: session.email,
+      metadata: { invoiceNumber: invoice.invoiceNumber, workspaceSlug: invoice.workspaceSlug, recipientEmail },
+    });
+
     return NextResponse.json({ sent: true, to: recipientEmail });
   } catch (err) {
     console.error("[POST /api/invoices/[id]/send] Error:", err);
-    const message =
-      err instanceof Error ? err.message : "Failed to send invoice";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to send invoice" }, { status: 500 });
   }
 }

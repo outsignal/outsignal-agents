@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { configureWorkspaceSchema } from "@/lib/validations/workspaces";
 
 // Strip sensitive fields before returning workspace data
 function stripSensitiveFields<T extends Record<string, unknown>>(workspace: T): Omit<T, "apiToken" | "linkedinPasswordNote"> {
@@ -88,31 +89,36 @@ export async function PATCH(
 
   const { slug } = await params;
   const body = await request.json();
+  const parseResult = configureWorkspaceSchema.safeParse(body);
+  if (!parseResult.success) {
+    return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+  }
+  const validated = parseResult.data;
 
   // Build update data from allowed fields
   const updateData: Record<string, unknown> = {};
   for (const field of ALLOWED_FIELDS) {
-    if (body[field] !== undefined) {
+    if (validated[field as keyof typeof validated] !== undefined) {
       if (field === "notificationEmails") {
-        updateData[field] = Array.isArray(body[field])
-          ? JSON.stringify(body[field])
-          : body[field];
+        updateData[field] = Array.isArray(validated[field as keyof typeof validated])
+          ? JSON.stringify(validated[field as keyof typeof validated])
+          : validated[field as keyof typeof validated];
       } else if (field === "clientEmails") {
-        updateData[field] = Array.isArray(body[field])
-          ? JSON.stringify(body[field])
-          : body[field];
+        updateData[field] = Array.isArray(validated[field as keyof typeof validated])
+          ? JSON.stringify(validated[field as keyof typeof validated])
+          : validated[field as keyof typeof validated];
       } else if (field === "senderEmailDomains") {
-        updateData[field] = Array.isArray(body[field])
-          ? JSON.stringify(body[field])
-          : body[field];
+        updateData[field] = Array.isArray(validated[field as keyof typeof validated])
+          ? JSON.stringify(validated[field as keyof typeof validated])
+          : validated[field as keyof typeof validated];
       } else {
-        updateData[field] = body[field];
+        updateData[field] = validated[field as keyof typeof validated];
       }
     }
   }
 
   // If apiToken is being set, auto-activate
-  if (body.apiToken && !body.status) {
+  if (validated.apiToken && !validated.status) {
     updateData.status = "active";
   }
 

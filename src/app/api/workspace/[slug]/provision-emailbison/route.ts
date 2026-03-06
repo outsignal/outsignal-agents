@@ -88,7 +88,7 @@ export async function POST(
     }).catch(() => {});
 
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Provisioning failed" },
+      { error: "Provisioning failed" },
       { status: 500 },
     );
   }

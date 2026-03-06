@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { createSenderSchema } from "@/lib/validations/senders";
+import { auditLog } from "@/lib/audit";
 
 /**
  * GET /api/senders?workspace=rise
@@ -70,15 +72,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-
-    const { workspaceSlug, name, emailAddress, linkedinProfileUrl, linkedinEmail, proxyUrl, linkedinTier, dailyConnectionLimit, dailyMessageLimit, dailyProfileViewLimit } = body;
-
-    if (!workspaceSlug || !name) {
-      return NextResponse.json(
-        { error: "workspaceSlug and name are required" },
-        { status: 400 }
-      );
+    const result = createSenderSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
+
+    const { workspaceSlug, name, emailAddress, linkedinProfileUrl, linkedinEmail, proxyUrl, linkedinTier, dailyConnectionLimit, dailyMessageLimit, dailyProfileViewLimit } = result.data;
 
     // Validate workspace exists
     const workspace = await prisma.workspace.findUnique({
@@ -111,6 +110,14 @@ export async function POST(request: NextRequest) {
           select: { name: true },
         },
       },
+    });
+
+    auditLog({
+      action: "sender.create",
+      entityType: "Sender",
+      entityId: sender.id,
+      adminEmail: session.email,
+      metadata: { name, workspaceSlug, emailAddress },
     });
 
     const { sessionData, linkedinPassword, totpSecret, inviteToken, ...sanitized } = sender;

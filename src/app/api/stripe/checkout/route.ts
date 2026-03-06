@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStripeClient } from "@/lib/stripe";
 import { PACKAGE_LABELS } from "@/lib/proposal-templates";
+import { stripeCheckoutSchema } from "@/lib/validations/stripe";
 
 export async function POST(request: Request) {
   try {
-    const { proposalId } = await request.json();
+    const body = await request.json();
+    const result = stripeCheckoutSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const { proposalId } = result.data;
 
     const proposal = await prisma.proposal.findUnique({
       where: { id: proposalId },

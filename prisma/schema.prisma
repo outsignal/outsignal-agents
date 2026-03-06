@@ -1037,3 +1037,19 @@ model InvoiceSequence {
   workspaceSlug String @unique
   lastNumber    Int    @default(0)
 }
+
+// --- Audit Logging ---
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // e.g. "campaign.deploy", "client.delete", "sender.create"
+  entityType String   // e.g. "Campaign", "Client", "Sender", "Invoice"
+  entityId   String   // ID of the affected entity
+  adminEmail String   // Email of the admin who performed the action
+  metadata   Json?    // Optional extra context (campaign name, workspace, etc.)
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([adminEmail])
+  @@index([createdAt])
+}

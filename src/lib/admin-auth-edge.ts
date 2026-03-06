@@ -7,6 +7,7 @@
 
 export interface AdminSession {
   role: "admin";
+  email: string; // admin email for audit trail
   exp: number; // unix timestamp (seconds)
 }
 
@@ -54,10 +55,16 @@ export async function verifyAdminSessionEdge(
 
   try {
     const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    const session: AdminSession = JSON.parse(decoded);
+    const raw = JSON.parse(decoded);
 
-    if (session.role !== "admin") return null;
-    if (session.exp < Date.now() / 1000) return null;
+    if (raw.role !== "admin") return null;
+    if (raw.exp < Date.now() / 1000) return null;
+
+    // Backfill email for sessions created before audit logging was added
+    const session: AdminSession = {
+      ...raw,
+      email: raw.email ?? "admin@outsignal.ai",
+    };
 
     return session;
   } catch {

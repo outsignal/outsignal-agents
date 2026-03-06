@@ -39,11 +39,11 @@ export async function GET(_request: Request, context: RouteContext) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    // intentional business message for Export blocked
 
     // Verification gate block → 400
-    if (message.includes("Export blocked")) {
-      return Response.json({ error: message }, { status: 400 });
+    if (err instanceof Error && err.message.includes("Export blocked")) {
+      return Response.json({ error: err.message }, { status: 400 });
     }
 
     console.error("[GET /api/lists/[id]/export] Unexpected error:", err);

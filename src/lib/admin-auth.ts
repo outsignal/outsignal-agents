@@ -12,6 +12,7 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
 export interface AdminSession {
   role: "admin";
+  email: string; // admin email for audit trail
   exp: number; // unix timestamp (seconds)
 }
 
@@ -76,12 +77,18 @@ export function verifyAdminSession(cookieValue: string): AdminSession | null {
   }
 
   try {
-    const session: AdminSession = JSON.parse(
+    const raw = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf-8"),
     );
 
-    if (session.role !== "admin") return null;
-    if (session.exp < Date.now() / 1000) return null;
+    if (raw.role !== "admin") return null;
+    if (raw.exp < Date.now() / 1000) return null;
+
+    // Backfill email for sessions created before audit logging was added
+    const session: AdminSession = {
+      ...raw,
+      email: raw.email ?? "admin@outsignal.ai",
+    };
 
     return session;
   } catch {

@@ -4,6 +4,7 @@ import {
   createCampaign,
 } from "@/lib/campaigns/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { createCampaignSchema } from "@/lib/validations/campaigns";
 
 // GET /api/campaigns?workspace=slug — list campaigns for workspace
 export async function GET(request: Request) {
@@ -44,25 +45,12 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, workspaceSlug, description, channels, targetListId } = body;
-
-    if (!name || typeof name !== "string" || !name.trim()) {
-      return NextResponse.json(
-        { error: "name is required" },
-        { status: 400 },
-      );
+    const result = createCampaignSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    if (
-      !workspaceSlug ||
-      typeof workspaceSlug !== "string" ||
-      !workspaceSlug.trim()
-    ) {
-      return NextResponse.json(
-        { error: "workspaceSlug is required" },
-        { status: 400 },
-      );
-    }
+    const { name, workspaceSlug, description, channels, targetListId } = result.data;
 
     const campaign = await createCampaign({
       name: name.trim(),

@@ -77,10 +77,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[Pipeline API] Fatal error:", error);
     return NextResponse.json(
-      {
-        error: "Pipeline processing failed",
-        detail: error instanceof Error ? error.message : String(error),
-      },
+      { error: "Pipeline processing failed" },
       { status: 500 },
     );
   }

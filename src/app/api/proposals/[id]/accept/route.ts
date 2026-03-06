@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notify";
+import { acceptProposalSchema } from "@/lib/validations/proposals";
 
 export async function POST(
   request: NextRequest,
@@ -8,6 +9,10 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await request.json();
+  const result = acceptProposalSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
+  }
 
   const proposal = await prisma.proposal.findUnique({ where: { id } });
   if (!proposal) {
@@ -21,20 +26,13 @@ export async function POST(
     );
   }
 
-  if (!body.signatureName || !body.signatureData) {
-    return NextResponse.json(
-      { error: "Signature name and data are required" },
-      { status: 400 },
-    );
-  }
-
   await prisma.proposal.update({
     where: { id },
     data: {
       status: "accepted",
       signedAt: new Date(),
-      signatureName: body.signatureName,
-      signatureData: body.signatureData,
+      signatureName: result.data.signatureName,
+      signatureData: result.data.signatureData,
     },
   });
 

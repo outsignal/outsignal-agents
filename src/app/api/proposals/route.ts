@@ -5,6 +5,7 @@ import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { sendNotificationEmail } from "@/lib/resend";
 import { notify } from "@/lib/notify";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { createProposalSchema } from "@/lib/validations/proposals";
 
 export async function GET() {
   const session = await requireAdminAuth();
@@ -26,14 +27,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { clientName, clientEmail, companyOverview, packageType } = body;
-
-    if (!clientName || !companyOverview || !packageType) {
-      return NextResponse.json(
-        { error: "clientName, companyOverview, and packageType are required" },
-        { status: 400 },
-      );
+    const result = createProposalSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { clientName, clientEmail, companyOverview, packageType } = result.data;
 
     const defaults = DEFAULT_PRICING[packageType];
     if (!defaults) {
@@ -52,9 +50,9 @@ export async function POST(request: Request) {
         clientEmail: clientEmail || null,
         companyOverview,
         packageType,
-        setupFee: body.setupFee ?? defaults.setupFee,
-        platformCost: body.platformCost ?? defaults.platformCost,
-        retainerCost: body.retainerCost ?? defaults.retainerCost,
+        setupFee: result.data.setupFee ?? defaults.setupFee,
+        platformCost: result.data.platformCost ?? defaults.platformCost,
+        retainerCost: result.data.retainerCost ?? defaults.retainerCost,
         status: "draft",
       },
     });

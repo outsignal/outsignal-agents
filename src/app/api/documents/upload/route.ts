@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { documentUploadJsonSchema } from "@/lib/validations/documents";
 
 // NOTE: This route intentionally uses the default Node.js runtime.
 // Do NOT add `export const runtime = "edge"` — pdf-parse requires Node.js fs.
@@ -176,9 +177,9 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer());
       text = await extractPdfText(buffer);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[POST /api/documents/upload] PDF parse error:", err);
       return NextResponse.json(
-        { error: `Failed to parse PDF: ${message}` },
+        { error: "Failed to parse PDF" },
         { status: 500 },
       );
     }
@@ -188,15 +189,20 @@ export async function POST(request: NextRequest) {
 
   // --- Mode 2: JSON (Google Doc URL or raw text paste) ---
   if (contentType.includes("application/json")) {
-    let body: { url?: string; text?: string; type?: string };
+    let rawBody: unknown;
     try {
-      body = await request.json();
+      rawBody = await request.json();
     } catch {
       return NextResponse.json(
         { error: "Invalid JSON body" },
         { status: 400 },
       );
     }
+    const parseResult = documentUploadJsonSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const body = parseResult.data as { url?: string; text?: string; type?: string };
 
     // Raw text paste mode
     if (body.type === "text" && body.text) {

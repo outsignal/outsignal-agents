@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { updateCampaignStatus, getCampaign } from "@/lib/campaigns/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { signalStatusSchema } from "@/lib/validations/campaigns";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -15,14 +16,11 @@ export async function PATCH(request: Request, { params }: Params) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action } = body as { action?: "pause" | "resume" | "archive" };
-
-    if (!action || !["pause", "resume", "archive"].includes(action)) {
-      return NextResponse.json(
-        { error: "action must be 'pause', 'resume', or 'archive'" },
-        { status: 400 },
-      );
+    const result = signalStatusSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { action } = result.data;
 
     // Verify this is a signal campaign
     const campaign = await getCampaign(id);
@@ -46,7 +44,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     return NextResponse.json({ campaign: updated });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("[PATCH /api/campaigns/[id]/signal-status] Error:", err);
+    return NextResponse.json({ error: "Failed to update campaign status" }, { status: 500 });
   }
 }

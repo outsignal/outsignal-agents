@@ -10,19 +10,23 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdminAuth();
-  if (!session) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const token = searchParams.get("token")?.trim();
 
-    const invoice = token
-      ? await getInvoiceByToken(token)
-      : await getInvoice(id);
+    let invoice;
+    if (token) {
+      // Portal/public access via viewToken — no session required
+      invoice = await getInvoiceByToken(token);
+    } else {
+      // No token — require admin session
+      const session = await requireAdminAuth();
+      if (!session) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      invoice = await getInvoice(id);
+    }
 
     if (!invoice) {
       return new Response(JSON.stringify({ error: "Not found" }), {

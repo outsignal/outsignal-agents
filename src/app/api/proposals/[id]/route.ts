@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updateProposalSchema } from "@/lib/validations/proposals";
 
 export async function GET(
   _request: NextRequest,
@@ -30,6 +31,11 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
+  const parseResult = updateProposalSchema.safeParse(body);
+  if (!parseResult.success) {
+    return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+  }
+  const validated = parseResult.data;
 
   const proposal = await prisma.proposal.findUnique({ where: { id } });
   if (!proposal) {
@@ -39,37 +45,37 @@ export async function PATCH(
   const updateData: Record<string, unknown> = {};
 
   // Mark as paid manually
-  if (body.paidManually === true && proposal.status === "accepted") {
+  if (validated.paidManually === true && proposal.status === "accepted") {
     updateData.status = "paid";
     updateData.paidAt = new Date();
     updateData.paidManually = true;
   }
 
   // Update editable fields
-  if (body.clientName) updateData.clientName = body.clientName;
-  if (body.clientEmail !== undefined) updateData.clientEmail = body.clientEmail;
-  if (body.companyOverview) updateData.companyOverview = body.companyOverview;
-  if (body.setupFee !== undefined) updateData.setupFee = body.setupFee;
-  if (body.platformCost !== undefined)
-    updateData.platformCost = body.platformCost;
-  if (body.retainerCost !== undefined)
-    updateData.retainerCost = body.retainerCost;
+  if (validated.clientName) updateData.clientName = validated.clientName;
+  if (validated.clientEmail !== undefined) updateData.clientEmail = validated.clientEmail;
+  if (validated.companyOverview) updateData.companyOverview = validated.companyOverview;
+  if (validated.setupFee !== undefined) updateData.setupFee = validated.setupFee;
+  if (validated.platformCost !== undefined)
+    updateData.platformCost = validated.platformCost;
+  if (validated.retainerCost !== undefined)
+    updateData.retainerCost = validated.retainerCost;
 
   // Package type update
-  if (body.packageType !== undefined) updateData.packageType = body.packageType;
+  if (validated.packageType !== undefined) updateData.packageType = validated.packageType;
 
   // Allow sending (changing status from draft to sent)
-  if (body.status === "sent" && proposal.status === "draft") {
+  if (validated.status === "sent" && proposal.status === "draft") {
     updateData.status = "sent";
   }
 
   // General status override for admin
   if (
-    body.status !== undefined &&
-    body.status !== "sent" &&
-    body.status !== proposal.status
+    validated.status !== undefined &&
+    validated.status !== "sent" &&
+    validated.status !== proposal.status
   ) {
-    updateData.status = body.status;
+    updateData.status = validated.status;
   }
 
   const updated = await prisma.proposal.update({

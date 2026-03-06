@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { activateSender } from "@/lib/linkedin/sender";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { updateSenderSchema } from "@/lib/validations/senders";
+import { auditLog } from "@/lib/audit";
 
 const ALLOWED_STATUSES = ["setup", "active", "paused", "disabled"];
 
@@ -58,6 +60,10 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const parseResult = updateSenderSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
+    }
 
     const {
       name,
@@ -70,15 +76,7 @@ export async function PATCH(
       dailyMessageLimit,
       dailyProfileViewLimit,
       status,
-    } = body;
-
-    // Validate status if provided
-    if (status !== undefined && !ALLOWED_STATUSES.includes(status)) {
-      return NextResponse.json(
-        { error: "Invalid status value" },
-        { status: 400 }
-      );
-    }
+    } = parseResult.data;
 
     // Verify sender exists
     const existing = await prisma.sender.findUnique({ where: { id } });
@@ -165,6 +163,15 @@ export async function DELETE(
     }
 
     await prisma.sender.delete({ where: { id } });
+
+    auditLog({
+      action: "sender.delete",
+      entityType: "Sender",
+      entityId: id,
+      adminEmail: session.email,
+      metadata: { name: existing.name, workspaceSlug: existing.workspaceSlug },
+    });
+
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("Delete sender error:", error);
