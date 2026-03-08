@@ -1,0 +1,354 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Header } from "@/components/layout/header";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface Summary {
+  total: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  failureRate: number;
+}
+
+interface TypeRow {
+  notificationType: string;
+  total: number;
+  sent: number;
+  failed: number;
+  lastFiredAt: string | null;
+  status: "green" | "amber" | "red";
+}
+
+interface FailureRow {
+  id: string;
+  notificationType: string;
+  channel: string;
+  recipient: string | null;
+  errorMessage: string | null;
+  workspaceSlug: string | null;
+  createdAt: string;
+}
+
+interface HealthData {
+  summary: Summary;
+  byType: TypeRow[];
+  recentFailures: FailureRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatType(type: string): string {
+  return type
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function timeAgo(date: string): string {
+  const seconds = Math.floor(
+    (Date.now() - new Date(date).getTime()) / 1000,
+  );
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+const STATUS_BADGE_VARIANT: Record<string, "success" | "warning" | "destructive"> = {
+  green: "success",
+  amber: "warning",
+  red: "destructive",
+};
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+  red: 0,
+  amber: 1,
+  green: 2,
+};
+
+type Range = "24h" | "7d" | "30d";
+
+const RANGES: { value: Range; label: string }[] = [
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+];
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export default function NotificationHealthPage() {
+  const [range, setRange] = useState<Range>("24h");
+  const [data, setData] = useState<HealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    fetch(`/api/notification-health?range=${range}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json: HealthData) => {
+        if (active) {
+          // Sort byType: red first, then amber, then green
+          json.byType.sort(
+            (a, b) =>
+              (STATUS_SORT_ORDER[a.status] ?? 3) -
+              (STATUS_SORT_ORDER[b.status] ?? 3),
+          );
+          setData(json);
+        }
+      })
+      .catch((err) => {
+        if (active) setError(err.message ?? "Failed to load data");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [range]);
+
+  return (
+    <div>
+      <Header
+        title="Notification Health"
+        description="Monitor notification delivery across all channels"
+        actions={
+          <div className="flex items-center rounded-lg border border-border bg-muted/30 p-0.5">
+            {RANGES.map((r) => (
+              <Button
+                key={r.value}
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                  range === r.value &&
+                    "bg-background shadow-sm text-foreground",
+                )}
+                onClick={() => setRange(r.value)}
+              >
+                {r.label}
+              </Button>
+            ))}
+          </div>
+        }
+      />
+
+      <div className="p-8 space-y-6">
+        {/* Error state */}
+        {error && (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+            <p className="text-sm text-red-800">
+              Failed to load notification health data: {error}
+            </p>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {loading && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-lg" />
+              ))}
+            </div>
+            <Skeleton className="h-64 rounded-lg" />
+            <Skeleton className="h-64 rounded-lg" />
+          </>
+        )}
+
+        {/* Loaded state */}
+        {!loading && data && (
+          <>
+            {/* Summary metric cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard
+                label="Total Sent"
+                value={data.summary.sent.toLocaleString()}
+                trend={data.summary.sent > 0 ? "up" : "neutral"}
+              />
+              <MetricCard
+                label="Failed"
+                value={data.summary.failed.toLocaleString()}
+                trend={data.summary.failed > 0 ? "down" : "neutral"}
+              />
+              <MetricCard
+                label="Failure Rate"
+                value={`${data.summary.failureRate}%`}
+                trend={
+                  data.summary.failureRate > 20
+                    ? "down"
+                    : data.summary.failureRate > 5
+                      ? "warning"
+                      : "neutral"
+                }
+              />
+              <MetricCard
+                label="Skipped"
+                value={data.summary.skipped.toLocaleString()}
+              />
+            </div>
+
+            {/* Status by Type table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Notification Types</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Last Fired</TableHead>
+                      <TableHead className="text-right">Sent</TableHead>
+                      <TableHead className="text-right">Failed</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.byType.map((row) => (
+                      <TableRow key={row.notificationType}>
+                        <TableCell className="font-medium text-sm">
+                          {formatType(row.notificationType)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {row.lastFiredAt ? timeAgo(row.lastFiredAt) : "Never"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.sent.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {row.failed.toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={STATUS_BADGE_VARIANT[row.status]}>
+                            {row.status === "green"
+                              ? "Healthy"
+                              : row.status === "amber"
+                                ? "Warning"
+                                : "Critical"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {data.byType.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="text-center py-8 text-muted-foreground"
+                        >
+                          No notifications in this time range
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Recent Failures table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Failures</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Channel</TableHead>
+                      <TableHead>Recipient</TableHead>
+                      <TableHead>Error</TableHead>
+                      <TableHead>Workspace</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.recentFailures.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          {timeAgo(row.createdAt)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {formatType(row.notificationType)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" size="xs">
+                            {row.channel}
+                          </Badge>
+                        </TableCell>
+                        <TableCell
+                          className="text-sm max-w-[160px] truncate"
+                          title={row.recipient ?? ""}
+                        >
+                          {row.recipient ?? "-"}
+                        </TableCell>
+                        <TableCell
+                          className="text-sm text-red-600 max-w-[240px] truncate"
+                          title={row.errorMessage ?? ""}
+                        >
+                          {row.errorMessage ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {row.workspaceSlug ?? "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {data.recentFailures.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center py-8 text-muted-foreground"
+                        >
+                          No failures in this time range
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

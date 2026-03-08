@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { sendNotificationEmail } from "@/lib/resend";
+import { audited } from "@/lib/notification-audit";
 import { rateLimit } from "@/lib/rate-limit";
 
 const portalLoginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
@@ -78,10 +79,12 @@ export async function POST(req: NextRequest) {
   const verifyUrl = `${baseUrl}/api/portal/verify?token=${token}`;
 
   // Send branded email
-  await sendNotificationEmail({
-    to: [normalizedEmail],
-    subject: `Your login link for ${match.name} — Outsignal`,
-    html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+  await audited(
+    { notificationType: "magic_link", channel: "email", recipient: normalizedEmail, workspaceSlug: match.slug },
+    () => sendNotificationEmail({
+      to: [normalizedEmail],
+      subject: `Your login link for ${match.name} — Outsignal`,
+      html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -136,7 +139,8 @@ export async function POST(req: NextRequest) {
     </td>
   </tr>
 </table>`,
-  });
+    }),
+  );
 
   return NextResponse.json({ ok: true });
 }

@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import { postMessage } from "./slack";
 import { sendNotificationEmail } from "./resend";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
+import { audited } from "@/lib/notification-audit";
 import type { KnownBlock } from "@slack/web-api";
 
 export async function notifyApproval(params: {
@@ -50,58 +51,61 @@ export async function notifyApproval(params: {
   if (slackChannelId) {
     if (!verifySlackChannel(slackChannelId, "client", "notifyApproval")) return;
     try {
-      await postMessage(slackChannelId, headerText, [
-        {
-          type: "header",
-          text: { type: "plain_text", text: headerText },
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*Campaign:* ${params.campaignName}`,
+      await audited(
+        { notificationType: "approval", channel: "slack", recipient: slackChannelId, workspaceSlug: params.workspaceSlug },
+        () => postMessage(slackChannelId, headerText, [
+          {
+            type: "header",
+            text: { type: "plain_text", text: headerText },
           },
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*Status:* ${actionLabel[params.action]}`,
-          },
-        },
-        ...(isRejection && params.feedback
-          ? [
-              {
-                type: "section" as const,
-                text: {
-                  type: "mrkdwn" as const,
-                  text: `*Feedback:*\n${params.feedback}`,
-                },
-              },
-            ]
-          : []),
-        ...(isFullyApproved
-          ? [
-              {
-                type: "section" as const,
-                text: {
-                  type: "mrkdwn" as const,
-                  text: ":white_check_mark: *All approvals received. Campaign is ready for deploy.*",
-                },
-              },
-            ]
-          : []),
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "View Campaign" },
-              url: campaignUrl,
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Campaign:* ${params.campaignName}`,
             },
-          ],
-        },
-      ]);
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Status:* ${actionLabel[params.action]}`,
+            },
+          },
+          ...(isRejection && params.feedback
+            ? [
+                {
+                  type: "section" as const,
+                  text: {
+                    type: "mrkdwn" as const,
+                    text: `*Feedback:*\n${params.feedback}`,
+                  },
+                },
+              ]
+            : []),
+          ...(isFullyApproved
+            ? [
+                {
+                  type: "section" as const,
+                  text: {
+                    type: "mrkdwn" as const,
+                    text: ":white_check_mark: *All approvals received. Campaign is ready for deploy.*",
+                  },
+                },
+              ]
+            : []),
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "View Campaign" },
+                url: campaignUrl,
+              },
+            ],
+          },
+        ]),
+      );
     } catch (err) {
       console.error("Slack approval notification failed:", err);
     }
@@ -118,10 +122,12 @@ export async function notifyApproval(params: {
           ? `[${workspace.name}] Campaign Fully Approved — ${params.campaignName}`
           : `[${workspace.name}] ${actionLabel[params.action]} — ${params.campaignName}`;
 
-        await sendNotificationEmail({
-          to: verified,
-          subject: subjectLine,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+        await audited(
+          { notificationType: "approval", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: subjectLine,
+            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -219,7 +225,8 @@ ${
     </td>
   </tr>
 </table>`,
-        });
+          }),
+        );
       }
     } catch (err) {
       console.error("Email approval notification failed:", err);
@@ -330,7 +337,10 @@ export async function notifyReply(params: {
   if (workspace.slackChannelId) {
     if (verifySlackChannel(workspace.slackChannelId, "client", "notifyReply")) {
       try {
-        await postMessage(workspace.slackChannelId, slackFallback, slackBlocks);
+        await audited(
+          { notificationType: "reply", channel: "slack", recipient: workspace.slackChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(workspace.slackChannelId!, slackFallback, slackBlocks),
+        );
       } catch (err) {
         console.error("Slack client notification failed:", err);
       }
@@ -342,7 +352,10 @@ export async function notifyReply(params: {
   if (opsSlackChannelId) {
     if (verifySlackChannel(opsSlackChannelId, "admin", "notifyReply")) {
       try {
-        await postMessage(opsSlackChannelId, slackFallback, slackBlocks);
+        await audited(
+          { notificationType: "reply", channel: "slack", recipient: opsSlackChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(opsSlackChannelId, slackFallback, slackBlocks),
+        );
       } catch (err) {
         console.error("Slack admin notification failed:", err);
       }
@@ -467,11 +480,14 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
       const recipients: string[] = JSON.parse(workspace.notificationEmails);
       const verified = verifyEmailRecipients(recipients, "client", "notifyReply");
       if (verified.length > 0) {
-        await sendNotificationEmail({
-          to: verified,
-          subject: emailSubjectLine,
-          html: emailHtml,
-        });
+        await audited(
+          { notificationType: "reply", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: emailSubjectLine,
+            html: emailHtml,
+          }),
+        );
       }
     } catch (err) {
       console.error("Email client notification failed:", err);
@@ -484,11 +500,14 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
     try {
       const verified = verifyEmailRecipients([adminEmail], "admin", "notifyReply");
       if (verified.length > 0) {
-        await sendNotificationEmail({
-          to: verified,
-          subject: emailSubjectLine,
-          html: emailHtml,
-        });
+        await audited(
+          { notificationType: "reply", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: emailSubjectLine,
+            html: emailHtml,
+          }),
+        );
       }
     } catch (err) {
       console.error("Email admin notification failed:", err);
@@ -606,7 +625,10 @@ export async function notifyDeploy(params: {
           },
         ];
 
-        await postMessage(opsChannelId, headerText, blocks);
+        await audited(
+          { notificationType: "deploy", channel: "slack", recipient: opsChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(opsChannelId, headerText, blocks),
+        );
       } catch (err) {
         console.error("Slack deploy notification failed:", err);
       }
@@ -678,10 +700,12 @@ export async function notifyDeploy(params: {
               </tr>`
           : "";
 
-        await sendNotificationEmail({
-          to: verified,
-          subject,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+        await audited(
+          { notificationType: "deploy", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject,
+            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -757,7 +781,8 @@ ${errorSection}
     </td>
   </tr>
 </table>`,
-        });
+          }),
+        );
       }
     } catch (err) {
       console.error("Email deploy notification failed:", err);
@@ -815,7 +840,10 @@ export async function notifyCampaignLive(params: {
   if (workspace.slackChannelId) {
     if (verifySlackChannel(workspace.slackChannelId, "client", "notifyCampaignLive")) {
       try {
-        await postMessage(workspace.slackChannelId, headerText, slackBlocks);
+        await audited(
+          { notificationType: "campaign_live", channel: "slack", recipient: workspace.slackChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(workspace.slackChannelId!, headerText, slackBlocks),
+        );
       } catch (err) {
         console.error("Slack client campaign-live notification failed:", err);
       }
@@ -827,7 +855,10 @@ export async function notifyCampaignLive(params: {
   if (opsChannelId) {
     if (verifySlackChannel(opsChannelId, "admin", "notifyCampaignLive")) {
       try {
-        await postMessage(opsChannelId, headerText, slackBlocks);
+        await audited(
+          { notificationType: "campaign_live", channel: "slack", recipient: opsChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(opsChannelId, headerText, slackBlocks),
+        );
       } catch (err) {
         console.error("Slack admin campaign-live notification failed:", err);
       }
@@ -913,11 +944,14 @@ export async function notifyCampaignLive(params: {
       const recipients: string[] = JSON.parse(workspace.notificationEmails);
       const verified = verifyEmailRecipients(recipients, "client", "notifyCampaignLive");
       if (verified.length > 0) {
-        await sendNotificationEmail({
-          to: verified,
-          subject: emailSubjectLine,
-          html: emailHtml,
-        });
+        await audited(
+          { notificationType: "campaign_live", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: emailSubjectLine,
+            html: emailHtml,
+          }),
+        );
       }
     } catch (err) {
       console.error("Email client campaign-live notification failed:", err);
@@ -930,11 +964,14 @@ export async function notifyCampaignLive(params: {
     try {
       const verified = verifyEmailRecipients([adminEmail], "admin", "notifyCampaignLive");
       if (verified.length > 0) {
-        await sendNotificationEmail({
-          to: verified,
-          subject: emailSubjectLine,
-          html: emailHtml,
-        });
+        await audited(
+          { notificationType: "campaign_live", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: emailSubjectLine,
+            html: emailHtml,
+          }),
+        );
       }
     } catch (err) {
       console.error("Email admin campaign-live notification failed:", err);
@@ -1092,10 +1129,12 @@ export async function notifyInboxDisconnect(params: {
               </tr>`;
         }
 
-        await sendNotificationEmail({
-          to: verified,
-          subject,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+        await audited(
+          { notificationType: "inbox_disconnect", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject,
+            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -1177,7 +1216,8 @@ ${reconnectionsHtml}
     </td>
   </tr>
 </table>`,
-        });
+          }),
+        );
       }
     } catch (err) {
       console.error("[notifyInboxDisconnect] Email failed:", err);
@@ -1275,7 +1315,10 @@ export async function notifySenderHealth(params: {
           },
         ];
 
-        await postMessage(opsChannelId, headerText, blocks);
+        await audited(
+          { notificationType: "sender_health", channel: "slack", recipient: opsChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(opsChannelId, headerText, blocks),
+        );
       } catch (err) {
         console.error("Slack sender health notification failed:", err);
       }
@@ -1292,10 +1335,12 @@ export async function notifySenderHealth(params: {
         const headerColor = "#dc2626";
         const subject = `[${workspace.name}] Sender Flagged: ${params.senderName}`;
 
-        await sendNotificationEmail({
-          to: verified,
-          subject,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+        await audited(
+          { notificationType: "sender_health", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject,
+            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -1395,7 +1440,8 @@ ${
     </td>
   </tr>
 </table>`,
-        });
+          }),
+        );
       }
     } catch (err) {
       console.error("Email sender health notification failed:", err);
@@ -1461,7 +1507,10 @@ export async function sendSenderHealthDigest(params: {
           },
         ];
 
-        await postMessage(opsChannelId, "Daily Sender Health Digest", blocks);
+        await audited(
+          { notificationType: "sender_health_digest", channel: "slack", recipient: opsChannelId },
+          () => postMessage(opsChannelId, "Daily Sender Health Digest", blocks),
+        );
       } catch (err) {
         console.error("[sendSenderHealthDigest] Slack failed:", err);
       }
@@ -1490,9 +1539,11 @@ export async function sendSenderHealthDigest(params: {
           )
           .join("");
 
-        await sendNotificationEmail({
-          to: verified,
-          subject: `[Outsignal] Daily Sender Health Digest \u2014 ${params.warnings.length} warning${params.warnings.length !== 1 ? "s" : ""}`,
+        await audited(
+          { notificationType: "sender_health_digest", channel: "email", recipient: verified.join(",") },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: `[Outsignal] Daily Sender Health Digest \u2014 ${params.warnings.length} warning${params.warnings.length !== 1 ? "s" : ""}`,
           html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
@@ -1550,7 +1601,8 @@ export async function sendSenderHealthDigest(params: {
     </td>
   </tr>
 </table>`,
-        });
+          }),
+        );
       }
     } catch (err) {
       console.error("[sendSenderHealthDigest] Email failed:", err);

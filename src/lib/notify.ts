@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { postMessage } from "@/lib/slack";
 import { verifySlackChannel } from "@/lib/notification-guard";
+import { audited } from "@/lib/notification-audit";
 
 interface NotifyParams {
   type: "onboard" | "provisioning" | "agent" | "system" | "error" | "approval" | "proposal";
@@ -51,7 +52,11 @@ export async function notify(params: NotifyParams): Promise<void> {
       if (params.message) {
         parts.push(params.message);
       }
-      await postMessage(channelId, parts.join("\n"));
+      await audited(
+        { notificationType: params.type, channel: "slack", recipient: channelId, workspaceSlug: params.workspaceSlug },
+        () => postMessage(channelId, parts.join("\n")),
+        { skipOpsAlert: true },
+      );
     } catch (err) {
       console.error("[notify] Failed to post to Slack:", err);
     }

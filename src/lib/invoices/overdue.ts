@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notify";
 import { sendNotificationEmail } from "@/lib/resend";
+import { audited } from "@/lib/notification-audit";
 import { formatGBP, formatInvoiceDate } from "./format";
 import type { InvoiceWithLineItems } from "./types";
 
@@ -99,11 +100,14 @@ export async function sendOverdueReminderEmail(
   </tr>
 </table>`;
 
-  await sendNotificationEmail({
-    to: [recipientEmail],
-    subject,
-    html,
-  });
+  await audited(
+    { notificationType: "overdue_reminder", channel: "email", recipient: recipientEmail },
+    () => sendNotificationEmail({
+      to: [recipientEmail],
+      subject,
+      html,
+    }),
+  );
 }
 
 /**

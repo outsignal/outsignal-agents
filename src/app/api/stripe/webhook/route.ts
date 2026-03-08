@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStripeClient } from "@/lib/stripe";
 import { sendNotificationEmail } from "@/lib/resend";
+import { audited } from "@/lib/notification-audit";
 import { notify } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +53,12 @@ export async function POST(request: NextRequest) {
       if (proposal.clientEmail) {
         const appUrl =
           process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        sendNotificationEmail({
-          to: [proposal.clientEmail],
-          subject: "Payment received — Complete your onboarding",
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+        audited(
+          { notificationType: "payment_onboarding", channel: "email", recipient: proposal.clientEmail },
+          () => sendNotificationEmail({
+            to: [proposal.clientEmail!],
+            subject: "Payment received — Complete your onboarding",
+            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -104,7 +107,8 @@ export async function POST(request: NextRequest) {
     </td>
   </tr>
 </table>`,
-        }).catch((err) => console.error("Failed to send onboarding email:", err));
+          }),
+        ).catch((err) => console.error("Failed to send onboarding email:", err));
       }
     }
   }

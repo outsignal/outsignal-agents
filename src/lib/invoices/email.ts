@@ -4,6 +4,7 @@ import React from "react";
 import { InvoicePdfDocument } from "./pdf";
 import { InvoiceWithLineItems } from "./types";
 import { formatGBP, formatInvoiceDate } from "./format";
+import { audited } from "@/lib/notification-audit";
 
 function getBaseUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
@@ -128,16 +129,19 @@ export async function sendInvoiceEmail(
     React.createElement(InvoicePdfDocument, { invoice }) as any,
   );
 
-  await resend.emails.send({
-    from,
-    to: [recipientEmail],
-    subject: `Invoice ${invoice.invoiceNumber} from Outsignal`,
-    html: invoiceEmailHtml(invoice),
-    attachments: [
-      {
-        filename: `${invoice.invoiceNumber}.pdf`,
-        content: pdfBuffer,
-      },
-    ],
-  });
+  await audited(
+    { notificationType: "invoice", channel: "email", recipient: recipientEmail },
+    async () => { await resend.emails.send({
+      from,
+      to: [recipientEmail],
+      subject: `Invoice ${invoice.invoiceNumber} from Outsignal`,
+      html: invoiceEmailHtml(invoice),
+      attachments: [
+        {
+          filename: `${invoice.invoiceNumber}.pdf`,
+          content: pdfBuffer,
+        },
+      ],
+    }); },
+  );
 }

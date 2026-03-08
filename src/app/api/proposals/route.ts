@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { generateProposalToken } from "@/lib/tokens";
 import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { sendNotificationEmail } from "@/lib/resend";
+import { audited } from "@/lib/notification-audit";
 import { notify } from "@/lib/notify";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createProposalSchema } from "@/lib/validations/proposals";
@@ -70,10 +71,12 @@ export async function POST(request: Request) {
     // If client email provided, send the proposal and mark as sent
     if (clientEmail) {
       try {
-        await sendNotificationEmail({
-          to: [clientEmail],
-          subject: `Your proposal from Outsignal`,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+        await audited(
+          { notificationType: "proposal", channel: "email", recipient: clientEmail },
+          () => sendNotificationEmail({
+            to: [clientEmail],
+            subject: `Your proposal from Outsignal`,
+            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -122,7 +125,8 @@ export async function POST(request: Request) {
     </td>
   </tr>
 </table>`,
-        });
+          }),
+        );
         await prisma.proposal.update({
           where: { id: proposal.id },
           data: { status: "sent" },

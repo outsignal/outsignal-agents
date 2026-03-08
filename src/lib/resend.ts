@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { audited } from "@/lib/notification-audit";
 
 function getResendClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -32,10 +33,12 @@ export async function sendOnboardingInviteEmail(params: {
   clientEmail: string;
   inviteUrl: string;
 }): Promise<void> {
-  await sendNotificationEmail({
-    to: [params.clientEmail],
-    subject: "Complete your onboarding with Outsignal",
-    html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+  await audited(
+    { notificationType: "onboarding_invite", channel: "email", recipient: params.clientEmail },
+    () => sendNotificationEmail({
+      to: [params.clientEmail],
+      subject: "Complete your onboarding with Outsignal",
+      html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -87,5 +90,6 @@ export async function sendOnboardingInviteEmail(params: {
     </td>
   </tr>
 </table>`,
-  });
+    }),
+  );
 }

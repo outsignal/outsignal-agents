@@ -877,6 +877,24 @@ model Notification {
   @@index([read])
 }
 
+model NotificationAuditLog {
+  id                String   @id @default(cuid())
+  notificationType  String   // reply, approval, deploy, campaign_live, inbox_disconnect, sender_health, sender_health_digest, invoice, overdue_reminder, magic_link, proposal, payment_received, onboarding_invite, system
+  channel           String   // "slack" | "email"
+  recipient         String   // email address or Slack channel ID
+  status            String   // "sent" | "failed" | "skipped"
+  errorMessage      String?
+  workspaceSlug     String?
+  metadata          Json?
+  durationMs        Int?
+  createdAt         DateTime @default(now())
+
+  @@index([notificationType, createdAt])
+  @@index([status, createdAt])
+  @@index([workspaceSlug])
+  @@index([createdAt])
+}
+
 // --- Client CRM Pipeline ---
 
 model Client {
