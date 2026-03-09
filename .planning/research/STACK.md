@@ -1,479 +1,240 @@
-# Stack Research
+# Technology Stack
 
-**Domain:** Outsignal Lead Engine v2.0 — Multi-source lead discovery, signal monitoring, Creative Ideas copy, CLI orchestrator chat, signal dashboard
-**Researched:** 2026-03-03
-**Confidence:** HIGH (Apollo, Exa SDK, Apify client, cron libs — verified via npm/docs), MEDIUM (PredictLeads auth pattern, Serper patterns — docs/community sources), LOW (AI Ark People Search API — not publicly documented, verify in dashboard)
+**Project:** Outsignal v3.0 Campaign Intelligence Hub
+**Researched:** 2026-03-09
 
----
+## Core Finding: No New Dependencies Needed
 
-## Scope
+The existing stack already provides everything required for the Campaign Intelligence Hub. The v3.0 milestone is an **application-layer build**, not a stack expansion. Every capability needed -- structured AI output, time-series charting, job scheduling, data aggregation -- is already present in the installed dependencies.
 
-This document covers only NET NEW stack additions for v2.0. The existing stack (Next.js 16, Prisma 6, PostgreSQL/Neon, Vercel, Railway, `ai@6`, `@ai-sdk/anthropic@3`, `@mendable/firecrawl-js@4`, `zod@4`, `recharts@3`, Prospeo, AI Ark, LeadMagic, FindyMail) is already validated and must not be touched.
+This is a strength, not a limitation. Zero new dependencies means zero integration risk, faster builds, and a smaller attack surface.
 
-The key constraint: exact versions installed in `package.json` (as of v1.1) are the compatibility baseline.
+## Existing Stack (Validated, DO NOT change)
 
----
+| Technology | Version | Purpose | v3.0 Role |
+|------------|---------|---------|-----------|
+| Next.js | 16.1.6 | App framework | API routes for classification, analytics, insights |
+| Prisma | 6.19.2 | ORM | New models: ReplyClassification, CampaignAnalytics, Insight, ActionItem |
+| PostgreSQL (Neon) | - | Database | Aggregation queries, time-series via `receivedAt` indexes |
+| AI SDK (`ai`) | 6.0.97 | LLM integration | `generateObject` for reply classification (already proven in ICP scorer) |
+| `@ai-sdk/anthropic` | 3.0.46 | Claude provider | Haiku for classification, Sonnet for insight generation |
+| Recharts | 3.7.0 | Charts | Campaign performance charts, benchmark visualizations |
+| Zod | 4.3.6 | Schema validation | Classification output schemas, API input validation |
+| Radix UI | 1.4.3 | Components | Action queue cards, insight cards, filter dropdowns |
+| `@slack/web-api` | 7.14.1 | Notifications | Insight digest delivery to Slack |
+| Resend | 6.9.2 | Email | Insight digest delivery via email |
+| Vercel | Hobby | Hosting | API routes, cron for scheduled insight generation |
 
-## New npm Packages Required
+## What Each v3.0 Feature Uses
 
-Two new packages. Everything else uses `fetch()` or existing dependencies.
+### 1. Reply Classification Engine
 
-```bash
-npm install exa-js apify-client
-```
+**Uses:** `ai` (generateObject) + `@ai-sdk/anthropic` (Haiku) + `zod` (output schema) + Prisma
 
-| Package | Version | Why This One | Why Not Alternative |
-|---------|---------|--------------|---------------------|
-| `exa-js` | `2.6.1` | Official Exa SDK — handles Websets async polling loop natively; TypeScript types included | Raw `fetch()` for Exa would require ~100 lines of polling/retry code since Websets is async-first |
-| `apify-client` | `2.22.2` | Official Apify client — smart polling, exponential backoff, paginated dataset fetching | Raw `fetch()` for Apify requires polling actor run status then paginating the dataset — SDK abstracts all of it |
-
-Everything else is `fetch()` with typed adapters, consistent with the existing enrichment provider pattern.
-
----
-
-## Do NOT Install
-
-| Package | Why | Use Instead |
-|---------|-----|-------------|
-| `serper` npm (v1.0.6) | Last release was 1+ year ago; no TypeScript types; unhealthy release cadence | `fetch()` directly — Serper API is 3 lines: POST endpoint + `X-API-KEY` header + JSON body |
-| `node-cron` (v4.2.1) | Vercel serverless incompatible; Railway cron pattern is cleaner | Railway native cron schedule (set in service settings, process exits on completion) |
-| `croner` (v10.0.1) | Only needed if in-process scheduling is required; Railway native cron is simpler | Railway native cron schedule; add croner only if multiple schedules in same process |
-| Apollo.io SDK | No official Apollo.io REST SDK exists | `fetch()` with typed adapter |
-| LangChain / LlamaIndex | Heavyweight abstraction on top of AI SDK already in use | Existing `ai@6` + `@ai-sdk/anthropic@3` |
-| Playwright / Puppeteer for LinkedIn | Detection risk; Voyager HTTP API already in use for outreach | Apify no-cookie actors for discovery search |
-| Redis / BullMQ | Overkill for signal monitoring scale; adds Redis dependency | Extend existing Prisma-backed queue pattern |
-| FullEnrich | Explicitly Out-of-Scope per PROJECT.md | Existing waterfall: Prospeo → AI Ark → LeadMagic → FindyMail |
-| StoreLeads ($75-950/mo) | Expensive; PROJECT.md explicitly excluded | Serper.dev Google Maps queries for local/ecommerce discovery |
-
----
-
-## API Integrations — Raw fetch() Adapters
-
-All discovery and signal APIs below use `fetch()` with typed adapters. Each becomes a new file in `src/lib/discovery/providers/`, mirroring the existing `src/lib/enrichment/providers/` architecture.
-
-### Apollo.io People API (HIGH confidence)
-
-**Purpose:** Search 275M contacts — free, no credits consumed for search. Email not returned (run enrichment waterfall after).
-
-| Property | Value |
-|----------|-------|
-| Endpoint | `POST https://api.apollo.io/api/v1/mixed_people/api_search` |
-| Auth | `x-api-key` header (master API key) OR `Authorization: Bearer {token}` |
-| Credits | Zero — search is free; email reveal costs credits (use enrichment waterfall instead) |
-| Pagination | 100 results/page, max 500 pages, 50k total per query |
-| New env var | `APOLLO_API_KEY` |
-
-Key filter parameters:
+**Pattern:** Identical to existing `src/lib/icp/scorer.ts`. The ICP scorer already does exactly this -- takes unstructured data, passes it to Haiku with a Zod schema, gets structured output back. Reply classification is the same pattern with a different schema.
 
 ```typescript
-{
-  person_titles: string[],              // ["CEO", "Founder", "Head of Sales"]
-  person_locations: string[],           // ["California, US", "United Kingdom"]
-  organization_industry_tag_ids: string[], // Apollo industry IDs
-  organization_num_employees_ranges: string[], // ["1,10", "11,50", "51,200"]
-  person_seniority_tags: string[],      // ["c_suite", "vp", "director", "manager"]
-  organization_locations: string[],     // company HQ location
-  q_keywords: string,                   // keyword search
-  page: number,
-  per_page: number                      // max 100
-}
-```
-
-Returns: `{ people: [{ name, title, city, state, country, organization: { name, website_url, linkedin_url }, linkedin_url }] }`. No email, no phone.
-
-### Prospeo Search Person API (HIGH confidence)
-
-**Purpose:** 20+ filter search over Prospeo's B2B database. Separate from existing enrichment integration.
-
-| Property | Value |
-|----------|-------|
-| Endpoint | `POST https://api.prospeo.io/search-person` |
-| Auth | `X-KEY` header — same `PROSPEO_API_KEY` already in use |
-| Credits | 1 credit per request (returns up to 25 results) |
-| Pagination | `page` param, max 1000 pages (25k results/query) |
-| New env var | None — existing `PROSPEO_API_KEY` |
-
-Returns contact list without email (use enrichment waterfall for email).
-
-### AI Ark People Search API (LOW confidence — verify in dashboard)
-
-**Purpose:** Search AI Ark's 200M+ B2B contact database.
-
-| Property | Value |
-|----------|-------|
-| Endpoint | Unknown — check AI Ark dashboard API docs (not publicly indexed) |
-| Auth | Likely same API key as existing AI Ark enrichment; verify header name |
-| New env var | Likely none — existing `AIARK_API_KEY` |
-
-The AI Ark platform confirms a "People Search" / semantic search feature exists, but the API endpoint and request schema are not publicly documented. **Must verify in AI Ark dashboard before implementing.**
-
-### Exa.ai Websets API (MEDIUM confidence)
-
-**Purpose:** Semantic company search — "find companies like X" lookalikes, market mapping. Async-first (results take seconds to minutes).
-
-| Property | Value |
-|----------|-------|
-| Endpoint | `https://api.exa.ai/websets/v1/` |
-| Auth | `x-api-key` header |
-| Pattern | Async: create webset → poll items OR receive webhook |
-| New env var | `EXA_API_KEY` |
-
-Use `exa-js@2.6.1` SDK — it handles the Websets async lifecycle:
-
-```typescript
-import Exa from "exa-js";
-
-const exa = new Exa(process.env.EXA_API_KEY);
-
-// Create a webset — async, returns when search completes
-const webset = await exa.websets.create({
-  search: {
-    query: "B2B SaaS companies in fintech with 50-500 employees similar to Stripe",
-    count: 25,
-  },
-  enrichments: [
-    { description: "Company industry" },
-    { description: "Headcount range" },
-  ],
+// Example classification schema (Zod v4)
+const ReplyClassificationSchema = z.object({
+  intent: z.enum([
+    "interested", "not_interested", "objection", "question",
+    "referral", "out_of_office", "unsubscribe", "bounce", "other"
+  ]),
+  sentiment: z.number().min(-1).max(1), // -1 negative, 0 neutral, 1 positive
+  buyingSignals: z.array(z.string()),
+  objectionType: z.enum([
+    "none", "timing", "budget", "authority", "need",
+    "competitor", "satisfaction", "generic"
+  ]),
+  confidence: z.number().min(0).max(1),
+  summary: z.string(),
 });
-
-// Items available via webset.items
 ```
 
-Best use case: ICP lookalike expansion ("find companies like our best 3 clients"), niche market mapping for ultra-niche ICPs where Apollo filters don't capture intent.
-
-### Serper.dev API (MEDIUM confidence)
-
-**Purpose:** Google search (all types) — news monitoring, Google Maps local discovery, social mention tracking.
-
-| Property | Value |
-|----------|-------|
-| Endpoint | `https://google.serper.dev/{type}` |
-| Auth | `X-API-KEY` header |
-| Types | `search`, `news`, `maps`, `places`, `images`, `videos`, `scholar`, `shopping` |
-| Pricing | $1/1k queries; 2,500 free queries with no credit card |
-| New env var | `SERPER_API_KEY` |
-
-Raw fetch pattern (no SDK):
-
-```typescript
-const response = await fetch("https://google.serper.dev/news", {
-  method: "POST",
-  headers: {
-    "X-API-KEY": process.env.SERPER_API_KEY!,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({ q: "Acme Corp funding OR partnership OR hiring", num: 10 }),
-});
-const data = await response.json();
-```
-
-v2.0 uses:
-- `news` endpoint — company news monitoring for signal detection
-- `search` endpoint — Google query-driven directory scraping (seed URLs for Firecrawl)
-- `maps` endpoint — local business discovery (replaces StoreLeads for local-focused ICPs)
-
-### Apify LinkedIn Actors (MEDIUM confidence)
-
-**Purpose:** LinkedIn people search without cookies or Voyager auth. Supplements Voyager (which is used for outreach) with discovery search.
-
-| Property | Value |
-|----------|-------|
-| SDK | `apify-client@2.22.2` |
-| Recommended actor | `harvestapi/linkedin-profile-search` — no-cookie, search by filters |
-| Pricing | $0.10/search page (25 results/page); $0.004/full profile if needed |
-| Auth | `Authorization: Bearer {APIFY_API_TOKEN}` |
-| New env var | `APIFY_API_TOKEN` |
-
-**Call pattern — always from Railway worker, never from Vercel** (actor runs can take 30-120 seconds; Vercel function timeout risk):
-
-```typescript
-import { ApifyClient } from "apify-client";
-
-const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
-
-const run = await client.actor("harvestapi/linkedin-profile-search").call({
-  searchUrl: "https://www.linkedin.com/search/results/people/?keywords=CEO&geoUrn=[...]",
-  maxItems: 100,
-});
-
-const { items } = await client.dataset(run.defaultDatasetId).listItems();
-```
-
-### PredictLeads Signal API (MEDIUM confidence)
-
-**Purpose:** B2B company signals — job openings (hiring spikes), tech adoption changes, news events, funding rounds, company connections.
-
-| Property | Value |
-|----------|-------|
-| Endpoint base | `https://predictleads.com/api/v3/` |
-| Auth | Query params: `?api_token={TOKEN}&api_key={KEY}` (NOT Authorization header) |
-| Signal datasets | Job Openings, Technology Detections, News Events, Financing Events, Connections |
-| Response format | JSON API (`{ data: [{ id, type, attributes, relationships }], included: [...] }`) |
-| Pricing | 100 free credits/month, then pay-per-use |
-| New env vars | `PREDICTLEADS_API_TOKEN` + `PREDICTLEADS_API_KEY` |
-
-Key endpoints for signal monitoring cron:
-
-```
-GET /api/v3/companies/{domain}/job_openings      — hiring signals
-GET /api/v3/companies/{domain}/news_events        — company news / funding
-GET /api/v3/companies/{domain}/financing_events   — funding rounds
-GET /api/v3/discover/technologies/{id}/technology_detections — tech adoption
-```
-
-Cron pattern: for each active workspace ICP → fetch top 100 target company domains from DB → poll PredictLeads for each → write `SignalEvent` records → exit.
-
----
-
-## New Prisma Model — SignalEvent
-
-Add to `prisma/schema.prisma`. Deploy with `npx prisma db push` (consistent with established project convention — no migrate dev).
-
-```prisma
-model SignalEvent {
-  id             String    @id @default(cuid())
-  workspaceSlug  String
-  companyDomain  String?
-  companyId      String?
-  personId       String?
-  signalType     String    // "job_opening" | "funding" | "hiring_spike" | "tech_adoption" | "news" | "social_mention"
-  signalSource   String    // "predictleads" | "serper_news" | "serper_social"
-  signalData     Json      // Raw payload from provider
-  relevanceScore Float?    // AI-scored 0-1 ICP relevance (set by signal monitor worker)
-  processed      Boolean   @default(false) // Fed into pipeline yet?
-  processedAt    DateTime?
-  detectedAt     DateTime  // When signal occurred (provider timestamp)
-  createdAt      DateTime  @default(now())
-
-  workspace Workspace @relation(fields: [workspaceSlug], references: [slug])
-
-  @@index([workspaceSlug, processed])
-  @@index([companyDomain])
-  @@index([signalType])
-  @@index([createdAt])
-}
-```
-
-Optional: `CreativeIdea` model for per-client approved idea vault (only if admin review workflow is required — KB tagging is zero-migration-cost alternative):
-
-```prisma
-model CreativeIdea {
-  id            String    @id @default(cuid())
-  workspaceSlug String
-  idea          String    // The constrained offer/value proposition idea
-  exampleCopy   String?   // Example cold email body using this idea
-  status        String    @default("pending") // "pending" | "approved" | "rejected"
-  reviewedAt    DateTime?
-  createdAt     DateTime  @default(now())
-
-  workspace Workspace @relation(fields: [workspaceSlug], references: [slug])
-
-  @@index([workspaceSlug, status])
-}
-```
-
----
-
-## Discovery Provider Architecture
-
-New directory following existing enrichment adapter pattern exactly:
-
-```
-src/lib/discovery/
-  providers/
-    apollo.ts             — Apollo mixed_people search adapter (fetch)
-    prospeo-search.ts     — Prospeo Search Person (fetch, distinct from enrichment)
-    aiark-search.ts       — AI Ark People Search (fetch, verify endpoint in dashboard)
-    exa-websets.ts        — Exa Websets async adapter (exa-js SDK)
-    serper.ts             — Serper adapter (fetch, all 3 types: search/news/maps)
-    apify-linkedin.ts     — Apify actor runner (apify-client SDK)
-    predictleads.ts       — PredictLeads signal adapter (fetch)
-  types.ts                — DiscoveryResult, SignalResult, DiscoverySource union type
-  orchestrator.ts         — Source selection logic: ICP type → which sources to use
-  index.ts                — Re-exports
-```
+**Model:** `claude-haiku-4-5-20251001` -- fast, cheap (~$0.001/classification), already in `AgentConfig` model list. At ~50 replies/day across 6 workspaces, monthly cost is ~$1.50.
 
-Source selection logic in `orchestrator.ts` drives which providers the Leads Agent calls per ICP type:
+**Integration point:** Hook into `src/app/api/webhooks/emailbison/route.ts` -- classify on webhook receipt (after notification, before response). Store result in new `ReplyClassification` Prisma model linked to `WebhookEvent`.
 
-| ICP Type | Primary Sources | Secondary |
-|----------|----------------|-----------|
-| Enterprise (500+ employees) | Apollo (headcount filter) | Exa Websets (lookalike), Prospeo |
-| SMB / niche industry | Apollo + Prospeo (20+ filters) | AI Ark |
-| Local business | Serper Maps | Apollo (location filter) |
-| Ultra-niche / custom directory | Firecrawl + Serper search (seed) | Exa Websets |
-| LinkedIn-first (relationship ICP) | Apify LinkedIn (via Railway) | Apollo |
+### 2. Campaign Performance Analytics
 
----
+**Uses:** Prisma (aggregation queries) + `CachedMetrics` model (already exists) + Recharts
 
-## CLI Orchestrator Chat Session
+**No new tech needed.** The `WebhookEvent` table already stores every event with `workspace`, `eventType`, `campaignId`, `leadEmail`, `senderEmail`, and `receivedAt`. All campaign metrics (open rate, reply rate, interested rate, bounce rate) can be derived from GROUP BY queries on this table joined with EmailBison campaign data.
 
-No new packages needed. `streamText` is already in `ai@6.0.97`. `tsx` is already in devDependencies at `4.21.0`.
+**Pattern:** Computed on-demand with caching via existing `CachedMetrics` model (already has `workspace` + `metricType` unique constraint). Add new `metricType` values: `campaign_performance`, `sequence_step_analysis`, `strategy_comparison`.
 
-**Entry point:** `scripts/chat.ts`
-**Run command:** `npx tsx scripts/chat.ts [--workspace rise]`
+**Time-series:** Use `receivedAt` index on `WebhookEvent` for time bucketing. PostgreSQL `date_trunc()` via Prisma raw queries for daily/weekly/monthly aggregation.
 
-Pattern (using existing Vercel AI SDK + existing orchestrator tools):
+### 3. Cross-Workspace Benchmarking
 
-```typescript
-import { streamText, stepCountIs } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { createInterface } from "readline/promises";
-import { stdin as input, stdout as output } from "process";
+**Uses:** Prisma (cross-workspace aggregation) + Recharts
 
-const rl = createInterface({ input, output });
-const messages: CoreMessage[] = [];
+**No new tech needed.** Query across all workspaces, group by `workspace.vertical`, compute averages. The `Workspace.vertical` field already exists and is populated for all 6 clients.
 
-while (true) {
-  const userInput = await rl.question("\nYou: ");
-  if (userInput.toLowerCase() === "exit") break;
+**Key insight:** Benchmarks are just analytics queries without a `WHERE workspace = ?` clause. Same data, wider scope.
 
-  messages.push({ role: "user", content: userInput });
+### 4. ICP Score Calibration
 
-  const result = streamText({
-    model: anthropic("claude-opus-4-20250514"),
-    system: orchestratorSystemPrompt,
-    messages,
-    tools: orchestratorTools,
-    stopWhen: stepCountIs(20),
-  });
+**Uses:** Prisma (join `PersonWorkspace.icpScore` with `WebhookEvent` outcomes)
 
-  process.stdout.write("\nAgent: ");
-  for await (const delta of result.textStream) {
-    process.stdout.write(delta);
-  }
-  process.stdout.write("\n");
+**No new tech needed.** The question "do high ICP scores convert?" is a SQL join: PersonWorkspace (has icpScore) <-> Person (email) <-> WebhookEvent (has reply/interested events). Compare average ICP scores of people who replied vs. those who didn't.
 
-  messages.push({ role: "assistant", content: await result.text });
-}
-rl.close();
-```
+### 5. AI Insight Generation
 
-The CLI reuses the exact same `orchestratorTools` from `src/lib/agents/orchestrator.ts` — no duplication, same agent behavior as the dashboard chat but in the terminal with `streamText` instead of `useChat`.
+**Uses:** `ai` (generateText) + `@ai-sdk/anthropic` (Sonnet) + Prisma + Vercel Cron
 
----
+**Pattern:** Follow the existing agent framework (`src/lib/agents/runner.ts`). Create a new "intelligence" agent that:
+1. Reads aggregated analytics data (from cached metrics)
+2. Passes to Sonnet with a system prompt asking for actionable insights
+3. Stores structured output in new `Insight` Prisma model
 
-## Creative Ideas Copy Framework — Writer Agent Extension
+**Model:** `claude-sonnet-4-20250514` for insight quality. Run weekly per workspace (~6 calls/week, ~$0.30/week).
 
-No new packages. Prompt engineering + data retrieval pattern extending existing `src/lib/agents/writer.ts`.
+**Scheduling:** Use Vercel cron (daily at 7am UTC) or external cron-job.org (already used for poll-replies and inbox-health). The insight generation endpoint follows the same `Authorization: Bearer CRON_SECRET` pattern.
 
-**What gets added:**
-1. New tool `getCreativeIdeasExamples` in `writerTools` — queries approved `CreativeIdea` records (or KB documents tagged `creative-ideas`) for the workspace
-2. Updated Writer Agent system prompt section: instructs model to generate exactly 3 constrained, specific, deliverable ideas per prospect — not generic signal observations
-3. New `creativeIdeas?: CreativeIdea[]` array in `WriterOutput` type
+### 6. Admin Action Queue
 
-**Framework constraint** (goes in system prompt):
-```
-For each prospect, generate exactly 3 Creative Ideas:
-- Each idea must be a specific, deliverable offer or collaboration
-- Each must be actionable within 30 days without a sales call
-- Do NOT reference signals (funding, hiring) as the hook — use them for targeting only
-- Ground each idea in the client's actual service capability
-- Ideas must be different from each other (not variations)
-```
+**Uses:** Prisma (new `ActionItem` model) + Radix UI + `@dnd-kit/core` (already installed for drag-and-drop)
 
----
+**No new tech needed.** The action queue is a Prisma model with status lifecycle (`pending` -> `approved` | `dismissed` | `deferred`) displayed as cards in the dashboard. `@dnd-kit/core` is already installed if drag-to-reorder is desired.
 
-## Signal Dashboard Page
+### 7. Digest Notifications
 
-No new packages. Existing Recharts (`3.7.0`) handles charts. New page at `src/app/admin/signals/page.tsx` queries `SignalEvent` from PostgreSQL via Prisma.
+**Uses:** `@slack/web-api` + `resend` (both already installed)
 
-Dashboard shows:
-- Live signal feed (filterable by workspace, signal type, date range)
-- Per-client signal volume chart (Recharts `BarChart`)
-- Cost tracking table (API calls per provider per period)
-- Processed vs. unprocessed signals breakdown
+**No new tech needed.** Follow existing notification patterns in `src/lib/notifications.ts`. Add a new `notifyInsightDigest()` function.
 
----
+## What NOT to Add
 
-## Railway Background Worker — Signal Monitor
-
-Signal monitoring runs on Railway alongside the existing LinkedIn sequencer. Uses Railway's native cron schedule (set in service settings UI — no code change needed for scheduling).
-
-Worker script: `workers/signal-monitor.ts`
-
-Pattern:
-1. Fetch all active workspaces from DB
-2. For each workspace, get ICP target company domains
-3. Poll PredictLeads for each domain (job openings, news, funding)
-4. Run Serper news queries for key company names
-5. Score signals with `claude-haiku-4-5-20251001` (cheapest model — batch scoring)
-6. Write `SignalEvent` records to DB
-7. Close Prisma connection and exit (Railway restarts on next cron)
-
-**No `croner` needed** — Railway native cron is the scheduler. The process starts, runs, and exits. Zero connection leak risk.
-
----
-
-## Environment Variables — New
-
-Add to Vercel (production + preview) and local `.env`:
-
-```bash
-# Lead Discovery APIs
-APOLLO_API_KEY=           # Apollo.io master API key (from Apollo dashboard)
-EXA_API_KEY=              # Exa.ai API key (from exa.ai dashboard)
-APIFY_API_TOKEN=          # Apify platform token (from apify.com/account/integrations)
-PREDICTLEADS_API_TOKEN=   # PredictLeads api_token param (from predictleads.com dashboard)
-PREDICTLEADS_API_KEY=     # PredictLeads api_key param (from predictleads.com dashboard)
-SERPER_API_KEY=           # Serper.dev API key (from serper.dev)
-
-# Existing keys — verify these work for the new search endpoints:
-# PROSPEO_API_KEY — same key, new endpoint (search-person vs email-finder)
-# AIARK_API_KEY   — verify auth header name for People Search in AI Ark dashboard
-```
-
----
-
-## Version Compatibility
-
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `exa-js@2.6.1` | `ai@6.0.97`, Node 20+, TypeScript 5+ | No AI SDK dependency — pure fetch wrapper with TS types |
-| `apify-client@2.22.2` | Node 20+, TypeScript 5+ | Works in Node.js and browser; built-in TypeScript types |
-| All new `fetch()` adapters | `prisma@6.19.2`, `zod@4.3.6`, `typescript@5+` | Follow existing provider adapter pattern; validate responses with zod |
-| `streamText` (CLI chat) | `ai@6.0.97` (already installed) | Already in use — `generateText` is used in runner.ts; `streamText` is same package |
-| `tsx@4.21.0` (CLI runner) | Already installed as devDependency | `npx tsx scripts/chat.ts` — no new install needed |
-
----
+| Library | Why You Might Think You Need It | Why You Don't |
+|---------|--------------------------------|---------------|
+| **node-cron / cron** | Scheduling insight generation | Use Vercel cron or cron-job.org (already established pattern) |
+| **bull / bullmq** | Job queue for classification | Reply classification is fast (~200ms with Haiku). Run inline in webhook handler. No queue needed at 50 replies/day volume. |
+| **@langchain/core** | LLM orchestration | AI SDK already does everything needed. LangChain adds complexity without value here. |
+| **compromise / natural** | NLP text processing | Haiku handles classification better than rule-based NLP. The whole point is using LLM classification, not traditional NLP. |
+| **d3 / visx / nivo** | Advanced charts | Recharts 3.7 already covers bar charts, line charts, area charts, radar charts. No need for lower-level charting. |
+| **redis / ioredis** | Caching layer | CachedMetrics Prisma model already serves this role. At 6 workspaces, PostgreSQL is more than fast enough. |
+| **openai** (for embeddings) | Semantic similarity on replies | Already installed (6.25.0) but not needed. Reply classification via Haiku structured output is deterministic and cheaper than embedding + similarity search. |
+| **pg / @neondatabase/serverless** | Raw SQL for aggregations | Prisma `$queryRaw` handles the few cases where raw SQL is needed (date_trunc, window functions). |
 
 ## Alternatives Considered
 
-| Recommended | Alternative | When Alternative Makes Sense |
-|-------------|-------------|------------------------------|
-| `exa-js` SDK | `fetch()` for Exa | Never — Websets async polling makes raw fetch impractical |
-| `apify-client` | `fetch()` for Apify | Never — actor run polling + dataset pagination is exactly what the client handles |
-| `fetch()` for Serper | `serper` npm | If Serper adds complex features requiring abstraction (currently unnecessary) |
-| `fetch()` for Apollo | Any SDK | No official SDK exists; `fetch()` is the only option |
-| Railway native cron | `croner` in-process | If multiple signals need different schedules in same process (add croner@10.0.1 then) |
-| KB tagging for Creative Ideas | `CreativeIdea` model | `CreativeIdea` model wins if admin review workflow is required (recommended) |
-| Apify no-cookie actors | Playwright/Puppeteer headless | Never for LinkedIn — detection risk is too high; Apify managed actors handle stealth |
+| Category | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Classification model | Haiku 4.5 | GPT-4o-mini, Gemini Flash | Already have Anthropic integration, Haiku is faster and cheaper for structured output. Switching providers adds no value. |
+| Analytics storage | CachedMetrics (existing) | TimescaleDB, ClickHouse | Massive overkill for 6 workspaces. PostgreSQL handles this workload trivially. |
+| Insight scheduling | cron-job.org | Inngest, Trigger.dev | Already use cron-job.org for 2 other jobs. Adding a new service for 1 more cron is unnecessary complexity. |
+| Action queue | Prisma model | Inngest workflows | The action queue is a simple approve/dismiss/defer UI, not a workflow engine. A Prisma model with status field is the right tool. |
 
----
+## Database Schema Additions (Prisma)
+
+New models needed (all extend existing patterns):
+
+```prisma
+model ReplyClassification {
+  id              String   @id @default(cuid())
+  webhookEventId  String   @unique  // Links to WebhookEvent
+  workspaceSlug   String
+  campaignId      String?
+
+  // Classification results
+  intent          String   // "interested" | "not_interested" | "objection" | "question" | "referral" | "ooo" | "unsubscribe" | "bounce" | "other"
+  sentiment       Float    // -1 to 1
+  objectionType   String?  // "timing" | "budget" | "authority" | "need" | "competitor" | "satisfaction" | null
+  buyingSignals   String?  // JSON array of detected signals
+  confidence      Float    // 0 to 1
+  summary         String   // 1-sentence summary
+
+  // AI metadata
+  modelId         String?
+  durationMs      Int?
+
+  classifiedAt    DateTime @default(now())
+
+  @@index([workspaceSlug, intent])
+  @@index([campaignId])
+  @@index([classifiedAt])
+}
+
+model Insight {
+  id              String   @id @default(cuid())
+  workspaceSlug   String?  // null = cross-workspace insight
+  category        String   // "campaign_performance" | "reply_pattern" | "icp_calibration" | "benchmark" | "anomaly"
+  title           String
+  body            String   // Markdown
+  severity        String   @default("info") // "info" | "warning" | "critical"
+  dataSnapshot    String?  // JSON -- the analytics data that produced this insight
+  actionItems     String?  // JSON array of suggested actions
+
+  status          String   @default("active") // "active" | "dismissed" | "actioned" | "expired"
+  expiresAt       DateTime?
+
+  generatedAt     DateTime @default(now())
+
+  @@index([workspaceSlug, status])
+  @@index([category])
+  @@index([generatedAt])
+}
+
+model ActionItem {
+  id              String   @id @default(cuid())
+  insightId       String?  // Optional link to generating insight
+  workspaceSlug   String?
+  title           String
+  description     String
+  actionType      String   // "adjust_sequence" | "pause_campaign" | "update_icp" | "review_copy" | "investigate" | "custom"
+  priority        Int      @default(5) // 1 = urgent, 5 = normal
+  status          String   @default("pending") // "pending" | "approved" | "dismissed" | "deferred" | "completed"
+
+  // Admin response
+  adminResponse   String?  // Notes from admin when approving/dismissing
+  resolvedAt      DateTime?
+
+  createdAt       DateTime @default(now())
+
+  @@index([status])
+  @@index([workspaceSlug, status])
+  @@index([priority, status])
+}
+```
+
+## API Cost Estimates
+
+| Feature | Model | Volume | Monthly Cost |
+|---------|-------|--------|-------------|
+| Reply classification | Haiku 4.5 | ~300 replies/month | ~$1.50 |
+| Insight generation | Sonnet 4 | ~24 runs/month (weekly x 6 workspaces) | ~$7.20 |
+| **Total** | | | **~$8.70/month** |
+
+These costs are negligible compared to the $300+/month Clay subscription that was replaced.
+
+## Installation
+
+```bash
+# No new packages to install.
+# v3.0 is purely application-layer code using existing dependencies.
+
+# Only action needed:
+npx prisma db push  # After adding new models to schema.prisma
+```
+
+## Integration Points
+
+| Existing Code | v3.0 Integration |
+|---------------|-----------------|
+| `src/app/api/webhooks/emailbison/route.ts` | Add classification call after notification, before response |
+| `src/lib/agents/runner.ts` | Reuse for intelligence agent (no changes needed) |
+| `src/lib/agents/types.ts` | Add `IntelligenceOutput` type and Zod schema |
+| `src/lib/icp/scorer.ts` | Reference pattern for reply classification (generateObject + Haiku) |
+| `src/lib/notifications.ts` | Add `notifyInsightDigest()` for weekly summaries |
+| `src/components/dashboard/` | New intelligence hub page with Recharts components |
+| `prisma/schema.prisma` | Add ReplyClassification, Insight, ActionItem models |
 
 ## Sources
 
-- Apollo.io People API Search official docs — `https://docs.apollo.io/reference/people-api-search` — endpoint `POST /api/v1/mixed_people/api_search`, no-credits confirmed, filter params (HIGH confidence)
-- Apollo.io Find People Using Filters — `https://docs.apollo.io/docs/find-people-using-filters` — `person_titles`, `person_locations`, `organization_industry_tag_ids`, `organization_num_employees_ranges` (HIGH confidence)
-- Exa.ai Websets overview — `https://exa.ai/docs/websets/api/overview` — async/structured/event-driven pattern confirmed (MEDIUM confidence)
-- exa-js version — `npm view exa-js version` → `2.6.1` (HIGH confidence)
-- exa-js GitHub — `https://github.com/exa-labs/exa-js` — Websets support, TypeScript types (HIGH confidence)
-- apify-client version — `npm view apify-client version` → `2.22.2` (HIGH confidence)
-- Apify client JS docs — `https://docs.apify.com/api/client/js/docs` — actor call + dataset retrieval pattern (HIGH confidence)
-- HarvestAPI LinkedIn no-cookie actor — `https://apify.com/harvestapi/linkedin-profile-search` — no cookies, $0.10/search page (MEDIUM confidence)
-- PredictLeads API v3 — `https://docs.predictleads.com/v3` — signal datasets, JSON API format, no Node SDK (MEDIUM confidence)
-- PredictLeads auth — `https://blog.predictleads.com/2024/08/21/introducing-predictleads-new-technology-detection-api-endpoint` — `api_token` + `api_key` query params confirmed (MEDIUM confidence)
-- Prospeo Search Person — `https://prospeo.io/api-docs/search-person` — 1 credit/request, 25 results, 25k max (HIGH confidence)
-- Serper.dev — `https://serper.dev/` — search types (search/news/maps/places), `X-API-KEY` header, $1/1k queries (MEDIUM confidence — marketing page)
-- serper npm staleness — `https://socket.dev/npm/package/serper` — last release 1+ year ago (HIGH confidence — do not use)
-- Vercel AI SDK Node.js CLI pattern — `https://ai-sdk.dev/docs/getting-started/nodejs` — `streamText` + readline/promises pattern (HIGH confidence)
-- Railway cron docs — `https://docs.railway.com/cron-jobs` — native cron schedule, exit-when-done best practice (HIGH confidence)
-- node-cron version — `npm view node-cron version` → `4.2.1` (HIGH confidence — verified but not recommended)
-- croner version — `npm view croner version` → `10.0.1` (HIGH confidence — add only if in-process scheduling needed)
-- AI Ark People Search — `https://ai-ark.com/platform/semantic-search/` — feature confirmed; API docs not publicly indexed (LOW confidence — verify in dashboard before implementing)
-- Existing codebase — `src/lib/enrichment/providers/`, `src/lib/agents/`, `package.json` — all versions and patterns verified against live files (HIGH confidence)
-
----
-
-*Stack research for: Outsignal Lead Engine v2.0 — Lead Discovery & Intelligence*
-*Researched: 2026-03-03*
+- Codebase analysis: `package.json`, `prisma/schema.prisma`, `src/lib/agents/`, `src/lib/icp/scorer.ts`
+- AI SDK `generateObject` usage verified in `src/lib/icp/scorer.ts` (identical pattern needed for classification)
+- WebhookEvent schema verified in `prisma/schema.prisma` (all reply data already persisted)
+- CachedMetrics model verified in schema (analytics caching layer already exists)
+- Agent framework verified in `src/lib/agents/runner.ts` + `types.ts` (reusable for intelligence agent)
+- Haiku model ID `claude-haiku-4-5-20251001` verified in `src/lib/agents/types.ts` AgentConfig type

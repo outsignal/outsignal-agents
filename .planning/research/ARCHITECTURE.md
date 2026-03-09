@@ -1,889 +1,636 @@
-# Architecture Research
+# Architecture Patterns
 
-**Domain:** Multi-source lead discovery, signal monitoring, Creative Ideas copy, CLI orchestrator, signal dashboard
-**Researched:** 2026-03-03
-**Confidence:** HIGH — based on direct codebase inspection + verified API docs
+**Domain:** Campaign Intelligence Hub — reply classification, analytics, insights, action queue
+**Researched:** 2026-03-09
+**Confidence:** HIGH (all integration points verified against existing codebase)
+
+## Executive Summary
+
+The Campaign Intelligence Hub adds a feedback loop to the existing outbound pipeline. Today, replies arrive via webhook/polling, update person status, send notifications, and stop. The intelligence layer intercepts this same flow to classify replies, aggregate performance metrics, generate AI insights, and surface actionable recommendations. The architecture integrates with 4 existing touchpoints (webhook handler, poll-replies cron, dashboard stats API, agent framework) without disrupting them.
+
+The key architectural decision: **pre-compute analytics to CachedMetrics (already in schema, currently unused) via cron, not on-demand**. This avoids slow cross-workspace queries on Neon serverless at dashboard request time. The classifier hooks into the webhook handler using the same fire-and-forget pattern already proven by `generateReplySuggestion`.
 
 ---
 
-## System Overview
-
-This is an integration architecture document for v2.0 additions to an existing system. Every decision must fit within the established patterns of:
-- Agent pattern: `AgentConfig` + `runAgent()` + typed tools
-- Enrichment pattern: provider adapter + waterfall orchestrator + circuit breaker + dedup gate
-- Railway: long-running Node.js worker process polling via `ApiClient`
-- Vercel: Next.js App Router, 2-cron limit already saturated
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              VERCEL (Next.js 16)                             │
-├─────────────────────┬───────────────────────┬───────────────────────────────┤
-│  Admin Dashboard    │   API Routes          │   Agent Framework              │
-│  /admin/*           │   /api/chat           │   src/lib/agents/              │
-│  /signals (NEW)     │   /api/discovery/*    │   orchestrator, runner, types  │
-│  Cmd+J sidebar      │   /api/signals/*      │   leads (UPGRADE), writer,     │
-│                     │   /api/cron/* (2 max) │   research, campaign           │
-└─────────────────────┴───────────────────────┴───────────────────────────────┘
-         │                       │                           │
-         ▼                       ▼                           ▼
-┌──────────────┐     ┌───────────────────┐     ┌──────────────────────────────┐
-│  PostgreSQL  │     │  External APIs    │     │   src/lib/ modules            │
-│  (Neon)      │     │  (Discovery)      │     │   enrichment/ (EXTEND)        │
-│              │     │  Apollo           │     │   discovery/ (NEW)            │
-│  Person      │     │  Prospeo Search   │     │   knowledge/store             │
-│  Company     │     │  AI Ark Search    │     │   agents/shared-tools         │
-│  SignalEvent │     │  Exa.ai           │     │                               │
-│  (NEW)       │     │  Serper.dev       │     │   src/mcp/leads-agent/        │
-│  SignalCamp  │     │  Apify LinkedIn   │     │   (EXTEND with new tools)     │
-│  (NEW)       │     │  PredictLeads     │     │                               │
-│  Campaign    │     │  Firecrawl        │     │   scripts/cli-chat.ts (NEW)   │
-│  TargetList  │     └───────────────────┘     └──────────────────────────────┘
-│  KBDocument  │
-│  AgentRun    │
-└──────────────┘
-         ▲
-         │  (all reads/writes via ApiClient → Vercel API)
-         │
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         RAILWAY (Node.js workers)                            │
-├──────────────────────────────┬──────────────────────────────────────────────┤
-│  LinkedIn Worker (existing)  │  Signal Monitor Worker (NEW)                 │
-│  worker/src/worker.ts        │  worker/src/signal-worker.ts                 │
-│  - Polls LinkedIn action Q   │  - Long-running poll loop (same pattern)     │
-│  - Voyager HTTP API          │  - Polls PredictLeads + Serper.dev           │
-│  - Reports via ApiClient     │  - Writes SignalEvent via POST /api/signals  │
-│                              │  - Triggers auto-pipeline on match           │
-└──────────────────────────────┴──────────────────────────────────────────────┘
+                              EXISTING                                    NEW
+                           +-----------+                          +------------------+
+  EmailBison webhook ----->| Webhook   |---> WebhookEvent ------->| Reply Classifier |
+  Poll-replies cron ------>| Handler   |     (already stored)     | (inline + cron)  |
+                           +-----------+                          +------------------+
+                                                                         |
+                                                                         v
+                                                                  +------------------+
+                                                                  | ReplyClassification |
+                                                                  | (new model)       |
+                                                                  +------------------+
+                                                                         |
+                                +----------------------------------------+
+                                |                                        |
+                                v                                        v
+                         +------------------+                   +------------------+
+                         | Analytics Cron   |                   | Insight Generator |
+                         | (aggregate to    |                   | (AI agent, daily) |
+                         | CachedMetrics)   |                   +------------------+
+                         +------------------+                            |
+                                |                                        v
+                                v                                +------------------+
+                         +------------------+                    | Insight          |
+                         | Intelligence Hub |<-------------------| (new model)      |
+                         | Dashboard Page   |                    +------------------+
+                         +------------------+                            |
+                                ^                                        v
+                                |                                +------------------+
+                                +--------------------------------| AdminAction      |
+                                                                 | (action queue)   |
+                                                                 +------------------+
 ```
 
 ---
 
 ## Component Boundaries
 
-### New vs Existing
-
-| Component | Status | Location | Responsibility |
-|-----------|--------|----------|----------------|
-| `src/lib/discovery/` | NEW module | Vercel | Provider adapters for lead search (Apollo, Prospeo Search, AI Ark Search, Exa.ai, Serper.dev, Apify) |
-| `src/lib/enrichment/` | EXTEND (not replace) | Vercel | Add discovery providers to Provider union; enrichment waterfall stays separate |
-| `src/lib/agents/leads.ts` | UPGRADE | Vercel | New `discoverLeads` tool replaces/supplements DB-only `searchPeople` |
-| `src/lib/agents/writer.ts` | EXTEND | Vercel | Add Creative Ideas mode via new tool + system prompt section |
-| `src/lib/agents/orchestrator.ts` | EXTEND | Vercel | Add `delegateToSignalPipeline` delegation tool |
-| `src/mcp/leads-agent/tools/` | EXTEND | Claude Code | New `discover.ts` and `signals.ts` tool modules |
-| `worker/src/signal-worker.ts` | NEW | Railway | Long-running PredictLeads + Serper.dev poll loop |
-| `worker/src/index.ts` | EXTEND | Railway | Launch signal worker alongside LinkedIn worker |
-| `prisma/schema.prisma` | EXTEND | Both | Add SignalEvent, SignalCampaign models |
-| `src/app/(admin)/signals/` | NEW page | Vercel | Signal dashboard UI |
-| `src/app/api/signals/` | NEW routes | Vercel | Signal CRUD + pipeline trigger endpoints |
-| `scripts/cli-chat.ts` | NEW script | Local | Interactive CLI orchestrator session |
+| Component | Responsibility | Communicates With | New or Modified |
+|-----------|---------------|-------------------|-----------------|
+| Reply Classifier | Classify reply intent, sentiment, objections, buying signals | WebhookEvent (reads), ReplyClassification (writes) | **NEW** `src/lib/intelligence/classifier.ts` |
+| Analytics Aggregator | Compute campaign rankings, strategy comparison, cross-workspace benchmarks | ReplyClassification, Campaign, WebhookEvent, PersonWorkspace (reads), CachedMetrics (writes) | **NEW** `src/lib/intelligence/aggregator.ts` |
+| Insight Generator | AI-powered analysis of aggregated data, produces actionable cards | CachedMetrics, ReplyClassification (reads), Insight (writes) | **NEW** `src/lib/intelligence/insight-generator.ts` |
+| Action Queue | Store and manage admin-facing suggested optimizations | Insight (reads), AdminAction (writes/reads) | **NEW** `src/lib/intelligence/action-queue.ts` |
+| Intelligence Hub Page | Dashboard page rendering insights, analytics, action queue | All intelligence API endpoints (reads) | **NEW** `src/app/(admin)/intelligence/page.tsx` |
+| Webhook Handler | Process EmailBison webhooks | ReplyClassifier (calls after event storage) | **MODIFIED** — add classifier hook (3-5 lines) |
+| Poll-Replies Cron | Catch missed replies | ReplyClassifier (calls after processing) | **MODIFIED** — add classifier hook (3-5 lines) |
+| Dashboard Stats API | Aggregate KPIs for main dashboard | CachedMetrics (reads pre-computed data) | **MODIFIED** — add intelligence summary KPIs |
+| Digest Notifier | Send periodic Slack/email summaries of top insights | Insight (reads), notifications.ts (uses) | **NEW** `src/lib/intelligence/digest.ts` |
 
 ---
 
-## 1. Discovery Module: `src/lib/discovery/`
+## New Prisma Models
 
-### Why a separate module (not inside `src/lib/enrichment/`)
+### ReplyClassification
 
-Enrichment and discovery are architecturally different operations:
-- **Enrichment**: takes a known person/company, fills in missing fields (email, title, etc.)
-- **Discovery**: searches a provider's database to return a list of matching leads from criteria
-
-Mixing them would bloat waterfall.ts and confuse the adapter interface contracts. Keep them separate.
-
-### Structure
-
-```
-src/lib/discovery/
-├── types.ts           # DiscoveryInput, DiscoveryResult, DiscoveryAdapter
-├── index.ts           # discoverLeads(input, sources) — fan-out across providers
-├── providers/
-│   ├── apollo.ts      # Apollo /people/search → DiscoveryResult[]
-│   ├── prospeo.ts     # Prospeo /search endpoint (separate from enrichment adapter)
-│   ├── aiark.ts       # AI Ark search endpoint
-│   ├── exa.ts         # Exa.ai company/person semantic search
-│   ├── serper.ts      # Serper.dev Google + Reddit + Twitter search
-│   └── apify.ts       # Apify LinkedIn scraping actor
-```
-
-### Core Types
-
-```typescript
-// src/lib/discovery/types.ts
-
-export interface DiscoveryInput {
-  jobTitles?: string[];
-  industries?: string[];
-  locations?: string[];
-  companySizeMin?: number;
-  companySizeMax?: number;
-  keywords?: string[];
-  companyType?: "enterprise" | "smb" | "niche" | "local";
-  limit?: number;
-}
-
-export interface DiscoveryResult {
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  jobTitle?: string;
-  company?: string;
-  companyDomain?: string;
-  linkedinUrl?: string;
-  location?: string;
-  source: DiscoveryProvider;
-  confidence: "high" | "medium" | "low";
-  rawResponse?: unknown;
-}
-
-export type DiscoveryProvider =
-  | "apollo"
-  | "prospeo-search"
-  | "aiark-search"
-  | "exa"
-  | "serper"
-  | "apify";
-
-export type DiscoveryAdapter = (
-  input: DiscoveryInput
-) => Promise<DiscoveryResult[]>;
-```
-
-### Source Selection Logic (in `index.ts`)
-
-```typescript
-// Agent provides ICP type hint — index.ts picks providers accordingly
-// enterprise → Apollo (250M contacts, deep firmographics)
-// niche → Exa.ai (semantic search, finds obscure verticals)
-// local → Serper.dev (Google Maps + local business search)
-// linkedin-heavy → Apify (LinkedIn scraping, profile data)
-// default → Prospeo Search + AI Ark Search (cheapest first)
-```
-
-The Leads Agent calls `discoverLeads()` with the workspace ICP and a source hint. The function runs the appropriate providers in parallel (or sequenced by cost) and deduplicates against the local DB before returning.
-
----
-
-## 2. Signal Monitoring: Railway Signal Worker
-
-### Why Railway (not Vercel cron)
-
-Vercel Hobby plan: 2 cron slots, both already used (enrichment + inbox-health). Adding a third would require a plan upgrade. Railway already runs the LinkedIn worker as a long-running process. The signal worker follows the identical architectural pattern.
-
-### Pattern: Mirror the LinkedIn Worker
-
-```
-worker/
-├── src/
-│   ├── index.ts             # EXTEND: launch signal worker alongside LinkedIn worker
-│   ├── worker.ts            # Existing LinkedIn worker (unchanged)
-│   ├── signal-worker.ts     # NEW: PredictLeads + Serper.dev poll loop
-│   ├── api-client.ts        # EXTEND: add postSignalEvent(), getSignalCampaigns()
-│   ├── voyager-client.ts    # Unchanged
-│   └── scheduler.ts         # Unchanged (reuse business hours logic)
-```
-
-### Signal Worker Loop
-
-```typescript
-// worker/src/signal-worker.ts
-
-class SignalWorker {
-  async tick(): Promise<void> {
-    // 1. Fetch active SignalCampaigns from API
-    const campaigns = await this.api.getSignalCampaigns();
-
-    for (const campaign of campaigns) {
-      // 2. Query PredictLeads for matching signals since last check
-      const signals = await this.predictLeads.query({
-        domains: campaign.targetDomains,
-        signalTypes: campaign.signalTypes,  // job_change | funding | hiring | tech | news
-        since: campaign.lastCheckedAt,
-      });
-
-      // 3. For each signal, POST to /api/signals/events
-      for (const signal of signals) {
-        await this.api.postSignalEvent({
-          signalCampaignId: campaign.id,
-          workspaceSlug: campaign.workspaceSlug,
-          type: signal.type,
-          companyDomain: signal.domain,
-          payload: signal,
-        });
-      }
-
-      // 4. Update campaign.lastCheckedAt
-      await this.api.updateSignalCampaignLastChecked(campaign.id);
-    }
-
-    // 5. Social listening via Serper.dev (Reddit/Twitter)
-    await this.runSocialListening();
-  }
-}
-```
-
-The signal worker polls every 4 hours (configurable per campaign). PredictLeads is queried per company domain list — this is efficient as PredictLeads is designed for agent-style polling.
-
----
-
-## 3. Prisma Schema Extensions
-
-### New Models
+Stores the AI classification result for each reply. One-to-one with the WebhookEvent that triggered it.
 
 ```prisma
-// Add to prisma/schema.prisma
+model ReplyClassification {
+  id              String   @id @default(cuid())
+  webhookEventId  String   @unique  // FK to WebhookEvent.id
+  workspaceSlug   String
+  campaignId      String?  // Outsignal campaign ID (resolved from emailBisonCampaignId)
+  campaignName    String?  // Denormalized for query convenience
 
-model SignalCampaign {
-  id            String   @id @default(cuid())
-  workspaceSlug String
-  name          String
-  description   String?
+  // Classification outputs
+  intent          String   // "interested" | "not_interested" | "objection" | "question" | "referral" | "ooo" | "unsubscribe" | "other"
+  sentiment       Float    // -1.0 to 1.0
+  objectionType   String?  // "budget" | "timing" | "authority" | "need" | "competitor" | "satisfaction" | null
+  buyingSignals   String?  // JSON array: ["asked_pricing", "requested_demo", "mentioned_timeline", ...]
+  urgency         String   @default("normal") // "hot" | "warm" | "normal" | "cold"
 
-  // What signals to monitor
-  signalTypes   String   // JSON array: ["job_change", "funding", "hiring", "tech", "news"]
-  targetDomains String?  // JSON array of company domains to monitor (null = use workspace ICP)
+  // Context
+  leadEmail       String
+  replySnippet    String?  // First 200 chars of reply body (for admin review without re-fetching)
+  sequenceStep    Int?     // Which step triggered the reply (if resolvable)
 
-  // Auto-pipeline config
-  autoPipeline  Boolean  @default(false)  // trigger enrich→score→campaign→copy on match
-  campaignTemplateId String?  // Campaign to clone as template for auto-pipeline
+  // Metadata
+  classifiedBy    String   @default("haiku") // "haiku" | "rule" | "manual"
+  confidence      Float    @default(0.8)     // 0-1 classifier confidence
+  classifiedAt    DateTime @default(now())
 
-  // Monitoring cadence
-  checkIntervalHours Int  @default(4)
-  lastCheckedAt DateTime?
+  @@index([workspaceSlug, classifiedAt])
+  @@index([campaignId])
+  @@index([intent])
+  @@index([workspaceSlug, intent])
+}
+```
 
-  status  String  @default("active")  // active | paused | archived
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+**Design decisions:**
+- `webhookEventId` is unique (1:1 with event) — one classification per reply event, reclassify = update in place.
+- `campaignName` denormalized because analytics queries group by campaign name constantly; joining through Campaign -> emailBisonCampaignId -> WebhookEvent for every query is expensive on Neon.
+- `buyingSignals` is JSON rather than a separate table — read-only after classification, never queried by individual signal.
+- `sequenceStep` enables "which sequence step generates the most replies?" analysis.
+- No FK to WebhookEvent — keeping it as a soft reference (same pattern as `SignalEvent.companyDomain` and `SignalCampaignLead.signalEventId`). WebhookEvent has no FK constraints on any existing references either.
 
-  workspace Workspace      @relation(fields: [workspaceSlug], references: [slug])
-  events    SignalEvent[]
+### Insight
 
+Stores AI-generated insight cards, generated periodically and presented to the admin.
+
+```prisma
+model Insight {
+  id              String   @id @default(cuid())
+  workspaceSlug   String?  // null = cross-workspace insight
+  category        String   // "campaign_performance" | "icp_calibration" | "strategy_comparison" | "anomaly" | "benchmark"
+  title           String   // Short headline: "Rise email campaign outperforms LinkedIn 3:1"
+  body            String   // 2-3 sentence explanation with data points
+  dataSnapshot    String?  // JSON — the metrics that support this insight (for audit)
+  priority        Int      @default(5) // 1=critical, 5=informational
+  status          String   @default("active") // "active" | "dismissed" | "actioned" | "expired"
+  expiresAt       DateTime? // Auto-expire after 30 days if not actioned
+
+  generatedAt     DateTime @default(now())
+  generatedBy     String   @default("insight-agent") // "insight-agent" | "manual"
+
+  actions         AdminAction[]
+
+  @@index([status, priority])
   @@index([workspaceSlug, status])
-}
-
-model SignalEvent {
-  id               String   @id @default(cuid())
-  signalCampaignId String
-  workspaceSlug    String
-  type             String   // "job_change" | "funding" | "hiring_spike" | "tech_adoption" | "news" | "social_mention"
-
-  // Source entity
-  companyDomain    String?
-  personEmail      String?  // if signal is person-level (job change)
-
-  // Pipeline status
-  pipelineStatus   String   @default("pending")  // pending | enriching | scoring | draft | portal | deployed | skipped
-  personId         String?  // set after enrichment
-  campaignId       String?  // set after campaign creation
-
-  payload          String   // JSON - raw signal data from PredictLeads/Serper
-
-  detectedAt       DateTime @default(now())
-  processedAt      DateTime?
-
-  campaign  SignalCampaign @relation(fields: [signalCampaignId], references: [id])
-
-  @@index([signalCampaignId, pipelineStatus])
-  @@index([workspaceSlug, type])
-  @@index([detectedAt])
+  @@index([category])
+  @@index([generatedAt])
 }
 ```
 
-### Relationships to Existing Models
+### AdminAction
 
-- `SignalCampaign` → `Workspace` (many-to-one, existing pattern matches Campaign → Workspace)
-- `SignalEvent.personId` → `Person` (soft reference, resolved after enrichment)
-- `SignalEvent.campaignId` → `Campaign` (created by auto-pipeline)
-- `SignalCampaign.campaignTemplateId` → `Campaign` (optional template to clone)
+Suggested optimizations attached to insights. Admin can approve/dismiss/defer.
+
+```prisma
+model AdminAction {
+  id          String   @id @default(cuid())
+  insightId   String
+  type        String   // "pause_campaign" | "adjust_icp_threshold" | "switch_strategy" | "increase_volume" | "retire_sender" | "custom"
+  title       String   // "Pause Rise Q1 campaign - 0.2% reply rate after 500 sends"
+  detail      String?  // Implementation details or rationale
+  metadata    String?  // JSON — structured data for auto-execution (campaignId, threshold, etc.)
+  status      String   @default("pending") // "pending" | "approved" | "dismissed" | "deferred" | "executed"
+  deferUntil  DateTime? // When deferred, re-surface after this date
+  decidedAt   DateTime?
+  decidedBy   String?  // admin email
+
+  insight     Insight  @relation(fields: [insightId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([status])
+  @@index([insightId])
+}
+```
+
+**Design decisions:**
+- Actions are separate from Insights (1:many) because one insight can suggest multiple actions ("Campaign X underperforms" -> "Pause campaign" + "Switch to creative-ideas strategy").
+- `metadata` JSON enables future auto-execution: if admin approves "pause_campaign", the system reads `{ campaignId: "abc123" }` and executes.
+- `deferUntil` supports the "remind me later" workflow without losing the insight.
 
 ---
 
-## 4. Leads Agent Upgrade
+## Integration Points — Detailed
 
-### Current tools (local DB only)
+### 1. Reply Classification Hook
 
-`searchPeople`, `createList`, `addPeopleToList`, `getList`, `getLists`, `scoreList`, `exportListToEmailBison`, `searchKnowledgeBase`
+**Where:** Webhook handler (`src/app/api/webhooks/emailbison/route.ts` line ~153) and poll-replies cron (`src/app/api/cron/poll-replies/route.ts` line ~110)
 
-### New tools to ADD (not replace)
-
-```typescript
-// src/lib/agents/leads.ts — add to leadsTools
-
-discoverLeads: tool({
-  description: "Search external discovery providers for new leads matching ICP criteria. " +
-    "Use when: local DB has insufficient leads, client needs fresh contacts, " +
-    "or agent selects 'enterprise' ICP type. Results are deduped against local DB before returning. " +
-    "COSTS CREDITS. Always preview count before running.",
-  inputSchema: z.object({
-    workspaceSlug: z.string(),
-    jobTitles: z.array(z.string()).optional(),
-    industries: z.array(z.string()).optional(),
-    locations: z.array(z.string()).optional(),
-    companySizeMin: z.number().optional(),
-    companySizeMax: z.number().optional(),
-    keywords: z.array(z.string()).optional(),
-    sources: z.array(z.enum(["apollo", "prospeo-search", "aiark-search", "exa", "serper", "apify"])).optional(),
-    limit: z.number().optional().default(50),
-  }),
-  execute: async (params) => {
-    return operations.discoverLeads(params);
-  },
-}),
-
-searchDirectory: tool({
-  description: "Scrape a niche directory or curated list URL via Firecrawl to extract leads. " +
-    "Use for ultra-niche ICPs (e.g. 'all members of UK Promotional Merchandise Association'). " +
-    "COSTS CREDITS (Firecrawl).",
-  inputSchema: z.object({
-    url: z.string(),
-    extractionPrompt: z.string().describe("What to extract from each listing"),
-    workspaceSlug: z.string(),
-  }),
-  execute: async (params) => {
-    return operations.scrapeDirectory(params);
-  },
-}),
-```
-
-### Updated system prompt section
-
-The Leads Agent system prompt gains a new section:
-
-```
-## Discovery Mode
-When local DB results are insufficient or user asks to "find new leads" / "discover leads":
-1. Check workspace ICP to determine best source(s)
-   - Enterprise (>500 employees): Apollo (best firmographic depth)
-   - Niche/unusual vertical: Exa.ai (semantic search)
-   - Local/regional: Serper.dev (Google Maps, local queries)
-   - LinkedIn-heavy ICP: Apify LinkedIn scraper
-   - Default: Prospeo Search + AI Ark Search
-2. Call discoverLeads with appropriate sources
-3. Import discovered results into local DB via importDiscoveredLeads
-4. Proceed with normal list-building flow on imported people
-```
-
----
-
-## 5. Writer Agent: Creative Ideas Mode
-
-### What it is
-
-A new generation mode that produces 3 constrained, client-specific "Creative Ideas" for a prospect — not generic "congrats on funding" hooks but ideas grounded in the client's specific value proposition and the prospect's situation.
-
-### Implementation: New tool + system prompt section (not a new agent)
-
-The Writer Agent already has the client context machinery. Adding Creative Ideas is a new tool + a new system prompt section.
+**How:** After WebhookEvent is created and person status is updated, call the classifier. Classification is **non-blocking** (fire-and-forget) — same proven pattern as `generateReplySuggestion` at webhook handler line 354.
 
 ```typescript
-// Add to writerTools in src/lib/agents/writer.ts
-
-getCreativeIdeasExamples: tool({
-  description: "Retrieve per-client Creative Ideas examples from the knowledge base. " +
-    "Tag format: 'creative-ideas-{workspaceSlug}'. These are admin-approved examples " +
-    "for this specific client that the agent should emulate in style and constraint.",
-  inputSchema: z.object({
-    workspaceSlug: z.string(),
-    prospectVertical: z.string().optional().describe("Prospect's industry to find relevant examples"),
-    limit: z.number().optional().default(5),
-  }),
-  execute: async ({ workspaceSlug, prospectVertical, limit }) => {
-    const tags = `creative-ideas-${workspaceSlug}`;
-    const query = prospectVertical
-      ? `creative ideas ${prospectVertical} examples`
-      : "creative ideas examples constrained personalized";
-    return searchKnowledge(query, { limit, tags });
-  },
-}),
-
-saveCreativeIdeas: tool({
-  description: "Save generated Creative Ideas for a prospect to the Campaign entity.",
-  inputSchema: z.object({
-    campaignId: z.string(),
-    personId: z.string().optional(),
-    ideas: z.array(z.object({
-      title: z.string(),
-      hook: z.string(),
-      body: z.string(),
-      rationale: z.string(),
-    })),
-  }),
-  execute: async (params) => {
-    // Stores in Campaign.emailSequence as a special "creative_ideas" type
-    return saveCampaignCreativeIdeas(params);
-  },
-}),
+// In webhook handler, after webhookEvent.create (line 153):
+if (["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED"].includes(eventType) && !isAutomatedFlag) {
+  classifyReply({
+    webhookEventId: webhookEvent.id,
+    workspaceSlug,
+    leadEmail: leadEmail ?? "",
+    subject,
+    body: textBody,
+    campaignId,
+    interested,
+  }).catch(err => console.error("[classify] Error:", err));
+}
 ```
 
-### System prompt section to add
-
-```
-## Creative Ideas Mode
-Triggered when task contains "creative ideas" or mode="creative_ideas".
-
-Creative Ideas are 3 constrained, specific copy hooks for a single prospect.
-NOT generic. NOT signal-as-hook. The signal is your targeting reason (invisible).
-The hook is the creative angle that resonates with the prospect's world.
-
-Process:
-1. getCreativeIdeasExamples for this workspace + prospect vertical
-2. getWorkspaceIntelligence for client context
-3. searchKnowledgeBase for "creative ideas frameworks constrained personalization"
-4. Generate 3 ideas, each with: Title | Hook (1 sentence) | Body (under 60 words) | Rationale
-5. saveCreativeIdeas to campaign
-
-Rules:
-- Ideas must feel specific to this client's value prop (not generic)
-- Constraint: reference something the prospect already does/has/believes
-- No signal as hook — signal is targeting, not copy
-- Vary the angle: one pain, one aspiration, one social proof
+**Same hook in poll-replies cron** (after `webhookEvent.create` at line ~110):
+```typescript
+classifyReply({
+  webhookEventId: event.id,
+  workspaceSlug: ws.slug,
+  leadEmail: reply.from_email_address,
+  subject: reply.subject,
+  body: reply.text_body,
+  campaignId: reply.campaign_id?.toString() ?? null,
+  interested: reply.interested,
+}).catch(err => console.error("[classify] Error:", err));
 ```
 
-### Knowledge base tagging for per-client examples
+**Important:** The classifier is a pure function (no side effects beyond writing ReplyClassification). Safe for background execution. The webhook returns 200 immediately.
 
-Admin ingests Creative Ideas examples with tag `creative-ideas-{workspaceSlug}`. The ingest CLI already supports tags (`scripts/ingest-document.ts`). No new infrastructure needed — just tagging convention.
+### 2. Reply Classifier Implementation
 
----
+**Two-tier approach:**
 
-## 6. CLI Orchestrator
+**Tier 1 — Rule-based (fast, free, ~60% of replies):**
+```typescript
+function ruleBasedClassify(reply: ReplyData): Partial<Classification> | null {
+  if (reply.interested) return { intent: "interested", confidence: 0.95, classifiedBy: "rule" };
+  if (/out of office|ooo|away from/i.test(reply.body)) return { intent: "ooo", confidence: 0.99, classifiedBy: "rule" };
+  if (/unsubscribe|remove me|stop emailing/i.test(reply.body)) return { intent: "unsubscribe", confidence: 0.95, classifiedBy: "rule" };
+  if (/not interested|no thanks|pass|not for us/i.test(reply.body)) return { intent: "not_interested", confidence: 0.85, classifiedBy: "rule" };
+  return null; // Fall through to AI
+}
+```
 
-### Why a script (not MCP extension)
-
-The existing MCP server (`src/mcp/leads-agent/`) is for Claude Code tool use — the model calls tools autonomously. The CLI orchestrator is a *human-in-the-loop* chat session where the admin types requests and the orchestrator responds interactively. These are different UX modes.
-
-MCP tools are still available as discrete operations. The CLI chat is the conversational interface.
-
-### Implementation
+**Tier 2 — AI classification (Haiku, ~$0.002 per reply):**
+Use `generateObject` from the AI SDK — NOT the agent runner. Classification is a single deterministic call with structured output. The runner adds unnecessary overhead (AgentRun record, tool loop, JSON parsing).
 
 ```typescript
-// scripts/cli-chat.ts
-
-/**
- * Interactive CLI chat session with the Outsignal Orchestrator.
- *
- * Usage:
- *   npx tsx scripts/cli-chat.ts [workspace-slug]
- *   npx tsx scripts/cli-chat.ts rise
- *
- * Features:
- * - Full orchestrator (same config as Cmd+J sidebar)
- * - Stateful conversation history within session
- * - Workspace context pre-loaded
- * - Ctrl+C to exit
- */
-
-import readline from "node:readline";
-import { generateText, stepCountIs } from "ai";
+import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-// Import orchestratorConfig and orchestratorTools with relative paths
-// (path alias @/ not available in scripts)
+import { z } from "zod";
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+const classificationSchema = z.object({
+  intent: z.enum(["interested", "not_interested", "objection", "question", "referral", "ooo", "unsubscribe", "other"]),
+  sentiment: z.number().min(-1).max(1),
+  objectionType: z.enum(["budget", "timing", "authority", "need", "competitor", "satisfaction"]).nullable(),
+  buyingSignals: z.array(z.string()),
+  urgency: z.enum(["hot", "warm", "normal", "cold"]),
+  confidence: z.number().min(0).max(1),
+});
 
-async function chat(userInput: string): Promise<string> {
-  history.push({ role: "user", content: userInput });
+const result = await generateObject({
+  model: anthropic("claude-haiku-4-5-20251001"),
+  schema: classificationSchema,
+  prompt: `Classify this cold outreach reply. Context: outbound email campaign for ${workspaceVertical}.
 
-  const result = await generateText({
-    model: anthropic(orchestratorConfig.model),
-    system: orchestratorConfig.systemPrompt,
-    messages: history,
-    tools: orchestratorTools,
-    stopWhen: stepCountIs(12),
+Subject: ${subject}
+Body: ${body}
+
+Classify intent, sentiment (-1 to 1), any objection type, buying signals, and urgency.`,
+});
+```
+
+**Why `generateObject` not `runAgent`:** Classification is a single-shot structured output. The runner creates AgentRun records, supports multi-step tool loops, and handles JSON extraction — all unnecessary overhead for classification. `generateObject` returns typed data directly.
+
+**Cost projection:** At current volume (~50-100 replies/month, ~40% hitting AI tier), classification costs ~$0.04-0.08/month. Negligible.
+
+### 3. Analytics Aggregation — CachedMetrics
+
+**Strategy:** Use the existing `CachedMetrics` model (already in schema at line 241, unique constraint on `[workspace, metricType]`, currently unused in any source file). A dedicated cron job computes aggregates and writes to CachedMetrics. Dashboard reads from CachedMetrics instead of computing on-demand.
+
+**Why not on-demand computation:**
+- Cross-workspace queries on Neon serverless have cold-start latency (~50-100ms connection setup per query through Neon's proxy).
+- Aggregating across WebhookEvent (growing at ~5K rows/year), Campaign, ReplyClassification requires multiple joins.
+- A 6-workspace GROUP BY with date bucketing and campaign resolution: 2-5 seconds on cold connections.
+- CachedMetrics reads are single-row lookups by unique `[workspace, metricType]`: fast regardless of data volume.
+
+**MetricType keys:**
+
+| metricType | Data Shape | Refresh Frequency |
+|------------|-----------|-------------------|
+| `campaign_rankings_{workspace}` | Sorted campaigns by reply rate, interested rate, intent breakdown | Every 6 hours |
+| `campaign_rankings_all` | Cross-workspace rankings | Every 6 hours |
+| `strategy_comparison_{workspace}` | Performance by copyStrategy (creative-ideas vs pvp vs one-liner) | Every 6 hours |
+| `strategy_comparison_all` | Cross-workspace strategy comparison | Every 6 hours |
+| `intent_breakdown_{workspace}` | Reply intent distribution (counts per intent type) | Every 6 hours |
+| `intent_breakdown_all` | Cross-workspace intent distribution | Every 6 hours |
+| `icp_calibration_{workspace}` | ICP score buckets vs conversion rate correlation | Daily |
+| `sequence_step_analysis_{workspace}` | Reply rates by sequence step position | Daily |
+| `workspace_benchmarks` | Cross-workspace averages (reply rate, interested rate, bounce rate) | Daily |
+| `weekly_digest_{workspace}` | Summary stats for digest notification | Weekly |
+
+**Cron endpoint:** `GET /api/cron/compute-intelligence` (protected by CRON_SECRET, same auth pattern as poll-replies)
+
+**Query param routing:**
+- `?scope=frequent` — campaign rankings, strategy comparison, intent breakdown (runs every 6 hours)
+- `?scope=daily` — ICP calibration, sequence step analysis, benchmarks (runs daily at 5am UTC)
+- `?scope=insights` — AI insight generation (runs daily after daily aggregation, 6am UTC)
+
+**Scheduling:** External cron (cron-job.org) — cannot use Vercel cron (Hobby plan limit of 2 already saturated by enrichment + inbox-health). cron-job.org already used for poll-replies and inbox-health. Free tier supports unlimited jobs.
+
+### 4. ICP Score Calibration Query
+
+**Question:** "Do high ICP scores actually convert?"
+
+**Data path:** `PersonWorkspace.icpScore` + `Person.status` (replied/interested) + `ReplyClassification.intent`
+
+**Implementation:** Raw SQL via `prisma.$queryRaw` because Prisma's `groupBy` doesn't support CASE expressions.
+
+```sql
+SELECT
+  CASE
+    WHEN pw."icpScore" >= 80 THEN '80-100'
+    WHEN pw."icpScore" >= 60 THEN '60-79'
+    WHEN pw."icpScore" >= 40 THEN '40-59'
+    ELSE '0-39'
+  END AS score_bucket,
+  COUNT(*) AS total,
+  COUNT(*) FILTER (WHERE p.status IN ('replied', 'interested')) AS converted,
+  ROUND(
+    100.0 * COUNT(*) FILTER (WHERE p.status IN ('replied', 'interested')) / NULLIF(COUNT(*), 0),
+    1
+  ) AS conversion_pct
+FROM "LeadWorkspace" pw
+JOIN "Lead" p ON p.id = pw."leadId"
+WHERE pw."icpScore" IS NOT NULL
+  AND pw.workspace = $1
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+Result stored in `CachedMetrics` key `icp_calibration_{workspace}`.
+
+### 5. Campaign Performance Ranking Query
+
+**Data path:** `Campaign` + `WebhookEvent` (joined via `emailBisonCampaignId`) + `ReplyClassification`
+
+```typescript
+// For each campaign in workspace:
+const campaigns = await prisma.campaign.findMany({
+  where: { workspaceSlug: slug, status: { in: ["active", "paused", "completed"] } },
+  select: {
+    id: true, name: true, copyStrategy: true, type: true,
+    emailBisonCampaignId: true, deployedAt: true,
+  },
+});
+
+// For each campaign, count events by type
+for (const campaign of campaigns) {
+  if (!campaign.emailBisonCampaignId) continue;
+  const events = await prisma.webhookEvent.groupBy({
+    by: ["eventType"],
+    where: {
+      workspace: slug,
+      campaignId: campaign.emailBisonCampaignId.toString(),
+      isAutomated: false,
+    },
+    _count: { eventType: true },
   });
-
-  const reply = result.text;
-  history.push({ role: "assistant", content: reply });
-  return reply;
+  // Compute rates: replyRate = replies/sent, interestedRate = interested/sent
 }
-
-// readline loop — prompt → chat() → print → repeat
 ```
 
-### Key difference from scripts/generate-copy.ts
+**Strategy comparison** groups the same data by `Campaign.copyStrategy` instead of individual campaigns.
 
-The existing scripts are single-shot (one task, exit). The CLI chat maintains `history` across turns, enabling multi-step orchestration:
+### 6. Insight Generator — Agent Framework Integration
 
-```
-> find 50 CTOs in UK manufacturing for Rise
-[Leads Agent discovers 50 leads, returns results]
-> create a list called "Rise UK Manufacturing CTOs"
-[uses previous context — knows which people to add]
-> write email copy for this campaign
-[Writer Agent uses campaign context]
-```
+Uses existing agent framework. New agent config following the established `AgentConfig` pattern.
 
-This matches the existing `conversationContext` pattern already in `LeadsInput`.
-
----
-
-## 7. Signal Dashboard Page
-
-### Route: `/admin/signals`
-
-New page in the `(admin)` route group, following existing page patterns.
-
-```
-src/app/(admin)/signals/
-├── page.tsx              # Main signal dashboard
-├── [id]/
-│   └── page.tsx          # Signal campaign detail + event feed
-```
-
-### API Routes
-
-```
-src/app/api/signals/
-├── campaigns/
-│   ├── route.ts          # GET list, POST create SignalCampaign
-│   └── [id]/
-│       ├── route.ts      # GET, PATCH, DELETE SignalCampaign
-│       └── check/route.ts  # POST — manual trigger signal check
-├── events/
-│   ├── route.ts          # POST — receive signal from Railway worker
-│   └── [id]/
-│       └── route.ts      # GET event, PATCH pipeline status
-└── pipeline/
-    └── trigger/route.ts  # POST — trigger auto-pipeline for a SignalEvent
-```
-
-### Dashboard UI Components
-
-```
-Signal Dashboard (page.tsx)
-├── KPI row: Signals today | Active campaigns | Pipeline queued | Deployed this week
-├── Live feed: recent SignalEvents across all workspaces (paginated, filterable by type)
-├── Per-client breakdown: table of workspaces + active signal counts
-└── Cost tracking: PredictLeads credits used this period
-
-Signal Campaign Detail ([id]/page.tsx)
-├── Campaign config (signal types, target domains, cadence)
-├── Event timeline (chronological signal events with pipeline status badges)
-└── Auto-pipeline toggle + template campaign selector
-```
-
----
-
-## 8. Auto-Pipeline Orchestration
-
-### Pattern: Event-driven pipeline in API route (not agent)
-
-When a `SignalEvent` is created, the auto-pipeline runs as a sequential API-triggered workflow — not an agent call. The agent is only used for the copy generation step. This keeps the pipeline predictable and auditable.
-
-```
-POST /api/signals/events
-    ↓
-Validate + create SignalEvent
-    ↓
-If autoPipeline=true on SignalCampaign:
-    ↓
-POST /api/signals/pipeline/trigger (async via fetch, don't await)
-    ↓
-    Return 201 to Railway worker immediately
-
---- pipeline runs async ---
-POST /api/signals/pipeline/trigger
-    ↓
-1. Enrich: enrichEmail() + enrichCompany() (existing waterfall)
-    update SignalEvent.personId, pipelineStatus = "enriching" → "scoring"
-2. Score: runIcpScorer() (existing)
-    if score < threshold, pipelineStatus = "skipped", stop
-3. Campaign: createCampaign() using template
-    update SignalEvent.campaignId, pipelineStatus = "draft"
-4. Copy: runWriterAgent({ mode: "creative_ideas", campaignId, personId })
-    saves creative ideas to campaign
-    pipelineStatus = "portal"
-5. Notify client: existing notification system (Slack + email)
-    "New signal campaign ready for review"
-    ↓
-Client sees campaign in portal → reviews Creative Ideas → approves
-    ↓
-Deploy to EmailBison + LinkedIn (existing deploy flow)
-```
-
-### Why async (fire-and-forget pattern)
-
-PredictLeads API delivers signals in batches. Railway worker POSTs each event and must not wait for the pipeline to complete (could take 60-300s for enrichment + AI). The worker fires the event, Vercel's `/api/signals/events` route creates the DB record and triggers the pipeline async, then returns 201.
-
-For Vercel Hobby (60s function limit), the pipeline trigger route may timeout on heavy enrichment runs. **Recommended approach**: write `SignalEvent` with `pipelineStatus = "pending"`, then a pipeline runner picks it up via a poll mechanism that the signal worker triggers by calling `/api/signals/pipeline/trigger` explicitly after posting each event — avoiding the Vercel function timeout entirely.
-
----
-
-## Data Flow
-
-### Discovery Flow
-
-```
-User (CLI/Chat): "find 50 CFOs in UK fintech for Lime"
-    ↓
-Orchestrator → delegateToLeads
-    ↓
-Leads Agent: discoverLeads({ jobTitles: ["CFO"], industries: ["fintech"], locations: ["UK"], sources: ["apollo"] })
-    ↓
-src/lib/discovery/index.ts → apolloAdapter.search(input)
-    ↓
-Dedup: filter out emails already in Person table
-    ↓
-Import: create Person records (source = "apollo"), PersonWorkspace records
-    ↓
-Return: { imported: 42, deduped: 8, total: 50 }
-    ↓
-Leads Agent: createList → addPeopleToList
-    ↓
-User: "ok score them" → scoreList (existing)
-```
-
-### Signal Auto-Pipeline Flow
-
-```
-PredictLeads API (polled by Railway signal worker every 4h)
-    ↓
-Signal detected: "Acme Corp received Series B funding"
-    ↓
-POST /api/signals/events { type: "funding", domain: "acme.com", ... }
-    ↓ (async)
-Pipeline trigger:
-    enrichCompany(acme.com) → Company record updated
-    enrichEmail(CFO at acme.com) → Person record found/created
-    runIcpScorer(personId, workspaceSlug) → score: 82
-    createCampaign("Acme - Funding Signal") from template
-    runWriterAgent({ mode: "creative_ideas", campaignId, personId })
-    Campaign.pipelineStatus = "portal"
-    Slack notification: "New signal campaign ready"
-    ↓
-Client sees campaign in portal → reviews Creative Ideas → approves
-    ↓
-Deploy to EmailBison + LinkedIn (existing deploy flow)
-```
-
-### CLI Chat Session Flow
-
-```
-Admin: npx tsx scripts/cli-chat.ts rise
-    ↓
-readline.createInterface (stdin/stdout)
-    ↓ (loop)
-User input → generateText({ model, system, messages: history, tools: orchestratorTools })
-    → tool calls execute (same as dashboard chat)
-    → result.text printed
-    → history accumulates
-    ↓
-Ctrl+C → process.exit
-```
-
----
-
-## Architectural Patterns
-
-### Pattern 1: Extend Existing Agent (not fork)
-
-**What:** Add new tools to `leadsTools` and `writerTools` objects. New system prompt sections are additive (append, not replace).
-
-**When to use:** Feature fits within the agent's domain. Leads Agent owns pipeline ops. Writer Agent owns copy generation.
-
-**Do not:** Create a "Discovery Agent" as a separate agent — it would duplicate orchestration logic and add a delegation hop. The Leads Agent handles discovery natively.
-
-**Example:**
 ```typescript
-// CORRECT — add to leadsTools in src/lib/agents/leads.ts
-const leadsTools = {
-  searchPeople,     // existing
-  discoverLeads,    // NEW
-  searchDirectory,  // NEW
-  createList,       // existing
-  // ...
+// src/lib/intelligence/insight-generator.ts
+const intelligenceConfig: AgentConfig = {
+  name: "intelligence",
+  model: "claude-haiku-4-5-20251001",  // Cheap, fast — structured data analysis
+  systemPrompt: `You are an outbound campaign performance analyst for a B2B lead generation agency.
+You analyze pre-computed metrics and generate actionable insights.
+Each insight must be specific, data-backed, and suggest a concrete action.
+Do not generate generic advice. Every insight must reference specific numbers.`,
+  tools: {
+    getCachedMetrics,   // Read pre-computed analytics from CachedMetrics
+    getRecentClassifications,  // Read recent reply classifications
+    getWorkspaceContext,  // Read workspace ICP/vertical for context
+    createInsight,  // Write Insight record
+    createAction,   // Write AdminAction record
+  },
+  maxSteps: 15,
 };
 ```
 
-### Pattern 2: Provider Adapter (pluggable)
+**Why Haiku:** Insight generation is high-volume, low-complexity. Inputs are already structured (CachedMetrics JSON). Haiku handles pattern matching and summarization well. Cost: ~$0.01-0.03 per daily run across 6 workspaces.
 
-**What:** Each discovery provider implements `DiscoveryAdapter`. The orchestrator in `discovery/index.ts` selects and runs adapters based on ICP type hint.
+**Trigger:** Runs via the same `/api/cron/compute-intelligence?scope=insights` endpoint, 1 hour after daily aggregation completes (so aggregated data is fresh).
 
-**Mirrors:** The enrichment `EmailAdapter` / `CompanyAdapter` pattern exactly.
+### 7. Intelligence Hub Dashboard Page
 
-**Example:**
+**Route:** `src/app/(admin)/intelligence/page.tsx`
+
+**API Endpoints:**
+
+| Endpoint | Method | Data Source | Purpose |
+|----------|--------|------------|---------|
+| `/api/intelligence/rankings` | GET | CachedMetrics `campaign_rankings_*` | Campaign performance table |
+| `/api/intelligence/strategies` | GET | CachedMetrics `strategy_comparison_*` | Copy strategy comparison chart |
+| `/api/intelligence/intents` | GET | CachedMetrics `intent_breakdown_*` | Reply intent distribution |
+| `/api/intelligence/icp-calibration` | GET | CachedMetrics `icp_calibration_*` | ICP score vs conversion scatter |
+| `/api/intelligence/insights` | GET | Insight model (active, sorted by priority) | Insights feed |
+| `/api/intelligence/actions` | GET | AdminAction model (pending/deferred) | Action queue list |
+| `/api/intelligence/actions/[id]` | PATCH | AdminAction model | Approve/dismiss/defer action |
+
+**All endpoints support `?workspace=all` or `?workspace={slug}`** — same filter pattern as existing dashboard stats.
+
+**Action queue UI interactions:**
+- Approve: `PATCH /api/intelligence/actions/[id] { status: "approved" }` — optionally triggers auto-execution if `metadata` contains executable instructions
+- Dismiss: `PATCH /api/intelligence/actions/[id] { status: "dismissed" }`
+- Defer: `PATCH /api/intelligence/actions/[id] { status: "deferred", deferUntil: "2026-04-01" }`
+
+### 8. Cross-Workspace Queries — Neon Performance
+
+**Existing mitigations:**
+- All relevant models have `@@index([workspaceSlug, ...])` or `@@index([workspace, ...])` indexes.
+- CachedMetrics pre-computation means the dashboard never runs cross-workspace aggregation at request time.
+
+**Additional mitigations for the aggregation cron:**
+- Use `prisma.$transaction` for related queries to reuse the same connection through Neon's proxy.
+- Compute per-workspace first, then derive cross-workspace from per-workspace results (sum/average). No single query spanning all data.
+- The cron runs with `maxDuration=60` — plenty of time even with cold connections.
+
+### 9. Digest Notifications
+
+**Hook into existing `src/lib/notifications.ts`:**
+
+Add a new notification type to the existing system. The digest cron reads `weekly_digest_{workspace}` from CachedMetrics, formats a summary, and sends via existing `postMessage` (Slack) and email infrastructure.
+
+**Endpoint:** `GET /api/cron/intelligence-digest` (protected by CRON_SECRET)
+**Schedule:** Weekly, Monday 8am UTC, via cron-job.org.
+
+---
+
+## File Structure — New Files
+
+```
+src/lib/intelligence/
+  classifier.ts          # Reply classification (rule-based + AI)
+  aggregator.ts          # Analytics computation, writes to CachedMetrics
+  insight-generator.ts   # AI insight generation (uses agent framework)
+  action-queue.ts        # AdminAction CRUD operations
+  digest.ts              # Weekly digest notification builder
+  types.ts               # Shared types for intelligence module
+
+src/app/api/intelligence/
+  rankings/route.ts      # GET campaign rankings
+  strategies/route.ts    # GET strategy comparison
+  intents/route.ts       # GET reply intent breakdown
+  icp-calibration/route.ts # GET ICP score vs conversion
+  insights/route.ts      # GET insights feed
+  actions/route.ts       # GET pending actions
+  actions/[id]/route.ts  # PATCH approve/dismiss/defer
+
+src/app/api/cron/
+  compute-intelligence/route.ts  # Aggregation + insight generation cron
+  intelligence-digest/route.ts   # Weekly digest notification cron
+
+src/app/(admin)/intelligence/
+  page.tsx               # Intelligence Hub dashboard page
+  components/
+    CampaignRankings.tsx
+    StrategyComparison.tsx
+    IntentBreakdown.tsx
+    IcpCalibration.tsx
+    InsightsFeed.tsx
+    ActionQueue.tsx
+```
+
+## Modified Files
+
+| File | Change | Risk | Lines Affected |
+|------|--------|------|----------------|
+| `prisma/schema.prisma` | Add 3 new models (ReplyClassification, Insight, AdminAction) | LOW — purely additive | ~60 new lines |
+| `src/app/api/webhooks/emailbison/route.ts` | Add classifier hook after line 153 | LOW — fire-and-forget, non-blocking | 5-8 lines added |
+| `src/app/api/cron/poll-replies/route.ts` | Add classifier hook after line 110 | LOW — same pattern | 5-8 lines added |
+| `src/app/(admin)/layout.tsx` | Add "Intelligence" nav link to sidebar | LOW — UI-only | 1-2 lines |
+| `src/lib/agents/types.ts` | Add IntelligenceOutput type | LOW — additive | ~10 lines |
+
+---
+
+## Patterns to Follow
+
+### Pattern 1: Non-Blocking Background Classification
+
+**What:** Classify replies without blocking the webhook response. Same pattern as `generateReplySuggestion` (webhook handler lines 354-377).
+
+**When:** Every non-automated reply event.
+
 ```typescript
-// src/lib/discovery/providers/apollo.ts
-export const apolloAdapter: DiscoveryAdapter = async (input) => {
-  const response = await fetch("https://api.apollo.io/v1/mixed_people/search", {
-    method: "POST",
-    headers: { "x-api-key": process.env.APOLLO_API_KEY!, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      person_titles: input.jobTitles,
-      organization_industry_tag_ids: resolveApolloIndustries(input.industries),
-      person_locations: input.locations,
-      per_page: input.limit ?? 50,
-    }),
-  });
-  const data = await response.json();
-  return data.people.map(mapApolloPersonToDiscoveryResult);
-};
+// Fire-and-forget — webhook returns 200 immediately
+classifyReply(params).catch(err => console.error("[classify]", err));
 ```
 
-### Pattern 3: Railway Worker Extension (not new service)
+**Why:** The webhook handler already uses this for reply suggestions. Consistency + proven reliability. EmailBison expects sub-30s responses. Classification takes ~500ms-2s for AI, <10ms for rules.
 
-**What:** Signal worker is a new class in `worker/src/`, launched alongside the LinkedIn worker in `index.ts`.
+### Pattern 2: CachedMetrics for Pre-Computed Analytics
 
-**When to use:** Any continuous background monitoring that cannot be a Vercel cron.
+**What:** Use the existing (but unused) CachedMetrics model as a key-value store for pre-computed aggregations.
 
-**Do not:** Deploy a second Railway service. One service, multiple worker classes running concurrently.
+**When:** Any analytics query that would require scanning large tables or joining across models.
 
-**Example:**
 ```typescript
-// worker/src/index.ts — EXTENDED
-const linkedinWorker = new Worker({ ... });
-const signalWorker = new SignalWorker({ apiUrl: API_URL, apiSecret: API_SECRET });
+// Write (in cron)
+await prisma.cachedMetrics.upsert({
+  where: { workspace_metricType: { workspace: "rise", metricType: "campaign_rankings" } },
+  create: { workspace: "rise", metricType: "campaign_rankings", data: JSON.stringify(rankings) },
+  update: { data: JSON.stringify(rankings), computedAt: new Date() },
+});
 
-// Run both concurrently
-Promise.all([
-  linkedinWorker.start(),
-  signalWorker.start(),
-]).catch(console.error);
+// Read (in API)
+const cached = await prisma.cachedMetrics.findUnique({
+  where: { workspace_metricType: { workspace: slug, metricType: "campaign_rankings" } },
+});
+const rankings = cached ? JSON.parse(cached.data) : null;
 ```
 
-### Pattern 4: Knowledge Base Tags for Per-Client Context
+**Why:** Model already exists in schema with correct unique constraint `@@unique([workspace, metricType])`. Upsert is idempotent. `computedAt` timestamp lets the dashboard show data freshness ("Last updated 3 hours ago").
 
-**What:** Use tag convention `creative-ideas-{workspaceSlug}` to segregate per-client examples in the shared KB. No new DB tables needed.
+### Pattern 3: Agent for Multi-Step Analysis, generateObject for Classification
 
-**When to use:** Content that needs per-client isolation within the shared knowledge store.
+**What:** Use `runAgent` for insight generation (multi-step, needs tools). Use `generateObject` for reply classification (single-shot, structured output).
 
-**Example:** Admin runs ingest CLI with `--tags creative-ideas-rise` for Rise-specific examples. Writer Agent queries with `tags = "creative-ideas-rise"`.
+**Why:** The agent runner creates AgentRun audit records, supports tool loops, handles JSON extraction. Overkill for classification but valuable for insight generation where the AI reads metrics, identifies patterns, and creates multiple Insight/AdminAction records across tool calls.
 
----
+### Pattern 4: External Cron for All Scheduled Work
 
-## Anti-Patterns
+**What:** Use cron-job.org for all new scheduled endpoints.
 
-### Anti-Pattern 1: Creating a "Discovery Agent" as a separate agent
+**When:** Analytics aggregation (every 6 hours), insight generation (daily), digest notifications (weekly).
 
-**What people do:** Create `src/lib/agents/discovery.ts` as a new specialist agent with its own config/tools.
+**Why:** Vercel Hobby limited to 2 crons (both taken). cron-job.org already runs poll-replies + inbox-health. Free tier supports unlimited jobs with 30s timeout. All new endpoints respond with a trigger acknowledgment within 30s, actual computation runs with `maxDuration=60`.
 
-**Why it's wrong:** Adds a delegation hop (Orchestrator → Leads Agent → Discovery Agent) with no benefit. The Leads Agent already owns pipeline operations. Discovery is a new *capability* of the Leads Agent, not a new domain.
+### Pattern 5: Workspace Filter Consistency
 
-**Do this instead:** Add `discoverLeads` and `searchDirectory` tools directly to `leadsTools` in `src/lib/agents/leads.ts`.
+**What:** All intelligence API endpoints accept `?workspace=all` or `?workspace={slug}`, matching the existing dashboard stats pattern.
 
-### Anti-Pattern 2: Third Vercel cron
-
-**What people do:** Add signal monitoring as a third Vercel cron job.
-
-**Why it's wrong:** Vercel Hobby plan limits to 2 crons. This would silently fail or require a paid plan upgrade.
-
-**Do this instead:** Run signal monitoring in Railway alongside the LinkedIn worker. Signal events POST to the Vercel API, which is the established pattern.
-
-### Anti-Pattern 3: Putting discovery providers in `src/lib/enrichment/providers/`
-
-**What people do:** Add Apollo, Exa, etc. adapters to the enrichment providers folder.
-
-**Why it's wrong:** Enrichment adapters have a different contract (`EmailAdapter`, `CompanyAdapter` — they take identifiers, return field values). Discovery adapters take search criteria and return lead lists. Mixing them breaks the type contracts and confuses the waterfall.
-
-**Do this instead:** Create `src/lib/discovery/providers/` with the `DiscoveryAdapter` interface.
-
-### Anti-Pattern 4: Blocking Railway worker on pipeline completion
-
-**What people do:** Have the signal worker POST an event and await the full enrich→score→copy pipeline before returning.
-
-**Why it's wrong:** The pipeline takes 60-300 seconds. The signal worker would timeout or hold up processing of subsequent signals.
-
-**Do this instead:** POST signal event → receive 201 → move on. Pipeline runs async. Worker only reports the signal.
-
-### Anti-Pattern 5: New MCP server for CLI orchestrator
-
-**What people do:** Create a new MCP server in `src/mcp/cli-agent/` for the CLI chat experience.
-
-**Why it's wrong:** MCP servers are for Claude Code tool-use (the model initiates tool calls autonomously). The CLI chat is a *human-driven* interactive session. MCP protocol overhead is unnecessary.
-
-**Do this instead:** `scripts/cli-chat.ts` — simple readline loop calling `generateText()` with `orchestratorTools` and accumulated history. Same tools, different entry point.
+**Why:** The existing dashboard stats API (`/api/dashboard/stats`) already implements this pattern with `wsFilter` and `wsFilterSlug` variables. Intelligence endpoints should be consistent so the frontend can share the workspace filter dropdown component.
 
 ---
 
-## Build Order
+## Anti-Patterns to Avoid
 
-Dependencies determine sequence. Each phase unblocks the next.
+### Anti-Pattern 1: Computing Analytics On-Demand in Dashboard
 
-```
-Phase 1: Prisma schema (SignalEvent, SignalCampaign)
-    → enables all downstream data writes
+**What:** Running aggregate queries when the Intelligence Hub page loads.
 
-Phase 2: Discovery module (src/lib/discovery/)
-    → provider adapters, index.ts fan-out, dedup logic
+**Why bad:** Neon serverless cold starts + complex joins across WebhookEvent/Campaign/ReplyClassification = 2-5 second page loads. Gets worse as data grows. Current dashboard stats already takes ~1-2s with simpler queries.
 
-Phase 3: Leads Agent upgrade (discoverLeads + searchDirectory tools)
-    → depends on Phase 2 discovery module
+**Instead:** Pre-compute to CachedMetrics via cron. Dashboard reads single-row lookups. Show "Last updated: X minutes ago" timestamp.
 
-Phase 4: Signal API routes (src/app/api/signals/)
-    → depends on Phase 1 schema
+### Anti-Pattern 2: Storing Classifications in WebhookEvent.payload
 
-Phase 5: Signal Worker (worker/src/signal-worker.ts)
-    → depends on Phase 1 schema + Phase 4 API routes
+**What:** Appending classification data to the existing WebhookEvent JSON payload field.
 
-Phase 6: Auto-pipeline (/api/signals/pipeline/trigger)
-    → depends on Phase 1 schema + existing enrichment + existing writer
+**Why bad:** No indexing on JSON fields in Postgres without GIN indexes. Cannot query "all interested replies for campaign X" efficiently. Breaks single-responsibility (WebhookEvent = raw event storage, ReplyClassification = derived intelligence).
 
-Phase 7: Signal Dashboard page (/admin/signals)
-    → depends on Phase 4 API routes
+**Instead:** Separate ReplyClassification model with proper indexes and reference to WebhookEvent.
 
-Phase 8: Writer Agent Creative Ideas mode
-    → depends on KB tagging convention only (can build anytime)
+### Anti-Pattern 3: Using Materialized Views on Neon
 
-Phase 9: CLI orchestrator (scripts/cli-chat.ts)
-    → depends on nothing — can be built anytime after orchestrator exists
-```
+**What:** Creating PostgreSQL materialized views for analytics.
 
-Phases 8 and 9 are independent — can be parallelized with Phases 2-7.
+**Why bad:** Prisma has no native support for materialized views — requires raw SQL for creation, refresh, and querying. `prisma db push` will not manage them. Adds operational complexity (manual migration scripts, refresh scheduling) for marginal benefit over CachedMetrics which provides the same outcome with full Prisma support.
 
----
+**Instead:** CachedMetrics model — application-level materialized views with full Prisma ORM support.
 
-## Integration Points
+### Anti-Pattern 4: Blocking Webhook Response for Classification
 
-### External Services
+**What:** Awaiting classification before returning 200 to EmailBison.
 
-| Service | Integration Pattern | Auth | Notes |
-|---------|---------------------|------|-------|
-| Apollo.io | REST POST `/v1/mixed_people/search` | `x-api-key` header | 250M+ contacts, best for enterprise firmographics |
-| Prospeo Search | REST (separate from enrichment endpoint) | API key | Different endpoint from enrichment adapter |
-| AI Ark Search | REST search endpoint | API key (LOW confidence — verify) | May differ from person enrichment endpoint |
-| Exa.ai | REST `/search` with `type: "company"` | `x-exa-api-key` | Semantic search, MCP server available |
-| Serper.dev | REST POST `/search` | `X-API-KEY` | Google + Maps + news + Reddit/Twitter |
-| Apify | REST Actor run + dataset GET | Bearer token | LinkedIn scraping actor |
-| PredictLeads | REST GET `/signals` | API key | 5 signal types, query by domain list, designed for agent polling |
+**Why bad:** AI classification adds 500ms-2s. EmailBison may retry on slow responses. The existing reply suggestion already uses fire-and-forget at line 354 — classification should match.
 
-### Internal Boundaries
+**Instead:** Fire-and-forget, same as `generateReplySuggestion`.
 
-| Boundary | Communication | Pattern |
-|----------|---------------|---------|
-| Railway signal worker → Vercel API | HTTP POST | `ApiClient.postSignalEvent()` (same pattern as LinkedIn worker) |
-| Vercel API → pipeline trigger | Async fetch (fire-and-forget) | `fetch(url).catch(console.error)` — don't await |
-| Leads Agent → discovery module | Direct function call | `import { discoverLeads } from "@/lib/discovery"` |
-| Writer Agent → creative ideas KB | Tool call via searchKnowledge | Tag: `creative-ideas-{slug}` |
-| Signal dashboard → signal events | REST GET `/api/signals/events` | Standard App Router pattern |
-| CLI chat → orchestrator | Direct `generateText()` call | Same `orchestratorTools` object as `/api/chat` |
+### Anti-Pattern 5: One Giant Intelligence Agent
+
+**What:** A single agent that classifies replies AND computes analytics AND generates insights AND manages actions.
+
+**Why bad:** Context window fills up. Different tasks need different tool sets. Classification is high-frequency (every reply), insights are low-frequency (daily). Mixing wastes tokens and reduces quality.
+
+**Instead:** Separate concerns: classifier function (no agent), aggregator function (no agent), insight agent (uses agent framework only where multi-step reasoning adds value).
+
+### Anti-Pattern 6: Campaign Resolution via Email Text Matching
+
+**What:** Trying to match replies to campaigns by parsing email body content or subject lines.
+
+**Why bad:** Unreliable. Subject lines get modified by recipients. Body content varies.
+
+**Instead:** Use `WebhookEvent.campaignId` (EmailBison's campaign ID), resolve to Outsignal campaign via `Campaign.emailBisonCampaignId`. This is the same path the existing webhook handler uses at line 188.
 
 ---
 
-## Confidence Assessment
+## Scalability Considerations
 
-| Area | Confidence | Basis |
-|------|------------|-------|
-| Agent extension pattern | HIGH | Direct read of src/lib/agents/* |
-| Railway worker extension | HIGH | Direct read of worker/src/worker.ts + index.ts |
-| Vercel cron constraint | HIGH | vercel.json confirms exactly 2 crons registered |
-| Enrichment vs discovery separation | HIGH | Direct read of enrichment/types.ts, confirmed type contract difference |
-| Prisma schema additions | HIGH | Direct read of full schema, modeled on Campaign/Workspace patterns |
-| Apollo API | MEDIUM | Official docs verified, field mappings need test at build time |
-| PredictLeads API | MEDIUM | REST API confirmed, exact endpoint shapes need verification |
-| Exa.ai company search | MEDIUM | Company Search feature confirmed via changelog |
-| Pipeline async pattern | HIGH | Matches existing enrichment queue architecture |
-| CLI readline pattern | HIGH | Standard Node.js + Vercel AI SDK generateText() pattern |
+| Concern | Current (6 workspaces, ~100 replies/mo) | 20 Workspaces | 50+ Workspaces |
+|---------|------------------------------------------|---------------|----------------|
+| Reply classification | Inline fire-and-forget, <$0.10/mo | Inline, <$0.50/mo | Consider batch classification cron |
+| Analytics aggregation | 6-hour cron, <30s runtime | 6-hour cron, ~60s | Split into per-workspace parallel jobs |
+| CachedMetrics rows | ~60 rows | ~200 rows | Fine — single-row reads |
+| Insight generation | 1 Haiku call/day (~6 workspaces) | 1-2 calls/day | Per-workspace agent runs |
+| Dashboard page load | <200ms (CachedMetrics reads) | <300ms | <500ms (still just reads) |
+| ReplyClassification table | ~1.2K rows/year | ~4K rows/year | No concern |
+| WebhookEvent table | ~5K rows/year | ~20K rows/year | Consider date-based archival after 12 months |
+
+---
+
+## Suggested Build Order
+
+Based on dependency analysis:
+
+| Phase | Component | Depends On | Rationale |
+|-------|-----------|-----------|-----------|
+| 1 | Schema + Classifier | Nothing | Data foundation — everything reads from ReplyClassification |
+| 2 | Analytics Aggregator + Cron | Phase 1 | Needs classified replies to compute meaningful metrics |
+| 3 | Intelligence API Routes | Phase 2 | Endpoints that read from CachedMetrics |
+| 4 | Intelligence Hub Page | Phase 3 | Dashboard UI consuming the APIs |
+| 5 | Insight Generator Agent | Phases 1+2 | AI analysis of aggregated data |
+| 6 | Action Queue | Phase 5 | Admin approve/dismiss/defer on insights |
+| 7 | Digest Notifications | Phases 2+5 | Weekly summary of metrics + insights |
+
+**Key insight on ordering:** The classifier is the data foundation — without classified replies, all analytics are just raw event counts (which the existing dashboard already does). The intelligence value comes from intent/objection/buying signal classification. Build it first, let data accumulate, then build analytics on top.
+
+Phases 1-4 deliver immediate value (classified replies + analytics dashboard) without AI insights. Phases 5-7 add AI-powered recommendations on top. This allows incremental delivery.
 
 ---
 
 ## Sources
 
-- [Apollo.io People API Search](https://docs.apollo.io/reference/people-api-search)
-- [Exa.ai company search changelog](https://exa.ai/docs/changelog/company-search-launch)
-- [PredictLeads integration patterns](https://blog.predictleads.com/)
-- [Vercel AI SDK Node.js getting started](https://ai-sdk.dev/docs/getting-started/nodejs)
-- [Exa MCP server reference](https://github.com/exa-labs/exa-mcp-server)
-- Existing codebase: direct inspection of all `src/lib/agents/`, `src/lib/enrichment/`, `worker/src/`, `prisma/schema.prisma`
+- Existing codebase: direct inspection of `prisma/schema.prisma`, `src/app/api/webhooks/emailbison/route.ts`, `src/app/api/dashboard/stats/route.ts`, `src/app/api/cron/poll-replies/route.ts`, `src/lib/agents/runner.ts`, `src/lib/agents/types.ts`, `src/lib/agents/writer.ts`
+- CachedMetrics model verified unused via grep across `src/` directory — 0 references
+- Vercel Hobby cron limit — HIGH confidence (both slots occupied, confirmed via existing cron-job.org usage)
+- Neon serverless connection behavior — MEDIUM confidence (cold start estimates based on known Neon proxy architecture)
+- AI SDK `generateObject` — HIGH confidence (part of `ai` package already imported in runner.ts)
 
 ---
 
-*Architecture research for: Outsignal v2.0 Lead Discovery & Intelligence*
-*Researched: 2026-03-03*
+*Architecture research for: Outsignal v3.0 Campaign Intelligence Hub*
+*Researched: 2026-03-09*

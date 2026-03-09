@@ -1,307 +1,309 @@
-# Pitfalls Research
+# Domain Pitfalls
 
-**Domain:** Multi-source lead discovery, signal monitoring, Creative Ideas copy generation — adding to existing outbound lead engine
-**Researched:** 2026-03-03
-**Confidence:** HIGH for architectural pitfalls (grounded in existing codebase); MEDIUM for third-party API limits (official docs checked; some limits undocumented publicly)
+**Domain:** Campaign Intelligence Hub — reply classification, campaign analytics, cross-workspace benchmarking, AI insight generation, admin action queue
+**Researched:** 2026-03-09
+**System context:** Next.js 16, Prisma 6, Neon PostgreSQL, Vercel Hobby, 14.5k people, 6 client workspaces, existing webhook/notification pipeline
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Apollo.io API — Terms Prohibit What You're Building
+Mistakes that cause rewrites, data corruption, or trust erosion.
 
-**What goes wrong:**
-You wire up Apollo's People Search and Organization Search endpoints as agent tools, run a discovery job, and get good results. Three weeks later Apollo detects that your usage pattern doesn't match a human sales rep — it looks like an automated pipeline pulling bulk results across multiple clients. Apollo rate-limits the account, then suspends it entirely. The terms explicitly prohibit: (1) using the API to replicate Apollo products/services, (2) selling or sublicensing API access, (3) using it for multiple client workspaces. Running discovery across 6 client workspaces through a shared API key violates clause 3.
+### Pitfall 1: Classification Taxonomy That Doesn't Match Reality
 
-**Why it happens:**
-The Apollo API Terms state the license is for "internal business purposes only" and prohibit sublicensing. Running lead discovery for 6 paying clients through one Apollo key is sublicensing. Apollo monitors for burst patterns — fetching hundreds of contacts in rapid succession flags as automation. The free tier (if using it) adds an 50 AI credits limit that evaporates in a single discovery job.
+**What goes wrong:** You design a clean taxonomy (interested / not interested / out of office / unsubscribe / referral / objection) and discover real replies don't fit. "Let me check with my boss" — is that interested or objection? "We already use [competitor]" — objection or buying signal? A one-month-old OOO auto-reply followed by a real reply from the same person creates conflicting classifications.
 
-**How to avoid:**
-Do not use Apollo as a primary bulk discovery source. Use it for targeted enrichment (one person at a time, triggered by human request) rather than programmatic search sweeps. If Apollo search is needed at scale, each client workspace must use their own Apollo API key. Build the Apollo integration with rate delays (2-3s between calls), max daily limits per workspace, and a hard cap of 50 calls/day per key to stay under detection thresholds. Make Apollo the last fallback in discovery, not the first call.
+**Why it happens:** Taxonomies designed from theory, not from reading actual replies. Cold outreach replies are messy: multi-intent, ambiguous, context-dependent. The existing webhook handler already has a `isNonRealReply` heuristic (lines 135-151 of `src/app/api/webhooks/emailbison/route.ts`) that catches OOO/bounce patterns with regex — this will conflict with LLM classification unless reconciled.
 
-**Warning signs:**
-- Apollo returns 429 errors on previously working endpoints
-- Account dashboard shows "unusual activity" flag
-- Email from Apollo compliance team
-- Discovery jobs complete with 0 results despite valid search params
+**Consequences:** Admins stop trusting classifications. Campaign performance metrics become unreliable. Downstream insight generation produces garbage conclusions.
 
-**Phase to address:**
-Phase 1 (Multi-Source Lead Discovery) — Set per-workspace API key requirement for Apollo from day one. Do not build with a shared key that "can be split later." The architecture is wrong from the start if it uses one shared key across clients.
+**Prevention:**
+- Export all existing `WebhookEvent` records with `eventType` in (LEAD_REPLIED, LEAD_INTERESTED, UNTRACKED_REPLY_RECEIVED) and manually label 100-200 replies before designing the taxonomy.
+- Use a flat primary intent + confidence score, not a deep hierarchy. Start with 6-8 categories max: `interested`, `soft_positive` (referral, "check with boss"), `objection`, `not_interested`, `ooo_autoresponder`, `bounce_autoresponder`, `unsubscribe`, `unclear`.
+- Add a `classificationOverride` field so the admin can correct misclassifications — this becomes training data for prompt refinement.
+- Reconcile the existing `isAutomated` flag on `WebhookEvent` with the new classification engine — one source of truth, not two parallel systems.
 
----
+**Detection:** If >15% of classifications land on "unclear" or admins override >10% of results in the first two weeks, the taxonomy needs revision.
 
-### Pitfall 2: Auto-Pipeline Without a Hard Human Gate Sends Real Campaigns
-
-**What goes wrong:**
-The "evergreen signal campaign" auto-pipeline is wired as: PredictLeads signal → filter → enrich → ICP score → Creative Ideas generation → campaign create → portal notification. Everything looks controlled because it stops at "portal notification." But then someone adds auto-approve logic ("if score > 0.85 auto-approve"), or a bug in the approval check lets campaigns slip through, or a client clicks "approve all" on 200 leads from a burst funding event — and EmailBison sends to 200 companies that haven't been human-reviewed. A mis-scored lead list going out to a client's prospects kills the client relationship.
-
-**Why it happens:**
-The existing `Campaign` model already has `status: "approved"` and the EmailBison deploy route already exists. The path from signal to send has very few actual hard stops. Developers optimize for "reducing friction" and the pipeline gradually loses its gates as iterations happen. Signal burst events (100 companies raise funding same week) generate a flood that overwhelms human review capacity, creating pressure to auto-approve.
-
-**How to avoid:**
-The portal approval must be a cryptographic gate, not a status check. Specifically: (1) Campaigns created from signals must have a `requiresHumanReview: true` flag that can never be overridden by automated code — only by a human HTTP request with valid session. (2) The EmailBison deploy call must check this flag and hard-reject if `true` without a corresponding human approval event in the audit log. (3) Daily cap on signals that can enter the pipeline per client workspace (configurable, default 10/day) — excess queues without creating campaigns. (4) Signal bursts should never auto-create more than N campaigns per day per client; the rest stay in the signal feed as "pending review."
-
-**Warning signs:**
-- Pipeline telemetry shows campaigns moving from `created` to `approved` in < 60 seconds (no human reviewed that fast)
-- Campaign count per client spikes on days with major funding events
-- Signal monitoring cost spikes coincide with campaign creation spikes
-
-**Phase to address:**
-Phase 3 (Evergreen Signal Campaigns) — The gate architecture must be designed before auto-pipeline is built, not added as a safety net afterward. If the pipeline exists without the gate, it will ship without the gate.
+**Phase:** Must be addressed in the very first phase (classification engine design).
 
 ---
 
-### Pitfall 3: Cost Explosion from Signal Monitoring Burst Events
+### Pitfall 2: Cross-Workspace Data Leakage in Benchmarking
 
-**What goes wrong:**
-PredictLeads reports 85 companies raised Series A funding on the same day. Your signal monitoring cron processes all 85, triggers enrichment waterfall for each (Prospeo → AI Ark → LeadMagic → FindyMail), finds contacts at each company, runs ICP scoring via Firecrawl, and generates Creative Ideas copy via Claude Sonnet for each. At ~$0.05/email lookup + $0.10/Firecrawl crawl + $0.30/Creative Ideas generation, 85 companies × 5 contacts each = 425 enrichment calls + 85 crawls + 425 copy generations. Single burst event: ~$30-50 in external API costs, blowing through the $10/day cap and not stopping because the cap check happens at the enrichment layer, not the signal processing layer.
+**What goes wrong:** Cross-workspace benchmarking exposes one client's campaign performance, reply content, or lead data to another client's view. Even if the admin dashboard is admin-only today, the client portal exists (`portal.outsignal.ai`) and benchmark data could leak through future portal features, API responses, or cached metrics.
 
-**Why it happens:**
-The existing $10/day cost cap (from v1.0) is checked in the enrichment waterfall before each provider call. But the signal processing loop doesn't check the remaining daily budget before spawning enrichment jobs. Signals arrive as a batch from PredictLeads, each spawning independent enrichment tasks — the cap is hit in the middle of the batch, leaving half the signals partially enriched (some contacts found, some not) with inconsistent state.
+**Why it happens:** The current data model uses `workspaceSlug` as a filter, not a hard security boundary. `Person` and `Company` are workspace-agnostic. Benchmarking queries that aggregate across workspaces inherently cross boundaries. The `CachedMetrics` model already has `workspace` scoping but benchmark aggregates would be `workspace="__global__"` or similar — any bug in the query exposes cross-tenant data.
 
-**How to avoid:**
-Signal monitoring must have its own budget envelope, separate from the enrichment waterfall cap. Architecture: (1) Daily signal processing budget per client workspace (default: $2/day, configurable). (2) Before processing any signals, fetch today's signal spend from the `CostLedger` (or create one). (3) Estimate cost per signal (number of contacts to enrich × avg cost per contact), reject signals that would exceed budget. (4) Process signals in priority order (funding > hiring spike > job change > news) with budget gates between each priority tier. (5) Never process more than 10 companies from a single signal type in a single cron run — queue the rest for next run.
+**Consequences:** Client trust destroyed. Potential contractual/legal violations. Competitors seeing each other's reply rates.
 
-**Warning signs:**
-- Neon DB shows `CostLedger` rows summing to > $10 before 9am
-- Railway cron logs show a single run processing > 20 companies
-- Enrichment API dashboard shows unusual spike in calls on specific dates
-- EmailBison campaign count spikes on days with major news events
+**Prevention:**
+- Benchmarking data must ONLY expose anonymized aggregates: "your reply rate is 4.2%, vertical average is 3.1%". Never expose campaign names, lead names, reply text, or per-workspace breakdowns that identify other clients.
+- Store benchmark aggregates as pre-computed snapshots (vertical averages, overall averages) — never compute them on-the-fly from raw cross-workspace data in client-facing contexts.
+- Add a `benchmarkConsent` boolean to `Workspace` — only include workspaces that opt in to anonymous benchmarking.
+- If benchmark data ever reaches the client portal, use a dedicated read-only table that physically cannot contain identifying information.
+- Code review checklist: "Does this query join/aggregate across workspaces? If yes, is identifying data excluded?"
 
-**Phase to address:**
-Phase 3 (Evergreen Signal Campaigns) — The cost governor must be implemented before the signal monitoring cron is wired to enrichment. Treat it as a prerequisite, not a follow-up optimization.
+**Detection:** Any API response that contains data from workspace X when workspace Y is the requesting context is a data leak.
 
----
-
-### Pitfall 4: Creative Ideas AI Hallucinating Client Services That Don't Exist
-
-**What goes wrong:**
-The Creative Ideas agent is given the client's ICP + website research and asked to generate 3 constrained, personalized ideas. It generates: "Idea 1: Help [prospect] build a whitelabel version of your XYZ product." The client doesn't have a whitelabel product. Or: "Idea 3: Offer [prospect] your API integration with Salesforce" — client has no Salesforce integration. The idea gets approved by the client who skimmed it, goes out to 50 prospects. Prospects click through expecting to learn about the Salesforce integration. It doesn't exist. Client gets confused calls, admin gets blamed.
-
-**Why it happens:**
-The Research Agent already extracts client website data into `ResearchOutput` (value props, case studies, differentiators). But Creative Ideas generation requires more constrained grounding — the agent must only reference services and capabilities that are explicitly documented in the client's research output. If the system prompt says "generate creative outreach ideas" without explicit constraints on hallucination, Claude will extrapolate from what sounds plausible for a company of that type, not what's verified.
-
-**How to avoid:**
-The Creative Ideas system prompt must include: (1) Explicit enumeration of client's actual services extracted from `ResearchOutput.valuePropositions` and `ResearchOutput.differentiators`. (2) Hard instruction: "Generate ideas ONLY using the services listed above. Do not invent capabilities the client doesn't have. If you cannot generate 3 distinct ideas from these services, generate fewer." (3) Each generated idea must include a `groundedIn` field citing which service/capability from the provided list it references. (4) Admin review of first 20 generated ideas per client before automation is enabled — catch hallucination patterns early. (5) Add a KB-backed validation step: generated idea must match at least one knowledge base chunk from the client's ingested documents.
-
-**Warning signs:**
-- Generated idea references a product/service not in `ResearchOutput.valuePropositions`
-- Prospect replies "I didn't know you offered X" when X is not a real offering
-- Client flags ideas as "we don't do that" during portal review
-
-**Phase to address:**
-Phase 4 (Creative Ideas Copy Framework) — The grounding constraint must be in the initial prompt design. It cannot be added after the first batch of bad ideas ships to clients. Validate with human review of 20+ examples before enabling auto-generation.
+**Phase:** Architecture decision needed before any cross-workspace analytics. Benchmark phase must come AFTER single-workspace analytics are solid.
 
 ---
 
-### Pitfall 5: Multi-Source Dedup Failure Creates Duplicate Sends
+### Pitfall 3: Analytics Queries Killing Dashboard Page Load on Vercel
 
-**What goes wrong:**
-Apollo returns a contact: `john.doe@acme.com`, LinkedIn: `linkedin.com/in/johndoe`, name: "John Doe". Exa.ai returns the same person but with a slightly different LinkedIn URL: `linkedin.com/in/john-doe-cmo` and no email. Prospeo also returns `john.doe@acme.com` from a separate discovery job. Three records enter the pipeline. Dedup only checks `email` uniqueness (existing behavior from v1.0). The Exa result has no email so it creates a new Person record. Both Person records get added to the same TargetList. The campaign sends two emails to John Doe — one personalized to the Exa-discovered record, one to the Prospeo record. John Doe sends a "please remove me" response that becomes a spam complaint.
+**What goes wrong:** Dashboard pages make 3-5 analytics queries per render. Each query scans `WebhookEvent` (growing fast — every EMAIL_SENT, BOUNCE, reply, unsubscribe creates a row), `Person`, `PersonWorkspace`, and `Campaign` tables. On Neon serverless, cold-start wake-up adds 300-500ms. Complex aggregations (GROUP BY workspace, campaign, date range with JOINs) add 1-3 seconds. Page load hits 4-8 seconds, or worse, the Vercel Hobby 10-second function timeout kills the request.
 
-**Why it happens:**
-The existing `Person` model uses email as the unique key (`@unique email`). This is correct for email-enriched records. But discovery sources return partial records — Exa and Serper.dev often return company + name + LinkedIn URL without email. These partial records cannot be deduplicated against existing email-keyed records at ingestion time. They must be deduplicated after enrichment, but the enrichment step that finds the email may happen asynchronously. If the same person is discovered by two sources before enrichment completes, both get persisted.
+**Why it happens:** Analytics queries are fundamentally different from CRUD queries. The existing codebase is optimized for single-record operations (webhook creates, lead updates). Aggregating 14k+ people across 6 workspaces with date range filters and campaign grouping requires table scans. Neon handles them, but not instantly — especially with cold starts.
 
-**How to avoid:**
-Implement a pre-enrichment staging table (`DiscoveredPerson`) that holds raw discoveries before they're committed to `Person`. Dedup logic before promotion: (1) Exact email match — same person, merge. (2) LinkedIn URL normalized match (strip trailing slash, `/in/` prefix normalization, handle both `linkedin.com/in/X` and `www.linkedin.com/in/X`) — same person if LinkedIn URL matches. (3) Name + company domain fuzzy match (only as a flag for human review, not automatic merge). (4) Only promote to `Person` after enrichment confirms a unique email. Sources that return only LinkedIn URL go into staging, not directly into `Person`.
+**Consequences:** Intelligence Hub dashboard is unusable. Admin stops checking it. The entire v3.0 feature becomes shelfware.
 
-**Warning signs:**
-- `Person` table has two records with different emails but identical `linkedinUrl`
-- Same person appears twice on a TargetList
-- Prospect replies "I got two emails from you" — guaranteed dedup failure
-- Discovery job logs show the same LinkedIn URL processed by two sources
+**Prevention:**
+- Pre-compute ALL analytics into a `CachedMetrics`-like table (model already exists in schema at line 241). Compute on a schedule or on-demand with cache TTL, never on page load.
+- Dashboard pages read ONLY from pre-computed tables. Zero raw aggregation queries in page components.
+- Use a "last computed: X minutes ago" indicator + manual refresh button instead of real-time computation.
+- Add database indexes for analytics: composite indexes on `WebhookEvent(workspaceSlug, receivedAt)` already exist (line 237-239), but add `(workspaceSlug, eventType, receivedAt)` for filtered time-range queries.
+- Single API route that returns the full pre-computed dashboard payload in one request — no waterfall of 5 separate fetches.
 
-**Phase to address:**
-Phase 1 (Multi-Source Lead Discovery) — The staging table architecture must be built before any multi-source discovery is enabled. Do not enable Exa or Serper discovery against the existing `Person` table without the staging layer.
+**Detection:** If any analytics API route takes >2 seconds in development, it will timeout in production under load.
 
----
-
-### Pitfall 6: Enrichment Waterfall Reorder Breaks Existing Batch Jobs Mid-Run
-
-**What goes wrong:**
-The current waterfall is `Prospeo → AI Ark → LeadMagic → FindyMail`. The reorder to `FindyMail → Prospeo → AI Ark → LeadMagic` (cheapest first) changes which provider is called first. Existing batch jobs in the Railway worker that are mid-run when the code deploys will start calling FindyMail for new records while using the old provider order for in-flight records. Since cost tracking is per-provider, the `CostLedger` entries show FindyMail costs appearing before Prospeo costs, which breaks the cost reporting dashboard that assumes Prospeo is always column 1.
-
-**Why it happens:**
-The waterfall reorder seems like a simple config change — just swap the array order in the waterfall runner. But the waterfall state is persisted on each `Person` record (`enrichmentStatus`, provider-specific fields). Existing records that are partially enriched via Prospeo will be re-enriched by FindyMail first on the next waterfall run, wasting credits on a record that already has a Prospeo email. The cost cap logic also needs updating because FindyMail's per-credit cost differs from Prospeo's.
-
-**How to avoid:**
-(1) The reorder must be done in a single atomic deployment with no in-flight batch jobs. Schedule the reorder during off-hours with the Railway worker stopped. (2) Add a `lastEnrichedProvider` field to `Person` so the waterfall can skip providers that already ran for this record. (3) Update cost cap logic to use per-call cost constants (not per-provider cost constants) so reordering doesn't break the cap calculation. (4) Test the new order on 10 records in staging before running against the full 14.5k dataset.
-
-**Warning signs:**
-- `CostLedger` shows FindyMail charges on records that already have a Prospeo email
-- Enrichment batch job shows "already enriched" skip rate drops significantly
-- Cost per enriched lead increases after the reorder (sign of double-enrichment)
-
-**Phase to address:**
-Phase 6 (Enrichment Waterfall Reorder) — Treat this as a data migration, not a code change. Stop all running jobs, deploy, verify on sample, resume.
+**Phase:** Caching/pre-computation infrastructure must be built BEFORE the dashboard UI. Build the compute engine first, then the display layer.
 
 ---
 
-### Pitfall 7: Vercel 300s Timeout Kills Signal Monitoring Crons
+### Pitfall 4: LLM Classification Cost Spiral
 
-**What goes wrong:**
-Signal monitoring cron triggers on Railway (correct) but the actual PredictLeads API calls + enrichment + ICP scoring pipeline takes > 5 minutes for a batch of 20 companies. The Railway worker calls back into a Vercel API route to trigger enrichment, which times out at 300s. OR: the signal monitoring cron is accidentally registered on Vercel (not Railway) — hits the 2-cron limit on Hobby plan, plus times out on batch processing.
+**What goes wrong:** Every incoming reply triggers an LLM call for classification. At current volume (~3.4% reply rate on thousands of emails = 50-200 replies/month), this is manageable. But the webhook handler fires for EMAIL_SENT, BOUNCE, UNSUBSCRIBED events too. If classification is naively triggered on all webhook events, or if the poll-replies cron (`/api/cron/poll-replies`) reprocesses already-classified replies, costs multiply. The existing `generateReplySuggestion()` function (line 65) already calls the Writer Agent per reply — adding classification doubles per-reply LLM costs.
 
-**Why it happens:**
-The Vercel Hobby plan has a 2-cron limit (already hit with existing crons for email sync and enrichment). Adding a signal monitoring cron to Vercel would break one of the existing crons. Even on Pro, Vercel's serverless functions have a 300s hard timeout that makes multi-company processing unreliable. The Railway worker already handles the LinkedIn session refresh — adding signal monitoring to Railway is the correct call, but developers may default to Vercel because "the API routes are already there."
+**Why it happens:** The boundary between "what needs classification" and "what doesn't" isn't obvious. The webhook handler processes 6+ event types. The poll-replies cron catches missed webhooks and will re-fetch replies that may already be classified.
 
-**How to avoid:**
-Signal monitoring must run exclusively on Railway. Architecture: (1) Railway signal worker polls PredictLeads at configured intervals. (2) It writes signal events directly to Neon DB (not through Vercel API routes). (3) Enrichment triggered by signals uses the same Railway worker, calling enrichment provider SDKs directly (not via Vercel API). (4) Only final results (new Person records, campaign creation) go through a lightweight Vercel API call that's fast (< 5s). (5) Never register signal monitoring as a Vercel cron — it will silently fail on Hobby or consume the Hobby cron slots.
+**Consequences:** Unnecessary API spend. Duplicate classifications creating conflicting records. Classification results overwritten on re-processing.
 
-**Warning signs:**
-- Signal monitoring cron registered in `vercel.json` (wrong)
-- Vercel function logs show 300s timeout errors on enrichment calls
-- Railway worker logs show successful signal fetch but no resulting Person records in DB
+**Prevention:**
+- Gate classification strictly: ONLY on `(LEAD_REPLIED | LEAD_INTERESTED | UNTRACKED_REPLY_RECEIVED)` AND `isAutomated === false`. This matches the existing notification trigger (line 332-334 of webhook route).
+- Add a `classifiedAt` timestamp to the classification record. Skip if already classified (idempotency guard).
+- Use Haiku for classification — structured extraction, not creative writing. ~$0.001 per call vs $0.015 for Sonnet.
+- Batch classify in the poll-replies cron rather than one-at-a-time.
+- Track classification cost in `DailyCostTotal` alongside enrichment costs.
+- Coordinate with existing `generateReplySuggestion()` — classify first, then use classification result to inform reply suggestion (one LLM call feeds the other, avoid duplicate analysis).
 
-**Phase to address:**
-Phase 2 (Signal Monitoring Infrastructure) — Architecture decision must be made before any code: Railway handles all signal processing, Vercel only handles HTTP endpoints for human-triggered actions.
+**Detection:** If classification costs exceed $5/month at current volume, something is processing events it shouldn't.
 
----
-
-## Technical Debt Patterns
-
-Shortcuts that seem reasonable but create long-term problems.
-
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Shared Apollo API key across workspaces | Ship faster, one integration | ToS violation, account suspension, discovery fails for all clients simultaneously | Never — each workspace needs its own key |
-| Skip `DiscoveredPerson` staging, write directly to `Person` | Simpler schema, fewer tables | Duplicate sends to prospects, dedup bugs, partial records polluting the main DB | Never — once live, fixing requires a DB migration with 14.5k records in flight |
-| Generate Creative Ideas at campaign creation (not at send time) | Simpler pipeline | Stale personalization (idea references something that happened 3 weeks ago), ideas become irrelevant | Only acceptable if ideas are re-validated within 7 days of send |
-| Using `db push` instead of `prisma migrate dev` for new signal models | No migration history needed | Cannot roll back if new model causes issues; production deploy risk increases with each `db push` | Acceptable for new additive models only; never for modifying existing models with live data |
-| Storing raw PredictLeads signal payloads as JSON in `SignalEvent.rawPayload` | Flexibility, no schema design needed | Cannot query signal details efficiently, reporting is slow, can't alert on specific signal properties | Acceptable for initial implementation; add typed fields after signal data patterns are understood |
-| Single Railway process for both LinkedIn and signal monitoring | Fewer services to manage | LinkedIn cookies expire, require restart — restart kills signal monitoring mid-batch | Acceptable for MVP; split into separate Railway services before production load |
+**Phase:** Classification engine phase must include cost tracking from day one.
 
 ---
 
-## Integration Gotchas
+## Moderate Pitfalls
 
-Common mistakes when connecting to external services.
+### Pitfall 5: Action Queue Without Idempotency
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Apollo.io API | Treating it as a bulk search tool across workspaces | Per-workspace API keys; max 50 calls/day/key; rate delay 2-3s per call; use for enrichment not discovery |
-| Exa.ai Websets | Requesting 100+ results in one Webset assuming fast return | Websets with > 100 results can take 1+ hour; request 20-50 at a time, poll for completion asynchronously |
-| Exa.ai Websets | Not accounting for credit burn on partial results | Credits consumed for all results found, not just returned — narrow criteria with 0 results still burns search credits |
-| PredictLeads | Polling the API faster than their data refreshes | Funding events refresh at best once/day; polling > 4x/day wastes credits on duplicate signals |
-| PredictLeads | Using news signal as a reliable funding signal | News events are extracted from blog posts and PR sites — funding signals have 1-3 day lag behind actual close date, multiple duplicate signals per round common |
-| Serper.dev | Using Maps search for B2B companies expecting accurate employee counts | Maps API returns consumer-facing business data; employee counts, website URLs, and contact info are frequently wrong for B2B companies |
-| Serper.dev | Treating social listening results as real-time | Google's index latency means Reddit/Twitter results are 1-7 days behind; not suitable for "trending now" alerts |
-| Apify LinkedIn no-cookie actors | Expecting consistent data across all profile types | No-cookie actors only access publicly visible data; profiles with privacy settings return empty results without error — silent data gaps |
-| Apify LinkedIn no-cookie actors | Running high-volume requests from single IP | Even without cookies, high request rates trigger LinkedIn's IP-based blocking; use Apify's residential proxy rotation |
-| Railway (signal worker) | Calling Vercel API routes to trigger enrichment | Adds HTTP hop + 300s timeout risk; write directly to Neon from Railway using shared Prisma client |
-| Neon PostgreSQL | Not using connection pooler for Railway long-running worker | Direct connections from Railway worker exhaust Neon's direct connection limit; always use the Neon pooled connection string in Railway |
+**What goes wrong:** Admin clicks "Apply suggestion" on an insight card. Network is slow, they click again. Two campaign adjustments are applied. Or: the cron that generates insights runs twice (Vercel cold start retry, cron-job.org timeout retry), creating duplicate insight cards.
 
----
+**Why it happens:** Serverless functions are stateless. The existing system already has retry patterns — `LinkedInAction` uses `status` + `attempts` for safety, but the action queue is a different domain needing its own idempotency.
 
-## Performance Traps
+**Prevention:**
+- Every action queue item gets an idempotency key derived from content (hash of `insightType + workspaceSlug + campaignId + suggestedAction + period`). Use `@@unique` constraint to prevent duplicates.
+- Admin actions use optimistic locking: update with `WHERE status = 'pending'`. If 0 rows affected, already processed.
+- Insight generation uses `upsert` with unique composite key on `[workspaceSlug, insightType, period]`.
+- State transitions are one-directional: `pending -> approved | dismissed | deferred`. No reversals.
 
-Patterns that work at small scale but fail as usage grows.
+**Detection:** Duplicate insight cards in the dashboard, or admin seeing "already actioned" errors frequently.
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Generating Creative Ideas for every person in a TargetList at campaign creation | Campaign creation stalls for 10+ minutes; Claude API costs spike | Generate on-demand (when campaign is submitted to portal) or batch-generate in Railway worker with queue | At 50+ people per campaign |
-| Loading full `Person` record for every signal event to check dedup | Railway worker memory spikes; Neon connection pool exhausted | Use `SELECT email, linkedinUrl` projection; never load full record for dedup checks | At 500+ signals per batch |
-| Fetching all active signals from PredictLeads in one API call | Response timeout; large payload parsing kills Railway worker | Paginate with `page_size=100`; process pages sequentially with rate delay | At 200+ tracked companies |
-| Writing SignalEvent records synchronously in signal monitoring loop | Railway worker blocks on each DB write; total batch time multiplies | Batch insert signal events; collect all events, bulk insert once per cron run | At 50+ companies per run |
-| Using `prisma.person.findMany()` without index on `companyDomain` for signal lookups | Slow signal → person matching queries; Neon CPU spikes | Add `@@index([companyDomain])` to Person model; also index `linkedinUrl` | At 14.5k+ Person records (already there) |
-| Storing Creative Ideas as JSON in Campaign model | Ideas cannot be queried, filtered, or compared across campaigns | Create `CreativeIdea` model with typed fields; FK to Campaign and Person | At 1k+ campaigns |
+**Phase:** Action queue model design phase. Baked into schema, not bolted on.
 
 ---
 
-## Security Mistakes
+### Pitfall 6: Insight Generation Hallucinations
 
-Domain-specific security issues beyond general web security.
+**What goes wrong:** The AI insight engine says "Campaign X has a 12% reply rate, which is 3x your average" but the actual reply rate is 4%. Or worse: "Rise's email style outperforms Lime Recruitment's" — leaking cross-workspace comparison in a generated insight.
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Client workspace isolation in discovery jobs | One client's API key used to discover leads for a different workspace; cross-contamination of prospect data | Always pass `workspaceSlug` as the first filter in every discovery query; add DB constraint that prevents `TargetList` ↔ `PersonWorkspace` cross-workspace joins |
-| Signal pipeline creates campaigns without workspace attribution | Campaigns created from signals lack `workspaceSlug`; appears in wrong client portal or not at all | Signal monitoring worker must receive `workspaceSlug` as a required param; never process signals without workspace context |
-| Apollo/Exa API keys stored per-workspace in DB | API keys at rest in Neon DB; if DB is compromised, all client API keys are exposed | Encrypt per-workspace API keys at rest using AES-256 with `ENCRYPTION_SECRET` env var; never store plaintext in DB |
-| Apify actor results cached without TTL | Stale LinkedIn data served as current; profile may have changed jobs | Cache Apify results with 7-day TTL maximum; always check `lastEnrichedAt` before serving cached enrichment |
-| Signal monitoring exposes which companies you're tracking | If PredictLeads query params are logged or exposed, reveals client's prospect list | Never log PredictLeads query params in structured logs; signal monitoring logs show counts only, not company names |
+**Why it happens:** LLMs are unreliable at arithmetic. If you pass raw data and ask "what's the reply rate?", it might count wrong. If you pass data from multiple workspaces for comparison context, it might reference them by name in the output.
 
----
+**Prevention:**
+- NEVER let the LLM compute metrics. Pre-compute ALL numbers (reply rate, open rate, conversion rate) with SQL/code. Pass pre-computed numbers to the LLM with a prompt: "Given these metrics, generate 3 actionable insights."
+- The LLM's job is narrative generation and pattern recognition on pre-computed data, NOT arithmetic.
+- Validate output: if an insight references a number, check against pre-computed value. If it mentions a workspace name other than the current one, reject it.
+- Template-based insights for common patterns ("Reply rate dropped X% this week") with LLM only for nuanced observations.
+- System prompt: "You are analyzing data for {workspace}. Never mention other workspace names or identifiable client data."
 
-## UX Pitfalls
+**Detection:** A/B test first batch of insights against manually verified data. If accuracy on factual claims is below 95%, add more guardrails.
 
-Common user experience mistakes in this domain.
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Signal dashboard shows raw PredictLeads signal types ("job_posting_added") | Admin doesn't understand what to do with the signal | Map to human labels: "Hiring Spike", "Funding Round", "Tech Adoption", "Leadership Change", "Company News" |
-| Creative Ideas shown without context of which prospect they're for | Admin reviewing ideas in bulk can't evaluate relevance without re-reading prospect profile | Show prospect's title, company, and ICP match score inline with each idea in the portal review UI |
-| Signal feed shows all signals for all clients in one view | Admin can't triage; Rise's signals mixed with Lime Recruitment's | Default to per-client view; global view is opt-in filter — never default to global feed |
-| Discovery job shows "completed" but returns 0 results | Admin assumes the ICP doesn't have matches; doesn't investigate | Show "completed with 0 results — possible causes: [too narrow criteria / API limit reached / no matches for this ICP]" with next-step actions |
-| CLI orchestrator chat has no session persistence | Conversation context lost if terminal disconnects; admin has to rebuild context | Persist CLI chat sessions to DB (`AgentRun` with `source: "cli"`) and allow `--resume [session-id]` flag |
+**Phase:** Insight generation phase. Build metric computation first, layer LLM narrative on top.
 
 ---
 
-## "Looks Done But Isn't" Checklist
+### Pitfall 7: Alert Fatigue from Insight Overload
 
-Things that appear complete but are missing critical pieces.
+**What goes wrong:** System generates 15 insight cards per workspace per week. Admin has 6 workspaces = 90 cards to review. Within two weeks, the admin stops checking. The Slack digest becomes noise. The action queue grows stale.
 
-- [ ] **Multi-source discovery:** Integration returns results — verify dedup staging is in place and results don't go directly to `Person` table without email confirmation
-- [ ] **Signal monitoring cron:** Cron triggers and logs show signals — verify daily budget cap is enforced before enrichment starts, not after
-- [ ] **Creative Ideas generation:** Claude generates ideas — verify each idea has `groundedIn` field referencing a specific client service from `ResearchOutput`; spot-check 10 ideas manually for hallucinations
-- [ ] **Auto-pipeline:** Pipeline creates campaigns from signals — verify no campaign can reach `approved` status without a timestamped human approval event in the audit log
-- [ ] **Exa.ai Websets:** Webset runs and returns results — verify result count matches credit deduction; check that `webset.status === "completed"` not just `"running"` before processing
-- [ ] **Apollo integration:** API calls succeed — verify per-workspace key isolation; confirm no shared key fallback exists in the code
-- [ ] **Enrichment waterfall reorder:** New order confirmed in code — verify no in-flight batch jobs were running at deploy time; check CostLedger for double-enrichment charges on existing records
-- [ ] **Railway signal worker:** Worker starts and polls — verify it uses Neon pooled connection string (not direct), and that memory usage stays flat over 24 hours of operation
-- [ ] **Per-client Creative Ideas examples:** Examples reviewed by admin — verify examples are KB-tagged and stored in knowledge base, not just in memory or a temp table
-- [ ] **CLI orchestrator chat:** Chat responds to commands — verify session is persisted to DB so context survives terminal disconnect
+**Why it happens:** Easy to generate insights — hard to generate valuable ones. "Your reply rate is 3.2%" is an observation. "Your reply rate dropped 40% since switching from Creative Ideas to PVP copy strategy — consider reverting" is actionable.
 
----
+**Prevention:**
+- Hard cap: 3-5 insight cards per workspace per analysis cycle. Force-rank by impact score.
+- Insight categories: `action_required` (something broken/declining), `opportunity` (improvement available), `fyi` (informational). Only `action_required` triggers notifications.
+- Auto-dismiss stale insights after 14 days without action. No unbounded queue growth.
+- Dedup: if same pattern repeats across consecutive cycles, consolidate into one persistent insight with a trend indicator — don't create 4 separate cards.
+- Start with weekly digest only. Add real-time notifications later if admin asks.
 
-## Recovery Strategies
+**Detection:** If admin dismisses >50% of insights without reading them (track time-to-dismiss), signal-to-noise is too low.
 
-When pitfalls occur despite prevention, how to recover.
-
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Apollo ToS violation / account suspension | HIGH | Rotate to client-owned Apollo keys immediately; audit all discovery jobs for shared key usage; contact Apollo to appeal if < 30 days old |
-| Auto-pipeline sends unreviewed campaign | HIGH | Halt EmailBison sends via API immediately; send manual apology from workspace email to affected prospects; audit approval log to find the gate failure; add hard DB constraint before re-enabling |
-| Cost explosion from signal burst | MEDIUM | Set emergency daily cap to $0 for affected workspaces; review CostLedger to identify runaway provider; dispute charges with providers if API error caused over-consumption |
-| Creative Ideas hallucination ships to prospects | MEDIUM | Disable auto-generation immediately; manually review all in-flight campaigns; update system prompt with stricter constraints; add `groundedIn` validation before any idea is displayed in portal |
-| Multi-source dedup failure creates duplicate Person records | MEDIUM | Write de-duplication script: find Persons with same `linkedinUrl`, merge PersonWorkspace records to surviving record, delete duplicates; requires offline batch job on Neon |
-| Enrichment waterfall reorder causes double-enrichment | LOW | Add `skipIfEnrichedBy: [provider]` filter to waterfall runner; reset `lastEnrichedProvider` only for records without a valid email |
-| Signal monitoring OOMs Railway worker | LOW | Add `--max-old-space-size=512` to Railway start command; reduce batch size from 20 to 5 companies per cron run; split LinkedIn and signal workers into separate Railway services |
+**Phase:** Insight generation phase. Ranking/filtering logic matters more than generation logic.
 
 ---
 
-## Pitfall-to-Phase Mapping
+### Pitfall 8: Scheduling Analytics Runs — No Cron Slots Left
 
-How roadmap phases should address these pitfalls.
+**What goes wrong:** Vercel Hobby allows 2 cron expressions. Both already used externally via cron-job.org (reply poller every 10min, inbox health check daily at 6am UTC). Analytics computation needs scheduled runs (hourly metric refresh, daily insight generation). No cron slot available, and cron-job.org free tier has a 30-second timeout — analytics might exceed that.
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Apollo ToS violation (shared key) | Phase 1 (Multi-Source Discovery) | Each workspace has its own API key config; no shared key fallback in codebase |
-| Multi-source dedup failure | Phase 1 (Multi-Source Discovery) | `DiscoveredPerson` staging table exists; no direct writes to `Person` from discovery without email confirmation |
-| Signal monitoring burst cost explosion | Phase 2 (Signal Monitoring) | `SignalBudget` ledger exists; signal cron checks budget before processing each company |
-| Vercel 300s timeout on signal processing | Phase 2 (Signal Monitoring) | Signal cron is registered in Railway, not `vercel.json`; Railway worker writes directly to Neon |
-| Auto-pipeline sends unreviewed campaigns | Phase 3 (Evergreen Signal Campaigns) | Audit log shows human approval event before any campaign reaches `approved` status; automated approval code path doesn't exist |
-| Creative Ideas hallucination | Phase 4 (Creative Ideas Copy) | Every generated idea has `groundedIn` field; first 20 ideas per client are admin-reviewed before auto-generation is enabled |
-| Enrichment waterfall reorder data issues | Phase 6 (Waterfall Reorder) | Reorder done during Railway worker downtime; post-deploy `CostLedger` shows no double-enrichment charges |
-| Railway memory OOM from large signal batches | Phase 2 (Signal Monitoring) | Batch size capped at 10 companies per run; Railway metrics show flat memory usage over 24 hours |
+**Why it happens:** Vercel Hobby is for simple apps, not analytics platforms. The workaround (cron-job.org) works but has timeout limits.
+
+**Prevention:**
+- Use cron-job.org for the trigger, but make the endpoint fast: enqueue the job (write to `ScheduledJob` table) and return 200 in <1s.
+- Actual computation runs via `waitUntil()` / Next.js `after()` for background processing within the Vercel function invocation (Fluid Compute supports this on Hobby).
+- Alternatively, Railway already runs the LinkedIn worker — add analytics cron to Railway. Cleaner path since Railway has no 30s timeout.
+- For daily insight generation (LLM calls, 30-60s), Railway is the only viable option on Hobby tier.
+- Design computation to be resumable: if function times out, save progress, continue next invocation.
+
+**Detection:** If analytics data shows "last computed: 6 hours ago" when it should be hourly, scheduling is failing silently.
+
+**Phase:** Infrastructure decision needed early. Decide Railway vs cron-job.org + background processing before building the compute engine.
+
+---
+
+### Pitfall 9: Building an Autonomous System When Admin-Driven Is the Goal
+
+**What goes wrong:** System automatically pauses underperforming campaigns, adjusts ICP thresholds, or changes sending schedules based on AI analysis. A campaign gets paused at 2am on a Friday. Admin wakes up to angry client messages because leads stopped flowing. The system "optimized" something that didn't need it.
+
+**Why it happens:** Tempting to make the system smart and autonomous. The v3.0 description explicitly says "the system does the analysis; the admin makes the decisions" — but scope creep turns suggestions into auto-actions.
+
+**Prevention:**
+- HARD RULE: The system SUGGESTS, the admin ACTS. No auto-actions, ever. Every suggestion is a card in the action queue requiring explicit approval.
+- Even "obvious" actions (pause campaign with 0% reply rate after 2 weeks) must be suggestions, not automatic.
+- Three responses: Approve (execute), Dismiss (ignore), Defer (remind later). No "auto-approve" option.
+- Log every admin action via existing `AuditLog` model for intelligence actions too.
+- Visually distinguish suggestions from applied actions in UI (yellow for "suggested", green for "applied").
+
+**Detection:** If any code path modifies campaign/workspace settings without an admin action record, it violates the design principle.
+
+**Phase:** Design constraint from phase one, enforced throughout all phases.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall 10: Reply Classification on Sparse Data
+
+**What goes wrong:** A new workspace has 2 replies. System computes reply rate, classifies sentiment distribution, generates insights. The numbers are meaningless (50% positive sentiment = 1/2 replies). "Your interested rate is 3x the vertical average" is statistically invalid.
+
+**Prevention:**
+- Minimum thresholds: no campaign performance ranking until 50+ emails sent. No sentiment distribution until 10+ classified replies. No cross-workspace benchmarking until 3+ workspaces have sufficient data.
+- Display "insufficient data" placeholders with threshold needed: "12 more replies needed for sentiment analysis."
+
+**Phase:** Dashboard UI phase. Build threshold checks into every metric component.
+
+---
+
+### Pitfall 11: Schema Migration Complexity
+
+**What goes wrong:** Intelligence hub needs 4-6 new models (ReplyClassification, CampaignMetric, InsightCard, AdminAction, BenchmarkSnapshot). Adding to a 1099-line schema with 30+ models using `db push` (no migration history) risks data loss if push goes wrong.
+
+**Prevention:**
+- Continue `db push` (proven pattern) but back up Neon DB before schema changes (Neon branching or `pg_dump`).
+- Add new models incrementally — one or two per phase, test each on a Neon branch first.
+- New models should be additive (new tables). The only existing table needing modification is `WebhookEvent` (add classification linkage) — plan that carefully.
+
+**Phase:** Every phase that adds models.
+
+---
+
+### Pitfall 12: Conflicting Classification Between Webhook Handler and Classification Engine
+
+**What goes wrong:** The webhook handler (lines 267-289) already sets `Person.status` to "replied" or "interested" based on `eventType`. The new classification engine assigns its own intent categories. Now `Person.status = "interested"` but `ReplyClassification.intent = "objection"` because EmailBison's `LEAD_INTERESTED` flag disagrees with the LLM assessment.
+
+**Prevention:**
+- Document the hierarchy: EmailBison's event type is the initial signal, LLM classification is the refined analysis. Different purposes — don't reconcile into one field.
+- `Person.status` remains the lifecycle status (new -> contacted -> replied -> interested). `ReplyClassification.intent` is the semantic analysis.
+- Intelligence Hub uses `ReplyClassification.intent` for analytics, not `Person.status`.
+- Display both in UI: "Status: Interested (EmailBison) | Intent: Soft objection - budget concern (AI)" — let admin see both signals.
+
+**Phase:** Classification engine design phase.
+
+---
+
+### Pitfall 13: ICP Score Calibration Chicken-and-Egg Problem
+
+**What goes wrong:** A key v3.0 feature is "ICP score calibration — do high scores actually convert?" But reply classification data doesn't exist yet (being built in the same milestone). Campaign performance attribution requires mapping replies back to campaigns, which requires `WebhookEvent.campaignId` to reliably match `Campaign.emailBisonCampaignId`. If this linkage has gaps (untracked replies, replies from campaigns created before the Campaign model existed), calibration data is incomplete and conclusions are wrong.
+
+**Why it happens:** ICP scores exist on `PersonWorkspace.icpScore` (0-100). Reply data exists on `WebhookEvent`. But connecting them requires: person X was scored Y, was sent campaign Z, and replied with intent W. Each join depends on data completeness from different system eras.
+
+**Prevention:**
+- Start ICP calibration as "prospective only" — only analyze people scored AND sent AND replied AFTER the classification engine is deployed. Don't try to retroactively classify old replies for calibration.
+- Build the reply-to-campaign-to-person linkage first as a materialized view or pre-computed table, verify data completeness before building calibration logic on top.
+- Accept that meaningful calibration data requires 2-3 months of classified replies before conclusions are statistically valid. Show "collecting data" placeholder until then.
+
+**Detection:** If calibration analysis has <50 data points per ICP score bucket, the results are noise.
+
+**Phase:** ICP calibration should be one of the last phases — it depends on classification + analytics being stable first.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Reply classification engine | Taxonomy doesn't match reality (#1), cost spiral (#4), conflicts with existing status (#12) | Label 100+ real replies before designing taxonomy. Gate on reply events only. Separate intent from lifecycle status. |
+| Campaign analytics computation | Queries kill page load (#3), sparse data misleads (#10) | Pre-compute everything into cache tables. Add minimum data thresholds per metric. |
+| Cross-workspace benchmarking | Data leakage (#2), hallucination references other clients (#6) | Anonymize-only aggregates. Pre-compute benchmarks. Validate LLM output against workspace context. |
+| Insight generation | Hallucinated numbers (#6), alert fatigue (#7), autonomous actions (#9) | LLM narrates pre-computed data only. Cap 3-5 insights/cycle. Suggest-only, never auto-act. |
+| Action queue | No idempotency (#5), race conditions on approve/dismiss | Idempotency keys as unique constraints. Optimistic locking on status transitions. |
+| Intelligence Hub dashboard | Slow page load (#3), stale data | Single-payload API route from pre-computed tables. "Last computed" indicator. Background refresh. |
+| ICP score calibration | Chicken-and-egg (#13), insufficient data for conclusions | Prospective-only analysis. Minimum data thresholds. Build reply-campaign-person linkage first. |
+| Scheduling/infrastructure | No cron slots (#8), timeout constraints | Railway for heavy computation. cron-job.org trigger + `after()` for light work. |
+| Schema additions | Migration risk (#11) | Incremental model additions per phase. Neon branch testing. Backup before every `db push`. |
+
+---
+
+## Integration Pitfalls (v3.0-specific)
+
+| Integration Point | Common Mistake | Correct Approach |
+|-------------------|----------------|------------------|
+| WebhookEvent → ReplyClassification | Classifying every webhook event, including EMAIL_SENT and BOUNCE | Gate strictly: only LEAD_REPLIED, LEAD_INTERESTED, UNTRACKED_REPLY_RECEIVED where `isAutomated === false` |
+| Classification + Reply Suggestion | Running classification AND `generateReplySuggestion()` as independent LLM calls on the same reply | Classify first, pass classification result as context to reply suggestion — avoids duplicate analysis |
+| Poll-replies cron + classification | Re-classifying replies already classified via webhook path | Check `classifiedAt` timestamp before calling LLM. Idempotency guard. |
+| CachedMetrics + fresh data | Serving stale cached metrics without indicating staleness | Always display "last computed" timestamp. Allow manual refresh. Auto-refresh on page visit if cache is >1 hour old. |
+| Benchmark aggregates + workspace identity | Including workspace identifiers in benchmark computation output | Pre-compute benchmarks as anonymous vertical/overall averages. Never pass workspace names to benchmark computation functions. |
+| Campaign model + analytics | Assuming all campaigns have `emailBisonCampaignId` for reply attribution | Some campaigns are draft/signal/LinkedIn-only. Handle null `emailBisonCampaignId` gracefully in analytics joins. |
+| Admin action execution | Executing the suggested action directly from the insight generation function | Insight generates a record. Admin clicks approve. Separate execution function reads the approved record and acts. Three separate steps, never collapsed. |
+
+---
+
+## "Looks Done But Isn't" Checklist (v3.0)
+
+- [ ] **Classification engine returns results** — verify against 20 manually-labeled replies. Check that OOO replies match existing `isNonRealReply` logic. Check confidence scores distribute sensibly (not all 0.99).
+- [ ] **Campaign analytics dashboard loads** — verify it reads from `CachedMetrics`, not raw tables. Check page load time under 2s. Verify Neon cold start doesn't cause timeout.
+- [ ] **Cross-workspace benchmarks display** — verify no workspace names, campaign names, or reply text appear in benchmark data. Test with 2 workspaces and verify neither can see the other's specifics.
+- [ ] **Insight cards generate** — verify all numbers in insights match pre-computed metrics. Check no insight references a workspace name other than the target. Verify cap of 3-5 per cycle is enforced.
+- [ ] **Action queue approve/dismiss works** — verify double-click doesn't create duplicate actions. Check audit log entry is created. Verify the actual campaign/setting change happens only on approve.
+- [ ] **Analytics cron runs on schedule** — verify it runs on Railway or cron-job.org (not Vercel cron). Check it completes within timeout. Check it's idempotent (running twice produces same result).
+- [ ] **ICP calibration shows results** — verify minimum data thresholds are enforced. Check "insufficient data" placeholder appears for new workspaces. Verify only post-v3.0 classified replies are used.
 
 ---
 
 ## Sources
 
-- [Apollo.io API Terms of Service](https://www.apollo.io/terms/api) — prohibition on sublicensing and competitive use
-- [Apollo.io Rate Limits](https://docs.apollo.io/reference/rate-limits) — plan-dependent, check per endpoint
-- [Exa.ai Websets FAQ](https://exa.ai/docs/websets/faq) — 10 credits per all-green result; partial results still consume credits
-- [PredictLeads FAQ](https://predictleads.com/faq) — refresh rate 2x/day to 2x/week depending on company activity; 36-hour job opening refresh
-- [PredictLeads Documentation](https://docs.predictleads.com/) — signal types and data freshness
-- [Vercel serverless timeout issues](https://vercel.com/kb/guide/what-can-i-do-about-vercel-serverless-functions-timing-out) — 300s hard max on Hobby/Pro
-- [Railway resource limits](https://docs.railway.com/pricing/cost-control) — configurable per service; Pro: 24 vCPU / 24 GB RAM per replica
-- [Neon connection pooling](https://neon.com/docs/connect/connection-pooling) — PgBouncer pooled connections required for serverless/worker scenarios
-- [Apollo.io LinkedIn scraping enforcement](https://emailscale.io/why-did-apollo-block-apifi/) — Apollo blocked from LinkedIn ecosystem in 2025
-- [AI cold email hallucination risks](https://blog.hubspot.com/sales/ai-cold-email) — HubSpot test: AI hallucinates facts, requires human verification
-- [Multi-source lead deduplication pitfalls](https://community.clay.com/x/support/2boj4s1y8b4r/improving-lead-deduplication-workflow-with-clay-an) — Clay community: email + LinkedIn URL as composite dedup key
-- [Outbound automation approval gates](https://reply.io/blog/outbound-ai/) — human-in-the-loop required before any automated send
-- [Apify LinkedIn no-cookie actors](https://apify.com/supreme_coder/linkedin-profile-scraper) — $3/1k profiles; no account risk but returns only public data
+- [Neon Connection Pooling](https://neon.com/docs/connect/connection-pooling) — 10k pooled connection limit, PgBouncer transaction mode, 300-500ms cold start
+- [Vercel Function Timeouts](https://vercel.com/kb/guide/what-can-i-do-about-vercel-serverless-functions-timing-out) — Hobby 10s limit, Fluid Compute for background processing
+- [Upstash Vercel Workflow Patterns](https://upstash.com/blog/vercel-cost-workflow) — Queue-based decomposition for long-running jobs
+- [AWS Multi-Tenant RLS Guide](https://aws.amazon.com/blogs/database/multi-tenant-data-isolation-with-postgresql-row-level-security/) — Row-level security for workspace isolation
+- [Voiceflow LLM Classification Tips](https://www.voiceflow.com/pathways/5-tips-to-optimize-your-llm-intent-classification-prompts) — Two-part classification architecture, prompt optimization
+- [Langfuse Intent Classification Pipeline](https://langfuse.com/guides/cookbook/example_intent_classification_pipeline) — Structured classification with evaluation loops
+- [IBM Alert Fatigue Reduction](https://www.ibm.com/think/insights/alert-fatigue-reduction-with-ai-agents) — AI-driven alert prioritization, 70% reduction in redundant notifications
+- [Instantly Cold Email Benchmark 2026](https://instantly.ai/cold-email-benchmark-report-2026) — 3.43% average reply rate baseline for calibration
+- [Prisma Production Guide](https://www.digitalapplied.com/blog/prisma-orm-production-guide-nextjs) — Connection management, race condition handling, P2002 error recovery
+- [Neon 2025 Updates](https://dev.to/dataformathub/neon-postgres-deep-dive-why-the-2025-updates-change-serverless-sql-5o0) — PostgreSQL 18 async I/O improvements
+- Existing codebase: `prisma/schema.prisma` (1099 lines, 30+ models), `src/app/api/webhooks/emailbison/route.ts` (428 lines, reply handling + classification hook points)
 
 ---
-*Pitfalls research for: Multi-source lead discovery, signal monitoring, Creative Ideas copy generation — v2.0 milestone*
-*Researched: 2026-03-03*
+*Pitfalls research for: Campaign Intelligence Hub — v3.0 milestone*
+*Researched: 2026-03-09*
