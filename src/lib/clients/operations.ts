@@ -52,6 +52,7 @@ export interface ClientSummary {
   pipelineStatus: string;
   campaignType: string;
   workspaceSlug: string | null;
+  workspaceType?: string;
   contactEmail: string | null;
   contactName: string | null;
   stageProgress: StageProgress[];
@@ -359,12 +360,26 @@ export async function listClients(
 
   const now = new Date();
 
+  // Fetch workspace types for clients that have a workspaceSlug
+  const slugs = [...new Set(clients.map((c) => c.workspaceSlug).filter(Boolean))] as string[];
+  const workspaceTypeMap = new Map<string, string>();
+  if (slugs.length > 0) {
+    const workspaces = await prisma.workspace.findMany({
+      where: { slug: { in: slugs } },
+      select: { slug: true, type: true },
+    });
+    for (const ws of workspaces) {
+      workspaceTypeMap.set(ws.slug, ws.type);
+    }
+  }
+
   return clients.map((c) => ({
     id: c.id,
     name: c.name,
     pipelineStatus: c.pipelineStatus,
     campaignType: c.campaignType,
     workspaceSlug: c.workspaceSlug,
+    workspaceType: c.workspaceSlug ? workspaceTypeMap.get(c.workspaceSlug) : undefined,
     contactEmail: c.contactEmail,
     contactName: c.contactName,
     stageProgress: computeStageProgress(c.tasks),

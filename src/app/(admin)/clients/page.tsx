@@ -53,6 +53,7 @@ interface Client {
   pipelineStatus: string;
   campaignType: string;
   workspaceSlug: string | null;
+  workspaceType?: string;
   contactEmail: string | null;
   contactName: string | null;
   stageProgress: StageProgress[];
@@ -495,6 +496,11 @@ export default function ClientsPage() {
                             >
                               {client.name}
                             </Link>
+                            {client.workspaceType === "internal" && (
+                              <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 font-normal text-muted-foreground">
+                                Internal
+                              </Badge>
+                            )}
                             {client.overdueTasks > 0 ? (
                               <Badge variant="destructive" className="ml-2 text-[10px] px-1.5 py-0">
                                 {client.overdueTasks} overdue
