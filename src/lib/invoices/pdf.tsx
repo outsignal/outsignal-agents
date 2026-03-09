@@ -93,9 +93,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   billToCompany: {
-    fontSize: 16,
+    fontSize: 11,
     fontFamily: "Helvetica-Bold",
     color: BRAND.dark,
+    textTransform: "uppercase",
     marginBottom: 4,
     textAlign: "right",
   },
