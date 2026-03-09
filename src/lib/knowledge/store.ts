@@ -205,7 +205,13 @@ export async function searchKnowledge(
   }[] = [];
 
   for (const doc of docs) {
-    const chunks: string[] = JSON.parse(doc.chunks);
+    let chunks: string[];
+    try {
+      chunks = JSON.parse(doc.chunks);
+    } catch {
+      console.warn(`[knowledge] Failed to parse chunks for document "${doc.title}", skipping`);
+      continue;
+    }
     for (const chunk of chunks) {
       const lower = chunk.toLowerCase();
       let score = 0;

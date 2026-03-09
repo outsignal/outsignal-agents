@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { getPortalSession } from "@/lib/portal-session";
-import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { linkedinLoginSchema } from "@/lib/validations/linkedin";
 
 const WORKER_URL = process.env.LINKEDIN_WORKER_URL;
@@ -17,13 +16,14 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdminAuth();
-  if (!session) {
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const session = await getPortalSession();
     const { id } = await params;
 
     // Verify the sender belongs to this workspace

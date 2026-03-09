@@ -26,6 +26,7 @@ import { aiarkAdapter } from "./providers/aiark";
 import { aiarkPersonAdapter } from "./providers/aiark-person";
 import { firecrawlCompanyAdapter } from "./providers/firecrawl-company";
 import { classifyIndustry, classifyJobTitle, classifyCompanyName } from "@/lib/normalizer";
+import { isRateLimited } from "@/lib/http-error";
 import type { Provider, EmailAdapterInput, EmailAdapter, CompanyAdapter, PersonAdapter, PersonProviderResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@ export async function enrichEmail(
           break;
         } catch (err) {
           const error = err instanceof Error ? err : new Error(String(err));
-          const is429 = (err as any)?.status === 429 || error.message.includes("429");
+          const is429 = isRateLimited(err) || error.message.includes("429");
           if (is429 && attempt < MAX_RETRIES - 1) {
             await sleep(exponentialBackoff(attempt));
             continue;
@@ -287,7 +288,7 @@ export async function enrichEmail(
         break; // success — exit retry loop
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        const is429 = (err as any)?.status === 429 || error.message.includes("429");
+        const is429 = isRateLimited(err) || error.message.includes("429");
 
         if (is429 && attempt < MAX_RETRIES - 1) {
           await sleep(exponentialBackoff(attempt));
@@ -476,7 +477,7 @@ export async function enrichCompany(
         break;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        const is429 = (err as any)?.status === 429 || error.message.includes("429");
+        const is429 = isRateLimited(err) || error.message.includes("429");
 
         if (is429 && attempt < MAX_RETRIES - 1) {
           await sleep(exponentialBackoff(attempt));

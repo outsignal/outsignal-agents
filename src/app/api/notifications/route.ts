@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   const type = url.searchParams.get("type");
   const severity = url.searchParams.get("severity");
   const workspace = url.searchParams.get("workspace");
-  const page = parseInt(url.searchParams.get("page") ?? "1");
-  const limit = 50;
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
+  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50")));
 
   const where: Record<string, unknown> = {};
   if (type) where.type = type;

@@ -121,8 +121,9 @@ model Person {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  workspaces     PersonWorkspace[]
-  lists          TargetListPerson[]
+  workspaces           PersonWorkspace[]
+  lists                TargetListPerson[]
+  signalCampaignLeads  SignalCampaignLead[]
 
   @@index([source])
   @@index([status])
@@ -537,7 +538,7 @@ model Campaign {
 
   // Lead ownership — nullable until a list is linked
   targetListId String?
-  targetList   TargetList? @relation(fields: [targetListId], references: [id])
+  targetList   TargetList? @relation(fields: [targetListId], references: [id], onDelete: SetNull)
 
   // Content storage (JSON per step)
   // emailSequence: array of { position, subjectLine, subjectVariantB?, body, delayDays, notes? }
@@ -637,7 +638,7 @@ model CampaignDeploy {
   createdAt   DateTime  @default(now())
   completedAt DateTime?
 
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@index([workspaceSlug])
@@ -648,6 +649,7 @@ model SignalCampaignLead {
   id         String   @id @default(cuid())
   campaignId String
   personId   String
+  person     Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
   addedAt    DateTime @default(now())
 
   // Outcome: "added" (passed threshold, deployed), "below_threshold" (scored but failed), "enriching" (in progress)
