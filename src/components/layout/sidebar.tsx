@@ -19,6 +19,7 @@ import {
   Activity,
   Webhook,
   ListOrdered,
+  BarChart3,
   Megaphone,
   Package,
   Plug,
@@ -126,6 +127,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/email", label: "Email Health", icon: Mail },
       { href: "/replies", label: "Replies", icon: MessageSquareText },
+      { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/webhook-log", label: "Webhook Log", icon: Webhook },
     ],
   },
