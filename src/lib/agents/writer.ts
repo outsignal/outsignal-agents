@@ -12,7 +12,7 @@ import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIde
 const writerTools = {
   getWorkspaceIntelligence: tool({
     description:
-      "Get full workspace data including ICP, campaign brief, and the latest website analysis. Use this first to understand the client before writing copy.",
+      "Get full workspace data including ICP, campaign brief, outreach tone guidance, normalization rules, and the latest website analysis. Use this first to understand the client before writing copy. If outreachTonePrompt is set, treat it as the primary tone/style directive for all generated copy. If normalizationPrompt is set, use it to normalize company names and other lead data before inserting into copy.",
     inputSchema: z.object({
       slug: z.string().describe("The workspace slug"),
     }),
@@ -44,6 +44,8 @@ const writerTools = {
         caseStudies: ws.caseStudies,
         leadMagnets: ws.leadMagnets,
         existingMessaging: ws.existingMessaging,
+        outreachTonePrompt: ws.outreachTonePrompt ?? null,
+        normalizationPrompt: ws.normalizationPrompt ?? null,
         websiteAnalysis: analysis
           ? JSON.parse(analysis.analysis)
           : "No website analysis available yet.",
@@ -481,6 +483,18 @@ NOTE: Former universal rule "PVP framework" is now scoped to the PVP strategy bl
 - If feedback is general ("too formal"), regenerate ALL steps with the adjusted tone
 - When revising, always load existing sequences first via getCampaignContext or getExistingDrafts before making changes
 - If stepNumber is provided in the task context, regenerate only that step
+
+---
+
+## Outreach Tone Prompt
+
+If getWorkspaceIntelligence returns a non-null outreachTonePrompt, you MUST follow it as the primary tone/style directive. It overrides your default tone choices. Examples: "Professional but friendly", "Casual and witty", "Direct and no-nonsense". Apply it to all generated copy — cold outreach sequences AND reply suggestions.
+
+---
+
+## Normalization Prompt
+
+If getWorkspaceIntelligence returns a non-null normalizationPrompt, use it to normalize company names, job titles, industry names, and any other lead-sourced data before inserting them into email or LinkedIn copy. For example, the prompt may instruct you to strip "Ltd", "Inc", "LLC" suffixes, expand abbreviations, or use a specific casing style. Apply normalization to all variable placeholders and hardcoded company references in your generated copy.
 
 ---
 
