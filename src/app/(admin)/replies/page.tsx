@@ -107,12 +107,24 @@ export default function RepliesPage() {
   // URL-persisted filter state via nuqs
   const [params, setParams] = useQueryStates({
     workspace: parseAsString.withDefault(""),
+    campaignId: parseAsString.withDefault(""),
     intent: parseAsString.withDefault(""),
     sentiment: parseAsString.withDefault(""),
     search: parseAsString.withDefault(""),
     range: parseAsString.withDefault("all"),
     page: parseAsInteger.withDefault(1),
   });
+
+  // Distinct campaigns for filter dropdown (filtered by workspace when selected)
+  const [campaigns, setCampaigns] = useState<{ campaignId: string; campaignName: string }[]>([]);
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (params.workspace) sp.set("workspace", params.workspace);
+    fetch(`/api/replies/campaigns?${sp.toString()}`)
+      .then((r) => r.ok ? r.json() : Promise.resolve({ campaigns: [] }))
+      .then((d: { campaigns: { campaignId: string; campaignName: string }[] }) => setCampaigns(d.campaigns))
+      .catch(() => setCampaigns([]));
+  }, [params.workspace]);
 
   const [data, setData] = useState<RepliesResponse | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -146,6 +158,7 @@ export default function RepliesPage() {
     try {
       const sp = new URLSearchParams();
       if (params.workspace) sp.set("workspace", params.workspace);
+      if (params.campaignId) sp.set("campaignId", params.campaignId);
       if (params.intent) sp.set("intent", params.intent);
       if (params.sentiment) sp.set("sentiment", params.sentiment);
       if (params.search) sp.set("search", params.search);
@@ -164,7 +177,7 @@ export default function RepliesPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.workspace, params.intent, params.sentiment, params.search, params.range, params.page]);
+  }, [params.workspace, params.campaignId, params.intent, params.sentiment, params.search, params.range, params.page]);
 
   // ─── Fetch stats ──────────────────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
@@ -172,6 +185,7 @@ export default function RepliesPage() {
     try {
       const sp = new URLSearchParams();
       if (params.workspace) sp.set("workspace", params.workspace);
+      if (params.campaignId) sp.set("campaignId", params.campaignId);
       if (params.range && params.range !== "all") sp.set("range", params.range);
 
       const res = await fetch(`/api/replies/stats?${sp.toString()}`);
@@ -183,7 +197,7 @@ export default function RepliesPage() {
     } finally {
       setStatsLoading(false);
     }
-  }, [params.workspace, params.range]);
+  }, [params.workspace, params.campaignId, params.range]);
 
   useEffect(() => {
     void fetchReplies();
@@ -220,6 +234,7 @@ export default function RepliesPage() {
   const hasFilters =
     params.search ||
     params.workspace ||
+    params.campaignId ||
     params.intent ||
     params.sentiment ||
     params.range !== "all";
@@ -254,6 +269,7 @@ export default function RepliesPage() {
             onValueChange={(val) => {
               void setParams({
                 workspace: val === "all" ? "" : val,
+                campaignId: "", // reset campaign when workspace changes
                 page: 1,
               });
             }}
@@ -270,6 +286,30 @@ export default function RepliesPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {campaigns.length > 0 && (
+            <Select
+              value={params.campaignId || "all"}
+              onValueChange={(val) => {
+                void setParams({
+                  campaignId: val === "all" ? "" : val,
+                  page: 1,
+                });
+              }}
+            >
+              <SelectTrigger size="sm" className="w-52">
+                <SelectValue placeholder="All campaigns" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All campaigns</SelectItem>
+                {campaigns.map((c) => (
+                  <SelectItem key={c.campaignId} value={c.campaignId}>
+                    {c.campaignName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Intent filter chips */}
@@ -328,6 +368,7 @@ export default function RepliesPage() {
                 void setParams({
                   search: "",
                   workspace: "",
+                  campaignId: "",
                   intent: "",
                   sentiment: "",
                   range: "all",
