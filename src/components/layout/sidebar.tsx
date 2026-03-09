@@ -102,6 +102,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
       { href: "/pipeline", label: "Pipeline", icon: Target },
       { href: "/onboard", label: "Onboard", icon: ClipboardList },
       { href: "/clients", label: "Clients", icon: Briefcase },
+      { href: "/pages", label: "Pages", icon: FileText },
     ],
   },
   {

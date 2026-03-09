@@ -15,6 +15,10 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Plus,
+  Link2,
+  X,
+  FileText,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
@@ -27,6 +31,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { ControlledConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -97,6 +103,11 @@ export default function ClientDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [addingLink, setAddingLink] = useState(false);
+  const [newLinkLabel, setNewLinkLabel] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [savingLink, setSavingLink] = useState(false);
+  const [clientPages, setClientPages] = useState<{id: string; slug: string; title: string}[]>([]);
 
   // ─── Fetch client ───────────────────────────────────────────────────
 
@@ -120,9 +131,39 @@ export default function ClientDetailPage() {
     }
   }, [clientId]);
 
+  const fetchPages = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/pages?clientId=${clientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setClientPages(data.pages ?? data ?? []);
+      }
+    } catch {
+      // silently ignore
+    }
+  }, [clientId]);
+
   useEffect(() => {
     fetchClient();
-  }, [fetchClient]);
+    fetchPages();
+  }, [fetchClient, fetchPages]);
+
+  async function handleCreatePage() {
+    if (!client) return;
+    try {
+      const res = await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: `${client.name} - New Page`, clientId }),
+      });
+      if (!res.ok) throw new Error("Failed to create page");
+      const data = await res.json();
+      const page = data.page ?? data;
+      router.push(`/pages/${page.slug}`);
+    } catch {
+      // silently ignore
+    }
+  }
 
   // ─── Delete handler ─────────────────────────────────────────────────
 
@@ -176,6 +217,51 @@ export default function ClientDetailPage() {
       );
     } finally {
       setUpdatingStatus(false);
+    }
+  }
+
+  // ─── Link handlers ─────────────────────────────────────────────────
+
+  async function handleAddLink() {
+    if (!client || !newLinkLabel.trim() || !newLinkUrl.trim()) return;
+    setSavingLink(true);
+
+    const updatedLinks = [...(client.links || []), { label: newLinkLabel.trim(), url: newLinkUrl.trim() }];
+
+    // Optimistic
+    setClient((prev) => prev ? { ...prev, links: updatedLinks } : prev);
+    setAddingLink(false);
+    setNewLinkLabel("");
+    setNewLinkUrl("");
+
+    try {
+      await fetch(`/api/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ links: updatedLinks }),
+      });
+    } catch {
+      fetchClient(); // revert
+    } finally {
+      setSavingLink(false);
+    }
+  }
+
+  async function handleRemoveLink(index: number) {
+    if (!client) return;
+    const updatedLinks = client.links.filter((_: { label: string; url: string }, i: number) => i !== index);
+
+    // Optimistic
+    setClient((prev) => prev ? { ...prev, links: updatedLinks } : prev);
+
+    try {
+      await fetch(`/api/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ links: updatedLinks }),
+      });
+    } catch {
+      fetchClient(); // revert
     }
   }
 
@@ -388,6 +474,121 @@ export default function ClientDetailPage() {
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 </div>
+              )}
+            </div>
+
+            {/* Links */}
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                  Links
+                </p>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setAddingLink(true)}
+                  className="h-6 px-2 text-xs"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              {/* Add link form */}
+              {addingLink && (
+                <div className="flex items-end gap-2 mb-3">
+                  <div className="flex-1 space-y-1">
+                    <Label htmlFor="link-label" className="text-xs">Label</Label>
+                    <Input
+                      id="link-label"
+                      value={newLinkLabel}
+                      onChange={(e) => setNewLinkLabel(e.target.value)}
+                      placeholder="Google Doc"
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="flex-[2] space-y-1">
+                    <Label htmlFor="link-url" className="text-xs">URL</Label>
+                    <Input
+                      id="link-url"
+                      value={newLinkUrl}
+                      onChange={(e) => setNewLinkUrl(e.target.value)}
+                      placeholder="https://docs.google.com/..."
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-8"
+                    disabled={!newLinkLabel.trim() || !newLinkUrl.trim() || savingLink}
+                    onClick={handleAddLink}
+                  >
+                    {savingLink ? "..." : "Save"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => { setAddingLink(false); setNewLinkLabel(""); setNewLinkUrl(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              {/* Link list */}
+              {client.links && client.links.length > 0 ? (
+                <div className="space-y-1.5">
+                  {client.links.map((link: { label: string; url: string }, idx: number) => (
+                    <div key={idx} className="flex items-center gap-2 group">
+                      <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <a
+                        href={link.url.startsWith("http") ? link.url : `https://${link.url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
+                      >
+                        {link.label}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        onClick={() => handleRemoveLink(idx)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : !addingLink ? (
+                <p className="text-xs text-muted-foreground/60">No links added yet</p>
+              ) : null}
+            </div>
+
+            {/* Pages */}
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Pages</p>
+                <Button variant="ghost" size="xs" onClick={handleCreatePage} className="h-6 px-2 text-xs">
+                  <Plus className="h-3 w-3 mr-1" />
+                  New Page
+                </Button>
+              </div>
+              {clientPages.length > 0 ? (
+                <div className="space-y-1.5">
+                  {clientPages.map((page) => (
+                    <div key={page.id} className="flex items-center gap-2">
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <Link href={`/pages/${page.slug}`} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        {page.title}
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/60">No pages yet</p>
               )}
             </div>
 

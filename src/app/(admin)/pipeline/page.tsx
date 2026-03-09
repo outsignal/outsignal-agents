@@ -39,6 +39,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PIPELINE_STATUSES } from "@/lib/clients/task-templates";
 import { ControlledConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+  useDraggable,
+  useDroppable,
+} from "@dnd-kit/core";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,20 +184,36 @@ function ProspectCard({
   onDelete,
   onConvert,
   onEdit,
+  isDragOverlay,
 }: {
   prospect: Prospect;
   onStatusChange: (newStatus: string) => void;
   onDelete: () => void;
   onConvert: () => void;
   onEdit: () => void;
+  isDragOverlay?: boolean;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+  } = useDraggable({ id: prospect.id });
+
   const domain = prospect.website
     ? prospect.website.replace(/^https?:\/\//, "").replace(/\/$/, "")
     : null;
 
   return (
     <div
-      className="group rounded-lg border border-border/50 bg-card p-3 transition-all hover:border-border hover:shadow-sm cursor-pointer"
+      ref={isDragOverlay ? undefined : setNodeRef}
+      {...(isDragOverlay ? {} : listeners)}
+      {...(isDragOverlay ? {} : attributes)}
+      className={cn(
+        "group rounded-lg border border-border/50 bg-card p-3 transition-all hover:border-border hover:shadow-sm cursor-pointer",
+        isDragging && "opacity-50",
+        isDragOverlay && "shadow-lg ring-2 ring-primary/20 rotate-[2deg]",
+      )}
       onClick={onEdit}
     >
       {/* Top row: company name + action menu */}
@@ -319,6 +347,8 @@ function KanbanColumn({
   onConvert: (id: string) => void;
   onEdit: (prospect: Prospect) => void;
 }) {
+  const { setNodeRef, isOver } = useDroppable({ id: status.value });
+
   return (
     <div className="flex flex-col min-h-0">
       {/* Column header */}
@@ -335,7 +365,13 @@ function KanbanColumn({
       </div>
 
       {/* Cards */}
-      <div className="space-y-2 flex-1">
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "space-y-2 flex-1 rounded-md transition-colors min-h-[60px]",
+          isOver && "bg-primary/5 ring-2 ring-primary/20",
+        )}
+      >
         {prospects.map((p) => (
           <ProspectCard
             key={p.id}
@@ -379,6 +415,32 @@ export default function PipelinePage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [convertConfirm, setConvertConfirm] = useState<{ id: string; name: string } | null>(null);
   const [closedWonConfirm, setClosedWonConfirm] = useState<{ id: string; name: string } | null>(null);
+
+  // Drag-and-drop state
+  const [activeProspect, setActiveProspect] = useState<Prospect | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  function handleDragStart(event: DragStartEvent) {
+    const prospect = prospects.find((p) => p.id === event.active.id);
+    setActiveProspect(prospect ?? null);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const prospect = prospects.find((p) => p.id === active.id);
+      if (prospect && prospect.pipelineStatus !== over.id) {
+        handleStatusChange(prospect.id, over.id as string);
+      }
+    }
+    setActiveProspect(null);
+  }
+
+  function handleDragCancel() {
+    setActiveProspect(null);
+  }
 
   const fetchProspects = useCallback(async () => {
     setLoading(true);
@@ -745,32 +807,55 @@ export default function PipelinePage() {
           </div>
         ) : (
           <>
-            {/* Desktop: horizontal scrollable columns */}
-            <div className="hidden lg:flex gap-4 overflow-x-auto pb-4">
-              {PIPELINE_STATUSES.map((status) => (
-                <div
-                  key={status.value}
-                  className={cn(
-                    "min-w-[280px] flex-1 rounded-lg bg-muted/30 p-3 border border-border/30",
-                    // Slightly dim "done" state columns
-                    (status.value === "closed_won" ||
-                      status.value === "closed_lost" ||
-                      status.value === "unqualified" ||
-                      status.value === "churned") &&
-                      "opacity-80"
-                  )}
-                >
-                  <KanbanColumn
-                    status={status}
-                    prospects={prospectsByStatus[status.value] ?? []}
-                    onStatusChange={handleStatusChange}
-                    onDelete={handleDelete}
-                    onConvert={handleConvertToClient}
-                    onEdit={handleEdit}
-                  />
-                </div>
-              ))}
-            </div>
+            {/* Desktop: horizontal scrollable columns with drag-and-drop */}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <div className="hidden lg:flex gap-4 overflow-x-auto pb-4">
+                {PIPELINE_STATUSES.map((status) => (
+                  <div
+                    key={status.value}
+                    className={cn(
+                      "min-w-[280px] flex-1 rounded-lg bg-muted/30 p-3 border border-border/30",
+                      // Slightly dim "done" state columns
+                      (status.value === "closed_won" ||
+                        status.value === "closed_lost" ||
+                        status.value === "unqualified" ||
+                        status.value === "churned") &&
+                        "opacity-80"
+                    )}
+                  >
+                    <KanbanColumn
+                      status={status}
+                      prospects={prospectsByStatus[status.value] ?? []}
+                      onStatusChange={handleStatusChange}
+                      onDelete={handleDelete}
+                      onConvert={handleConvertToClient}
+                      onEdit={handleEdit}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <DragOverlay>
+                {activeProspect ? (
+                  <div className="w-[280px]">
+                    <ProspectCard
+                      prospect={activeProspect}
+                      onStatusChange={() => {}}
+                      onDelete={() => {}}
+                      onConvert={() => {}}
+                      onEdit={() => {}}
+                      isDragOverlay
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
 
             {/* Mobile/tablet: tabs */}
             <div className="lg:hidden">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { Plus, Users } from "lucide-react";
 import { Header } from "@/components/layout/header";
@@ -56,6 +56,8 @@ interface Client {
   contactEmail: string | null;
   contactName: string | null;
   stageProgress: StageProgress[];
+  outstandingTasks: number;
+  overdueTasks: number;
   createdAt: string;
 }
 
@@ -431,6 +433,19 @@ export default function ClientsPage() {
 
   const clients = data?.clients ?? [];
 
+  const sortedClients = useMemo(() => {
+    return [...clients].sort((a, b) => {
+      // Clients with outstanding tasks first
+      if (a.outstandingTasks > 0 && b.outstandingTasks === 0) return -1;
+      if (a.outstandingTasks === 0 && b.outstandingTasks > 0) return 1;
+      // Within outstanding, sort by overdue count descending
+      if (a.outstandingTasks > 0 && b.outstandingTasks > 0) {
+        if (a.overdueTasks !== b.overdueTasks) return b.overdueTasks - a.overdueTasks;
+      }
+      return 0; // preserve server order otherwise
+    });
+  }, [clients]);
+
   return (
     <div>
       <Header
@@ -459,6 +474,7 @@ export default function ClientsPage() {
                   <TableHead>Campaign Type</TableHead>
                   <TableHead>Workspace</TableHead>
                   <TableHead>Stage Progress</TableHead>
+                  <TableHead>Tasks</TableHead>
                   <TableHead>Started</TableHead>
                 </TableRow>
               </TableHeader>
@@ -466,49 +482,67 @@ export default function ClientsPage() {
                 {loading ? (
                   <SkeletonRows />
                 ) : clients.length > 0 ? (
-                  clients.map((client) => (
-                    <TableRow key={client.id} className="border-border">
-                      <TableCell>
-                        <Link
-                          href={`/clients/${client.id}`}
-                          className="font-medium text-sm hover:underline"
-                        >
-                          {client.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getCampaignVariant(client.campaignType)}>
-                          {getCampaignLabel(client.campaignType)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {client.workspaceSlug ? (
-                          <Link
-                            href={`/workspace/${client.workspaceSlug}`}
-                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-                          >
-                            {client.workspaceSlug}
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            —
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <StageProgressBar
-                          stageProgress={client.stageProgress}
-                        />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDate(client.createdAt)}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  sortedClients.map((client) => {
+                    const totalTasks = client.stageProgress.reduce((sum, s) => sum + s.total, 0);
+                    const completedTasks = client.stageProgress.reduce((sum, s) => sum + s.completed, 0);
+                    return (
+                      <TableRow key={client.id} className="border-border">
+                        <TableCell>
+                          <div className="flex items-center">
+                            <Link
+                              href={`/clients/${client.id}`}
+                              className="font-medium text-sm hover:underline"
+                            >
+                              {client.name}
+                            </Link>
+                            {client.overdueTasks > 0 ? (
+                              <Badge variant="destructive" className="ml-2 text-[10px] px-1.5 py-0">
+                                {client.overdueTasks} overdue
+                              </Badge>
+                            ) : client.outstandingTasks > 0 ? (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0 text-[10px] font-medium text-amber-700">
+                                {client.outstandingTasks} pending
+                              </span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getCampaignVariant(client.campaignType)}>
+                            {getCampaignLabel(client.campaignType)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {client.workspaceSlug ? (
+                            <Link
+                              href={`/workspace/${client.workspaceSlug}`}
+                              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                            >
+                              {client.workspaceSlug}
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <StageProgressBar
+                            stageProgress={client.stageProgress}
+                          />
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {completedTasks}/{totalTasks}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {formatDate(client.createdAt)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-12 text-center text-muted-foreground"
                     >
                       <div className="flex flex-col items-center gap-2">

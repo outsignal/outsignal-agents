@@ -905,6 +905,7 @@ model Client {
   website         String?
   companyOverview String?
   notes           String?
+  links           String?   // JSON array of { label: string, url: string }
 
   // CRM pipeline: new_lead | contacted | qualified | demo | proposal | negotiation | closed_won | closed_lost | unqualified | churned
   pipelineStatus  String    @default("new_lead")
@@ -923,6 +924,7 @@ model Client {
   updatedAt       DateTime  @updatedAt
 
   tasks           ClientTask[]
+  pages           Page[]
 
   @@index([pipelineStatus])
   @@index([workspaceSlug])
@@ -1055,6 +1057,24 @@ model InvoiceSequence {
   id            String @id @default(cuid())
   workspaceSlug String @unique
   lastNumber    Int    @default(0)
+}
+
+// --- Pages / Docs ---
+
+model Page {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  content   String   @default("") // Markdown content
+  clientId  String?  // Optional link to a client
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([slug])
 }
 
 // --- Audit Logging ---

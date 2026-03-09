@@ -13,6 +13,11 @@
 import { prisma } from "@/lib/db";
 import { TASK_TEMPLATES, type TemplateType } from "./task-templates";
 
+export interface ClientLink {
+  label: string;
+  url: string;
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline status groups
 // ---------------------------------------------------------------------------
@@ -50,6 +55,8 @@ export interface ClientSummary {
   contactEmail: string | null;
   contactName: string | null;
   stageProgress: StageProgress[];
+  outstandingTasks: number;
+  overdueTasks: number;
   createdAt: Date;
 }
 
@@ -71,6 +78,7 @@ export interface ClientDetail extends ClientSummary {
   companyOverview: string | null;
   proposalId: string | null;
   notes: string | null;
+  links: ClientLink[];
   startedAt: Date | null;
   tasks: ClientTaskDetail[];
   updatedAt: Date;
@@ -83,6 +91,7 @@ export interface CreateClientParams {
   website?: string;
   companyOverview?: string;
   notes?: string;
+  links?: ClientLink[];
   pipelineStatus?: string;
   campaignType?: string;
   workspaceSlug?: string;
@@ -96,6 +105,7 @@ export interface UpdateClientParams {
   website?: string;
   companyOverview?: string;
   notes?: string;
+  links?: ClientLink[];
   pipelineStatus?: string;
   campaignType?: string;
   workspaceSlug?: string;
@@ -117,6 +127,19 @@ export interface ClientFilters {
  * Parse a JSON string into a string array (blockedBy field).
  */
 function parseBlockedBy(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse a JSON string into a ClientLink array.
+ */
+function parseLinks(value: string | null): ClientLink[] {
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
@@ -208,6 +231,7 @@ function formatClientDetail(
     companyOverview: string | null;
     proposalId: string | null;
     notes: string | null;
+    links: string | null;
     startedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -233,6 +257,8 @@ function formatClientDetail(
     return a.order - b.order;
   });
 
+  const now = new Date();
+
   return {
     id: raw.id,
     name: raw.name,
@@ -242,11 +268,16 @@ function formatClientDetail(
     contactEmail: raw.contactEmail,
     contactName: raw.contactName,
     stageProgress: computeStageProgress(raw.tasks),
+    outstandingTasks: raw.tasks.filter((t) => t.status !== "complete").length,
+    overdueTasks: raw.tasks.filter(
+      (t) => t.status !== "complete" && t.dueDate != null && t.dueDate < now,
+    ).length,
     createdAt: raw.createdAt,
     website: raw.website,
     companyOverview: raw.companyOverview,
     proposalId: raw.proposalId,
     notes: raw.notes,
+    links: parseLinks(raw.links),
     startedAt: raw.startedAt,
     tasks: sortedTasks.map(formatTaskDetail),
     updatedAt: raw.updatedAt,
@@ -319,11 +350,14 @@ export async function listClients(
         select: {
           stage: true,
           status: true,
+          dueDate: true,
         },
       },
     },
     orderBy: { createdAt: "desc" },
   });
+
+  const now = new Date();
 
   return clients.map((c) => ({
     id: c.id,
@@ -334,6 +368,10 @@ export async function listClients(
     contactEmail: c.contactEmail,
     contactName: c.contactName,
     stageProgress: computeStageProgress(c.tasks),
+    outstandingTasks: c.tasks.filter((t) => t.status !== "complete").length,
+    overdueTasks: c.tasks.filter(
+      (t) => t.status !== "complete" && t.dueDate != null && t.dueDate < now,
+    ).length,
     createdAt: c.createdAt,
   }));
 }
@@ -386,6 +424,7 @@ export async function createClient(
       website: params.website ?? null,
       companyOverview: params.companyOverview ?? null,
       notes: params.notes ?? null,
+      links: params.links ? JSON.stringify(params.links) : null,
       pipelineStatus: params.pipelineStatus ?? "new_lead",
       campaignType: params.campaignType ?? "email_linkedin",
       workspaceSlug: params.workspaceSlug ?? null,
@@ -458,6 +497,7 @@ export async function updateClient(
   if (params.campaignType !== undefined) data.campaignType = params.campaignType;
   if (params.workspaceSlug !== undefined) data.workspaceSlug = params.workspaceSlug;
   if (params.proposalId !== undefined) data.proposalId = params.proposalId;
+  if (params.links !== undefined) data.links = JSON.stringify(params.links);
 
   const client = await prisma.client.update({
     where: { id },
@@ -535,8 +575,14 @@ export async function populateClientTasks(
 
   // Create all tasks first (without blockedBy) to get their IDs
   const createdTaskIds: string[] = [];
+  const now = new Date();
 
   for (const template of templates) {
+    let dueDate: Date | null = null;
+    if (template.dueDaysFromStart != null) {
+      dueDate = new Date(now.getTime() + template.dueDaysFromStart * 24 * 60 * 60 * 1000);
+    }
+
     const task = await prisma.clientTask.create({
       data: {
         clientId,
@@ -544,6 +590,7 @@ export async function populateClientTasks(
         title: template.title,
         order: template.order,
         status: "todo",
+        dueDate,
         subtasks: {
           create: template.subtasks.map((sub) => ({
             title: sub.title,
