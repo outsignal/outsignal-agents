@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { notifyReply } from "@/lib/notifications";
 import { bumpPriority, enqueueAction } from "@/lib/linkedin/queue";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
+import { classifyReply } from "@/lib/classification/classify-reply";
+import { stripHtml } from "@/lib/classification/strip-html";
 
 export const maxDuration = 60;
 
@@ -135,7 +137,110 @@ export async function GET(request: Request) {
             });
           });
 
-          // 3. Send notification
+          // 3. Upsert Reply record + classify
+          if (reply.id != null) {
+            try {
+              const replyBodyText = reply.text_body ?? stripHtml(reply.html_body ?? "");
+
+              // Look up outbound email snapshot
+              let outboundSubject: string | null = null;
+              let outboundBody: string | null = null;
+              let outsignalCampaignId: string | null = null;
+              let outsignalCampaignName: string | null = null;
+
+              if (reply.campaign_id) {
+                try {
+                  const campaign = await prisma.campaign.findFirst({
+                    where: { emailBisonCampaignId: reply.campaign_id },
+                    select: { id: true, name: true, emailSequence: true },
+                  });
+                  if (campaign) {
+                    outsignalCampaignId = campaign.id;
+                    outsignalCampaignName = campaign.name;
+                    // If single-step campaign, use that step's subject/body
+                    if (campaign.emailSequence) {
+                      try {
+                        const steps = JSON.parse(campaign.emailSequence) as { position: number; subjectLine?: string; body?: string }[];
+                        if (steps.length === 1) {
+                          outboundSubject = steps[0].subjectLine ?? null;
+                          outboundBody = steps[0].body ?? null;
+                        }
+                      } catch {
+                        // JSON parse failure — skip
+                      }
+                    }
+                  }
+                } catch {
+                  // Campaign lookup failure — non-blocking
+                }
+              }
+
+              // Look up personId
+              let personId: string | null = null;
+              try {
+                const person = await prisma.person.findUnique({
+                  where: { email: reply.from_email_address },
+                  select: { id: true },
+                });
+                personId = person?.id ?? null;
+              } catch {
+                // Person lookup failure — non-blocking
+              }
+
+              const replyRecord = await prisma.reply.upsert({
+                where: { emailBisonReplyId: reply.id },
+                create: {
+                  workspaceSlug: ws.slug,
+                  senderEmail: reply.from_email_address,
+                  senderName: reply.from_name,
+                  subject: reply.subject,
+                  bodyText: replyBodyText,
+                  receivedAt: new Date(reply.date_received),
+                  emailBisonReplyId: reply.id,
+                  campaignId: outsignalCampaignId,
+                  campaignName: outsignalCampaignName,
+                  sequenceStep: null, // polled replies don't have sequence_step_order
+                  outboundSubject,
+                  outboundBody,
+                  source: "poll",
+                  personId,
+                },
+                update: {
+                  bodyText: replyBodyText,
+                  subject: reply.subject,
+                  senderName: reply.from_name,
+                },
+              });
+
+              // Classify inline
+              try {
+                const classification = await classifyReply({
+                  subject: replyRecord.subject,
+                  bodyText: replyRecord.bodyText,
+                  senderName: replyRecord.senderName,
+                  outboundSubject: replyRecord.outboundSubject,
+                  outboundBody: replyRecord.outboundBody,
+                });
+                await prisma.reply.update({
+                  where: { id: replyRecord.id },
+                  data: {
+                    intent: classification.intent,
+                    sentiment: classification.sentiment,
+                    objectionSubtype: classification.objectionSubtype,
+                    classificationSummary: classification.summary,
+                    classifiedAt: new Date(),
+                  },
+                });
+              } catch (classErr) {
+                console.error("[poll-replies] Classification failed, will retry:", classErr);
+              }
+            } catch (replyErr) {
+              console.error("[poll-replies] Reply persistence error:", replyErr);
+              // Non-blocking — continue to notification
+            }
+          }
+
+          // 4. Send notification
           await notifyReply({
             workspaceSlug: ws.slug,
             leadName: reply.from_name,
@@ -147,7 +252,7 @@ export async function GET(request: Request) {
             suggestedResponse: null,
           });
 
-          // 4. LinkedIn fast-track for replied/interested
+          // 5. LinkedIn fast-track for replied/interested
           try {
             const person = await prisma.person.findUnique({
               where: { email: reply.from_email_address },
