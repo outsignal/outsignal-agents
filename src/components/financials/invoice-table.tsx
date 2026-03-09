@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "./invoice-status-badge";
+import { InvoiceDetailDialog } from "./invoice-detail-dialog";
 import { formatGBP, formatInvoiceDate } from "@/lib/invoices/format";
 import type { InvoiceWithLineItems } from "@/lib/invoices/types";
 import { toast } from "sonner";
@@ -23,6 +24,8 @@ interface InvoiceTableProps {
 
 export function InvoiceTable({ invoices, onRefresh }: InvoiceTableProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithLineItems | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   async function handleSend(id: string) {
     setLoadingId(id);
@@ -92,7 +95,14 @@ export function InvoiceTable({ invoices, onRefresh }: InvoiceTableProps) {
           const canMarkPaid = invoice.status === "sent" || invoice.status === "overdue";
 
           return (
-            <TableRow key={invoice.id} className="border-border">
+            <TableRow
+              key={invoice.id}
+              className="border-border cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() => {
+                setSelectedInvoice(invoice);
+                setDetailOpen(true);
+              }}
+            >
               <TableCell className="font-mono text-sm font-medium">
                 {invoice.invoiceNumber}
               </TableCell>
@@ -110,7 +120,7 @@ export function InvoiceTable({ invoices, onRefresh }: InvoiceTableProps) {
                 <InvoiceStatusBadge status={invoice.status} />
               </TableCell>
               <TableCell>
-                <div className="flex items-center justify-end gap-1.5">
+                <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                   {/* PDF download — always available */}
                   <Button
                     variant="ghost"
@@ -161,6 +171,13 @@ export function InvoiceTable({ invoices, onRefresh }: InvoiceTableProps) {
           );
         })}
       </TableBody>
+
+      <InvoiceDetailDialog
+        invoice={selectedInvoice}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onRefresh={onRefresh}
+      />
     </Table>
   );
 }
