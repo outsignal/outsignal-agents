@@ -1,0 +1,228 @@
+import { getPortalSession } from "@/lib/portal-session";
+import { prisma } from "@/lib/db";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Users, Building2, ExternalLink } from "lucide-react";
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return email;
+  return `${local.charAt(0)}***@${domain}`;
+}
+
+export default async function PortalDataPage() {
+  const { workspaceSlug } = await getPortalSession();
+
+  // Fetch people in this workspace (limit 50)
+  const personWorkspaces = await prisma.personWorkspace.findMany({
+    where: { workspace: workspaceSlug },
+    include: {
+      person: true,
+    },
+    orderBy: { person: { createdAt: "desc" } },
+    take: 50,
+  });
+
+  const totalPeople = await prisma.personWorkspace.count({
+    where: { workspace: workspaceSlug },
+  });
+
+  // Collect unique company domains from people in this workspace
+  const allPersonWorkspaces = await prisma.personWorkspace.findMany({
+    where: { workspace: workspaceSlug },
+    select: { person: { select: { companyDomain: true } } },
+  });
+
+  const uniqueDomains = [
+    ...new Set(
+      allPersonWorkspaces
+        .map((pw) => pw.person.companyDomain)
+        .filter((d): d is string => !!d),
+    ),
+  ];
+
+  const totalCompanies = uniqueDomains.length;
+
+  // Fetch company data for the domains linked to our displayed people
+  const displayedDomains = [
+    ...new Set(
+      personWorkspaces
+        .map((pw) => pw.person.companyDomain)
+        .filter((d): d is string => !!d),
+    ),
+  ];
+
+  const companies = displayedDomains.length > 0
+    ? await prisma.company.findMany({
+        where: { domain: { in: displayedDomains } },
+        orderBy: { name: "asc" },
+      })
+    : [];
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-heading font-bold">Enrichment Data</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          A preview of contacts and companies discovered for your campaigns
+        </p>
+      </div>
+
+      {/* People Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-heading flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              People
+            </CardTitle>
+            {totalPeople > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                Showing {Math.min(personWorkspaces.length, 50)} of{" "}
+                {totalPeople.toLocaleString()} contacts
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {personWorkspaces.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                <Users className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium">No contacts yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Contact data will appear here as your campaigns are set up and
+                prospects are discovered.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Company</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead className="w-[60px]">LinkedIn</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {personWorkspaces.map((pw) => {
+                    const p = pw.person;
+                    const name =
+                      [p.firstName, p.lastName].filter(Boolean).join(" ") ||
+                      "—";
+                    return (
+                      <TableRow key={pw.id}>
+                        <TableCell className="font-medium text-sm">
+                          {name}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {p.jobTitle || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {p.company || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground font-mono">
+                          {maskEmail(p.email)}
+                        </TableCell>
+                        <TableCell>
+                          {p.linkedinUrl ? (
+                            <a
+                              href={p.linkedinUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Companies Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-heading flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Companies
+            </CardTitle>
+            {totalCompanies > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                Showing {companies.length} of{" "}
+                {totalCompanies.toLocaleString()} companies
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {companies.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                <Building2 className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium">No company data yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Company enrichment data will appear here as prospects are
+                discovered and enriched.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Company Name</TableHead>
+                    <TableHead>Domain</TableHead>
+                    <TableHead>Industry</TableHead>
+                    <TableHead className="text-right">Employees</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companies.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium text-sm">
+                        {c.name}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {c.domain}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {c.industry || "—"}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
+                        {c.headcount?.toLocaleString() || "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

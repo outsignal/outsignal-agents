@@ -1,10 +1,14 @@
 import { notFound } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, getCampaignLeadSample } from "@/lib/campaigns/operations";
+import { getWorkspaceBySlug } from "@/lib/workspaces";
+import { EmailBisonClient } from "@/lib/emailbison/client";
+import type { Campaign as EBCampaign } from "@/lib/emailbison/types";
 import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
 import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
+import { MetricCard } from "@/components/dashboard/metric-card";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Mail, Linkedin, Clock, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -30,6 +34,22 @@ export default async function PortalCampaignDetailPage({
       workspaceSlug,
       500, // fetch up to 500 leads so clients can paginate through them
     );
+  }
+
+  // Fetch EmailBison campaign stats if campaign has been deployed
+  let ebCampaign: EBCampaign | null = null;
+  const hasPerformanceData = ["active", "paused", "completed"].includes(campaign.status);
+  if (hasPerformanceData && campaign.emailBisonCampaignId) {
+    try {
+      const workspace = await getWorkspaceBySlug(workspaceSlug);
+      if (workspace?.apiToken) {
+        const client = new EmailBisonClient(workspace.apiToken);
+        const allCampaigns = await client.getCampaigns();
+        ebCampaign = allCampaigns.find((c) => c.id === campaign.emailBisonCampaignId) ?? null;
+      }
+    } catch {
+      // Silently fail — stats are non-critical
+    }
   }
 
   // Status badge config
@@ -113,6 +133,58 @@ export default async function PortalCampaignDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Performance Stats */}
+      {ebCampaign && (
+        (() => {
+          const openRate = ebCampaign.emails_sent > 0
+            ? (ebCampaign.unique_opens / ebCampaign.emails_sent) * 100
+            : 0;
+          const replyRate = ebCampaign.emails_sent > 0
+            ? (ebCampaign.replied / ebCampaign.emails_sent) * 100
+            : 0;
+          const bounceRate = ebCampaign.emails_sent > 0
+            ? (ebCampaign.bounced / ebCampaign.emails_sent) * 100
+            : 0;
+
+          return (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-heading">Campaign Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <MetricCard
+                    label="Emails Sent"
+                    value={ebCampaign.emails_sent.toLocaleString()}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Opens"
+                    value={ebCampaign.unique_opens.toLocaleString()}
+                    detail={`${openRate.toFixed(1)}% open rate`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Replies"
+                    value={ebCampaign.replied.toLocaleString()}
+                    detail={`${replyRate.toFixed(1)}% reply rate`}
+                    trend={replyRate > 3 ? "up" : undefined}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Bounces"
+                    value={ebCampaign.bounced.toLocaleString()}
+                    detail={`${bounceRate.toFixed(1)}% bounce rate`}
+                    trend={bounceRate > 5 ? "warning" : undefined}
+                    density="compact"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()
+      )}
 
       {/* Leads Section */}
       <CampaignApprovalLeads

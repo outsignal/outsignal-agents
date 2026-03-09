@@ -6,7 +6,13 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Megaphone,
+  MessageSquare,
   LinkedinIcon,
+  Mail,
+  Zap,
+  Users,
+  FileText,
+  ClipboardCheck,
   Receipt,
   LogOut,
   PanelLeftClose,
@@ -36,7 +42,13 @@ const STORAGE_KEY = "portal-sidebar-collapsed";
 const navItems: NavItem[] = [
   { href: "/portal", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portal/campaigns", label: "Campaigns", icon: Megaphone },
+  { href: "/portal/replies", label: "Replies", icon: MessageSquare },
   { href: "/portal/linkedin", label: "LinkedIn", icon: LinkedinIcon },
+  { href: "/portal/email-health", label: "Email Health", icon: Mail },
+  { href: "/portal/signals", label: "Signals", icon: Zap },
+  { href: "/portal/data", label: "Data", icon: Users },
+  { href: "/portal/pages", label: "Pages", icon: FileText },
+  { href: "/portal/onboarding", label: "Onboarding", icon: ClipboardCheck },
   { href: "/portal/billing", label: "Billing", icon: Receipt },
 ];
 
