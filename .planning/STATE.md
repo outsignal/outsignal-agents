@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 23 of 28 (Reply Storage & Classification) -- COMPLETE
-Plan: 4 of 4 -- ALL DONE
-Status: Phase 23 complete
-Last activity: 2026-03-09 — Completed 23-04 (Reply Admin UI)
+Phase: 24 of 28 (Campaign Analytics Engine)
+Plan: 1 of 3
+Status: Plan 24-01 complete
+Last activity: 2026-03-09 — Completed 24-01 (Data Foundation)
 
-Progress: [██░░░░░░░░] 17% (v3.0) -- Phase 23 complete (4/4 plans)
+Progress: [██░░░░░░░░] 20% (v3.0) -- Phase 24 in progress (1/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 92 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 4)
+- Total plans completed: 93 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 5)
 - Average duration: ~15 min
 - Total execution time: ~22 hours
 
@@ -62,6 +62,10 @@ Progress: [██░░░░░░░░] 17% (v3.0) -- Phase 23 complete (4/4 
 - [v3.0 Roadmap]: CachedMetrics model (exists in schema, currently unused) designated for all pre-computed analytics storage
 - [v3.0 Roadmap]: External cron via cron-job.org for analytics computation and insight generation — Vercel Hobby 2-cron limit already hit
 
+- [24-01]: CachedMetrics evolved with metricKey+date fields (Option A) — model was unused, safe to modify via db push
+- [24-01]: Default empty strings for metricKey/date for backward compat; rates rounded to 2 decimal places
+- [24-01]: AI SDK generateText does not support maxTokens param — removed, prompt constrains output naturally
+
 ### Blockers/Concerns
 
 - CachedMetrics model exists in schema but has zero usage — need to verify upsert behavior and unique constraints work as expected
@@ -76,5 +80,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-09
-Stopped at: Completed 23-04-PLAN.md (Phase 23 complete)
+Stopped at: Completed 24-01-PLAN.md
 Resume file: None
