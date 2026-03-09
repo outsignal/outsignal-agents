@@ -4,16 +4,6 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Allow same-origin iframes for invoice PDF preview
-        source: "/api/invoices/:id/pdf",
-        headers: [
-          {
-            key: "X-Frame-Options",
-            value: "SAMEORIGIN",
-          },
-        ],
-      },
-      {
         // Apply security headers to all routes
         source: "/(.*)",
         headers: [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FileDown, Send, CheckCircle } from "lucide-react";
 import {
   Dialog,
@@ -29,6 +29,49 @@ export function InvoiceDetailDialog({
   onRefresh,
 }: InvoiceDetailDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !invoice) {
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+        setPdfUrl(null);
+      }
+      return;
+    }
+
+    let revoked = false;
+    let blobUrl: string | null = null;
+
+    setPdfLoading(true);
+    fetch(`/api/invoices/${invoice.id}/pdf`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load PDF");
+        return res.blob();
+      })
+      .then((blob) => {
+        if (revoked) return;
+        blobUrl = URL.createObjectURL(blob);
+        setPdfUrl(blobUrl);
+      })
+      .catch(() => {
+        if (!revoked) setPdfUrl(null);
+      })
+      .finally(() => {
+        if (!revoked) setPdfLoading(false);
+      });
+
+    return () => {
+      revoked = true;
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+      setPdfUrl(null);
+      setPdfLoading(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, invoice?.id]);
 
   if (!invoice) return null;
 
@@ -96,11 +139,17 @@ export function InvoiceDetailDialog({
 
         {/* Embedded PDF */}
         <div className="flex-1 min-h-0 bg-zinc-100">
-          <iframe
-            src={`/api/invoices/${invoice.id}/pdf`}
-            className="w-full h-full border-0"
-            title={`Invoice ${invoice.invoiceNumber}`}
-          />
+          {pdfLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-zinc-500">Loading PDF...</p>
+            </div>
+          ) : pdfUrl ? (
+            <iframe
+              src={pdfUrl}
+              className="w-full h-full border-0"
+              title={`Invoice ${invoice.invoiceNumber}`}
+            />
+          ) : null}
         </div>
 
         {/* Action buttons */}
