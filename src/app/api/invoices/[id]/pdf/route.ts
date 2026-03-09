@@ -45,7 +45,7 @@ export async function GET(
     return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}.pdf"`,
+        "Content-Disposition": `inline; filename="${invoice.invoiceNumber}.pdf"`,
       },
     });
   } catch (err) {
