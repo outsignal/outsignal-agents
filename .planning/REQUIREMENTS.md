@@ -81,44 +81,44 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REPLY-01 | — | Pending |
-| REPLY-02 | — | Pending |
-| REPLY-03 | — | Pending |
-| REPLY-04 | — | Pending |
-| REPLY-05 | — | Pending |
-| REPLY-06 | — | Pending |
-| ANAL-01 | — | Pending |
-| ANAL-02 | — | Pending |
-| ANAL-03 | — | Pending |
-| ANAL-04 | — | Pending |
-| COPY-01 | — | Pending |
-| COPY-02 | — | Pending |
-| COPY-03 | — | Pending |
-| COPY-04 | — | Pending |
-| COPY-05 | — | Pending |
-| BENCH-01 | — | Pending |
-| BENCH-02 | — | Pending |
-| BENCH-03 | — | Pending |
-| BENCH-04 | — | Pending |
-| BENCH-05 | — | Pending |
-| INSIGHT-01 | — | Pending |
-| INSIGHT-02 | — | Pending |
-| INSIGHT-03 | — | Pending |
-| INSIGHT-04 | — | Pending |
-| INSIGHT-05 | — | Pending |
-| INSIGHT-06 | — | Pending |
-| HUB-01 | — | Pending |
-| HUB-02 | — | Pending |
-| HUB-03 | — | Pending |
-| HUB-04 | — | Pending |
-| HUB-05 | — | Pending |
-| HUB-06 | — | Pending |
+| REPLY-01 | Phase 23 | Pending |
+| REPLY-02 | Phase 23 | Pending |
+| REPLY-03 | Phase 23 | Pending |
+| REPLY-04 | Phase 23 | Pending |
+| REPLY-05 | Phase 23 | Pending |
+| REPLY-06 | Phase 23 | Pending |
+| ANAL-01 | Phase 24 | Pending |
+| ANAL-02 | Phase 24 | Pending |
+| ANAL-03 | Phase 24 | Pending |
+| ANAL-04 | Phase 24 | Pending |
+| COPY-01 | Phase 25 | Pending |
+| COPY-02 | Phase 25 | Pending |
+| COPY-03 | Phase 25 | Pending |
+| COPY-04 | Phase 25 | Pending |
+| COPY-05 | Phase 25 | Pending |
+| BENCH-01 | Phase 26 | Pending |
+| BENCH-02 | Phase 26 | Pending |
+| BENCH-03 | Phase 26 | Pending |
+| BENCH-04 | Phase 26 | Pending |
+| BENCH-05 | Phase 26 | Pending |
+| INSIGHT-01 | Phase 27 | Pending |
+| INSIGHT-02 | Phase 27 | Pending |
+| INSIGHT-03 | Phase 27 | Pending |
+| INSIGHT-04 | Phase 27 | Pending |
+| INSIGHT-05 | Phase 27 | Pending |
+| INSIGHT-06 | Phase 27 | Pending |
+| HUB-01 | Phase 28 | Pending |
+| HUB-02 | Phase 28 | Pending |
+| HUB-03 | Phase 28 | Pending |
+| HUB-04 | Phase 28 | Pending |
+| HUB-05 | Phase 28 | Pending |
+| HUB-06 | Phase 28 | Pending |
 
 **Coverage:**
 - v3.0 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32 ⚠️
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-09 after roadmap creation*
