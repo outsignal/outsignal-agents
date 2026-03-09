@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   senderName: {
-    fontSize: 20,
+    fontSize: 16,
     fontFamily: "Helvetica",
     color: BRAND.dark,
     marginBottom: 8,
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   billToCompany: {
-    fontSize: 12,
+    fontSize: 16,
     fontFamily: "Helvetica-Bold",
     color: BRAND.dark,
     marginBottom: 4,
