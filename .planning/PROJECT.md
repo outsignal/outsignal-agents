@@ -53,7 +53,22 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 ### Active
 
-<!-- Next milestone TBD -->
+<!-- v4.0 Email Deliverability & Domain Infrastructure Monitoring -->
+
+- [ ] SPF/DKIM/DMARC validation per sending domain via DNS lookups
+- [ ] DNS blacklist monitoring (~50 DNSBLs) — targeted checking on domains with elevated bounce rates
+- [ ] Historical bounce rate tracking with daily per-sender snapshots and delta computation
+- [ ] Per-domain aggregate metrics (roll up all senders on a domain)
+- [ ] On-demand inbox placement testing via mail-tester.com JSON API
+- [ ] Graduated email sender auto-rotation (elevated → warning → critical → paused → recovery)
+- [ ] More frequent bounce monitoring (every 4 hours)
+- [ ] Deliverability dashboard with domain health cards, sender sparklines, warmup visualization
+- [ ] Intelligence Hub deliverability bento section
+- [ ] Weekly deliverability digest notification
+- [ ] Portal deliverability summary for clients
+- [ ] EmailBison sender management API investigation (pause/unpause, daily limits, warmup toggle)
+
+### Future
 
 - [ ] Multi-source lead discovery (Apollo, Prospeo Search, AI Ark Search, Exa.ai, Serper.dev, Apify LinkedIn)
 - [ ] Agent-driven source selection based on ICP type (enterprise vs niche vs local vs ultra-niche)
@@ -71,7 +86,7 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 ### Out of Scope
 
 - First-party website visitor identification (RB2B, Warmly, Vector, Trigify — requires pixel/JS install on client sites)
-- Domain infrastructure management — handled externally (PlusVibe)
+- Domain infrastructure management — monitoring only, not replacing PlusVibe for provisioning
 - CRM integration (HubSpot) — not needed, EmailBison is the system of record
 - Replacing EmailBison as sending infrastructure
 - Per-lead approve/reject in portal — binary list-level approval only
@@ -83,7 +98,7 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 **Shipped:** v3.0 Campaign Intelligence Hub (2026-03-10) — 6 phases, 17 plans, 78 commits
 **Previous:** v2.0 Lead Discovery & Intelligence (2026-03-04), v1.1 Outbound Pipeline (2026-03-03), v1.0 Lead Engine (2026-02-27)
-**Current:** Planning next milestone
+**Current:** v4.0 Email Deliverability & Domain Infrastructure Monitoring
 
 **Codebase:** ~81,280 LOC TypeScript/TSX across 420+ files
 **Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel, Railway (LinkedIn worker)
@@ -134,4 +149,4 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | Railway for signal monitoring | Vercel Hobby 2-cron limit, Railway already running LinkedIn worker, needs continuous background process | — Pending |
 
 ---
-*Last updated: 2026-03-10 after v3.0 milestone completion*
+*Last updated: 2026-03-10 after v4.0 milestone start*
