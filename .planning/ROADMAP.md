@@ -114,9 +114,9 @@ Plans:
   5. Admin can view top-performing email templates with a breakdown of which structural elements they contain
 **Plans:** 3/3 plans complete
 Plans:
-- [ ] 25-01-PLAN.md — Body element AI classification module and snapshot cron integration
-- [ ] 25-02-PLAN.md — Copy analysis API routes (subject lines, correlations, top templates)
-- [ ] 25-03-PLAN.md — Copy tab UI with subject line rankings, multiplier cards, and top templates
+- [x] 25-01-PLAN.md — Body element AI classification module and snapshot cron integration
+- [x] 25-02-PLAN.md — Copy analysis API routes (subject lines, correlations, top templates)
+- [x] 25-03-PLAN.md — Copy tab UI with subject line rankings, multiplier cards, and top templates
 
 ### Phase 26: Cross-Workspace Benchmarking & ICP Calibration
 **Goal**: The admin can benchmark any workspace's performance against anonymized vertical averages and see whether ICP scores actually predict conversion, with recommended threshold adjustments and signal-type effectiveness data
@@ -128,10 +128,10 @@ Plans:
   3. Admin can see a scatter/bucket chart correlating ICP scores assigned at send time with actual reply and conversion outcomes
   4. Admin can see recommended ICP threshold adjustments (e.g., "raise minimum from 60 to 72") with confidence indicators based on data volume
   5. Admin can see which signal types (funding, hiring, tech adoption, job changes, news) produce the best reply outcomes across signal campaigns
-**Plans**: 2 plans
+**Plans**: 2/2 plans complete
 Plans:
-- [ ] 26-01-PLAN.md — Industry benchmarks constants and API endpoints (reference bands, ICP calibration, signal effectiveness)
-- [ ] 26-02-PLAN.md — Benchmarks tab UI (gauge components, ICP bucket chart, signal cards, analytics page integration)
+- [x] 26-01-PLAN.md — Industry benchmarks constants and API endpoints (reference bands, ICP calibration, signal effectiveness)
+- [x] 26-02-PLAN.md — Benchmarks tab UI (gauge components, ICP bucket chart, signal cards, analytics page integration)
 
 ### Phase 27: AI Insights & Action Queue
 **Goal**: The system generates weekly AI-powered insights per workspace analyzing reply patterns, campaign performance, and cross-workspace comparisons — and the admin can approve, dismiss, or defer each suggested action through a structured queue
@@ -143,10 +143,11 @@ Plans:
   3. Admin can approve, dismiss, or defer (snooze N days) each suggested action and the action queue reflects current state
   4. Approved actions execute the suggestion (pause campaign, update ICP threshold, flag for copy review) with audit trail
   5. Admin can see objection pattern clusters across campaigns (e.g., "42% mention budget, 28% mention timing") in the insights view
-**Plans**: 2 plans
+**Plans**: 3 plans
 Plans:
-- [ ] 26-01-PLAN.md — Industry benchmarks constants and API endpoints (reference bands, ICP calibration, signal effectiveness)
-- [ ] 26-02-PLAN.md — Benchmarks tab UI (gauge components, ICP bucket chart, signal cards, analytics page integration)
+- [ ] 27-01-PLAN.md — Insight model, types, AI generation pipeline, dedup logic, and cron endpoint
+- [ ] 27-02-PLAN.md — API routes (list, status update, manual refresh), action executors, weekly digest notification
+- [ ] 27-03-PLAN.md — Insights tab UI with insight cards, objection clusters, and analytics page integration
 
 ### Phase 28: Intelligence Hub Dashboard
 **Goal**: A dedicated Intelligence Hub page brings together all intelligence data — campaign rankings, reply classification breakdowns, cross-workspace benchmarks, ICP calibration, active insights, and the action queue — into one unified admin view with weekly digest notifications
@@ -158,10 +159,7 @@ Plans:
   3. Intelligence Hub displays reply classification breakdown charts showing intent distribution, sentiment distribution, and objection type distribution
   4. Intelligence Hub displays cross-workspace benchmarking comparison with visual reference bands showing where each workspace falls
   5. Intelligence Hub displays active insight cards with approve/dismiss/defer controls and an ICP calibration visualization showing score-vs-conversion correlation
-**Plans**: 2 plans
-Plans:
-- [ ] 26-01-PLAN.md — Industry benchmarks constants and API endpoints (reference bands, ICP calibration, signal effectiveness)
-- [ ] 26-02-PLAN.md — Benchmarks tab UI (gauge components, ICP bucket chart, signal cards, analytics page integration)
+**Plans**: [To be planned]
 
 ## Progress
 
@@ -177,5 +175,5 @@ v3.0 phases: 23 → 24 → 25 (parallel with 26) → 27 → 28
 | 24. Campaign Analytics Engine | 3/3 | Complete    | 2026-03-09 | - |
 | 25. Copy Performance Analysis | 3/3 | Complete    | 2026-03-10 | - |
 | 26. Cross-Workspace Benchmarking & ICP Calibration | 2/2 | Complete    | 2026-03-10 | - |
-| 27. AI Insights & Action Queue | v3.0 | 0/TBD | Not started | - |
+| 27. AI Insights & Action Queue | v3.0 | 0/3 | Planned | - |
 | 28. Intelligence Hub Dashboard | v3.0 | 0/TBD | Not started | - |
