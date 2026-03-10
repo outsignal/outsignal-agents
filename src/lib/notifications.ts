@@ -1609,3 +1609,295 @@ export async function sendSenderHealthDigest(params: {
     }
   }
 }
+
+export async function notifyWeeklyDigest(params: {
+  workspaceSlug: string;
+  topInsights: Array<{
+    observation: string;
+    category: string;
+    confidence: string;
+  }>;
+  bestCampaign: { name: string; replyRate: number } | null;
+  worstCampaign: { name: string; replyRate: number } | null;
+  pendingActions: number;
+}): Promise<void> {
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: params.workspaceSlug },
+  });
+
+  if (!workspace) return;
+
+  const adminBaseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
+  const insightsUrl = `${adminBaseUrl}/analytics?tab=insights`;
+
+  const categoryEmoji: Record<string, string> = {
+    performance: "chart_with_upwards_trend",
+    copy: "memo",
+    objections: "speech_balloon",
+    icp: "dart",
+  };
+
+  // ---------- Slack ----------
+
+  // Send to workspace's client channel if available, otherwise ops channel
+  const clientChannelId = workspace.slackChannelId;
+  const opsChannelId = process.env.OPS_SLACK_CHANNEL_ID;
+  const slackChannelId = clientChannelId ?? opsChannelId;
+  const slackIntent = clientChannelId ? "client" : "admin";
+
+  if (slackChannelId) {
+    if (
+      verifySlackChannel(
+        slackChannelId,
+        slackIntent,
+        "notifyWeeklyDigest",
+      )
+    ) {
+      try {
+        const insightLines = params.topInsights
+          .map((i) => {
+            const emoji = categoryEmoji[i.category] ?? "bulb";
+            return `:${emoji}: [${i.category.toUpperCase()}] ${i.observation} _(${i.confidence} confidence)_`;
+          })
+          .join("\n");
+
+        const campaignSection: string[] = [];
+        if (params.bestCampaign) {
+          campaignSection.push(
+            `:trophy: *Best:* ${params.bestCampaign.name} (${params.bestCampaign.replyRate}% reply rate)`,
+          );
+        }
+        if (params.worstCampaign) {
+          campaignSection.push(
+            `:warning: *Needs attention:* ${params.worstCampaign.name} (${params.worstCampaign.replyRate}% reply rate)`,
+          );
+        }
+
+        const blocks: KnownBlock[] = [
+          {
+            type: "header",
+            text: {
+              type: "plain_text",
+              text: `[${workspace.name}] Weekly Intelligence Digest`,
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Top Insights*\n${insightLines || "No new insights this week."}`,
+            },
+          },
+          ...(campaignSection.length > 0
+            ? [
+                {
+                  type: "section" as const,
+                  text: {
+                    type: "mrkdwn" as const,
+                    text: campaignSection.join("\n"),
+                  },
+                },
+              ]
+            : []),
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*${params.pendingActions}* pending action${params.pendingActions !== 1 ? "s" : ""} awaiting review`,
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "View Insights" },
+                url: insightsUrl,
+              },
+            ],
+          },
+        ];
+
+        await audited(
+          {
+            notificationType: "weekly_digest",
+            channel: "slack",
+            recipient: slackChannelId,
+            workspaceSlug: params.workspaceSlug,
+          },
+          () =>
+            postMessage(
+              slackChannelId,
+              `[${workspace.name}] Weekly Intelligence Digest`,
+              blocks,
+            ),
+        );
+      } catch (err) {
+        console.error("[notifyWeeklyDigest] Slack failed:", err);
+      }
+    }
+  }
+
+  // ---------- Email ----------
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    try {
+      const verified = verifyEmailRecipients(
+        [adminEmail],
+        "admin",
+        "notifyWeeklyDigest",
+      );
+      if (verified.length > 0) {
+        const subject = `[${workspace.name}] Weekly Intelligence Digest`;
+
+        const insightRowsHtml = params.topInsights
+          .map(
+            (i) =>
+              `<tr>
+                <td style="padding:10px 0;border-bottom:1px solid #f4f4f5;">
+                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;color:#a1a1aa;text-transform:uppercase;">${i.category}</span>
+                  <br/>
+                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;line-height:1.5;">${i.observation}</span>
+                  <br/>
+                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#71717a;">${i.confidence} confidence</span>
+                </td>
+              </tr>`,
+          )
+          .join("");
+
+        let campaignHtml = "";
+        if (params.bestCampaign || params.worstCampaign) {
+          const cells: string[] = [];
+          if (params.bestCampaign) {
+            cells.push(`
+              <td width="50%" style="padding-right:8px;" valign="top">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                  <tr>
+                    <td style="background-color:#f0fdf4;border-radius:8px;padding:16px 20px;">
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#065f46;margin:0 0 4px 0;text-transform:uppercase;">Best Campaign</p>
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${params.bestCampaign.name}</p>
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#16a34a;margin:6px 0 0 0;">${params.bestCampaign.replyRate}%</p>
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#065f46;margin:2px 0 0 0;">Reply rate</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>`);
+          }
+          if (params.worstCampaign) {
+            cells.push(`
+              <td width="50%" style="padding-left:8px;" valign="top">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                  <tr>
+                    <td style="background-color:#fef2f2;border-radius:8px;padding:16px 20px;">
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#991b1b;margin:0 0 4px 0;text-transform:uppercase;">Needs Attention</p>
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${params.worstCampaign.name}</p>
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#dc2626;margin:6px 0 0 0;">${params.worstCampaign.replyRate}%</p>
+                      <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#991b1b;margin:2px 0 0 0;">Reply rate</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>`);
+          }
+          campaignHtml = `
+              <tr>
+                <td style="padding-bottom:24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>${cells.join("")}</tr>
+                  </table>
+                </td>
+              </tr>`;
+        }
+
+        await audited(
+          {
+            notificationType: "weekly_digest",
+            channel: "email",
+            recipient: verified.join(","),
+            workspaceSlug: params.workspaceSlug,
+          },
+          () =>
+            sendNotificationEmail({
+              to: verified,
+              subject,
+              html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
+        <!-- Header -->
+        <tr>
+          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Weekly Intelligence Digest</td>
+              </tr>
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${workspace.name}</td>
+              </tr>
+${campaignHtml}
+              <!-- Insights list -->
+              <tr>
+                <td style="padding-bottom:24px;">
+                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Top Insights</p>
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    ${insightRowsHtml || '<tr><td style="padding:10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;">No new insights this week.</td></tr>'}
+                  </table>
+                </td>
+              </tr>
+              <!-- Pending actions -->
+              <tr>
+                <td style="padding-bottom:24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>
+                      <td style="background-color:#fffbeb;border-radius:8px;padding:16px 20px;">
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:700;color:#d97706;margin:0;line-height:1;">${params.pendingActions}</p>
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#92400e;margin:6px 0 0 0;font-weight:600;">Pending Actions</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- CTA button -->
+              <tr>
+                <td style="padding-top:8px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="background-color:#F0FF7A;border-radius:8px;">
+                        <a href="${insightsUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Insights</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Weekly intelligence digest for ${workspace.name}.<br/>You received this because you are an admin.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`,
+            }),
+        );
+      }
+    } catch (err) {
+      console.error("[notifyWeeklyDigest] Email failed:", err);
+    }
+  }
+}
