@@ -6,6 +6,7 @@
 - ✅ **v1.1 Outbound Pipeline** — Phases 7-14 (shipped 2026-03-03) — [archive](milestones/v1.1-ROADMAP.md)
 - ✅ **v2.0 Lead Discovery & Intelligence** — Phases 15-22 (shipped 2026-03-04) — [archive](milestones/v2.0-ROADMAP.md)
 - ✅ **v3.0 Campaign Intelligence Hub** — Phases 23-28 (shipped 2026-03-10) — [archive](milestones/v3.0-ROADMAP.md)
+- 🚧 **v4.0 Email Deliverability & Domain Infrastructure Monitoring** — Phases 29-32 (in progress)
 
 ## Phases
 
@@ -71,11 +72,99 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 </details>
 
+### 🚧 v4.0 Email Deliverability & Domain Infrastructure Monitoring (In Progress)
+
+**Milestone Goal:** Full-stack deliverability visibility — DNS health, bounce trends, placement testing, auto-rotation, and client-facing reporting — so every sender's health is observable and actionable before problems become crises.
+
+- [ ] **Phase 29: Domain Health Foundation** — Schema, DNS validation library, bounce snapshots, and 4-hour cron; everything downstream depends on this data layer
+- [ ] **Phase 30: Inbox Placement Testing** — On-demand mail-tester.com integration with "recommended for testing" badges on at-risk senders
+- [ ] **Phase 31: Auto-Rotation Engine** — Graduated status escalation, 4-hour bounce monitor cron, audit trail, notifications, and EmailBison API investigation
+- [ ] **Phase 32: Deliverability Dashboard & Reporting** — Admin deliverability page, Intelligence Hub bento section, weekly digest, and client portal health summary
+
+## Phase Details
+
+### Phase 29: Domain Health Foundation
+**Goal**: All domain DNS health and per-sender bounce data is captured, stored, and queryable — the data layer every other phase reads from
+**Depends on**: Phase 28 (existing sender model)
+**Requirements**: DOMAIN-01, DOMAIN-02, DOMAIN-03, DOMAIN-04, DOMAIN-05, DOMAIN-06, DOMAIN-07, BOUNCE-01, BOUNCE-02, BOUNCE-03, BOUNCE-04
+**Success Criteria** (what must be TRUE):
+  1. Admin can query DomainHealth records and see SPF/DKIM/DMARC pass/fail status for every sending domain
+  2. Daily bounce snapshots exist for every sender email showing cumulative sent, bounced, and replied counts
+  3. Per-domain aggregate bounce metrics roll up correctly from sender-level snapshots
+  4. Admin receives a Slack notification when a domain appears on any DNSBL blacklist
+  5. Admin receives a warning notification when SPF, DKIM, or DMARC validation fails for any sending domain
+**Plans**: TBD
+
+### Phase 30: Inbox Placement Testing
+**Goal**: Admin can trigger on-demand inbox placement tests for at-risk senders and see historical results per sender
+**Depends on**: Phase 29 (bounce snapshot data needed for "recommended" badge logic)
+**Requirements**: PLACE-01, PLACE-02, PLACE-03, PLACE-04
+**Success Criteria** (what must be TRUE):
+  1. Senders with a bounce rate above 3% show a "Recommended for testing" badge in the dashboard
+  2. Admin can click a button to initiate a placement test, which returns a mail-tester.com test address
+  3. After sending to the test address, the system fetches and stores the placement score via the mail-tester.com JSON API
+  4. Admin can view a timeline of past placement test scores for any sender
+**Plans**: TBD
+
+### Phase 31: Auto-Rotation Engine
+**Goal**: Sender health status escalates and recovers automatically based on bounce rate thresholds, with full audit trail and admin notifications
+**Depends on**: Phase 29 (bounce snapshot data and DomainHealth model)
+**Requirements**: ROTATE-01, ROTATE-02, ROTATE-03, ROTATE-04, ROTATE-05, ROTATE-06
+**Success Criteria** (what must be TRUE):
+  1. Bounce monitor cron runs every 4 hours and evaluates health status for all sender emails across all workspaces
+  2. A sender's health status transitions correctly through healthy / elevated / warning / critical thresholds based on bounce percentage
+  3. A sender in critical status auto-recovers to healthy after 7 consecutive days below 3% bounce rate
+  4. Every status transition is recorded in the EmailHealthEvent audit trail with reason and bounce percentage at the time
+  5. Admin receives a notification when any sender reaches warning or critical status with the current bounce rate and recommended action
+**Plans**: TBD
+
+### Phase 32: Deliverability Dashboard & Reporting
+**Goal**: Deliverability data is fully surfaced in the admin dashboard, Intelligence Hub, weekly digest, and client portal
+**Depends on**: Phases 29, 30, 31 (all data must exist before it can be displayed)
+**Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, INTEL-01, INTEL-02, INTEL-03, PORTAL-01
+**Success Criteria** (what must be TRUE):
+  1. Admin can navigate to a Deliverability page from the sidebar and see domain health cards with SPF/DKIM/DMARC badges and blacklist status
+  2. Each sender on the deliverability page shows a 30-day bounce rate sparkline and warmup progress bar
+  3. The Intelligence Hub shows a deliverability bento card summarizing how many domains are healthy vs at-risk and which is worst
+  4. A weekly digest fires every Monday containing bounce trends and domain health summary for all workspaces
+  5. Clients can view per-sender bounce rates and domain health badges on their portal email-health page
+**Plans**: TBD
+
 ## Progress
 
-| Milestone | Phases | Plans | Status | Shipped |
-|-----------|--------|-------|--------|---------|
-| v1.0 Lead Engine | 1-6 | 22/22 | Complete | 2026-02-27 |
-| v1.1 Outbound Pipeline | 7-14 | 40/40 | Complete | 2026-03-03 |
-| v2.0 Lead Discovery & Intelligence | 15-22 | 26/26 | Complete | 2026-03-04 |
-| v3.0 Campaign Intelligence Hub | 23-28 | 17/17 | Complete | 2026-03-10 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Enrichment Foundation | v1.0 | 3/3 | Complete | 2026-02-26 |
+| 2. Provider Adapters + Waterfall | v1.0 | 6/6 | Complete | 2026-02-26 |
+| 3. ICP Qualification + Leads Agent | v1.0 | 3/3 | Complete | 2026-02-26 |
+| 3.1. API Security + Hardening | v1.0 | 2/2 | Complete | 2026-02-26 |
+| 4. Search, Filter + List Building | v1.0 | 5/5 | Complete | 2026-02-27 |
+| 5. Export + EmailBison Integration | v1.0 | 3/3 | Complete | 2026-02-27 |
+| 6. MCP List Migration + CSV Download | v1.0 | 1/1 | Complete | 2026-02-27 |
+| 7. Leads Agent Dashboard | v1.1 | 4/4 | Complete | 2026-02-27 |
+| 7.1. Leads Agent Integration Fixes | v1.1 | 3/3 | Complete | 2026-02-27 |
+| 8. Campaign Entity + Writer Integration | v1.1 | 6/6 | Complete | 2026-03-01 |
+| 9. Client Portal Campaign Approval | v1.1 | 5/5 | Complete | 2026-03-01 |
+| 10. Auto-Deploy on Approval | v1.1 | 5/5 | Complete | 2026-03-03 |
+| 11. LinkedIn Voyager API Client | v1.1 | 3/3 | Complete | 2026-03-02 |
+| 12. Dashboard & Admin UX | v1.1 | 8/8 | Complete | 2026-03-02 |
+| 13. Smart Sender Health | v1.1 | 3/3 | Complete | 2026-03-02 |
+| 14. LinkedIn Cookie Chrome Extension | v1.1 | 3/3 | Complete | 2026-03-03 |
+| 15. Foundation | v2.0 | 4/4 | Complete | 2026-03-04 |
+| 16. Discovery Sources | v2.0 | 3/3 | Complete | 2026-03-04 |
+| 17. Leads Agent Discovery Upgrade | v2.0 | 2/2 | Complete | 2026-03-04 |
+| 18. Signal Monitoring Infrastructure | v2.0 | 4/4 | Complete | 2026-03-04 |
+| 19. Evergreen Signal Campaign Auto-Pipeline | v2.0 | 4/4 | Complete | 2026-03-04 |
+| 20. Creative Ideas Copy Framework | v2.0 | 2/2 | Complete | 2026-03-04 |
+| 21. Signal Dashboard + CLI Chat | v2.0 | 2/2 | Complete | 2026-03-04 |
+| 22. Client Financials & Invoicing | v2.0 | 5/5 | Complete | 2026-03-04 |
+| 23. Reply Storage & Classification | v3.0 | 4/4 | Complete | 2026-03-09 |
+| 24. Campaign Analytics Engine | v3.0 | 3/3 | Complete | 2026-03-09 |
+| 25. Copy Performance Analysis | v3.0 | 3/3 | Complete | 2026-03-10 |
+| 26. Cross-Workspace Benchmarking & ICP Calibration | v3.0 | 2/2 | Complete | 2026-03-10 |
+| 27. AI Insights & Action Queue | v3.0 | 3/3 | Complete | 2026-03-10 |
+| 28. Intelligence Hub Dashboard | v3.0 | 2/2 | Complete | 2026-03-10 |
+| 29. Domain Health Foundation | v4.0 | 0/TBD | Not started | - |
+| 30. Inbox Placement Testing | v4.0 | 0/TBD | Not started | - |
+| 31. Auto-Rotation Engine | v4.0 | 0/TBD | Not started | - |
+| 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |

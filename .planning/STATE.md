@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Email Deliverability & Domain Infrastructure Monitoring
-status: defining_requirements
-last_updated: "2026-03-10T18:00:00.000Z"
+status: ready_to_plan
+last_updated: "2026-03-10T18:30:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,14 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v4.0 Email Deliverability & Domain Infrastructure Monitoring
+**Current focus:** Phase 29 — Domain Health Foundation (v4.0)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-10 — Milestone v4.0 started
+Phase: 29 of 32 (Domain Health Foundation)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-03-10 — v4.0 roadmap created, phases 29-32 defined
+
+Progress: [████████████████████░░░░░░░░░░] ~65% (28/32 phases complete across all milestones)
 
 ## Performance Metrics
 
@@ -49,12 +51,14 @@ Last activity: 2026-03-10 — Milestone v4.0 started
 - [v4.0 Pre-Milestone]: mail-tester.com for on-demand placement testing (~1-2 euros/pack, semi-automated)
 - [v4.0 Pre-Milestone]: cron-job.org free tier has no hard job count limit (fair usage policy)
 - [v4.0 Pre-Milestone]: Targeted blacklist checking — only domains with >3% bounce rate or not checked in 7+ days
+- [v4.0 Roadmap]: ROTATE-06 EmailBison sender management feature-flagged — API capabilities unknown, investigate first
 
 ### Blockers/Concerns
 
 - EmailBison client has no PATCH/PUT for sender emails — auto-rotation may be advisory-only until API investigation
 - Vercel 60s function timeout — DNS blacklist checks for 50+ DNSBLs across multiple domains must use parallel queries + progressive checking
 - DKIM selector discovery — need to check google, default, selector1, selector2 to cover Gmail + Outlook senders
+- Vercel Hobby 2-cron limit already used — 4-hour bounce monitor cron (ROTATE-01) may need cron-job.org
 
 ### Pending Todos
 
@@ -63,5 +67,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Defining v4.0 milestone requirements
+Stopped at: v4.0 roadmap created — phases 29-32 defined, ready to plan Phase 29
 Resume file: None

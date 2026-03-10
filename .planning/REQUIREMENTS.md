@@ -91,42 +91,42 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOMAIN-01 | — | Pending |
-| DOMAIN-02 | — | Pending |
-| DOMAIN-03 | — | Pending |
-| DOMAIN-04 | — | Pending |
-| DOMAIN-05 | — | Pending |
-| DOMAIN-06 | — | Pending |
-| DOMAIN-07 | — | Pending |
-| BOUNCE-01 | — | Pending |
-| BOUNCE-02 | — | Pending |
-| BOUNCE-03 | — | Pending |
-| BOUNCE-04 | — | Pending |
-| PLACE-01 | — | Pending |
-| PLACE-02 | — | Pending |
-| PLACE-03 | — | Pending |
-| PLACE-04 | — | Pending |
-| ROTATE-01 | — | Pending |
-| ROTATE-02 | — | Pending |
-| ROTATE-03 | — | Pending |
-| ROTATE-04 | — | Pending |
-| ROTATE-05 | — | Pending |
-| ROTATE-06 | — | Pending |
-| DASH-01 | — | Pending |
-| DASH-02 | — | Pending |
-| DASH-03 | — | Pending |
-| DASH-04 | — | Pending |
-| DASH-05 | — | Pending |
-| INTEL-01 | — | Pending |
-| INTEL-02 | — | Pending |
-| INTEL-03 | — | Pending |
-| PORTAL-01 | — | Pending |
+| DOMAIN-01 | Phase 29 | Pending |
+| DOMAIN-02 | Phase 29 | Pending |
+| DOMAIN-03 | Phase 29 | Pending |
+| DOMAIN-04 | Phase 29 | Pending |
+| DOMAIN-05 | Phase 29 | Pending |
+| DOMAIN-06 | Phase 29 | Pending |
+| DOMAIN-07 | Phase 29 | Pending |
+| BOUNCE-01 | Phase 29 | Pending |
+| BOUNCE-02 | Phase 29 | Pending |
+| BOUNCE-03 | Phase 29 | Pending |
+| BOUNCE-04 | Phase 29 | Pending |
+| PLACE-01 | Phase 30 | Pending |
+| PLACE-02 | Phase 30 | Pending |
+| PLACE-03 | Phase 30 | Pending |
+| PLACE-04 | Phase 30 | Pending |
+| ROTATE-01 | Phase 31 | Pending |
+| ROTATE-02 | Phase 31 | Pending |
+| ROTATE-03 | Phase 31 | Pending |
+| ROTATE-04 | Phase 31 | Pending |
+| ROTATE-05 | Phase 31 | Pending |
+| ROTATE-06 | Phase 31 | Pending |
+| DASH-01 | Phase 32 | Pending |
+| DASH-02 | Phase 32 | Pending |
+| DASH-03 | Phase 32 | Pending |
+| DASH-04 | Phase 32 | Pending |
+| DASH-05 | Phase 32 | Pending |
+| INTEL-01 | Phase 32 | Pending |
+| INTEL-02 | Phase 32 | Pending |
+| INTEL-03 | Phase 32 | Pending |
+| PORTAL-01 | Phase 32 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30 ⚠️
+- Mapped to phases: 30
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation — all 30 requirements mapped*
