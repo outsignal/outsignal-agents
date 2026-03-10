@@ -63,7 +63,7 @@ Full details: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md)
 
 - [x] **Phase 23: Reply Storage & Classification** - Store every reply with full body text and automatically classify by intent, sentiment, and objection type
 - [x] **Phase 24: Campaign Analytics Engine** - Pre-compute campaign performance metrics via cron and enable ranking, comparison, and per-step sequence analysis (completed 2026-03-09)
-- [ ] **Phase 25: Copy Performance Analysis** - Analyze subject lines and email body structural elements to surface what copy patterns drive the highest reply rates
+- [x] **Phase 25: Copy Performance Analysis** - Analyze subject lines and email body structural elements to surface what copy patterns drive the highest reply rates (completed 2026-03-10)
 - [ ] **Phase 26: Cross-Workspace Benchmarking & ICP Calibration** - Benchmark workspace performance against vertical averages and calibrate ICP scores against actual conversion outcomes
 - [ ] **Phase 27: AI Insights & Action Queue** - Generate weekly AI-powered insights per workspace and let admin approve, dismiss, or defer suggested optimizations
 - [ ] **Phase 28: Intelligence Hub Dashboard** - Unified dashboard page displaying all intelligence data with campaign rankings, classification charts, benchmarks, insights, and ICP calibration
@@ -112,7 +112,7 @@ Plans:
   3. Admin can see correlation data showing which body elements drive higher reply rates globally (e.g., "emails with case studies get 2.1x more replies")
   4. Admin can filter copy analysis by workspace and vertical to see element effectiveness per industry
   5. Admin can view top-performing email templates with a breakdown of which structural elements they contain
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 25-01-PLAN.md — Body element AI classification module and snapshot cron integration
 - [ ] 25-02-PLAN.md — Copy analysis API routes (subject lines, correlations, top templates)
@@ -166,7 +166,7 @@ v3.0 phases: 23 → 24 → 25 (parallel with 26) → 27 → 28
 | 15-22 | v2.0 | 26/26 | Complete | 2026-03-04 |
 | 23. Reply Storage & Classification | v3.0 | Complete    | 2026-03-09 | 2026-03-09 |
 | 24. Campaign Analytics Engine | 3/3 | Complete    | 2026-03-09 | - |
-| 25. Copy Performance Analysis | 2/3 | In Progress|  | - |
+| 25. Copy Performance Analysis | 3/3 | Complete   | 2026-03-10 | - |
 | 26. Cross-Workspace Benchmarking & ICP Calibration | v3.0 | 0/TBD | Not started | - |
 | 27. AI Insights & Action Queue | v3.0 | 0/TBD | Not started | - |
 | 28. Intelligence Hub Dashboard | v3.0 | 0/TBD | Not started | - |
