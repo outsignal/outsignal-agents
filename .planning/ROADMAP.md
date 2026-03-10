@@ -98,9 +98,9 @@ Plans:
   4. Admin can compare aggregate metrics across campaigns grouped by copy strategy (creative-ideas, PVP, one-liner) to see which approach performs best
 **Plans:** 3/3 plans complete
 Plans:
-- [ ] 24-01-PLAN.md — CachedMetrics schema evolution, snapshot logic, strategy detection, cron endpoint
-- [ ] 24-02-PLAN.md — API routes for campaign rankings, per-step analytics, and strategy comparison
-- [ ] 24-03-PLAN.md — Admin analytics page with rankings table, expandable step charts, and strategy cards
+- [x] 24-01-PLAN.md — CachedMetrics schema evolution, snapshot logic, strategy detection, cron endpoint
+- [x] 24-02-PLAN.md — API routes for campaign rankings, per-step analytics, and strategy comparison
+- [x] 24-03-PLAN.md — Admin analytics page with rankings table, expandable step charts, and strategy cards
 
 ### Phase 25: Copy Performance Analysis
 **Goal**: The admin can see which subject lines and email body elements correlate with higher reply rates, filtered by workspace and vertical, so copy decisions are data-driven rather than gut-driven
@@ -112,7 +112,11 @@ Plans:
   3. Admin can see correlation data showing which body elements drive higher reply rates globally (e.g., "emails with case studies get 2.1x more replies")
   4. Admin can filter copy analysis by workspace and vertical to see element effectiveness per industry
   5. Admin can view top-performing email templates with a breakdown of which structural elements they contain
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 25-01-PLAN.md — Body element AI classification module and snapshot cron integration
+- [ ] 25-02-PLAN.md — Copy analysis API routes (subject lines, correlations, top templates)
+- [ ] 25-03-PLAN.md — Copy tab UI with subject line rankings, multiplier cards, and top templates
 
 ### Phase 26: Cross-Workspace Benchmarking & ICP Calibration
 **Goal**: The admin can benchmark any workspace's performance against anonymized vertical averages and see whether ICP scores actually predict conversion, with recommended threshold adjustments and signal-type effectiveness data
@@ -162,7 +166,7 @@ v3.0 phases: 23 → 24 → 25 (parallel with 26) → 27 → 28
 | 15-22 | v2.0 | 26/26 | Complete | 2026-03-04 |
 | 23. Reply Storage & Classification | v3.0 | Complete    | 2026-03-09 | 2026-03-09 |
 | 24. Campaign Analytics Engine | 3/3 | Complete    | 2026-03-09 | - |
-| 25. Copy Performance Analysis | v3.0 | 0/TBD | Not started | - |
+| 25. Copy Performance Analysis | v3.0 | 0/3 | Planned | - |
 | 26. Cross-Workspace Benchmarking & ICP Calibration | v3.0 | 0/TBD | Not started | - |
 | 27. AI Insights & Action Queue | v3.0 | 0/TBD | Not started | - |
 | 28. Intelligence Hub Dashboard | v3.0 | 0/TBD | Not started | - |
