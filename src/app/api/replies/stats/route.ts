@@ -114,6 +114,18 @@ export async function GET(request: NextRequest) {
       ...sqlWhere.values,
     );
 
+    // Objection subtype distribution (for Insights objection clusters)
+    const objectionDistribution = await prisma.$queryRawUnsafe<
+      { subtype: string; count: number }[]
+    >(
+      `SELECT "objectionSubtype" as subtype, COUNT(*)::int as count
+       FROM "Reply"
+       WHERE "objectionSubtype" IS NOT NULL ${sqlWhere.clause}
+       GROUP BY "objectionSubtype"
+       ORDER BY count DESC`,
+      ...sqlWhere.values,
+    );
+
     // Workspace counts and totals use Prisma for simpler queries
     const [workspaceCounts, totalReplies, classifiedCount, overriddenCount] =
       await Promise.all([
@@ -149,6 +161,10 @@ export async function GET(request: NextRequest) {
       classifiedCount,
       unclassifiedCount: totalReplies - classifiedCount,
       overriddenCount,
+      objectionDistribution: objectionDistribution.map((row) => ({
+        subtype: row.subtype,
+        count: row.count,
+      })),
     });
   } catch (error) {
     console.error("[GET /api/replies/stats] Error:", error);
