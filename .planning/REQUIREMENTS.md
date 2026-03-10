@@ -19,10 +19,10 @@ Requirements for Email Deliverability & Domain Infrastructure Monitoring. Each m
 
 ### Bounce Tracking
 
-- [ ] **BOUNCE-01**: System captures daily per-sender-email bounce snapshots from EmailBison cumulative metrics
-- [ ] **BOUNCE-02**: System computes daily deltas (sent, bounced, replied) between consecutive snapshots
-- [ ] **BOUNCE-03**: Per-domain aggregate bounce metrics computed from sender-level snapshots
-- [ ] **BOUNCE-04**: Bounce history retained for 30+ days per sender for trend analysis
+- [x] **BOUNCE-01**: System captures daily per-sender-email bounce snapshots from EmailBison cumulative metrics
+- [x] **BOUNCE-02**: System computes daily deltas (sent, bounced, replied) between consecutive snapshots
+- [x] **BOUNCE-03**: Per-domain aggregate bounce metrics computed from sender-level snapshots
+- [x] **BOUNCE-04**: Bounce history retained for 30+ days per sender for trend analysis
 
 ### Placement Testing
 
@@ -98,10 +98,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOMAIN-05 | Phase 29 | Complete |
 | DOMAIN-06 | Phase 29 | Pending |
 | DOMAIN-07 | Phase 29 | Pending |
-| BOUNCE-01 | Phase 29 | Pending |
-| BOUNCE-02 | Phase 29 | Pending |
-| BOUNCE-03 | Phase 29 | Pending |
-| BOUNCE-04 | Phase 29 | Pending |
+| BOUNCE-01 | Phase 29 | Complete |
+| BOUNCE-02 | Phase 29 | Complete |
+| BOUNCE-03 | Phase 29 | Complete |
+| BOUNCE-04 | Phase 29 | Complete |
 | PLACE-01 | Phase 30 | Pending |
 | PLACE-02 | Phase 30 | Pending |
 | PLACE-03 | Phase 30 | Pending |

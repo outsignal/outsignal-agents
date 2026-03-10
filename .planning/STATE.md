@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Email Deliverability & Domain Infrastructure Monitoring
 status: in_progress
-last_updated: "2026-03-10T20:47:33Z"
+last_updated: "2026-03-10T20:49:00Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,16 +23,16 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 29 of 32 (Domain Health Foundation)
-Plan: 1 of 3 in current phase (29-01 complete)
+Plan: 2 of 3 in current phase (29-01, 29-02 complete)
 Status: In progress
-Last activity: 2026-03-10 — Executed 29-01 (DomainHealth schema + DNS validation library)
+Last activity: 2026-03-10 — Executed 29-02 (BounceSnapshot model + snapshot capture + warmup API client)
 
 Progress: [████████████████████░░░░░░░░░░] ~65% (28/32 phases complete across all milestones)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 105 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 1)
+- Total plans completed: 106 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 2)
 - Average duration: ~15 min
 - Total execution time: ~22 hours
 
@@ -56,6 +56,9 @@ Progress: [████████████████████░░░
 - [29-01]: DomainHealth.domain is unique (not per-workspace) — domain health is global
 - [29-01]: DKIM "partial" status for 1-3 of 4 selectors — real mail providers often use only one selector
 - [29-01]: computeOverallHealth is a pure function separate from DNS IO — enables testing and reuse
+- [29-02]: Cron endpoint at /api/cron/bounce-snapshots (not snapshot-metrics — that path exists for campaign analytics)
+- [29-02]: bounceRate uses daily delta when available; falls back to cumulative on first snapshot
+- [29-02]: Warmup API (dedi.emailbison.com) fetched alongside snapshots — graceful degradation if unavailable
 
 ### Blockers/Concerns
 
@@ -71,5 +74,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Completed 29-01-PLAN.md (DomainHealth schema + DNS validation library)
+Stopped at: Completed 29-02-PLAN.md (BounceSnapshot model + snapshot capture + warmup API)
 Resume file: None
