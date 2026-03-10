@@ -1,0 +1,223 @@
+/**
+ * DNS validation library for domain health monitoring.
+ * Pure functions using Node.js dns/promises — zero external dependencies.
+ * All functions are resilient to DNS timeouts and NXDOMAIN responses.
+ */
+
+import * as dns from "dns/promises";
+import { Resolver } from "dns/promises";
+
+import type {
+  SpfResult,
+  DkimResult,
+  DmarcResult,
+  DnsCheckResult,
+} from "./types";
+import { DKIM_SELECTORS } from "./types";
+
+const DNS_TIMEOUT_MS = 5000;
+const LOG_PREFIX = "[domain-health]";
+
+/** Create a Resolver with a 5-second timeout using Node.js dns/promises */
+function createResolver(): Resolver {
+  const resolver = new Resolver({ timeout: DNS_TIMEOUT_MS });
+  return resolver;
+}
+
+/**
+ * Look up SPF record for a domain.
+ * Finds TXT record starting with "v=spf1".
+ */
+export async function checkSpf(domain: string): Promise<SpfResult> {
+  const resolver = createResolver();
+  try {
+    const records = await resolver.resolveTxt(domain);
+    // TXT records are returned as arrays of strings (chunks) — join each record
+    const txtValues = records.map((chunks) => chunks.join(""));
+    const spfRecord = txtValues.find((txt) =>
+      txt.toLowerCase().startsWith("v=spf1")
+    );
+
+    if (!spfRecord) {
+      return { status: "missing", record: null };
+    }
+
+    // Basic sanity check: must contain at least one mechanism
+    const hasValidMechanism =
+      /\b(include|ip4|ip6|a|mx|ptr|exists|redirect|all)\b/i.test(spfRecord);
+    if (!hasValidMechanism) {
+      return { status: "fail", record: spfRecord };
+    }
+
+    return { status: "pass", record: spfRecord };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
+      return { status: "missing", record: null };
+    }
+    console.error(
+      `${LOG_PREFIX} SPF lookup failed for ${domain}:`,
+      (err as Error).message
+    );
+    return { status: "missing", record: null };
+  }
+}
+
+/**
+ * Look up DKIM records for a domain across all known selectors.
+ * Checks DKIM_SELECTORS in parallel and collects passing selectors.
+ */
+export async function checkDkim(domain: string): Promise<DkimResult> {
+  const resolver = createResolver();
+
+  const checks = await Promise.allSettled(
+    DKIM_SELECTORS.map(async (selector) => {
+      const dkimHost = `${selector}._domainkey.${domain}`;
+      try {
+        const records = await resolver.resolveTxt(dkimHost);
+        const txtValues = records.map((chunks) => chunks.join(""));
+        // Valid DKIM record must contain v=DKIM1
+        const hasDkim = txtValues.some((txt) =>
+          txt.toLowerCase().includes("v=dkim1")
+        );
+        return hasDkim ? selector : null;
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (
+          code === "ENOTFOUND" ||
+          code === "ENODATA" ||
+          code === "ESERVFAIL"
+        ) {
+          return null;
+        }
+        console.error(
+          `${LOG_PREFIX} DKIM lookup failed for ${dkimHost}:`,
+          (err as Error).message
+        );
+        return null;
+      }
+    })
+  );
+
+  const passedSelectors = checks
+    .filter(
+      (r): r is PromiseFulfilledResult<string> =>
+        r.status === "fulfilled" && r.value !== null
+    )
+    .map((r) => r.value);
+
+  if (passedSelectors.length === 0) {
+    return { status: "missing", passedSelectors: [] };
+  }
+
+  if (passedSelectors.length === DKIM_SELECTORS.length) {
+    return { status: "pass", passedSelectors };
+  }
+
+  return { status: "partial", passedSelectors };
+}
+
+/**
+ * Look up DMARC record for a domain.
+ * Finds TXT record at _dmarc.{domain} and parses the p= policy.
+ */
+export async function checkDmarc(domain: string): Promise<DmarcResult> {
+  const resolver = createResolver();
+  const dmarcHost = `_dmarc.${domain}`;
+
+  try {
+    const records = await resolver.resolveTxt(dmarcHost);
+    const txtValues = records.map((chunks) => chunks.join(""));
+    const dmarcRecord = txtValues.find((txt) =>
+      txt.toLowerCase().startsWith("v=dmarc1")
+    );
+
+    if (!dmarcRecord) {
+      return { status: "missing", policy: null, record: null };
+    }
+
+    // Parse policy from p= directive
+    const policyMatch = dmarcRecord.match(/\bp=(\w+)/i);
+    if (!policyMatch) {
+      return { status: "fail", policy: null, record: dmarcRecord };
+    }
+
+    const policyValue = policyMatch[1].toLowerCase();
+    if (
+      policyValue !== "none" &&
+      policyValue !== "quarantine" &&
+      policyValue !== "reject"
+    ) {
+      return { status: "fail", policy: null, record: dmarcRecord };
+    }
+
+    return {
+      status: "pass",
+      policy: policyValue as "none" | "quarantine" | "reject",
+      record: dmarcRecord,
+    };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
+      return { status: "missing", policy: null, record: null };
+    }
+    console.error(
+      `${LOG_PREFIX} DMARC lookup failed for ${domain}:`,
+      (err as Error).message
+    );
+    return { status: "missing", policy: null, record: null };
+  }
+}
+
+/**
+ * Run all three DNS checks (SPF, DKIM, DMARC) in parallel.
+ * Returns combined results. Never throws.
+ */
+export async function checkAllDns(domain: string): Promise<DnsCheckResult> {
+  const [spf, dkim, dmarc] = await Promise.all([
+    checkSpf(domain),
+    checkDkim(domain),
+    checkDmarc(domain),
+  ]);
+  return { spf, dkim, dmarc };
+}
+
+/**
+ * Compute overall health string from DNS results and blacklist hits.
+ *
+ * Rules:
+ * - "critical"  → any blacklist hits, or SPF fail, or DMARC fail
+ * - "warning"   → DKIM partial, or DMARC policy is "none", or SPF/DMARC missing
+ * - "healthy"   → SPF pass, DKIM pass/partial with no blacklists, DMARC pass with quarantine/reject
+ * - "unknown"   → any other combination (e.g. all missing with no data)
+ */
+export function computeOverallHealth(
+  dns: DnsCheckResult,
+  blacklistHits: string[]
+): "healthy" | "warning" | "critical" | "unknown" {
+  const { spf, dkim, dmarc } = dns;
+
+  // Critical: blacklist hits or hard fails
+  if (blacklistHits.length > 0) return "critical";
+  if (spf.status === "fail") return "critical";
+  if (dmarc.status === "fail") return "critical";
+
+  // Warning: missing records or weak DMARC policy
+  if (spf.status === "missing") return "warning";
+  if (dmarc.status === "missing") return "warning";
+  if (dmarc.policy === "none") return "warning";
+  if (dkim.status === "partial") return "warning";
+  if (dkim.status === "missing") return "warning";
+
+  // Healthy: SPF pass, DKIM pass, DMARC pass with strong policy
+  if (
+    spf.status === "pass" &&
+    dkim.status === "pass" &&
+    dmarc.status === "pass" &&
+    (dmarc.policy === "quarantine" || dmarc.policy === "reject")
+  ) {
+    return "healthy";
+  }
+
+  return "unknown";
+}
