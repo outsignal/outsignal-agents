@@ -64,7 +64,7 @@ Full details: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md)
 - [x] **Phase 23: Reply Storage & Classification** - Store every reply with full body text and automatically classify by intent, sentiment, and objection type
 - [x] **Phase 24: Campaign Analytics Engine** - Pre-compute campaign performance metrics via cron and enable ranking, comparison, and per-step sequence analysis (completed 2026-03-09)
 - [x] **Phase 25: Copy Performance Analysis** - Analyze subject lines and email body structural elements to surface what copy patterns drive the highest reply rates (completed 2026-03-10)
-- [ ] **Phase 26: Cross-Workspace Benchmarking & ICP Calibration** - Benchmark workspace performance against vertical averages and calibrate ICP scores against actual conversion outcomes
+- [x] **Phase 26: Cross-Workspace Benchmarking & ICP Calibration** - Benchmark workspace performance against vertical averages and calibrate ICP scores against actual conversion outcomes (completed 2026-03-10)
 - [ ] **Phase 27: AI Insights & Action Queue** - Generate weekly AI-powered insights per workspace and let admin approve, dismiss, or defer suggested optimizations
 - [ ] **Phase 28: Intelligence Hub Dashboard** - Unified dashboard page displaying all intelligence data with campaign rankings, classification charts, benchmarks, insights, and ICP calibration
 
@@ -176,6 +176,6 @@ v3.0 phases: 23 → 24 → 25 (parallel with 26) → 27 → 28
 | 23. Reply Storage & Classification | v3.0 | Complete    | 2026-03-09 | 2026-03-09 |
 | 24. Campaign Analytics Engine | 3/3 | Complete    | 2026-03-09 | - |
 | 25. Copy Performance Analysis | 3/3 | Complete    | 2026-03-10 | - |
-| 26. Cross-Workspace Benchmarking & ICP Calibration | 1/2 | In Progress|  | - |
+| 26. Cross-Workspace Benchmarking & ICP Calibration | 2/2 | Complete   | 2026-03-10 | - |
 | 27. AI Insights & Action Queue | v3.0 | 0/TBD | Not started | - |
 | 28. Intelligence Hub Dashboard | v3.0 | 0/TBD | Not started | - |
