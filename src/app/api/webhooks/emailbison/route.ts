@@ -334,6 +334,7 @@ export async function POST(request: NextRequest) {
     // --- Reply persistence + classification ---
     const replyEvents = ["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED"];
     const ebReplyId = data.reply?.id ?? null;
+    let replyRecordId: string | null = null;
 
     if (replyEvents.includes(eventType) && !isAutomatedFlag && ebReplyId != null) {
       try {
@@ -416,6 +417,8 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        replyRecordId = reply.id;
+
         // Classify inline (before notification)
         try {
           const classification = await classifyReply({
@@ -458,7 +461,8 @@ export async function POST(request: NextRequest) {
           subject,
           bodyPreview: textBody,
           interested,
-          suggestedResponse: null, // send now, follow up with suggestion
+          suggestedResponse: null,
+          replyId: replyRecordId,
         });
       } catch (err) {
         console.error("Notification error:", err);

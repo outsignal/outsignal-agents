@@ -93,7 +93,7 @@ export async function GET(request: Request) {
 
           const existing = await prisma.webhookEvent.findFirst({
             where: {
-              leadEmail: reply.from_email_address,
+              leadEmail: { equals: reply.from_email_address, mode: "insensitive" },
               eventType: {
                 in: ["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED", "POLLED_REPLY"],
               },
@@ -138,6 +138,7 @@ export async function GET(request: Request) {
           });
 
           // 3. Upsert Reply record + classify
+          let replyRecordId: string | null = null;
           if (reply.id != null) {
             try {
               const replyBodyText = reply.text_body ?? stripHtml(reply.html_body ?? "");
@@ -212,6 +213,8 @@ export async function GET(request: Request) {
                 },
               });
 
+              replyRecordId = replyRecord.id;
+
               // Classify inline
               try {
                 const classification = await classifyReply({
@@ -250,6 +253,7 @@ export async function GET(request: Request) {
             bodyPreview: reply.text_body,
             interested: reply.interested,
             suggestedResponse: null,
+            replyId: replyRecordId,
           });
 
           // 5. LinkedIn fast-track for replied/interested

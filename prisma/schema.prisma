@@ -287,6 +287,9 @@ model Reply {
   overriddenAt         DateTime?
   overriddenBy         String?  // admin email
 
+  // Notification tracking
+  notifiedAt       DateTime?
+
   // Source tracking
   source           String   @default("webhook") // webhook|poll|backfill
   webhookEventId   String?  // Link to WebhookEvent for audit trail

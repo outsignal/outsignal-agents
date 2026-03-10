@@ -12,7 +12,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
-// Outsignal workspace API token (from EMAILBISON_WORKSPACES env)
+// Outsignal workspace API token (from database Workspace record)
 const API_TOKEN = "15|9ElM1eQU9zqr2pAYmlr8z3cGK09ewn08lWM9XDS8edc1826c";
 const BASE_URL = "https://app.outsignal.ai/api";
 const WORKSPACE_SLUG = "outsignal";

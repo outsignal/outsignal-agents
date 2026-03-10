@@ -243,7 +243,19 @@ export async function notifyReply(params: {
   bodyPreview: string | null;
   interested?: boolean;
   suggestedResponse?: string | null;
+  replyId?: string | null;
 }): Promise<void> {
+  if (params.replyId) {
+    const replyRecord = await prisma.reply.findUnique({
+      where: { id: params.replyId },
+      select: { notifiedAt: true },
+    });
+    if (replyRecord?.notifiedAt) {
+      console.log(`[notifyReply] Skipping already-notified reply ${params.replyId}`);
+      return;
+    }
+  }
+
   const workspace = await prisma.workspace.findUnique({
     where: { slug: params.workspaceSlug },
   });
@@ -512,6 +524,13 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
     } catch (err) {
       console.error("Email admin notification failed:", err);
     }
+  }
+
+  if (params.replyId) {
+    await prisma.reply.update({
+      where: { id: params.replyId },
+      data: { notifiedAt: new Date() },
+    });
   }
 }
 

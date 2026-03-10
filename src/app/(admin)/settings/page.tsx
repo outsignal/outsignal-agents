@@ -96,7 +96,7 @@ export default async function SettingsPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs">
-                          {ws.source}
+                          db
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -106,10 +106,8 @@ export default async function SettingsPage() {
                               ? (ws as Record<string, unknown>).apiTokenPreview as string
                               : "***"}
                           </span>
-                        ) : ws.source === "db" ? (
-                          <ApiTokenForm slug={ws.slug} />
                         ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
+                          <ApiTokenForm slug={ws.slug} />
                         )}
                       </TableCell>
                       <TableCell>

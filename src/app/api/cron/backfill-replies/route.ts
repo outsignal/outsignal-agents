@@ -75,7 +75,7 @@ export async function GET(request: Request) {
       const existing = await prisma.webhookEvent.findFirst({
         where: {
           workspace,
-          leadEmail: reply.from_email_address,
+          leadEmail: { equals: reply.from_email_address, mode: "insensitive" },
           eventType: {
             in: ["LEAD_REPLIED", "LEAD_INTERESTED", "UNTRACKED_REPLY_RECEIVED", "POLLED_REPLY"],
           },
@@ -119,7 +119,17 @@ export async function GET(request: Request) {
         });
       });
 
-      // 3. Send notification
+      // 3. Look up Reply record for dedup guard
+      let replyRecordId: string | null = null;
+      if (reply.id != null) {
+        const replyRecord = await prisma.reply.findUnique({
+          where: { emailBisonReplyId: reply.id },
+          select: { id: true },
+        });
+        replyRecordId = replyRecord?.id ?? null;
+      }
+
+      // 4. Send notification
       await notifyReply({
         workspaceSlug: workspace,
         leadName: reply.from_name,
@@ -129,9 +139,10 @@ export async function GET(request: Request) {
         bodyPreview: reply.text_body,
         interested: reply.interested,
         suggestedResponse: null,
+        replyId: replyRecordId,
       });
 
-      // 4. LinkedIn fast-track for replied/interested
+      // 5. LinkedIn fast-track for replied/interested
       try {
         const person = await prisma.person.findUnique({
           where: { email: reply.from_email_address },

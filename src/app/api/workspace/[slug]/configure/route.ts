@@ -57,22 +57,9 @@ export async function GET(
 
   const { slug } = await params;
 
-  // Try DB first
   const dbWorkspace = await prisma.workspace.findUnique({ where: { slug } });
   if (dbWorkspace) {
     return NextResponse.json(stripSensitiveFields(dbWorkspace));
-  }
-
-  // Fall back to env config
-  const envWorkspace = await getWorkspaceBySlug(slug);
-  if (envWorkspace) {
-    return NextResponse.json({
-      slug: envWorkspace.slug,
-      name: envWorkspace.name,
-      vertical: envWorkspace.vertical ?? null,
-      status: envWorkspace.status,
-      source: "env",
-    });
   }
 
   return NextResponse.json({ error: "Workspace not found" }, { status: 404 });

@@ -7,7 +7,7 @@ export interface WorkspaceConfig {
   name: string;
   apiToken: string;
   vertical?: string;
-  source: "env" | "db";
+  source: "db";
   status: string;
 }
 
@@ -15,71 +15,33 @@ export interface WorkspaceListItem {
   slug: string;
   name: string;
   vertical?: string;
-  source: "env" | "db";
+  source: "db";
   status: string;
   hasApiToken: boolean;
 }
 
-interface EnvWorkspace {
-  slug: string;
-  name: string;
-  apiToken: string;
-  vertical?: string;
-}
-
-function getEnvWorkspaces(): EnvWorkspace[] {
-  const raw = process.env.EMAILBISON_WORKSPACES;
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as EnvWorkspace[];
-  } catch {
-    console.error("Failed to parse EMAILBISON_WORKSPACES env var");
-    return [];
-  }
-}
-
 export async function getAllWorkspaces(): Promise<WorkspaceListItem[]> {
-  const envWs = getEnvWorkspaces().map((w) => ({
-    slug: w.slug,
-    name: w.name,
-    vertical: w.vertical,
-    source: "env" as const,
-    status: "active",
-    hasApiToken: true,
-  }));
-
-  let dbMapped: WorkspaceListItem[] = [];
   try {
     const dbWs = await prisma.workspace.findMany({
       orderBy: { createdAt: "desc" },
     });
-    dbMapped = dbWs
-      .filter((w) => !envWs.some((e) => e.slug === w.slug))
-      .map((w) => ({
-        slug: w.slug,
-        name: w.name,
-        vertical: w.vertical ?? undefined,
-        source: "db" as const,
-        status: w.status,
-        hasApiToken: !!w.apiToken,
-      }));
+    return dbWs.map((w) => ({
+      slug: w.slug,
+      name: w.name,
+      vertical: w.vertical ?? undefined,
+      source: "db" as const,
+      status: w.status,
+      hasApiToken: !!w.apiToken,
+    }));
   } catch (err) {
-    console.error("[workspaces] DB query failed, using env workspaces only:", err);
+    console.error("[workspaces] DB query failed:", err);
+    return [];
   }
-
-  return [...envWs, ...dbMapped];
 }
 
 export async function getWorkspaceBySlug(
   slug: string,
 ): Promise<WorkspaceConfig | undefined> {
-  // Check env first (fast path, backward compatible)
-  const envWs = getEnvWorkspaces().find((w) => w.slug === slug);
-  if (envWs) {
-    return { ...envWs, source: "env", status: "active" };
-  }
-
-  // Fall back to DB
   const dbWs = await prisma.workspace.findUnique({ where: { slug } });
   if (!dbWs || !dbWs.apiToken) return undefined;
 
@@ -96,7 +58,6 @@ export async function getWorkspaceBySlug(
 export async function getWorkspaceDetails(
   slug: string,
 ): Promise<Workspace | null> {
-  // Check if it's a DB workspace
   const dbWs = await prisma.workspace.findUnique({ where: { slug } });
   return dbWs;
 }
@@ -107,9 +68,4 @@ export async function getClientForWorkspace(
   const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) throw new Error(`Workspace not found: ${slug}`);
   return new EmailBisonClient(workspace.apiToken);
-}
-
-// Synchronous helper for env workspaces only (legacy compat)
-export function getWorkspaces(): EnvWorkspace[] {
-  return getEnvWorkspaces();
 }
