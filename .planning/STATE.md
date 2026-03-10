@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Email Deliverability & Domain Infrastructure Monitoring
 status: in_progress
-last_updated: "2026-03-10T20:49:00Z"
+last_updated: "2026-03-10T20:56:14Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,16 +23,16 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 29 of 32 (Domain Health Foundation)
-Plan: 2 of 3 in current phase (29-01, 29-02 complete)
+Plan: 3 of 3 in current phase (29-01, 29-02, 29-03 complete — phase DONE)
 Status: In progress
-Last activity: 2026-03-10 — Executed 29-02 (BounceSnapshot model + snapshot capture + warmup API client)
+Last activity: 2026-03-10 — Executed 29-03 (DNSBL blacklist checker + domain health notifications + daily cron)
 
 Progress: [████████████████████░░░░░░░░░░] ~65% (28/32 phases complete across all milestones)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 106 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 2)
+- Total plans completed: 107 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 3)
 - Average duration: ~15 min
 - Total execution time: ~22 hours
 
@@ -59,6 +59,10 @@ Progress: [████████████████████░░░
 - [29-02]: Cron endpoint at /api/cron/bounce-snapshots (not snapshot-metrics — that path exists for campaign analytics)
 - [29-02]: bounceRate uses daily delta when available; falls back to cumulative on first snapshot
 - [29-02]: Warmup API (dedi.emailbison.com) fetched alongside snapshots — graceful degradation if unavailable
+- [29-03]: DNSBL_LIST splits into 3 critical (Spamhaus ZEN, Barracuda, Spamhaus DBL) and 17 warning entries
+- [29-03]: Blacklist checking conditional — only for domains with >3% bounce rate OR not checked in 7+ days
+- [29-03]: DNS failure notification fires on every failed check run (not deduplicated) — persistent flag after 48h escalates to critical
+- [29-03]: firstFailingSince uses updatedAt from DomainHealth record as proxy for when DNS started failing
 
 ### Blockers/Concerns
 
@@ -74,5 +78,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Completed 29-02-PLAN.md (BounceSnapshot model + snapshot capture + warmup API)
+Stopped at: Completed 29-03-PLAN.md (DNSBL blacklist checker + notifications + daily cron)
 Resume file: None

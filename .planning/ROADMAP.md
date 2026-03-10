@@ -76,7 +76,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 **Milestone Goal:** Full-stack deliverability visibility — DNS health, bounce trends, placement testing, auto-rotation, and client-facing reporting — so every sender's health is observable and actionable before problems become crises.
 
-- [ ] **Phase 29: Domain Health Foundation** — Schema, DNS validation library, bounce snapshots, and daily cron; everything downstream depends on this data layer
+- [x] **Phase 29: Domain Health Foundation** — Schema, DNS validation library, bounce snapshots, and daily cron; everything downstream depends on this data layer (completed 2026-03-10)
 - [ ] **Phase 30: Inbox Placement Testing** — On-demand mail-tester.com integration with "recommended for testing" badges on at-risk senders
 - [ ] **Phase 31: Auto-Rotation Engine** — Graduated status escalation, 4-hour bounce monitor cron, audit trail, notifications, and EmailBison API investigation
 - [ ] **Phase 32: Deliverability Dashboard & Reporting** — Admin deliverability page, Intelligence Hub bento section, weekly digest, and client portal health summary
@@ -93,7 +93,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
   3. Per-domain aggregate bounce metrics roll up correctly from sender-level snapshots
   4. Admin receives a Slack notification when a domain appears on any DNSBL blacklist
   5. Admin receives a warning notification when SPF, DKIM, or DMARC validation fails for any sending domain
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 29-01-PLAN.md — DomainHealth model + DNS validation library (SPF/DKIM/DMARC)
 - [ ] 29-02-PLAN.md — BounceSnapshot model + snapshot capture + warmup API + daily cron
@@ -168,7 +168,7 @@ Plans:
 | 26. Cross-Workspace Benchmarking & ICP Calibration | v3.0 | 2/2 | Complete | 2026-03-10 |
 | 27. AI Insights & Action Queue | v3.0 | 3/3 | Complete | 2026-03-10 |
 | 28. Intelligence Hub Dashboard | v3.0 | 2/2 | Complete | 2026-03-10 |
-| 29. Domain Health Foundation | 2/3 | In Progress|  | - |
+| 29. Domain Health Foundation | 3/3 | Complete   | 2026-03-10 | - |
 | 30. Inbox Placement Testing | v4.0 | 0/TBD | Not started | - |
 | 31. Auto-Rotation Engine | v4.0 | 0/TBD | Not started | - |
 | 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |
