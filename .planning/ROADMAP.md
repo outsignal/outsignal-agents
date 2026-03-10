@@ -159,7 +159,10 @@ Plans:
   3. Intelligence Hub displays reply classification breakdown charts showing intent distribution, sentiment distribution, and objection type distribution
   4. Intelligence Hub displays cross-workspace benchmarking comparison with visual reference bands showing where each workspace falls
   5. Intelligence Hub displays active insight cards with approve/dismiss/defer controls and an ICP calibration visualization showing score-vs-conversion correlation
-**Plans**: [To be planned]
+**Plans**: 2 plans
+Plans:
+- [ ] 28-01-PLAN.md — Hub page scaffold with sidebar, KPI row, filters, insights API global mode
+- [ ] 28-02-PLAN.md — Bento section components (campaigns, classification, benchmarks, ICP, insights) + weekly digest enhancement
 
 ## Progress
 
@@ -176,4 +179,4 @@ v3.0 phases: 23 → 24 → 25 (parallel with 26) → 27 → 28
 | 25. Copy Performance Analysis | 3/3 | Complete    | 2026-03-10 | - |
 | 26. Cross-Workspace Benchmarking & ICP Calibration | 2/2 | Complete    | 2026-03-10 | - |
 | 27. AI Insights & Action Queue | 3/3 | Complete   | 2026-03-10 | - |
-| 28. Intelligence Hub Dashboard | v3.0 | 0/TBD | Not started | - |
+| 28. Intelligence Hub Dashboard | v3.0 | 0/2 | Not started | - |
