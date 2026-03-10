@@ -21,7 +21,7 @@ interface CampaignSummaryProps {
 export function CampaignSummary({ campaigns, loading }: CampaignSummaryProps) {
   const top5 = campaigns
     ?.slice()
-    .sort((a, b) => b.replyRate - a.replyRate)
+    .sort((a, b) => (b.replyRate ?? 0) - (a.replyRate ?? 0))
     .slice(0, 5);
 
   return (
@@ -72,10 +72,10 @@ export function CampaignSummary({ campaigns, loading }: CampaignSummaryProps) {
                   {c.name.length > 25 ? `${c.name.slice(0, 25)}...` : c.name}
                 </td>
                 <td className="py-1.5 text-right tabular-nums font-medium">
-                  {c.replyRate.toFixed(1)}%
+                  {(c.replyRate ?? 0).toFixed(1)}%
                 </td>
                 <td className="py-1.5 text-right tabular-nums">
-                  {c.interestedRate.toFixed(1)}%
+                  {(c.interestedRate ?? 0).toFixed(1)}%
                 </td>
               </tr>
             ))}
