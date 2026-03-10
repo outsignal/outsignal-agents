@@ -78,7 +78,7 @@ export const InsightSchema = z.object({
             "adjust_signal_targeting",
           ]),
           description: z.string(),
-          params: z.record(z.string()).nullable(),
+          params: z.record(z.string(), z.string()).nullable(),
         }),
         confidence: z.enum(["high", "medium", "low"]),
         priority: z
