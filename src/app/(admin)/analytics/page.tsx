@@ -16,6 +16,7 @@ import {
 } from "@/components/analytics/campaign-rankings-table";
 import { CopyTab } from "@/components/analytics/copy-tab";
 import { BenchmarksTab } from "@/components/analytics/benchmarks-tab";
+import { InsightsTab } from "@/components/analytics/insights-tab";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,7 @@ export default function AnalyticsPage() {
   const isPerformanceTab = activeTab === "performance";
   const isCopyTab = activeTab === "copy";
   const isBenchmarksTab = activeTab === "benchmarks";
+  const isInsightsTab = activeTab === "insights";
 
   // ─── Fetch campaigns ────────────────────────────────────────────────────
   const fetchCampaigns = useCallback(async () => {
@@ -243,6 +245,11 @@ export default function AnalyticsPage() {
             active={isBenchmarksTab}
             onClick={() => handleTabChange("benchmarks")}
           />
+          <TabChip
+            label="Insights"
+            active={isInsightsTab}
+            onClick={() => handleTabChange("insights")}
+          />
         </div>
 
         {/* Performance tab content */}
@@ -315,6 +322,11 @@ export default function AnalyticsPage() {
         {/* Benchmarks tab content */}
         {isBenchmarksTab && (
           <BenchmarksTab workspace={params.workspace || null} />
+        )}
+
+        {/* Insights tab content */}
+        {isInsightsTab && (
+          <InsightsTab workspace={params.workspace || null} />
         )}
       </div>
     </div>
