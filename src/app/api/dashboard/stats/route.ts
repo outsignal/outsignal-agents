@@ -65,7 +65,7 @@ export interface LinkedInTimeSeriesPoint {
 }
 
 export interface DashboardAlert {
-  type: "flagged_sender" | "failed_agent_run" | "disconnected_inbox" | "disconnected_linkedin";
+  type: "flagged_sender" | "failed_agent_run" | "disconnected_inbox" | "disconnected_linkedin" | "no_linkedin_senders";
   title: string;
   detail: string;
   link?: string;
@@ -206,7 +206,18 @@ export async function GET(request: NextRequest) {
 
     // 6. Inbox KPIs: fetch sender emails from EmailBison across all workspaces
     const allWorkspaces = await prisma.workspace.findMany({
-      select: { slug: true, name: true, apiToken: true, status: true },
+      select: {
+        slug: true,
+        name: true,
+        apiToken: true,
+        status: true,
+        package: true,
+        _count: {
+          select: {
+            senders: { where: { linkedinProfileUrl: { not: null } } },
+          },
+        },
+      },
     });
 
     const workspacesWithToken = allWorkspaces.filter((w) => w.apiToken);
@@ -397,15 +408,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Disconnected inboxes (active workspaces with no apiToken)
+    // Disconnected inboxes (active workspaces that use email but have no apiToken)
+    const emailPackages = ["email", "email_linkedin"];
     const disconnectedWorkspaces = allWorkspaces.filter(
-      (w) => !w.apiToken && w.status === "active"
+      (w) => !w.apiToken && w.status === "active" && emailPackages.includes(w.package)
     );
     for (const ws of disconnectedWorkspaces) {
       alerts.push({
         type: "disconnected_inbox",
         title: `Inbox disconnected: ${ws.name}`,
         detail: "No EmailBison API token configured for this workspace.",
+        link: `/workspace/${ws.slug}/settings`,
+        severity: "warning",
+      });
+    }
+
+    // LinkedIn workspaces without any LinkedIn senders
+    const linkedinPackages = ["linkedin", "email_linkedin"];
+    const noLinkedinSenders = allWorkspaces.filter(
+      (w) =>
+        w.status === "active" &&
+        linkedinPackages.includes(w.package) &&
+        w._count.senders === 0
+    );
+    for (const ws of noLinkedinSenders) {
+      alerts.push({
+        type: "no_linkedin_senders",
+        title: `No LinkedIn senders: ${ws.name}`,
+        detail: "No LinkedIn sender profiles configured for this workspace.",
         link: `/workspace/${ws.slug}/settings`,
         severity: "warning",
       });
