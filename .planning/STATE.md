@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 27 of 28 (AI Insights & Action Queue)
-Plan: 2 of 3 -- COMPLETE
-Status: Phase 27 in progress (2/3 plans)
-Last activity: 2026-03-10 — Completed 27-02 (Insights API, Action Executors & Weekly Digest)
+Phase: 28 of 28 (Intelligence Hub Dashboard)
+Plan: 1 of 2 -- COMPLETE
+Status: Phase 28 in progress (1/2 plans)
+Last activity: 2026-03-10 — Completed 28-01 (Hub Page Scaffold with KPI Row & Bento Grid)
 
-Progress: [█████░░░░░] 50% (v3.0) -- Phase 27 plan 2/3 complete
+Progress: [████████░░] 80% (v3.0) -- Phase 28 plan 1/2 complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 102 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 14)
+- Total plans completed: 103 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 15)
 - Average duration: ~15 min
 - Total execution time: ~22 hours
 
@@ -102,6 +102,10 @@ Progress: [█████░░░░░] 50% (v3.0) -- Phase 27 plan 2/3 compl
 - [27-02]: copy_review_flag persisted as CachedMetrics entry for cross-feature visibility
 - [27-02]: Weekly digest sent from cron endpoint after each workspace's insight generation
 
+- [28-01]: Reused AnalyticsFilters component for Intelligence Hub filters instead of custom implementation
+- [28-01]: KPI data sourced from 3 parallel API calls (campaigns, reply stats, insights) rather than dedicated KPI endpoint
+- [28-01]: Top workspace computed by averaging reply rates per workspace across campaigns
+
 ### Blockers/Concerns
 
 - CachedMetrics model exists in schema but has zero usage — need to verify upsert behavior and unique constraints work as expected
@@ -116,5 +120,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Completed 27-02-PLAN.md
+Stopped at: Completed 28-01-PLAN.md
 Resume file: None

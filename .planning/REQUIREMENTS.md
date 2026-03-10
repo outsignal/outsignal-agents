@@ -48,7 +48,7 @@
 
 ### Intelligence Hub
 
-- [ ] **HUB-01**: Admin can access a dedicated Intelligence Hub dashboard page showing all intelligence data in one place
+- [x] **HUB-01**: Admin can access a dedicated Intelligence Hub dashboard page showing all intelligence data in one place
 - [ ] **HUB-02**: Intelligence Hub displays campaign rankings with sortable metrics table
 - [ ] **HUB-03**: Intelligence Hub displays reply classification breakdown charts (intent distribution, sentiment, objection types)
 - [ ] **HUB-04**: Intelligence Hub displays cross-workspace benchmarking comparison with reference bands
@@ -107,7 +107,7 @@
 | INSIGHT-04 | Phase 27 | Complete |
 | INSIGHT-05 | Phase 27 | Complete |
 | INSIGHT-06 | Phase 27 | Complete |
-| HUB-01 | Phase 28 | Pending |
+| HUB-01 | Phase 28 | Complete |
 | HUB-02 | Phase 28 | Pending |
 | HUB-03 | Phase 28 | Pending |
 | HUB-04 | Phase 28 | Pending |
