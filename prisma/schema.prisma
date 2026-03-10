@@ -9,6 +9,20 @@ datasource db {
   extensions = [vector]
 }
 
+model ExclusionEntry {
+  id            String   @id @default(cuid())
+  workspaceSlug String
+  domain        String
+  companyName   String?
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceSlug], references: [slug])
+
+  @@unique([workspaceSlug, domain])
+  @@index([workspaceSlug])
+}
+
 model Workspace {
   id       String  @id @default(cuid())
   slug     String  @unique
@@ -99,8 +113,9 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  senders    Sender[]
-  campaigns  Campaign[]
+  senders          Sender[]
+  campaigns        Campaign[]
+  exclusionEntries ExclusionEntry[]
 }
 
 model Person {
