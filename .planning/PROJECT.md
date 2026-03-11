@@ -53,7 +53,7 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 ### Active
 
-<!-- v4.0 Email Deliverability & Domain Infrastructure Monitoring -->
+<!-- v4.0 Email Deliverability & Domain Infrastructure Monitoring (parallel) -->
 
 - [ ] SPF/DKIM/DMARC validation per sending domain via DNS lookups
 - [ ] DNS blacklist monitoring (~50 DNSBLs) — targeted checking on domains with elevated bounce rates
@@ -67,6 +67,17 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - [ ] Weekly deliverability digest notification
 - [ ] Portal deliverability summary for clients
 - [ ] EmailBison sender management API investigation (pause/unpause, daily limits, warmup toggle)
+
+<!-- v5.0 Client Portal Inbox (parallel) -->
+
+- [ ] LinkedIn conversation fetching via Voyager API (read-only, existing session cookies)
+- [ ] LinkedIn message storage with DB models (LinkedInConversation + LinkedInMessage)
+- [ ] EmailBison reply capability (sendReply, getReply, getRepliesPage)
+- [ ] Portal inbox API routes for email + LinkedIn threads
+- [ ] Two-panel inbox UI with thread list and conversation view
+- [ ] Reply composer for email (direct send) and LinkedIn (queue via worker)
+- [ ] Channel tabs based on workspace package (email/linkedin/both)
+- [ ] Inbox navigation replacing Replies in portal sidebar
 
 ### Future
 
@@ -94,11 +105,23 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
 - Campaign builder UI — all campaign operations through chat (Cmd+J / CLI)
 
+## Current Milestone: v5.0 Client Portal Inbox
+
+**Goal:** Build a full inbox experience at /portal/inbox with threaded email conversations (via EmailBison) and LinkedIn messaging (via Voyager API), replacing the read-only replies feed with reply capability.
+
+**Target features:**
+- LinkedIn conversation fetching + message storage
+- EmailBison reply capability (send replies from portal)
+- Unified inbox with email + LinkedIn channel tabs
+- Two-panel thread list + conversation view
+- Reply composer (email direct send, LinkedIn queue)
+- Package-aware channel filtering
+
 ## Current State
 
 **Shipped:** v3.0 Campaign Intelligence Hub (2026-03-10) — 6 phases, 17 plans, 78 commits
 **Previous:** v2.0 Lead Discovery & Intelligence (2026-03-04), v1.1 Outbound Pipeline (2026-03-03), v1.0 Lead Engine (2026-02-27)
-**Current:** v4.0 Email Deliverability & Domain Infrastructure Monitoring
+**Active:** v4.0 Email Deliverability (phases 30-32, parallel) + v5.0 Client Portal Inbox (starting)
 
 **Codebase:** ~81,280 LOC TypeScript/TSX across 420+ files
 **Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel, Railway (LinkedIn worker)
