@@ -62,6 +62,7 @@ export async function GET(request: Request) {
           fromStatus: transition.from,
           toStatus: transition.to,
           reason: transition.reason,
+          action: transition.action,
           replacementEmail,
         });
       } catch (notifErr) {

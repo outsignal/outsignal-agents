@@ -34,8 +34,8 @@ Requirements for Email Deliverability & Domain Infrastructure Monitoring. Each m
 ### Auto-Rotation
 
 - [x] **ROTATE-01**: Bounce monitor runs every 4 hours checking all sender emails across workspaces
-- [x] **ROTATE-02**: Graduated health status: healthy (<3%), elevated (3-5%), warning (5-8%), critical (>8% or blacklisted)
-- [x] **ROTATE-03**: Auto-recovery when bounce rate sustained below 3% for 7 consecutive days
+- [x] **ROTATE-02**: Graduated health status: healthy (<2%), elevated (2-3%), warning (3-5%), critical (>5% or blacklisted)
+- [x] **ROTATE-03**: Auto-recovery via gradual step-down (one level per 24h sustained below threshold, 6 consecutive checks)
 - [x] **ROTATE-04**: EmailHealthEvent audit trail records all status transitions with reason and bounce percentage
 - [x] **ROTATE-05**: Admin receives notification with recommended action when sender reaches warning/critical status
 - [x] **ROTATE-06**: EmailBison sender management methods added (pause, daily limit, warmup) — feature-flagged pending API investigation
