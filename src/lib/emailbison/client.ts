@@ -12,6 +12,7 @@ import type {
   CustomVariable,
   CreateLeadResult,
   CampaignCreateResult,
+  PatchSenderEmailParams,
 } from "./types";
 
 class EmailBisonApiError extends Error {
@@ -263,5 +264,18 @@ export class EmailBisonClient {
         await this.createCustomVariable(name);
       }
     }
+  }
+
+  async patchSenderEmail(senderEmailId: number, params: PatchSenderEmailParams): Promise<SenderEmail> {
+    const res = await this.request<{ data: SenderEmail }>(
+      `/sender-emails/${senderEmailId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(params),
+        headers: { 'Content-Type': 'application/json' },
+        revalidate: 0,
+      },
+    );
+    return res.data;
   }
 }
