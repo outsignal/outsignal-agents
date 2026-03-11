@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Email Deliverability & Domain Infrastructure Monitoring
-status: unknown
-last_updated: "2026-03-11T10:28:39.120Z"
+milestone: v5.0
+milestone_name: Client Portal Inbox
+status: roadmap_created
+last_updated: "2026-03-11T00:00:00.000Z"
 progress:
-  total_phases: 27
-  completed_phases: 25
-  total_plans: 88
-  completed_plans: 89
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v5.0 Client Portal Inbox (defining requirements) | v4.0 Email Deliverability (phase 30, parallel agent)
+**Current focus:** v5.0 Client Portal Inbox (phases 33-37) | v4.0 Email Deliverability (phases 31-32, parallel)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 33 — API Spike & Client Extensions (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-11 — Milestone v5.0 started (parallel with v4.0)
+Status: Roadmap created, awaiting plan-phase
+Last activity: 2026-03-11 — v5.0 roadmap created (5 phases, 27 requirements mapped)
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -46,37 +46,25 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 
 ### Decisions
 
-- [v4.0 Pre-Milestone]: EmailBison API to be investigated for sender management endpoints before Phase 2
-- [v4.0 Pre-Milestone]: $0 budget — all monitoring via DNS lookups + existing EmailBison data, no paid external APIs
-- [v4.0 Pre-Milestone]: mail-tester.com for on-demand placement testing (~1-2 euros/pack, semi-automated)
-- [v4.0 Pre-Milestone]: cron-job.org free tier has no hard job count limit (fair usage policy)
-- [v4.0 Pre-Milestone]: Targeted blacklist checking — only domains with >3% bounce rate or not checked in 7+ days
-- [v4.0 Roadmap]: ROTATE-06 EmailBison sender management feature-flagged — API capabilities unknown, investigate first
-- [29-01]: Use Node.js dns/promises Resolver (5s timeout) — zero external DNS dependencies
-- [29-01]: DomainHealth.domain is unique (not per-workspace) — domain health is global
-- [29-01]: DKIM "partial" status for 1-3 of 4 selectors — real mail providers often use only one selector
-- [29-01]: computeOverallHealth is a pure function separate from DNS IO — enables testing and reuse
-- [29-02]: Cron endpoint at /api/cron/bounce-snapshots (not snapshot-metrics — that path exists for campaign analytics)
-- [29-02]: bounceRate uses daily delta when available; falls back to cumulative on first snapshot
-- [29-02]: Warmup API (dedi.emailbison.com) fetched alongside snapshots — graceful degradation if unavailable
-- [29-03]: DNSBL_LIST splits into 3 critical (Spamhaus ZEN, Barracuda, Spamhaus DBL) and 17 warning entries
-- [29-03]: Blacklist checking conditional — only for domains with >3% bounce rate OR not checked in 7+ days
-- [29-03]: DNS failure notification fires on every failed check run (not deduplicated) — persistent flag after 48h escalates to critical
-- [29-03]: firstFailingSince uses updatedAt from DomainHealth record as proxy for when DNS started failing
-- [30-01]: PlacementTest and EmailSenderHealth use email-based soft links (no FK to Sender) — consistent with BounceSnapshot pattern
-- [30-01]: pollForResults uses setTimeout loop (not setInterval) — Vercel-safe, no overlapping calls
-- [30-01]: Recommended-for-testing uses JS deduplication of BounceSnapshot rows (not raw SQL GROUP BY) — correct for ~100 senders
-- [30-02]: notifyPlacementResult suppresses good scores (>=7) — only warning + critical trigger alerts
-- [30-02]: POST returns 202 (not 500) when results still pending after 60s polling — caller re-fetches via GET ?refetch=true
-- [30-02]: testId extracted from testAddress string for re-fetch in GET handler (only testAddress is persisted)
-- [30-02]: dedi.emailbison.com used for test send — dedicated IPs reflect real campaign reputation
+- [v5.0 Pre-Milestone]: No new dependencies — entire milestone is application-layer code on existing stack
+- [v5.0 Pre-Milestone]: DB-intermediary pattern for LinkedIn — portal reads from DB only; Railway worker syncs from Voyager
+- [v5.0 Pre-Milestone]: LinkedIn sync is fire-and-forget (202 Accepted, async) — avoids Vercel 60s timeout
+- [v5.0 Pre-Milestone]: Plain textarea for reply composer — HTML emails harm deliverability, text-only
+- [v5.0 Pre-Milestone]: Polling (15s active, 60s background) not WebSockets/SSE — Vercel serverless incompatible with persistent connections
+- [v5.0 Pre-Milestone]: LinkedInAction queue (priority 1) reused for LinkedIn reply delivery — battle-tested
+- [v5.0 Pre-Milestone]: Email threads built from parent_id chain — orphaned parents treated as thread roots
+- [v5.0 Pre-Milestone]: 5-min sync cache on LinkedIn sync API — prevents Voyager rate limit issues
+- [v5.0 Roadmap]: Phase 33 is spike-first — EmailBison sendReply must be validated before any UI is built
+- [v5.0 Roadmap]: Phase 34 gates all LinkedIn UI — DB models must exist before LinkedIn thread list can render
+- [v5.0 Roadmap]: Email (Phase 35) before LinkedIn (Phase 36) — lower risk, higher volume, fewer unknowns
+- [v5.0 Roadmap]: UI-01 through UI-07, ADMIN-01 through ADMIN-04, NAV-01, NAV-02 all deferred to Phase 37 (polish after function proven)
 
 ### Blockers/Concerns
 
-- EmailBison client has no PATCH/PUT for sender emails — auto-rotation may be advisory-only until API investigation
-- Vercel 60s function timeout — DNS blacklist checks for 50+ DNSBLs across multiple domains must use parallel queries + progressive checking
-- Vercel Hobby 2-cron limit already used — 4-hour bounce monitor cron (ROTATE-01) may need cron-job.org
-- DKIM selector discovery resolved: using google, default, selector1, selector2 (covers Gmail + Outlook)
+- EmailBison POST /replies/{id}/reply is undocumented in live behavior — Phase 33 spike resolves this; fallback is mailto: deeplink
+- Voyager conversation API response schema needs live validation in Phase 33 before sync parser is built
+- Vercel 60s timeout — LinkedIn sync must be fully fire-and-forget (202 before any Voyager calls)
+- LinkedIn Voyager rate limits unknown — 2-3s delays between calls, limit 20 conversations, 5-min cache, graceful 401/429 degradation
 
 ### Pending Todos
 
@@ -85,5 +73,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 30-02-PLAN.md (POST + GET /api/placement-tests endpoints, sendTestEmail, notifyPlacementResult)
+Stopped at: v5.0 roadmap created — Phase 33 ready to plan
 Resume file: None

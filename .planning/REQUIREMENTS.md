@@ -181,12 +181,45 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INTEL-02 | Phase 32 | Pending |
 | INTEL-03 | Phase 32 | Pending |
 | PORTAL-01 | Phase 32 | Pending |
+| API-01 | Phase 33 | Pending |
+| API-02 | Phase 33 | Pending |
+| API-03 | Phase 33 | Pending |
+| API-04 | Phase 33 | Pending |
+| LI-01 | Phase 34 | Pending |
+| LI-02 | Phase 34 | Pending |
+| LI-03 | Phase 34 | Pending |
+| LI-04 | Phase 34 | Pending |
+| EMAIL-01 | Phase 35 | Pending |
+| EMAIL-02 | Phase 35 | Pending |
+| EMAIL-03 | Phase 35 | Pending |
+| EMAIL-04 | Phase 35 | Pending |
+| LIIN-01 | Phase 36 | Pending |
+| LIIN-02 | Phase 36 | Pending |
+| LIIN-03 | Phase 36 | Pending |
+| LIIN-04 | Phase 36 | Pending |
+| UI-01 | Phase 37 | Pending |
+| UI-02 | Phase 37 | Pending |
+| UI-03 | Phase 37 | Pending |
+| UI-04 | Phase 37 | Pending |
+| UI-05 | Phase 37 | Pending |
+| UI-06 | Phase 37 | Pending |
+| UI-07 | Phase 37 | Pending |
+| ADMIN-01 | Phase 37 | Pending |
+| ADMIN-02 | Phase 37 | Pending |
+| ADMIN-03 | Phase 37 | Pending |
+| ADMIN-04 | Phase 37 | Pending |
+| NAV-01 | Phase 37 | Pending |
+| NAV-02 | Phase 37 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 30 total
 - Mapped to phases: 30
 - Unmapped: 0 ✓
 
+- v5.0 requirements: 27 total
+- Mapped to phases: 27
+- Unmapped: 0 ✓
+
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after roadmap creation — all 30 requirements mapped*
+*Last updated: 2026-03-11 after v5.0 roadmap creation — all 27 v5.0 requirements mapped*

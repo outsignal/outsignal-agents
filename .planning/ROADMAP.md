@@ -7,6 +7,7 @@
 - ✅ **v2.0 Lead Discovery & Intelligence** — Phases 15-22 (shipped 2026-03-04) — [archive](milestones/v2.0-ROADMAP.md)
 - ✅ **v3.0 Campaign Intelligence Hub** — Phases 23-28 (shipped 2026-03-10) — [archive](milestones/v3.0-ROADMAP.md)
 - 🚧 **v4.0 Email Deliverability & Domain Infrastructure Monitoring** — Phases 29-32 (in progress)
+- 🚧 **v5.0 Client Portal Inbox** — Phases 33-37 (in progress)
 
 ## Phases
 
@@ -81,6 +82,16 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [ ] **Phase 31: Auto-Rotation Engine** — Graduated status escalation, 4-hour bounce monitor cron, audit trail, notifications, and EmailBison API investigation
 - [ ] **Phase 32: Deliverability Dashboard & Reporting** — Admin deliverability page, Intelligence Hub bento section, weekly digest, and client portal health summary
 
+### v5.0 Client Portal Inbox (In Progress)
+
+**Milestone Goal:** Full inbox experience at /portal/inbox with threaded email conversations (via EmailBison) and LinkedIn messaging (via Voyager API), replacing the read-only replies feed with reply capability.
+
+- [ ] **Phase 33: API Spike & Client Extensions** — Validate EmailBison sendReply live behavior and extend both the EmailBisonClient and VoyagerClient with inbox methods; all downstream phases depend on these contracts
+- [ ] **Phase 34: LinkedIn Data Layer** — DB models for LinkedIn conversations + messages, fire-and-forget sync API, and participant-to-Person matching; gates all LinkedIn UI work
+- [ ] **Phase 35: Email Inbox** — Thread grouping API, conversation view, email reply composer, and AI suggested reply display; delivers immediate client value on the highest-volume channel
+- [ ] **Phase 36: LinkedIn Inbox** — Conversation list and detail views from DB, LinkedIn reply queue via LinkedInAction, and manual refresh trigger
+- [ ] **Phase 37: Inbox UI Polish, Admin Inbox & Navigation** — Channel tabs, mobile single-panel layout, unread indicators, cross-channel indicator, admin master inbox, and portal sidebar nav update
+
 ## Phase Details
 
 ### Phase 29: Domain Health Foundation
@@ -137,6 +148,62 @@ Plans:
   5. Clients can view per-sender bounce rates and domain health badges on their portal email-health page
 **Plans**: TBD
 
+### Phase 33: API Spike & Client Extensions
+**Goal**: EmailBison sendReply behavior is validated live and both API clients are extended with inbox methods — unblocking every downstream phase
+**Depends on**: Phase 28 (existing EmailBisonClient and VoyagerClient in codebase)
+**Requirements**: API-01, API-02, API-03, API-04
+**Success Criteria** (what must be TRUE):
+  1. A real EmailBison reply ID has been used to call POST /replies/{id}/reply and the response shape, auth requirements, and error codes are documented
+  2. EmailBisonClient exposes sendReply(), getReply(), and getRepliesPage() methods with correct TypeScript types
+  3. VoyagerClient exposes fetchConversations() and fetchMessages() methods that return typed conversation and message objects from the Voyager messaging API
+  4. The Railway worker exposes GET /sessions/{senderId}/conversations and returns conversations JSON the portal can consume
+**Plans**: TBD
+
+### Phase 34: LinkedIn Data Layer
+**Goal**: LinkedIn conversations and messages are stored in the database and kept fresh via a fire-and-forget sync API — the data foundation all LinkedIn UI reads from
+**Depends on**: Phase 33 (VoyagerClient extensions and worker route must exist)
+**Requirements**: LI-01, LI-02, LI-03, LI-04
+**Success Criteria** (what must be TRUE):
+  1. LinkedInConversation records exist in the DB with conversation ID, participant info, last message preview, and last activity timestamp
+  2. LinkedInMessage records exist for each message with sender flag (inbound/outbound), body text, and sent timestamp
+  3. Portal calls POST /api/portal/inbox/linkedin/sync and receives 202 immediately; the worker fetches and syncs conversations asynchronously in the background
+  4. Participants in synced conversations are matched to existing Person records by LinkedIn profile URL where available
+**Plans**: TBD
+
+### Phase 35: Email Inbox
+**Goal**: Clients can read threaded email conversations and send replies from the portal inbox — delivering immediate value on the highest-volume channel
+**Depends on**: Phase 33 (EmailBisonClient sendReply validated and extended)
+**Requirements**: EMAIL-01, EMAIL-02, EMAIL-03, EMAIL-04
+**Success Criteria** (what must be TRUE):
+  1. The email inbox shows replies grouped into threads by parent_id chain — each thread shows the most recent message as a preview, and orphaned parents are treated as thread roots
+  2. Opening a thread shows all messages in chronological order with inbound messages left-aligned, outbound messages right-aligned, and the original outbound email shown as context at the top
+  3. Client can type a reply in the composer, select a sender email, hit Send, and the reply is delivered via EmailBison within the same portal session
+  4. When an AI suggested reply exists on a reply record, a "Use this" button populates the composer with the suggestion text
+**Plans**: TBD
+
+### Phase 36: LinkedIn Inbox
+**Goal**: Clients can read full LinkedIn conversation histories and queue replies from the portal, with a manual refresh to pull the latest messages
+**Depends on**: Phase 34 (LinkedIn data layer must be populated before UI can render it)
+**Requirements**: LIIN-01, LIIN-02, LIIN-03, LIIN-04
+**Success Criteria** (what must be TRUE):
+  1. The LinkedIn tab shows a list of recent conversations with participant name, last message preview, and time since last activity
+  2. Opening a conversation shows the full message history from the DB with inbound/outbound bubbles and timestamps
+  3. Client can type a reply, click Queue Message, and see it appear as "Queued" in the conversation — the LinkedInAction is created with priority 1 and the worker delivers it within 2 minutes
+  4. Client can click Refresh on any conversation to trigger a fresh Voyager sync and see new messages appear after the sync completes
+**Plans**: TBD
+
+### Phase 37: Inbox UI Polish, Admin Inbox & Navigation
+**Goal**: The inbox is fully polished with channel tabs, mobile layout, unread tracking, cross-channel indicators, an admin master inbox, and updated navigation in both portals
+**Depends on**: Phases 35, 36 (email and LinkedIn inboxes must exist before polish and admin reuse)
+**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, UI-07, ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04, NAV-01, NAV-02
+**Success Criteria** (what must be TRUE):
+  1. The inbox renders as a two-panel layout on desktop (thread list left, conversation right) and collapses to single-panel on mobile with a back button to return to the thread list
+  2. Channel tabs (All / Email / LinkedIn) appear based on the workspace package — an email-only workspace never sees the LinkedIn tab
+  3. Unread threads show a dot indicator and the Inbox nav item shows the total unread count; reading a thread clears its unread state
+  4. When the same person has both an email reply and a LinkedIn conversation, a cross-channel indicator appears in both thread views linking to the other channel
+  5. Admin can navigate to /admin/inbox, filter by workspace, and reply on behalf of any client using the same two-panel components built for the portal
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -172,6 +239,11 @@ Plans:
 | 27. AI Insights & Action Queue | v3.0 | 3/3 | Complete | 2026-03-10 |
 | 28. Intelligence Hub Dashboard | v3.0 | 2/2 | Complete | 2026-03-10 |
 | 29. Domain Health Foundation | v4.0 | 3/3 | Complete | 2026-03-10 |
-| 30. Inbox Placement Testing | 2/2 | Complete    | 2026-03-11 | - |
+| 30. Inbox Placement Testing | v4.0 | 2/2 | Complete | 2026-03-11 |
 | 31. Auto-Rotation Engine | v4.0 | 0/TBD | Not started | - |
 | 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |
+| 33. API Spike & Client Extensions | v5.0 | 0/TBD | Not started | - |
+| 34. LinkedIn Data Layer | v5.0 | 0/TBD | Not started | - |
+| 35. Email Inbox | v5.0 | 0/TBD | Not started | - |
+| 36. LinkedIn Inbox | v5.0 | 0/TBD | Not started | - |
+| 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 0/TBD | Not started | - |
