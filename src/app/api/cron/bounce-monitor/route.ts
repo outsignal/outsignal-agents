@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import { validateCronSecret } from "@/lib/cron-auth";
 import { runBounceMonitor, replaceSender } from "@/lib/domain-health/bounce-monitor";
 import { notifySenderHealthTransition } from "@/lib/domain-health/bounce-notifications";
+import { prisma } from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -65,6 +66,61 @@ export async function GET(request: Request) {
           action: transition.action,
           replacementEmail,
         });
+
+        // Auto-create deliverability insight for warning/critical transitions
+        if (transition.to === "warning" || transition.to === "critical") {
+          try {
+            // Dedup check: skip if an active deliverability insight already exists for this sender/status
+            const existing = await prisma.insight.findFirst({
+              where: {
+                category: "deliverability",
+                status: "active",
+                workspaceSlug: transition.workspaceSlug,
+                observation: { contains: transition.senderEmail },
+              },
+              select: { id: true },
+            });
+
+            if (!existing) {
+              const dedupKey = `deliverability:${transition.to === "critical" ? "pause_sender" : "flag_copy_review"}:${transition.senderEmail}`;
+              await prisma.insight.create({
+                data: {
+                  category: "deliverability",
+                  observation: `Sender ${transition.senderEmail} has reached ${transition.to} status — ${transition.reason}`,
+                  evidence: JSON.stringify([
+                    { metric: "senderEmail", value: transition.senderEmail, change: null },
+                    { metric: "fromStatus", value: transition.from, change: null },
+                    { metric: "toStatus", value: transition.to, change: transition.to },
+                    { metric: "reason", value: transition.reason, change: null },
+                  ]),
+                  actionType: transition.to === "critical" ? "pause_sender" : "flag_copy_review",
+                  actionDescription:
+                    transition.to === "critical"
+                      ? `Consider pausing ${transition.senderEmail} — bounce rate exceeds critical threshold`
+                      : `Monitor ${transition.senderEmail} closely — bounce rate is elevated`,
+                  status: "active",
+                  workspaceSlug: transition.workspaceSlug,
+                  priority: transition.to === "critical" ? 1 : 2,
+                  confidence: "high",
+                  dedupKey,
+                },
+              });
+              console.log(
+                `${LOG_PREFIX} Created deliverability insight for ${transition.senderEmail} → ${transition.to}`,
+              );
+            } else {
+              console.log(
+                `${LOG_PREFIX} Skipped duplicate deliverability insight for ${transition.senderEmail} → ${transition.to}`,
+              );
+            }
+          } catch (insightErr) {
+            // Insight failure must not break the cron
+            console.error(
+              `${LOG_PREFIX} Failed to create deliverability insight for ${transition.senderEmail}:`,
+              insightErr,
+            );
+          }
+        }
       } catch (notifErr) {
         console.error(
           `${LOG_PREFIX} Failed to notify for transition ${transition.senderEmail} → ${transition.to}:`,
