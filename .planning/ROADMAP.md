@@ -157,7 +157,10 @@ Plans:
   2. EmailBisonClient exposes sendReply(), getReply(), and getRepliesPage() methods with correct TypeScript types
   3. VoyagerClient exposes fetchConversations() and fetchMessages() methods that return typed conversation and message objects from the Voyager messaging API
   4. The Railway worker exposes GET /sessions/{senderId}/conversations and returns conversations JSON the portal can consume
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 33-01-PLAN.md — EmailBison sendReply spike + client extensions (sendReply, getReply, getRepliesPage)
+- [ ] 33-02-PLAN.md — VoyagerClient conversation methods + worker conversations endpoint
 
 ### Phase 34: LinkedIn Data Layer
 **Goal**: LinkedIn conversations and messages are stored in the database and kept fresh via a fire-and-forget sync API — the data foundation all LinkedIn UI reads from
@@ -242,7 +245,7 @@ Plans:
 | 30. Inbox Placement Testing | v4.0 | 2/2 | Complete | 2026-03-11 |
 | 31. Auto-Rotation Engine | v4.0 | 0/TBD | Not started | - |
 | 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |
-| 33. API Spike & Client Extensions | v5.0 | 0/TBD | Not started | - |
+| 33. API Spike & Client Extensions | v5.0 | 0/2 | Not started | - |
 | 34. LinkedIn Data Layer | v5.0 | 0/TBD | Not started | - |
 | 35. Email Inbox | v5.0 | 0/TBD | Not started | - |
 | 36. LinkedIn Inbox | v5.0 | 0/TBD | Not started | - |
