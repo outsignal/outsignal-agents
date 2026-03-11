@@ -2,13 +2,14 @@ import { z } from "zod";
 
 // --- String literal union types ---
 
-export type InsightCategory = "performance" | "copy" | "objections" | "icp";
+export type InsightCategory = "performance" | "copy" | "objections" | "icp" | "deliverability";
 
 export type ActionType =
   | "pause_campaign"
   | "update_icp_threshold"
   | "flag_copy_review"
-  | "adjust_signal_targeting";
+  | "adjust_signal_targeting"
+  | "pause_sender";
 
 export type InsightStatus =
   | "active"
@@ -27,6 +28,7 @@ export const CATEGORY_LABELS: Record<InsightCategory, string> = {
   copy: "Copy",
   objections: "Objections",
   icp: "ICP",
+  deliverability: "Deliverability",
 };
 
 export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
@@ -34,6 +36,7 @@ export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   update_icp_threshold: "Update ICP Threshold",
   flag_copy_review: "Flag for Copy Review",
   adjust_signal_targeting: "Adjust Signal Targeting",
+  pause_sender: "Pause Sender",
 };
 
 // --- Color maps for UI ---
@@ -43,6 +46,7 @@ export const CATEGORY_COLORS: Record<InsightCategory, string> = {
   copy: "border-l-purple-500",
   objections: "border-l-orange-500",
   icp: "border-l-emerald-500",
+  deliverability: "border-l-red-500",
 };
 
 export const CONFIDENCE_COLORS: Record<ConfidenceLevel, string> = {

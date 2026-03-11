@@ -10,6 +10,7 @@ import { CampaignSummary } from "@/components/intelligence/campaign-summary";
 import { ClassificationDonuts } from "@/components/intelligence/classification-donuts";
 import { BenchmarksSummary } from "@/components/intelligence/benchmarks-summary";
 import { IcpSummary } from "@/components/intelligence/icp-summary";
+import { DeliverabilityBentoCard, type DeliverabilityData } from "@/components/intelligence/deliverability-summary";
 import type { CampaignData } from "@/components/analytics/campaign-rankings-table";
 import type { IndustryBenchmark } from "@/lib/analytics/industry-benchmarks";
 
@@ -39,6 +40,22 @@ interface IcpResponse {
   recommendation: { current: number; suggested: number; confidence: string; reason: string } | null;
 }
 
+interface DeliverabilityResponse {
+  domains: {
+    total: number;
+    healthy: number;
+    atRisk: number;
+    worst: { domain: string; overallHealth: string } | null;
+  };
+  senders: {
+    total: number;
+    healthy: number;
+    elevated: number;
+    warning: number;
+    critical: number;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -64,11 +81,13 @@ export default function IntelligenceHubPage() {
   const [icpBuckets, setIcpBuckets] = useState<IcpResponse["buckets"] | null>(null);
   const [icpRecommendation, setIcpRecommendation] = useState<IcpResponse["recommendation"]>(null);
   const [insights, setInsights] = useState<InsightData[] | null>(null);
+  const [deliverabilityData, setDeliverabilityData] = useState<DeliverabilityData | null>(null);
 
   // Loading states
   const [loading, setLoading] = useState(true);
   const [benchmarksLoading, setBenchmarksLoading] = useState(false);
   const [icpLoading, setIcpLoading] = useState(false);
+  const [deliverabilityLoading, setDeliverabilityLoading] = useState(false);
 
   // ─── Fetch all data ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -234,6 +253,33 @@ export default function IntelligenceHubPage() {
     }
   }, [params.workspace]);
 
+  // ─── Fetch deliverability summary ─────────────────────────────────────
+  const fetchDeliverability = useCallback(async () => {
+    setDeliverabilityLoading(true);
+    try {
+      const delivParams = new URLSearchParams();
+      if (params.workspace) delivParams.set("workspace", params.workspace);
+      const res = await fetch(`/api/deliverability/summary?${delivParams.toString()}`);
+      if (res.ok) {
+        const json = (await res.json()) as DeliverabilityResponse;
+        setDeliverabilityData({
+          domainsHealthy: json.domains.healthy,
+          domainsAtRisk: json.domains.atRisk,
+          worstDomain: json.domains.worst?.domain ?? null,
+          worstDomainHealth: json.domains.worst?.overallHealth ?? null,
+          sendersWarning: json.senders.warning,
+          sendersCritical: json.senders.critical,
+        });
+      } else {
+        setDeliverabilityData(null);
+      }
+    } catch {
+      setDeliverabilityData(null);
+    } finally {
+      setDeliverabilityLoading(false);
+    }
+  }, [params.workspace]);
+
   // ─── Effects ───────────────────────────────────────────────────────────
   useEffect(() => {
     void fetchData();
@@ -246,6 +292,10 @@ export default function IntelligenceHubPage() {
   useEffect(() => {
     void fetchIcp();
   }, [fetchIcp]);
+
+  useEffect(() => {
+    void fetchDeliverability();
+  }, [fetchDeliverability]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────
   function handleWorkspaceChange(w: string | null) {
@@ -326,6 +376,14 @@ export default function IntelligenceHubPage() {
               buckets={icpBuckets}
               recommendation={icpRecommendation}
               loading={icpLoading}
+            />
+          </div>
+
+          {/* Deliverability Summary */}
+          <div className="md:col-span-2">
+            <DeliverabilityBentoCard
+              data={deliverabilityData ?? { domainsHealthy: 0, domainsAtRisk: 0, worstDomain: null, worstDomainHealth: null, sendersWarning: 0, sendersCritical: 0 }}
+              loading={deliverabilityLoading}
             />
           </div>
         </div>
