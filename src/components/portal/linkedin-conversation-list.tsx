@@ -99,6 +99,9 @@ export function LinkedInConversationList({
             )}
           >
             <div className="flex items-start gap-2">
+              {/* Channel icon */}
+              <Linkedin className="mt-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
+
               {/* Status dot */}
               <span
                 className={cn(

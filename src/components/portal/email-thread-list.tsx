@@ -14,6 +14,9 @@ export interface ThreadSummary {
   interested: boolean;
   replyStatus: "awaiting_reply" | "replied" | "new";
   hasAiSuggestion: boolean;
+  isRead?: boolean;
+  intent?: string | null;
+  sentiment?: string | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -47,6 +50,39 @@ const STATUS_LABEL: Record<ThreadSummary["replyStatus"], string> = {
   replied: "Replied",
 };
 
+function getIntentBadgeColor(intent: string): string {
+  switch (intent) {
+    case "interested":
+    case "meeting_booked":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
+    case "objection":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+    case "out_of_office":
+    case "auto_reply":
+    case "not_now":
+    case "referral":
+      return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
+    case "unsubscribe":
+    case "not_relevant":
+      return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+    default:
+      return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
+  }
+}
+
+function formatIntent(intent: string): string {
+  switch (intent) {
+    case "meeting_booked": return "Meeting";
+    case "out_of_office": return "OOO";
+    case "auto_reply": return "Auto";
+    case "not_relevant": return "Not Relevant";
+    case "not_interested": return "Not Interested";
+    case "not_now": return "Not Now";
+    default:
+      return intent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+}
+
 interface EmailThreadListProps {
   threads: ThreadSummary[];
   selectedThreadId: number | null;
@@ -78,6 +114,7 @@ export function EmailThreadList({
         const isSelected = thread.threadId === selectedThreadId;
         const displayName = thread.leadName || thread.leadEmail;
         const snippet = thread.lastSnippet.slice(0, 80);
+        const isUnread = thread.isRead === false;
 
         return (
           <button
@@ -92,6 +129,9 @@ export function EmailThreadList({
             )}
           >
             <div className="flex items-start gap-2">
+              {/* Channel icon */}
+              <Mail className="mt-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
+
               {/* Status dot */}
               <span
                 className={cn(
@@ -102,11 +142,17 @@ export function EmailThreadList({
               />
 
               <div className="flex-1 min-w-0">
-                {/* Top row: name + timestamp */}
+                {/* Top row: name + unread dot + timestamp */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold truncate">
-                    {displayName}
-                  </span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {/* Unread dot */}
+                    {isUnread && (
+                      <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                    )}
+                    <span className={cn("text-sm truncate", isUnread ? "font-bold" : "font-semibold")}>
+                      {displayName}
+                    </span>
+                  </div>
                   <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                     {timeAgo(thread.lastMessageAt)}
                   </span>
@@ -125,10 +171,20 @@ export function EmailThreadList({
                 </p>
 
                 {/* Tags row */}
-                <div className="flex items-center gap-1.5 mt-1">
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   {thread.interested && (
                     <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#F0FF7A]/30 text-yellow-800 dark:text-yellow-300 border border-[#F0FF7A]/50">
                       Interested
+                    </span>
+                  )}
+                  {thread.intent && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                        getIntentBadgeColor(thread.intent)
+                      )}
+                    >
+                      {formatIntent(thread.intent)}
                     </span>
                   )}
                   {thread.hasAiSuggestion && (

@@ -10,6 +10,7 @@ interface EmailReplyComposerProps {
   composerText: string;
   onComposerTextChange: (text: string) => void;
   onReplySent: () => void;
+  subject?: string;
 }
 
 export function EmailReplyComposer({
@@ -17,6 +18,7 @@ export function EmailReplyComposer({
   composerText,
   onComposerTextChange,
   onReplySent,
+  subject,
 }: EmailReplyComposerProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,37 +61,54 @@ export function EmailReplyComposer({
   };
 
   return (
-    <div className="border-t border-border bg-background p-4 space-y-2">
-      <Textarea
-        placeholder="Type your reply... (Cmd+Enter to send)"
-        value={composerText}
-        onChange={(e) => onComposerTextChange(e.target.value)}
-        onKeyDown={handleKeyDown}
-        disabled={sending}
-        rows={3}
-        className="resize-none"
-      />
-      {error && (
-        <p className="text-xs text-destructive">{error}</p>
+    <div className="border-t border-border bg-background">
+      {/* Channel mode label */}
+      <div className="px-3 py-1.5 border-b border-border">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          Email Reply
+        </span>
+      </div>
+
+      {/* Subject line (read-only) */}
+      {subject && (
+        <div className="px-3 py-2 border-b border-border text-sm">
+          <span className="text-muted-foreground">Subject:</span>{" "}
+          <span className="text-foreground">Re: {subject}</span>
+        </div>
       )}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSend}
-          disabled={!composerText.trim() || sending}
-          size="sm"
-        >
-          {sending ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Sending...
-            </>
-          ) : (
-            <>
-              <Send />
-              Send
-            </>
-          )}
-        </Button>
+
+      <div className="p-4 space-y-2">
+        <Textarea
+          placeholder="Type your reply... (Cmd+Enter to send)"
+          value={composerText}
+          onChange={(e) => onComposerTextChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={sending}
+          rows={3}
+          className="resize-none"
+        />
+        {error && (
+          <p className="text-xs text-destructive">{error}</p>
+        )}
+        <div className="flex justify-end">
+          <Button
+            onClick={handleSend}
+            disabled={!composerText.trim() || sending}
+            size="sm"
+          >
+            {sending ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send />
+                Send
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

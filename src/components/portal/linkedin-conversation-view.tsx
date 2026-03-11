@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { RefreshCw, AlertCircle, Linkedin, Loader2 } from "lucide-react";
+import { RefreshCw, AlertCircle, Linkedin, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,11 +70,14 @@ interface LinkedInConversationViewProps {
   conversationId: string;
   onMessageSent: () => void;
   onSwitchChannel?: (threadId: number) => void;
+  crossChannel?: { type: "email"; threadId: number } | null;
 }
 
 export function LinkedInConversationView({
   conversationId,
   onMessageSent,
+  onSwitchChannel,
+  crossChannel,
 }: LinkedInConversationViewProps) {
   const [messages, setMessages] = useState<LinkedInMessageItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -420,6 +423,18 @@ export function LinkedInConversationView({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {/* Cross-channel indicator */}
+        {crossChannel?.type === "email" && onSwitchChannel && (
+          <div>
+            <button
+              onClick={() => onSwitchChannel(crossChannel.threadId)}
+              className="inline-flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-2.5 py-1 hover:bg-blue-50 dark:hover:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400 mb-1"
+            >
+              <Mail className="h-3 w-3" /> Also on Email →
+            </button>
+          </div>
+        )}
+
         {allMessages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">

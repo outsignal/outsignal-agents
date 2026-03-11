@@ -134,9 +134,23 @@ export async function GET(
     const subject = replies[replies.length - 1]?.subject ?? null;
     const interested = replies.some((r) => r.interested);
 
+    // Cross-channel: check if this person also has a LinkedIn conversation
+    let crossChannel: { type: "linkedin"; conversationId: string } | null = null;
+    const personId = firstInbound?.personId ?? null;
+    if (personId) {
+      const liConvo = await prisma.linkedInConversation.findFirst({
+        where: { workspaceSlug, personId },
+        select: { id: true },
+      });
+      if (liConvo) {
+        crossChannel = { type: "linkedin", conversationId: liConvo.id };
+      }
+    }
+
     return NextResponse.json({
       messages,
       threadMeta: { leadEmail, leadName, subject, interested },
+      crossChannel,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unauthorized";

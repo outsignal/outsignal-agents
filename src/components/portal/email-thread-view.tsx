@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { RefreshCw, AlertCircle } from "lucide-react";
+import { RefreshCw, AlertCircle, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ interface ThreadDetail {
     subject: string | null;
     interested: boolean;
   };
+  crossChannel?: { type: "linkedin"; conversationId: string } | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -75,6 +76,12 @@ const INTENT_COLORS: Record<string, string> = {
   question: "bg-blue-100 text-blue-800",
   not_interested: "bg-red-100 text-red-800",
   out_of_office: "bg-gray-100 text-gray-700",
+};
+
+const SENTIMENT_COLORS: Record<string, string> = {
+  positive: "text-emerald-600 dark:text-emerald-400",
+  negative: "text-red-600 dark:text-red-400",
+  neutral: "text-gray-500 dark:text-gray-400",
 };
 
 function MessageCard({ msg }: { msg: ThreadMessage }) {
@@ -122,6 +129,17 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
                 Interested
               </Badge>
             )}
+            {/* Sentiment indicator for inbound messages */}
+            {!isOutbound && msg.sentiment && msg.sentiment !== "neutral" && (
+              <span
+                className={cn(
+                  "text-[10px] font-medium",
+                  SENTIMENT_COLORS[msg.sentiment] ?? "text-gray-500"
+                )}
+              >
+                {msg.sentiment}
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">{msg.senderEmail}</p>
           {msg.subject && (
@@ -165,7 +183,7 @@ interface EmailThreadViewProps {
   onSwitchChannel?: (conversationId: string) => void;
 }
 
-export function EmailThreadView({ threadId, onReplySent }: EmailThreadViewProps) {
+export function EmailThreadView({ threadId, onReplySent, onSwitchChannel }: EmailThreadViewProps) {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -223,7 +241,7 @@ export function EmailThreadView({ threadId, onReplySent }: EmailThreadViewProps)
 
   if (!detail) return null;
 
-  const { messages, threadMeta } = detail;
+  const { messages, threadMeta, crossChannel } = detail;
 
   // Find the most recent inbound message with an AI suggestion
   const latestAiSuggestion = [...messages]
@@ -270,6 +288,16 @@ export function EmailThreadView({ threadId, onReplySent }: EmailThreadViewProps)
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Cross-channel indicator */}
+        {crossChannel?.type === "linkedin" && onSwitchChannel && (
+          <button
+            onClick={() => onSwitchChannel(crossChannel.conversationId)}
+            className="inline-flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-2.5 py-1 hover:bg-blue-50 dark:hover:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400 mb-1"
+          >
+            <Linkedin className="h-3 w-3" /> Also on LinkedIn →
+          </button>
+        )}
+
         {messages.map((msg) => (
           <MessageCard key={msg.id} msg={msg} />
         ))}
@@ -290,6 +318,7 @@ export function EmailThreadView({ threadId, onReplySent }: EmailThreadViewProps)
           composerText={composerText}
           onComposerTextChange={setComposerText}
           onReplySent={handleReplySent}
+          subject={threadMeta.subject ?? undefined}
         />
       </div>
     </div>
