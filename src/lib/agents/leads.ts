@@ -11,6 +11,7 @@ import { aiarkSearchAdapter } from "@/lib/discovery/adapters/aiark-search";
 import { serperAdapter } from "@/lib/discovery/adapters/serper";
 import { firecrawlDirectoryAdapter } from "@/lib/discovery/adapters/firecrawl-directory";
 import { apifyLeadsFinderAdapter } from "@/lib/discovery/adapters/apify-leads-finder";
+import { checkDomainsForGoogleAds, searchGoogleAdsAdvertisers } from "../discovery/adapters/google-ads";
 import { stageDiscoveredPeople } from "@/lib/discovery/staging";
 import { incrementDailySpend, PROVIDER_COSTS } from "@/lib/enrichment/costs";
 import { getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
@@ -786,6 +787,42 @@ const leadsTools = {
       };
     },
   }),
+
+  checkGoogleAds: tool({
+    description:
+      "Check which companies are actively running Google Ads. Pass a list of domains to see which ones have ads, how many, what formats, and date ranges. Useful for qualifying leads — companies running ads have budget for paid media services. Costs ~$0.005 per domain checked (Apify compute). Requires Apify paid plan.",
+    inputSchema: z.object({
+      domains: z
+        .array(z.string())
+        .describe("List of domains to check for Google Ads (e.g., ['acme.com', 'example.co.uk'])"),
+      region: z
+        .string()
+        .optional()
+        .describe("ISO country code filter (e.g. 'GB', 'US')"),
+    }),
+    execute: async ({ domains, region }) => {
+      const results = await checkDomainsForGoogleAds(domains, { region });
+      return results;
+    },
+  }),
+
+  searchGoogleAdsAdvertisers: tool({
+    description:
+      "Search Google Ads Transparency Center by keyword to find companies advertising in a space. Returns advertiser names, domains, ad counts, and formats. Useful for finding potential clients who are already spending on Google Ads. Costs ~$0.005 per search (Apify compute). Requires Apify paid plan.",
+    inputSchema: z.object({
+      query: z
+        .string()
+        .describe("Keyword or advertiser name to search (e.g., 'recruitment agency London')"),
+      region: z
+        .string()
+        .optional()
+        .describe("ISO country code filter (e.g. 'GB', 'US')"),
+    }),
+    execute: async ({ query, region }) => {
+      const results = await searchGoogleAdsAdvertisers(query, { region });
+      return results;
+    },
+  }),
 };
 
 // --- System Prompt ---
@@ -818,7 +855,7 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
   * "Add Apollo with seniority=VP" -> add Apollo source, re-present
   * "That's too many leads" -> reduce estimated volumes, re-present
   * "What about Firecrawl?" -> add Firecrawl if relevant, re-present
-- NEVER call searchApollo, searchProspeo, searchAiArk, searchGoogle, or extractDirectory without prior approval of a discovery plan
+- NEVER call searchApollo, searchProspeo, searchAiArk, searchLeadsFinder, searchGoogle, or extractDirectory without prior approval of a discovery plan
 
 ### Step 3: Execute the Plan
 - Say: "Starting discovery -- estimated ~30 seconds..."
@@ -842,6 +879,7 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 - searchApollo -- 275M contacts, FREE search, best coverage for enterprise B2B. Basic filters only.
 - searchProspeo -- Strong B2B coverage, COSTS CREDITS. Advanced filters: funding stage/amount, revenue, technologies, company type, NAICS/SIC codes, departments, years of experience.
 - searchAiArk -- B2B people search, COSTS CREDITS. Advanced filters: revenue, funding stage/amount, technologies, company type, NAICS codes, company keywords, founded year. Equal coverage to Apollo/Prospeo (not a fallback -- a full peer).
+- searchLeadsFinder -- Apify Leads Finder, 300M+ B2B database, returns VERIFIED EMAILS + phones + LinkedIn in one step (~$2/1K leads). Supports: job titles, seniority, location, company size, industry, keywords, domains, revenue, funding, departments. Best when you need leads WITH emails immediately (skips enrichment step). No pagination — single batch. Requires Apify paid plan.
 
 **When to use which paid source:**
 - Need revenue/funding filters? Both Prospeo and AI Ark support them.
@@ -849,7 +887,10 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 - Need company keywords (e.g., "fit-out", "interior design")? AI Ark has a working workaround, Prospeo supports it natively.
 - Need NAICS/SIC codes? Both support NAICS; only Prospeo supports SIC.
 - Need years of experience? Only Prospeo.
-- Need departments? Prospeo works; AI Ark's department filter is currently bugged.
+- Need departments? Prospeo works; AI Ark's department filter is currently bugged; Leads Finder supports it.
+- Need verified emails in one step (skip enrichment)? Use Leads Finder — it returns validated emails directly.
+
+**Google Ads Check** — Checks if specific domains are running Google Ads. Signal/qualification tool, not people discovery. Use after getting company domains from other sources (Storeleads, Prospeo, etc.) to filter for companies with ad spend budget. Also supports keyword search to find advertisers in a space via searchGoogleAdsAdvertisers. Requires Apify paid plan.
 
 **Niche/Association/Government directories:**
 - searchGoogle (web mode) -- Find directory URLs first
@@ -865,7 +906,7 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 
 ## Discovery Rules
 - All discovered leads go to the DiscoveredPerson staging table, NOT directly to the Person table. Use deduplicateAndPromote to move them.
-- Discovery does NOT include emails for most sources (Apollo, Prospeo). Enrichment fills those in later after promotion.
+- Discovery does NOT include emails for most sources (Apollo, Prospeo, AI Ark). Enrichment fills those in later after promotion. Exception: Leads Finder returns verified emails directly.
 - ALWAYS follow the plan-approve-execute flow above. Never call search tools directly without a plan.
 - Show results as a compact preview after each search. Ask before fetching more pages.
 - ALWAYS show cost and staged count after each discovery call.
