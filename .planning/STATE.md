@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** Phase 29 — Domain Health Foundation (v4.0)
+**Current focus:** Phase 30 — Inbox Placement Testing (v4.0)
 
 ## Current Position
 
-Phase: 29 of 32 (Domain Health Foundation)
-Plan: 3 of 3 in current phase (29-01, 29-02, 29-03 complete — phase DONE)
+Phase: 30 of 32 (Inbox Placement Testing)
+Plan: 1 of 3 in current phase (30-01 complete)
 Status: In progress
-Last activity: 2026-03-10 — Executed 29-03 (DNSBL blacklist checker + domain health notifications + daily cron)
+Last activity: 2026-03-11 — Executed 30-01 (PlacementTest + EmailSenderHealth models, mail-tester.com client, recommended-for-testing query)
 
 Progress: [████████████████████░░░░░░░░░░] ~65% (28/32 phases complete across all milestones)
 
@@ -63,6 +63,9 @@ Progress: [████████████████████░░░
 - [29-03]: Blacklist checking conditional — only for domains with >3% bounce rate OR not checked in 7+ days
 - [29-03]: DNS failure notification fires on every failed check run (not deduplicated) — persistent flag after 48h escalates to critical
 - [29-03]: firstFailingSince uses updatedAt from DomainHealth record as proxy for when DNS started failing
+- [30-01]: PlacementTest and EmailSenderHealth use email-based soft links (no FK to Sender) — consistent with BounceSnapshot pattern
+- [30-01]: pollForResults uses setTimeout loop (not setInterval) — Vercel-safe, no overlapping calls
+- [30-01]: Recommended-for-testing uses JS deduplication of BounceSnapshot rows (not raw SQL GROUP BY) — correct for ~100 senders
 
 ### Blockers/Concerns
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-10
-Stopped at: Completed 29-03-PLAN.md (DNSBL blacklist checker + notifications + daily cron)
+Last session: 2026-03-11
+Stopped at: Completed 30-01-PLAN.md (PlacementTest + EmailSenderHealth models, mail-tester.com client, recommended-for-testing query)
 Resume file: None

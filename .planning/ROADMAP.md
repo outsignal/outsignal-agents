@@ -108,7 +108,7 @@ Plans:
   2. Admin can click a button to initiate a placement test, which returns a mail-tester.com test address
   3. After sending to the test address, the system fetches and stores the placement score via the mail-tester.com JSON API
   4. Admin can view a timeline of past placement test scores for any sender
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 30-01-PLAN.md — PlacementTest model + mail-tester.com client + recommended badge query
 - [ ] 30-02-PLAN.md — API endpoints (POST trigger + GET history) + auto-send + alerting
@@ -172,6 +172,6 @@ Plans:
 | 27. AI Insights & Action Queue | v3.0 | 3/3 | Complete | 2026-03-10 |
 | 28. Intelligence Hub Dashboard | v3.0 | 2/2 | Complete | 2026-03-10 |
 | 29. Domain Health Foundation | v4.0 | 3/3 | Complete | 2026-03-10 |
-| 30. Inbox Placement Testing | v4.0 | 0/2 | Not started | - |
+| 30. Inbox Placement Testing | 1/2 | In Progress|  | - |
 | 31. Auto-Rotation Engine | v4.0 | 0/TBD | Not started | - |
 | 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |
