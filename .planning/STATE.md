@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 Phase: Phase 35 — Email Inbox
 Plan: 35-01 complete
 Status: Phase 35 Plan 01 done — Reply model extended with 7 inbox fields (emailBisonParentId, leadEmail, htmlBody, interested, direction, ebSenderEmailId, aiSuggestedReply) + 2 new indexes. Both ingestion paths (webhook + poll-replies) updated to populate them.
-Last activity: 2026-03-11 - Completed 35-01: Reply inbox data foundation
+Last activity: 2026-03-11 - Completed quick task 2: Automate critical sender remediation (campaign pause/remove/resume)
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -109,6 +109,7 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Automated EmailBison sender sync - pull sender emails into Sender table and run on daily cron | 2026-03-11 | 074cf22 | [1-automated-emailbison-sender-sync-pull-se](./quick/1-automated-emailbison-sender-sync-pull-se/) |
+| 2 | Automate critical sender remediation - pause/remove/resume campaigns, set daily_limit=1, disable warmup, store state for recovery | 2026-03-11 | e0229e0 | [2-automate-critical-sender-remediation-cam](./quick/2-automate-critical-sender-remediation-cam/) |
 - LinkedIn Voyager rate limits unknown — 2-3s delays between calls, limit 20 conversations, 5-min cache, graceful 401/429 degradation
 
 ### Pending Todos
