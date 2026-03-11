@@ -276,7 +276,7 @@ export async function runBounceMonitor(): Promise<{
   evaluated: number;
   transitioned: number;
   skipped: number;
-  transitions: Array<{ senderEmail: string; from: string; to: string; reason: string }>;
+  transitions: Array<{ senderEmail: string; workspaceSlug: string; from: string; to: string; reason: string }>;
 }> {
   console.log(`${LOG_PREFIX} Starting bounce monitor run`);
 
@@ -335,7 +335,7 @@ export async function runBounceMonitor(): Promise<{
   let evaluated = 0;
   let transitioned = 0;
   let skipped = 0;
-  const transitions: Array<{ senderEmail: string; from: string; to: string; reason: string }> = [];
+  const transitions: Array<{ senderEmail: string; workspaceSlug: string; from: string; to: string; reason: string }> = [];
 
   for (const sender of senders) {
     const email = sender.emailAddress as string;
@@ -356,6 +356,7 @@ export async function runBounceMonitor(): Promise<{
         transitioned++;
         transitions.push({
           senderEmail: email,
+          workspaceSlug: sender.workspaceSlug,
           from: result.from,
           to: result.to,
           reason: result.reason ?? "unknown",
