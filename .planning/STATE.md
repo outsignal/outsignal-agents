@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: Phase 35 — Email Inbox
-Plan: 35-01 complete
-Status: Phase 35 Plan 01 done — Reply model extended with 7 inbox fields (emailBisonParentId, leadEmail, htmlBody, interested, direction, ebSenderEmailId, aiSuggestedReply) + 2 new indexes. Both ingestion paths (webhook + poll-replies) updated to populate them.
-Last activity: 2026-03-11 - Completed quick task 2: Automate critical sender remediation (campaign pause/remove/resume)
+Plan: 35-02 complete
+Status: Phase 35 Plan 02 done — 3 portal API routes created: GET /api/portal/inbox/email/threads (thread list grouped by parent_id chain), GET /api/portal/inbox/email/threads/[threadId] (chronological messages with outbound context), POST /api/portal/inbox/email/reply (send via EmailBison + persist outbound Reply).
+Last activity: 2026-03-11 - Completed 35-02: Email inbox API routes
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -97,6 +97,9 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - [Phase 35-01]: prisma db push used instead of migrate dev — database schema was ahead of migration history (pre-existing drift), reset would destroy production data
 - [Phase 35-01]: aiSuggestedReply not added to poll-replies cron — AI suggestion requires full context (lead name, interested flag) only available in webhook handler
 - [Phase 35-01]: direction field defaults to inbound, explicit outbound detection via folder=Sent or type=Outgoing Email from EB reply data
+- [Phase 35-02]: Workspace EmailBison token stored as apiToken (not emailBisonToken) — plan used wrong field name, corrected via TypeScript compilation error
+- [Phase 35-02]: Thread grouping skips replies with no emailBisonReplyId — can't reliably group orphaned records
+- [Phase 35-02]: reply_all:true used in sendReply — per Phase 33 spike validation, required alongside sender_email_id
 
 ### Blockers/Concerns
 
@@ -119,5 +122,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 35-01-PLAN.md — Reply inbox data foundation: 7 new fields + 2 indexes, webhook + poll-replies updated.
+Stopped at: Completed 35-02-PLAN.md — 3 email inbox API routes (thread list, thread detail, reply send)
 Resume file: None
