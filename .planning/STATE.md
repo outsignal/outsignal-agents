@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Email Deliverability & Domain Infrastructure Monitoring
 status: unknown
-last_updated: "2026-03-11T15:03:04.150Z"
+last_updated: "2026-03-11T18:21:13.973Z"
 progress:
-  total_phases: 32
-  completed_phases: 29
-  total_plans: 100
-  completed_plans: 99
+  total_phases: 33
+  completed_phases: 31
+  total_plans: 102
+  completed_plans: 103
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: Phase 36 — LinkedIn Inbox
-Plan: 36-01 complete
-Status: Phase 36 Plan 01 done — 4 portal API routes created: GET /api/portal/inbox/linkedin/conversations (conversation list with Person subtitle join), GET /api/portal/inbox/linkedin/conversations/[id]/messages (on-demand worker fetch + DB upsert), POST /api/portal/inbox/linkedin/reply (priority-1 action queue), GET /api/portal/inbox/linkedin/actions/[actionId]/status (action status polling).
-Last activity: 2026-03-11 - Completed 36-01: LinkedIn inbox API routes
+Plan: 36-02 complete
+Status: Phase 36 Plan 02 done — LinkedIn inbox UI complete: LinkedInConversationList (left panel with status dots, subtitle), LinkedInConversationView (chat bubbles, refresh/sync, Queue Message composer with optimistic UI + polling), Email/LinkedIn channel toggle on inbox page. Visual verification passed.
+Last activity: 2026-03-11 - Completed 36-02: LinkedIn inbox UI components and channel toggle
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -105,6 +105,9 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - [36-01]: On-demand message fetch only calls worker when no DB messages exist (or refresh=true) — minimizes Voyager API calls
 - [36-01]: 422 vs 404 for missing personId on reply — 422 Unprocessable Entity correct when can't proceed without Person record
 - [36-01]: Graceful degradation on worker failure in message fetch — returns existing DB messages, never 500s
+- [Phase 36-02]: Chat bubbles not stacked cards for LinkedIn — mirrors native LinkedIn messaging feel
+- [Phase 36-02]: Queue Message button text (not Send) — communicates async delivery via LinkedIn worker
+- [Phase 36-02]: Both channels poll simultaneously — data always fresh regardless of active tab
 
 ### Blockers/Concerns
 
@@ -127,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 36-01-PLAN.md — 4 LinkedIn inbox API routes (conversation list, message fetch, reply queue, action status)
+Stopped at: Completed 36-02-PLAN.md — LinkedIn inbox UI components and channel toggle
 Resume file: None

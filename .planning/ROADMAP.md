@@ -89,7 +89,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 33: API Spike & Client Extensions** — Validate EmailBison sendReply live behavior and extend both the EmailBisonClient and VoyagerClient with inbox methods; all downstream phases depend on these contracts (completed 2026-03-11)
 - [x] **Phase 34: LinkedIn Data Layer** — DB models for LinkedIn conversations + messages, fire-and-forget sync API, and participant-to-Person matching; gates all LinkedIn UI work (completed 2026-03-11)
 - [ ] **Phase 35: Email Inbox** — Thread grouping API, conversation view, email reply composer, and AI suggested reply display; delivers immediate client value on the highest-volume channel
-- [ ] **Phase 36: LinkedIn Inbox** — Conversation list and detail views from DB, LinkedIn reply queue via LinkedInAction, and manual refresh trigger
+- [x] **Phase 36: LinkedIn Inbox** — Conversation list and detail views from DB, LinkedIn reply queue via LinkedInAction, and manual refresh trigger (completed 2026-03-11)
 - [ ] **Phase 37: Inbox UI Polish, Admin Inbox & Navigation** — Channel tabs, mobile single-panel layout, unread indicators, cross-channel indicator, admin master inbox, and portal sidebar nav update
 
 ## Phase Details
@@ -204,7 +204,7 @@ Plans:
   2. Opening a conversation shows the full message history from the DB with inbound/outbound bubbles and timestamps
   3. Client can type a reply, click Queue Message, and see it appear as "Queued" in the conversation — the LinkedInAction is created with priority 1 and the worker delivers it within 2 minutes
   4. Client can click Refresh on any conversation to trigger a fresh Voyager sync and see new messages appear after the sync completes
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 36-01-PLAN.md — LinkedIn inbox API routes (conversation list, on-demand messages, reply queue, action status)
 - [ ] 36-02-PLAN.md — LinkedIn UI components (conversation list, chat bubble view, composer) + inbox page channel toggle
@@ -262,5 +262,5 @@ Plans:
 | 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
 | 34. LinkedIn Data Layer | 1/1 | Complete    | 2026-03-11 | - |
 | 35. Email Inbox | 3/3 | Complete | 2026-03-11 | - |
-| 36. LinkedIn Inbox | 1/2 | In Progress|  | - |
+| 36. LinkedIn Inbox | 2/2 | Complete   | 2026-03-11 | - |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 0/TBD | Not started | - |
