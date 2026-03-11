@@ -189,7 +189,11 @@ Plans:
   2. Opening a thread shows all messages in chronological order with inbound messages left-aligned, outbound messages right-aligned, and the original outbound email shown as context at the top
   3. Client can type a reply in the composer, select a sender email, hit Send, and the reply is delivered via EmailBison within the same portal session
   4. When an AI suggested reply exists on a reply record, a "Use this" button populates the composer with the suggestion text
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 35-01-PLAN.md — Reply model inbox fields migration + webhook/poll-replies updates
+- [ ] 35-02-PLAN.md — Thread list, thread detail, and reply send API routes
+- [ ] 35-03-PLAN.md — Portal inbox UI (thread list, conversation view, composer, AI suggestion)
 
 ### Phase 36: LinkedIn Inbox
 **Goal**: Clients can read full LinkedIn conversation histories and queue replies from the portal, with a manual refresh to pull the latest messages
@@ -254,6 +258,6 @@ Plans:
 | 32. Deliverability Dashboard & Reporting | 4/4 | Complete    | 2026-03-11 | - |
 | 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
 | 34. LinkedIn Data Layer | 1/1 | Complete    | 2026-03-11 | - |
-| 35. Email Inbox | v5.0 | 0/TBD | Not started | - |
+| 35. Email Inbox | v5.0 | 0/3 | Not started | - |
 | 36. LinkedIn Inbox | v5.0 | 0/TBD | Not started | - |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 0/TBD | Not started | - |
