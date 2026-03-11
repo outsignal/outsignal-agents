@@ -204,7 +204,10 @@ Plans:
   2. Opening a conversation shows the full message history from the DB with inbound/outbound bubbles and timestamps
   3. Client can type a reply, click Queue Message, and see it appear as "Queued" in the conversation — the LinkedInAction is created with priority 1 and the worker delivers it within 2 minutes
   4. Client can click Refresh on any conversation to trigger a fresh Voyager sync and see new messages appear after the sync completes
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 36-01-PLAN.md — LinkedIn inbox API routes (conversation list, on-demand messages, reply queue, action status)
+- [ ] 36-02-PLAN.md — LinkedIn UI components (conversation list, chat bubble view, composer) + inbox page channel toggle
 
 ### Phase 37: Inbox UI Polish, Admin Inbox & Navigation
 **Goal**: The inbox is fully polished with channel tabs, mobile layout, unread tracking, cross-channel indicators, an admin master inbox, and updated navigation in both portals
@@ -258,6 +261,6 @@ Plans:
 | 32. Deliverability Dashboard & Reporting | 4/4 | Complete    | 2026-03-11 | - |
 | 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
 | 34. LinkedIn Data Layer | 1/1 | Complete    | 2026-03-11 | - |
-| 35. Email Inbox | 2/3 | In Progress|  | - |
-| 36. LinkedIn Inbox | v5.0 | 0/TBD | Not started | - |
+| 35. Email Inbox | 3/3 | Complete | 2026-03-11 | - |
+| 36. LinkedIn Inbox | v5.0 | 0/2 | Not started | - |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 0/TBD | Not started | - |
