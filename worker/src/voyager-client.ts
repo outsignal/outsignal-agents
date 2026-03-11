@@ -33,6 +33,32 @@ export interface ActionResult {
   details?: Record<string, unknown>;
 }
 
+export interface VoyagerConversation {
+  entityUrn: string;                       // LinkedIn's full entityUrn for the conversation
+  conversationId: string;                  // Extracted ID portion (after last colon in entityUrn)
+  participantName: string | null;          // Display name of the other participant
+  participantUrn: string | null;           // URN of the other participant
+  participantProfileUrl: string | null;    // LinkedIn profile URL (e.g. /in/john-doe)
+  participantHeadline: string | null;      // Professional headline
+  participantProfilePicUrl: string | null; // Profile picture URL
+  lastActivityAt: number;                  // Epoch ms from lastActivityAt
+  unreadCount: number;                     // Number of unread messages
+  lastMessageSnippet: string | null;       // Preview text of the last message
+}
+
+export interface VoyagerMessage {
+  eventUrn: string;          // LinkedIn's event entityUrn (unique ID)
+  senderUrn: string;         // Who sent this message (URN)
+  senderName: string | null; // Display name if available
+  body: string;              // Message text content
+  deliveredAt: number;       // Epoch ms timestamp
+}
+
+function randomDelay(minMs: number = 2000, maxMs: number = 3000): Promise<void> {
+  const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class VoyagerError extends Error {
   constructor(
     public readonly status: number,
@@ -442,6 +468,372 @@ export class VoyagerClient {
       return "unknown";
     } catch {
       return "unknown";
+    }
+  }
+
+  /**
+   * Fetch the last N LinkedIn messaging conversations for the authenticated user.
+   *
+   * Calls LinkedIn's Voyager messaging API. Returns rich metadata including
+   * participant info (name, profile URL, headline, profile picture) and
+   * a snippet of the last message. Parsing is defensive — returns empty array
+   * on unexpected response shapes rather than crashing.
+   *
+   * IMPORTANT: Log raw response on first run so parser can be validated against
+   * live data — the Voyager response schema may differ from expectations.
+   */
+  async fetchConversations(limit: number = 20): Promise<VoyagerConversation[]> {
+    try {
+      const response = await this.request(
+        `/voyagerMessagingDashMessengerConversations?keyVersion=LEGACY_INBOX&q=all&count=${limit}`
+      );
+
+      // Checkpoint detection
+      if (
+        response.url.includes("/checkpoint/") ||
+        response.url.includes("/challenge/")
+      ) {
+        throw new VoyagerError(403, "checkpoint_detected");
+      }
+
+      const data = (await response.json()) as Record<string, unknown>;
+
+      // Log raw response on first call for debugging the actual shape
+      console.log(
+        "[VoyagerClient] fetchConversations raw (first 3000 chars):",
+        JSON.stringify(data).slice(0, 3000)
+      );
+
+      return this.parseConversations(data);
+    } catch (err) {
+      if (err instanceof VoyagerError) throw err;
+      throw new VoyagerError(0, String(err));
+    }
+  }
+
+  /**
+   * Fetch the last N messages for a given conversation ID.
+   *
+   * Applies a 2-3s random delay before the API call to mimic human browsing.
+   * On 404 from primary endpoint, falls back to the legacy messaging endpoint.
+   * Parsing is defensive — returns empty array on unexpected response shapes.
+   */
+  async fetchMessages(
+    conversationId: string,
+    count: number = 20
+  ): Promise<VoyagerMessage[]> {
+    // 2-3s random delay before each Voyager API call (account safety)
+    await randomDelay();
+
+    try {
+      let response: Response;
+      try {
+        response = await this.request(
+          `/voyagerMessagingDashMessengerMessages?conversationUrn=${encodeURIComponent(
+            "urn:li:messagingThread:" + conversationId
+          )}&count=${count}`
+        );
+      } catch (err) {
+        // On 404, try the legacy endpoint
+        if (err instanceof VoyagerError && err.status === 404) {
+          response = await this.request(
+            `/messaging/conversations/${conversationId}/events?count=${count}`
+          );
+        } else {
+          throw err;
+        }
+      }
+
+      // Checkpoint detection
+      if (
+        response.url.includes("/checkpoint/") ||
+        response.url.includes("/challenge/")
+      ) {
+        throw new VoyagerError(403, "checkpoint_detected");
+      }
+
+      const data = (await response.json()) as Record<string, unknown>;
+
+      // Log raw response on first call for debugging
+      console.log(
+        "[VoyagerClient] fetchMessages raw (first 3000 chars):",
+        JSON.stringify(data).slice(0, 3000)
+      );
+
+      return this.parseMessages(data);
+    } catch (err) {
+      if (err instanceof VoyagerError) throw err;
+      throw new VoyagerError(0, String(err));
+    }
+  }
+
+  /**
+   * Parse the LinkedIn Voyager normalized response into VoyagerConversation objects.
+   *
+   * LinkedIn returns a normalized JSON format where conversations and their participant
+   * entities are mixed together in an `included[]` array. This parser builds a lookup
+   * map from participant URNs and then maps each conversation entity to the interface.
+   */
+  private parseConversations(
+    data: Record<string, unknown>
+  ): VoyagerConversation[] {
+    try {
+      const included = (data.included ?? []) as Array<Record<string, unknown>>;
+
+      // Build lookup map for participant entities keyed by entityUrn
+      const entityMap = new Map<string, Record<string, unknown>>();
+      for (const item of included) {
+        const urn = item.entityUrn as string | undefined;
+        if (urn) entityMap.set(urn, item);
+      }
+
+      // Also check data.data?.elements or data.data?.["*elements"] for conversation list
+      const dataInner = data.data as Record<string, unknown> | undefined;
+      const elementUrns =
+        (dataInner?.["*elements"] as string[] | undefined) ??
+        (dataInner?.elements as string[] | undefined) ??
+        [];
+
+      // Identify conversation entities — try element URN list first, then included[]
+      let conversationEntities: Array<Record<string, unknown>> = [];
+
+      if (elementUrns.length > 0) {
+        // Normalized format: elements is array of URN strings pointing into entityMap
+        conversationEntities = elementUrns
+          .map((urn) => entityMap.get(urn))
+          .filter((e): e is Record<string, unknown> => !!e);
+      } else {
+        // Fallback: scan included[] for conversation-typed entities
+        conversationEntities = included.filter((item) => {
+          const t = item.$type as string | undefined;
+          return t?.includes("MessengerConversation") || t?.includes("MessagingConversation");
+        });
+      }
+
+      return conversationEntities
+        .map((conv): VoyagerConversation | null => {
+          const entityUrn = conv.entityUrn as string | undefined;
+          if (!entityUrn) return null;
+
+          // conversationId = last segment after colon
+          const conversationId = entityUrn.split(":").pop() ?? entityUrn;
+
+          // lastActivityAt — epoch ms
+          const lastActivityAt =
+            (conv.lastActivityAt as number | undefined) ?? 0;
+
+          // unreadCount
+          const unreadCount = (conv.unreadCount as number | undefined) ?? 0;
+
+          // Last message snippet — may be in lastMessageText or nested
+          const lastMessageText =
+            (conv.lastMessageText as string | undefined) ?? null;
+
+          const lastMessageSnippet =
+            lastMessageText ??
+            ((conv.lastMessagePreview as Record<string, unknown> | undefined)
+              ?.text as string | undefined) ??
+            null;
+
+          // Participant resolution — conversations have a participants array of URNs
+          // or a "participants" field with URN references
+          const participantUrns: string[] = [];
+          const rawParticipants = conv.participants;
+          if (Array.isArray(rawParticipants)) {
+            for (const p of rawParticipants) {
+              if (typeof p === "string") participantUrns.push(p);
+              else if (typeof p === "object" && p !== null) {
+                const urn = (p as Record<string, unknown>).entityUrn as string | undefined;
+                if (urn) participantUrns.push(urn);
+              }
+            }
+          }
+
+          // Also check *participants (normalized pointer)
+          const starParticipants = conv["*participants"] as string[] | undefined;
+          if (starParticipants) {
+            for (const urn of starParticipants) participantUrns.push(urn);
+          }
+
+          // Find non-self participant entity — look for member/profile type
+          let participantEntity: Record<string, unknown> | null = null;
+          for (const urn of participantUrns) {
+            const entity = entityMap.get(urn);
+            if (entity) {
+              const t = entity.$type as string | undefined;
+              // Prefer participant entity with messaging member or mini profile info
+              if (
+                t?.includes("MessagingMember") ||
+                t?.includes("MiniProfile") ||
+                t?.includes("fsd_profile")
+              ) {
+                participantEntity = entity;
+                break;
+              }
+              // Accept any non-conversation entity as fallback
+              if (!t?.includes("MessengerConversation")) {
+                participantEntity = entity;
+              }
+            }
+          }
+
+          // Extract participant fields — check nested member.miniProfile as well
+          const memberEntity =
+            participantEntity?.member as Record<string, unknown> | undefined;
+          const miniProfile =
+            (participantEntity?.miniProfile as Record<string, unknown> | undefined) ??
+            (memberEntity?.miniProfile as Record<string, unknown> | undefined);
+
+          const firstName =
+            (miniProfile?.firstName as string | undefined) ??
+            (participantEntity?.firstName as string | undefined);
+          const lastName =
+            (miniProfile?.lastName as string | undefined) ??
+            (participantEntity?.lastName as string | undefined);
+          const participantName =
+            firstName && lastName
+              ? `${firstName} ${lastName}`.trim()
+              : (participantEntity?.name as string | undefined) ?? null;
+
+          const publicIdentifier =
+            (miniProfile?.publicIdentifier as string | undefined) ??
+            (participantEntity?.publicIdentifier as string | undefined);
+          const participantProfileUrl = publicIdentifier
+            ? `/in/${publicIdentifier}`
+            : null;
+
+          const participantHeadline =
+            (miniProfile?.occupation as string | undefined) ??
+            (miniProfile?.headline as string | undefined) ??
+            (participantEntity?.headline as string | undefined) ??
+            null;
+
+          // Profile picture — usually nested in picture.rootUrl + artifacts
+          const pictureObj =
+            (miniProfile?.picture as Record<string, unknown> | undefined) ??
+            (participantEntity?.picture as Record<string, unknown> | undefined);
+          let participantProfilePicUrl: string | null = null;
+          if (pictureObj) {
+            const rootUrl = pictureObj.rootUrl as string | undefined;
+            const artifacts = pictureObj.artifacts as Array<Record<string, unknown>> | undefined;
+            if (rootUrl && artifacts && artifacts.length > 0) {
+              const lastArtifact = artifacts[artifacts.length - 1];
+              participantProfilePicUrl =
+                rootUrl + (lastArtifact.fileIdentifyingUrlPathSegment as string ?? "");
+            }
+          }
+
+          const participantUrn =
+            participantEntity?.entityUrn as string | undefined ?? null;
+
+          return {
+            entityUrn,
+            conversationId,
+            participantName,
+            participantUrn,
+            participantProfileUrl,
+            participantHeadline,
+            participantProfilePicUrl,
+            lastActivityAt,
+            unreadCount,
+            lastMessageSnippet,
+          };
+        })
+        .filter((c): c is VoyagerConversation => c !== null);
+    } catch (err) {
+      console.error("[VoyagerClient] parseConversations error:", err);
+      return [];
+    }
+  }
+
+  /**
+   * Parse the LinkedIn Voyager normalized response into VoyagerMessage objects.
+   *
+   * Similar to parseConversations — defensive parsing with null coalescing.
+   * Message body may be in body.text or body directly depending on endpoint version.
+   */
+  private parseMessages(data: Record<string, unknown>): VoyagerMessage[] {
+    try {
+      const included = (data.included ?? []) as Array<Record<string, unknown>>;
+
+      const dataInner = data.data as Record<string, unknown> | undefined;
+      const elementUrns =
+        (dataInner?.["*elements"] as string[] | undefined) ??
+        (dataInner?.elements as string[] | undefined) ??
+        [];
+
+      // Build entity map
+      const entityMap = new Map<string, Record<string, unknown>>();
+      for (const item of included) {
+        const urn = item.entityUrn as string | undefined;
+        if (urn) entityMap.set(urn, item);
+      }
+
+      let messageEntities: Array<Record<string, unknown>> = [];
+
+      if (elementUrns.length > 0) {
+        messageEntities = elementUrns
+          .map((urn) => entityMap.get(urn))
+          .filter((e): e is Record<string, unknown> => !!e);
+      } else {
+        messageEntities = included.filter((item) => {
+          const t = item.$type as string | undefined;
+          return (
+            t?.includes("MessengerMessage") ||
+            t?.includes("MessagingEvent") ||
+            t?.includes("Event")
+          );
+        });
+      }
+
+      return messageEntities
+        .map((msg): VoyagerMessage | null => {
+          const eventUrn = (msg.entityUrn as string | undefined) ?? null;
+          if (!eventUrn) return null;
+
+          // Sender URN — may be in sender.entityUrn, from, or participantUrn
+          const senderObj = msg.sender as Record<string, unknown> | undefined;
+          const senderUrn =
+            (senderObj?.entityUrn as string | undefined) ??
+            (msg.from as string | undefined) ??
+            (msg.senderUrn as string | undefined) ??
+            "";
+
+          // Sender name — may be in sender.name or resolved from entity map
+          const senderName =
+            (senderObj?.name as string | undefined) ?? null;
+
+          // Message body — check nested body.text, body.attributes, or direct body
+          const bodyObj = msg.body as Record<string, unknown> | string | undefined;
+          let bodyText = "";
+          if (typeof bodyObj === "string") {
+            bodyText = bodyObj;
+          } else if (bodyObj && typeof bodyObj === "object") {
+            bodyText =
+              (bodyObj.text as string | undefined) ??
+              ((bodyObj.attributes as Array<Record<string, unknown>> | undefined)?.[0]
+                ?.text as string | undefined) ??
+              "";
+          }
+
+          // Timestamp — look for deliveredAt or createdAt (epoch ms)
+          const deliveredAt =
+            (msg.deliveredAt as number | undefined) ??
+            (msg.createdAt as number | undefined) ??
+            0;
+
+          return {
+            eventUrn,
+            senderUrn,
+            senderName,
+            body: bodyText,
+            deliveredAt,
+          };
+        })
+        .filter((m): m is VoyagerMessage => m !== null);
+    } catch (err) {
+      console.error("[VoyagerClient] parseMessages error:", err);
+      return [];
     }
   }
 
