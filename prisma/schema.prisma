@@ -819,6 +819,13 @@ model Sender {
   healthStatus    String    @default("healthy") // healthy | warning | paused | blocked | session_expired
   healthFlaggedAt DateTime? // Timestamp when a soft flag was set; used for 48h cooldown auto-recovery
 
+  // Email bounce health tracking (v4.0 Phase 31)
+  emailBounceStatus         String   @default("healthy") // healthy | elevated | warning | critical
+  emailBounceStatusAt       DateTime? // when current emailBounceStatus was set
+  consecutiveHealthyChecks  Int      @default(0) // for step-down: how many consecutive cron checks below threshold
+  emailBisonSenderId        Int?     // EmailBison numeric ID for API management calls
+  originalDailyLimit        Int?     // stored before 50% reduction, restored on step-down from warning
+
   // Warm-up tracking
   warmupDay       Int       @default(0) // 0 = not started, 1-28 = warmup day
   warmupStartedAt DateTime?
@@ -834,11 +841,12 @@ model Sender {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace    Workspace            @relation(fields: [workspaceSlug], references: [slug])
-  actions      LinkedInAction[]
-  dailyUsage   LinkedInDailyUsage[]
-  connections  LinkedInConnection[]
-  healthEvents SenderHealthEvent[]
+  workspace         Workspace            @relation(fields: [workspaceSlug], references: [slug])
+  actions           LinkedInAction[]
+  dailyUsage        LinkedInDailyUsage[]
+  connections       LinkedInConnection[]
+  healthEvents      SenderHealthEvent[]
+  emailHealthEvents EmailHealthEvent[]
 
   @@index([workspaceSlug])
   @@index([status])
@@ -858,6 +866,29 @@ model SenderHealthEvent {
 
   @@index([senderId, createdAt])
   @@index([createdAt])
+}
+
+// --- Email Bounce Health Events (v4.0 Phase 31) ---
+
+model EmailHealthEvent {
+  id            String   @id @default(cuid())
+  senderEmail   String   // e.g. "john@outsignal.ai"
+  senderDomain  String   // e.g. "outsignal.ai"
+  workspaceSlug String
+  fromStatus    String   // healthy | elevated | warning | critical
+  toStatus      String   // healthy | elevated | warning | critical
+  reason        String   // bounce_rate | blacklist | step_down | manual
+  bouncePct     Float?   // snapshot bounce rate at time of transition (null for manual)
+  detail        String?  // human-readable: "Bounce rate 6.2% (31/500 sends)"
+  createdAt     DateTime @default(now())
+
+  // Optional link to sender (events persist even if sender is deleted)
+  senderId String?
+  sender   Sender? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([senderEmail, createdAt])
+  @@index([workspaceSlug, createdAt])
+  @@index([toStatus, createdAt])
 }
 
 model LinkedInAction {

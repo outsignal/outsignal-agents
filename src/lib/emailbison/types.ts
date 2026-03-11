@@ -192,6 +192,12 @@ export interface CreateSequenceStepParams {
   delay_days?: number;
 }
 
+export interface PatchSenderEmailParams {
+  daily_limit?: number;
+  warmup_enabled?: boolean;
+  status?: string; // "active" | "paused" — pending API investigation
+}
+
 export interface WebhookPayload {
   event:
     | "EMAIL_SENT"
