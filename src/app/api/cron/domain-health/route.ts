@@ -77,6 +77,8 @@ interface DomainPriority {
   previousBlacklistHits: string[];
   /** When DNS first started failing (for escalation logic) */
   firstFailingSince: Date | null;
+  /** Current overall health status */
+  overallHealth: string | null;
 }
 
 /**
@@ -96,6 +98,7 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
       spfStatus: true,
       dkimStatus: true,
       dmarcStatus: true,
+      overallHealth: true,
       updatedAt: true,
     },
   });
@@ -161,12 +164,18 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
       lastBlacklistCheck: health?.lastBlacklistCheck ?? null,
       previousBlacklistHits,
       firstFailingSince,
+      overallHealth: health?.overallHealth ?? null,
     };
   });
 
-  // Sort: high bounce rate first, then null lastDnsCheck (never checked), then oldest check
+  // Sort: critical/blacklisted first, then high bounce rate, then oldest check
   priorities.sort((a, b) => {
-    // High bounce rate domains first
+    // Critical/blacklisted domains first
+    const aCritical = a.overallHealth === "critical" ? 1 : 0;
+    const bCritical = b.overallHealth === "critical" ? 1 : 0;
+    if (bCritical !== aCritical) return bCritical - aCritical;
+
+    // High bounce rate domains next
     const aBounce = a.maxBounceRate ?? 0;
     const bBounce = b.maxBounceRate ?? 0;
     if (bBounce !== aBounce) return bBounce - aBounce;
@@ -189,9 +198,13 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
 
 /**
  * Determine whether blacklist check should run for this domain.
- * Only check: domains with >3% bounce rate OR not checked in 7+ days (or never).
+ * Always re-check previously blacklisted domains (to detect delisting ASAP).
+ * Otherwise: domains with >3% bounce rate OR not checked in 7+ days (or never).
  */
 function shouldCheckBlacklist(priority: DomainPriority): boolean {
+  // Always re-check previously blacklisted domains
+  if (priority.previousBlacklistHits.length > 0) return true;
+
   const hasBounceIssue =
     priority.maxBounceRate !== null && priority.maxBounceRate > BOUNCE_RATE_THRESHOLD;
 

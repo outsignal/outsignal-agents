@@ -1,11 +1,11 @@
 /**
  * DNSBL (DNS-based Blackhole List) blacklist checker.
- * Checks domains and IPs against the top 20 DNSBLs used by Gmail/Outlook and major MTAs.
+ * Checks domains and IPs against the top 15 DNSBLs used by Gmail/Outlook and major MTAs.
  *
  * Architecture:
  * - Domain-based DNSBLs (URI lists): query {domain}.{dnsbl}
  * - IP-based DNSBLs: query {reversed_ip}.{dnsbl}
- * - All 20 checks run in parallel via Promise.allSettled
+ * - All 15 checks run in parallel via Promise.allSettled
  * - 3s timeout per query — graceful failure on DNS errors/timeouts
  */
 
@@ -40,10 +40,11 @@ export interface BlacklistResult {
 }
 
 /**
- * Top 20 DNSBLs split into critical and warning tiers.
+ * Top 15 DNSBLs split into critical and warning tiers.
  * Critical = Spamhaus + Barracuda (Gmail and Outlook actively check these).
  * Warning = others used by major MTAs and spam filters.
  */
+// 5 defunct lists removed (2026-03): SORBS x3 (shutdown June 2024), WPBL (shutdown 2024), iX NiXSpam (shutdown Jan 2025)
 export const DNSBL_LIST: DnsblEntry[] = [
   // --- CRITICAL tier ---
   {
@@ -77,12 +78,6 @@ export const DNSBL_LIST: DnsblEntry[] = [
     delistUrl: "https://www.spamcop.net/bl.shtml",
   },
   {
-    host: "dnsbl.sorbs.net",
-    name: "SORBS Combined",
-    tier: "warning",
-    type: "ip",
-  },
-  {
     host: "cbl.abuseat.org",
     name: "Composite Blocking List (CBL)",
     tier: "warning",
@@ -94,16 +89,11 @@ export const DNSBL_LIST: DnsblEntry[] = [
     name: "Passive Spam Block List",
     tier: "warning",
     type: "ip",
+    delistUrl: "https://psbl.org/remove",
   },
   {
     host: "ubl.unsubscore.com",
     name: "Unsubscribe Blacklist (UBL)",
-    tier: "warning",
-    type: "ip",
-  },
-  {
-    host: "db.wpbl.info",
-    name: "Weighted Private Block List",
     tier: "warning",
     type: "ip",
   },
@@ -119,24 +109,6 @@ export const DNSBL_LIST: DnsblEntry[] = [
     tier: "warning",
     type: "ip",
     delistUrl: "http://www.uceprotect.net/en/rblcheck.php",
-  },
-  {
-    host: "spam.dnsbl.sorbs.net",
-    name: "SORBS Spam",
-    tier: "warning",
-    type: "ip",
-  },
-  {
-    host: "dul.dnsbl.sorbs.net",
-    name: "SORBS Dial-Up (DUL)",
-    tier: "warning",
-    type: "ip",
-  },
-  {
-    host: "ix.dnsbl.manitu.net",
-    name: "iX Magazine DNSBL",
-    tier: "warning",
-    type: "ip",
   },
   {
     host: "backscatter.spameatingmonkey.net",
@@ -174,6 +146,7 @@ export const DNSBL_LIST: DnsblEntry[] = [
     name: "s5h.net DNSBL",
     tier: "warning",
     type: "ip",
+    delistUrl: "https://www.usenix.org.uk/content/rbl.html",
   },
 ];
 
@@ -222,7 +195,7 @@ async function checkSingleDnsbl(
  * - IP-type DNSBLs: query {reversed_ip}.{dnsbl} (uses EMAILBISON_SENDING_IP if ip param not provided)
  * - "both" type DNSBLs: check both domain and IP
  *
- * All 20 checks run in parallel. DNS errors are logged but don't fail the overall check.
+ * All 15 checks run in parallel. DNS errors are logged but don't fail the overall check.
  */
 export async function checkBlacklists(
   domain: string,
@@ -268,7 +241,7 @@ export async function checkBlacklists(
       hits.push({
         list: entry.name,
         tier: entry.tier,
-        delistUrl: entry.delistUrl,
+        delistUrl: getDelistUrl(entry.host, domain, sendingIp ?? undefined) ?? entry.delistUrl,
       });
     } else if (result.status === "rejected") {
       console.error(
@@ -289,4 +262,38 @@ export async function checkBlacklists(
     hits,
     checkedAt: new Date(),
   };
+}
+
+/**
+ * Generate a pre-filled delist URL for a specific domain/IP on a given DNSBL.
+ * Returns the generic delistUrl if no pre-filled format is available.
+ */
+export function getDelistUrl(dnsblHost: string, domain: string, ip?: string): string | undefined {
+  switch (dnsblHost) {
+    // Spamhaus — lookup page accepts IP or domain in URL
+    case "zen.spamhaus.org":
+      return ip ? `https://check.spamhaus.org/listed/?searchterm=${ip}` : undefined;
+    case "dbl.spamhaus.org":
+      return `https://check.spamhaus.org/listed/?searchterm=${domain}`;
+    // Barracuda — lookup accepts IP
+    case "b.barracudacentral.org":
+      return ip ? `https://www.barracudacentral.org/lookups?ip_address=${ip}` : undefined;
+    // SpamCop — lookup by IP
+    case "bl.spamcop.net":
+      return ip ? `https://www.spamcop.net/w3m?action=checkblock&ip=${ip}` : undefined;
+    // CBL — lookup by IP
+    case "cbl.abuseat.org":
+      return ip ? `https://www.abuseat.org/lookup.cgi?ip=${ip}` : `https://www.abuseat.org/lookup.cgi`;
+    // PSBL — removal by IP
+    case "psbl.surriel.com":
+      return ip ? `https://psbl.org/remove?ip=${ip}` : `https://psbl.org/remove`;
+    // SpamRATS — removal by IP
+    case "spam.spamrats.com":
+      return ip ? `https://www.spamrats.com/removal.php?ip=${ip}` : `https://www.spamrats.com/removal.php`;
+    // UCEPROTECT — check by IP
+    case "dnsbl-1.uceprotect.net":
+      return ip ? `http://www.uceprotect.net/en/rblcheck.php?ipr=${ip}` : `http://www.uceprotect.net/en/rblcheck.php`;
+    default:
+      return undefined;
+  }
 }
