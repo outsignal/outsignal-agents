@@ -1,11 +1,11 @@
 /**
  * DNSBL (DNS-based Blackhole List) blacklist checker.
- * Checks domains and IPs against the top 15 DNSBLs used by Gmail/Outlook and major MTAs.
+ * Checks domains and IPs against the top 13 DNSBLs used by Gmail/Outlook and major MTAs.
  *
  * Architecture:
  * - Domain-based DNSBLs (URI lists): query {domain}.{dnsbl}
  * - IP-based DNSBLs: query {reversed_ip}.{dnsbl}
- * - All 15 checks run in parallel via Promise.allSettled
+ * - All 13 checks run in parallel via Promise.allSettled
  * - 3s timeout per query — graceful failure on DNS errors/timeouts
  */
 
@@ -40,11 +40,12 @@ export interface BlacklistResult {
 }
 
 /**
- * Top 15 DNSBLs split into critical and warning tiers.
+ * Top 13 DNSBLs split into critical and warning tiers.
  * Critical = Spamhaus + Barracuda (Gmail and Outlook actively check these).
  * Warning = others used by major MTAs and spam filters.
  */
-// 5 defunct lists removed (2026-03): SORBS x3 (shutdown June 2024), WPBL (shutdown 2024), iX NiXSpam (shutdown Jan 2025)
+// Defunct/low-value lists removed (2026-03): SORBS x3, WPBL, iX NiXSpam (shutdown),
+// SpamEatingMonkey, JustSpam, TTK PTE, s5h.net, SpamRATS (low impact)
 export const DNSBL_LIST: DnsblEntry[] = [
   // --- CRITICAL tier ---
   {
@@ -111,42 +112,31 @@ export const DNSBL_LIST: DnsblEntry[] = [
     delistUrl: "http://www.uceprotect.net/en/rblcheck.php",
   },
   {
-    host: "backscatter.spameatingmonkey.net",
-    name: "SpamEatingMonkey Backscatter",
-    tier: "warning",
-    type: "ip",
-  },
-  {
     host: "bl.mailspike.net",
     name: "Mailspike Block List",
     tier: "warning",
     type: "ip",
   },
   {
-    host: "dnsbl.justspam.org",
-    name: "JustSpam DNSBL",
+    host: "multi.surbl.org",
+    name: "SURBL Multi",
     tier: "warning",
-    type: "ip",
+    type: "domain",
+    delistUrl: "https://surbl.org/surbl-analysis",
   },
   {
-    host: "singular.ttk.pte.hu",
-    name: "TTK PTE Singular DNSBL",
+    host: "multi.uribl.com",
+    name: "URIBL Multi",
     tier: "warning",
-    type: "ip",
+    type: "domain",
+    delistUrl: "https://lookup.uribl.com/",
   },
   {
-    host: "spam.spamrats.com",
-    name: "SpamRATS Spam",
+    host: "dnsbl.invaluement.com",
+    name: "Invaluement ivmSIP",
     tier: "warning",
     type: "ip",
-    delistUrl: "https://www.spamrats.com/removal.php",
-  },
-  {
-    host: "all.s5h.net",
-    name: "s5h.net DNSBL",
-    tier: "warning",
-    type: "ip",
-    delistUrl: "https://www.usenix.org.uk/content/rbl.html",
+    delistUrl: "https://www.invaluement.com/lookup/",
   },
 ];
 
@@ -195,7 +185,7 @@ async function checkSingleDnsbl(
  * - IP-type DNSBLs: query {reversed_ip}.{dnsbl} (uses EMAILBISON_SENDING_IP if ip param not provided)
  * - "both" type DNSBLs: check both domain and IP
  *
- * All 15 checks run in parallel. DNS errors are logged but don't fail the overall check.
+ * All 13 checks run in parallel. DNS errors are logged but don't fail the overall check.
  */
 export async function checkBlacklists(
   domain: string,
@@ -287,12 +277,18 @@ export function getDelistUrl(dnsblHost: string, domain: string, ip?: string): st
     // PSBL — removal by IP
     case "psbl.surriel.com":
       return ip ? `https://psbl.org/remove?ip=${ip}` : `https://psbl.org/remove`;
-    // SpamRATS — removal by IP
-    case "spam.spamrats.com":
-      return ip ? `https://www.spamrats.com/removal.php?ip=${ip}` : `https://www.spamrats.com/removal.php`;
     // UCEPROTECT — check by IP
     case "dnsbl-1.uceprotect.net":
       return ip ? `http://www.uceprotect.net/en/rblcheck.php?ipr=${ip}` : `http://www.uceprotect.net/en/rblcheck.php`;
+    // SURBL — lookup by domain
+    case "multi.surbl.org":
+      return `https://surbl.org/surbl-analysis?d=${domain}`;
+    // URIBL — lookup by domain
+    case "multi.uribl.com":
+      return `https://lookup.uribl.com/?domain=${domain}`;
+    // Invaluement — lookup by IP
+    case "dnsbl.invaluement.com":
+      return ip ? `https://www.invaluement.com/lookup/?ip=${ip}` : `https://www.invaluement.com/lookup/`;
     default:
       return undefined;
   }
