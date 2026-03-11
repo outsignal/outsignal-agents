@@ -11,6 +11,10 @@ interface EmailReplyComposerProps {
   onComposerTextChange: (text: string) => void;
   onReplySent: () => void;
   subject?: string;
+  /** Override the POST endpoint (admin mode). Defaults to portal reply endpoint. */
+  replyEndpoint?: string;
+  /** Extra body fields to include in the POST (admin mode). */
+  extraBody?: Record<string, string>;
 }
 
 export function EmailReplyComposer({
@@ -19,6 +23,8 @@ export function EmailReplyComposer({
   onComposerTextChange,
   onReplySent,
   subject,
+  replyEndpoint = "/api/portal/inbox/email/reply",
+  extraBody = {},
 }: EmailReplyComposerProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,10 +39,10 @@ export function EmailReplyComposer({
     setError(null);
 
     try {
-      const res = await fetch("/api/portal/inbox/email/reply", {
+      const res = await fetch(replyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ replyId, message }),
+        body: JSON.stringify({ replyId, message, ...extraBody }),
       });
 
       if (!res.ok) {

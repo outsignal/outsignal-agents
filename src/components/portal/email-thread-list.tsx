@@ -17,6 +17,8 @@ export interface ThreadSummary {
   isRead?: boolean;
   intent?: string | null;
   sentiment?: string | null;
+  workspaceName?: string; // For admin mode
+  workspaceSlug?: string; // For admin mode
 }
 
 function timeAgo(dateStr: string): string {
@@ -172,6 +174,11 @@ export function EmailThreadList({
 
                 {/* Tags row */}
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {thread.workspaceName && (
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                      {thread.workspaceName}
+                    </span>
+                  )}
                   {thread.interested && (
                     <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#F0FF7A]/30 text-yellow-800 dark:text-yellow-300 border border-[#F0FF7A]/50">
                       Interested

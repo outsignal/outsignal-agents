@@ -181,9 +181,22 @@ interface EmailThreadViewProps {
   threadId: number;
   onReplySent: () => void;
   onSwitchChannel?: (conversationId: string) => void;
+  /** Override thread detail API path (admin mode). */
+  threadDetailBasePath?: string;
+  /** Override reply endpoint (admin mode). */
+  replyEndpoint?: string;
+  /** Extra body fields for reply (admin mode). */
+  replyExtraBody?: Record<string, string>;
 }
 
-export function EmailThreadView({ threadId, onReplySent, onSwitchChannel }: EmailThreadViewProps) {
+export function EmailThreadView({
+  threadId,
+  onReplySent,
+  onSwitchChannel,
+  threadDetailBasePath = "/api/portal/inbox/email/threads",
+  replyEndpoint,
+  replyExtraBody,
+}: EmailThreadViewProps) {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,7 +206,7 @@ export function EmailThreadView({ threadId, onReplySent, onSwitchChannel }: Emai
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/portal/inbox/email/threads/${threadId}`);
+      const res = await fetch(`${threadDetailBasePath}/${threadId}`);
       if (!res.ok) throw new Error("Failed to load conversation");
       const data = await res.json() as ThreadDetail;
       setDetail(data);
@@ -202,7 +215,7 @@ export function EmailThreadView({ threadId, onReplySent, onSwitchChannel }: Emai
     } finally {
       setLoading(false);
     }
-  }, [threadId]);
+  }, [threadId, threadDetailBasePath]);
 
   useEffect(() => {
     setDetail(null);
@@ -319,6 +332,8 @@ export function EmailThreadView({ threadId, onReplySent, onSwitchChannel }: Emai
           onComposerTextChange={setComposerText}
           onReplySent={handleReplySent}
           subject={threadMeta.subject ?? undefined}
+          replyEndpoint={replyEndpoint}
+          extraBody={replyExtraBody}
         />
       </div>
     </div>

@@ -71,6 +71,12 @@ interface LinkedInConversationViewProps {
   onMessageSent: () => void;
   onSwitchChannel?: (threadId: number) => void;
   crossChannel?: { type: "email"; threadId: number } | null;
+  /** Override messages API path (admin mode). */
+  messagesBasePath?: string;
+  /** Override reply endpoint (admin mode). */
+  replyEndpoint?: string;
+  /** Extra body fields for reply (admin mode). */
+  replyExtraBody?: Record<string, string>;
 }
 
 export function LinkedInConversationView({
@@ -78,6 +84,9 @@ export function LinkedInConversationView({
   onMessageSent,
   onSwitchChannel,
   crossChannel,
+  messagesBasePath = "/api/portal/inbox/linkedin/conversations",
+  replyEndpoint = "/api/portal/inbox/linkedin/reply",
+  replyExtraBody = {},
 }: LinkedInConversationViewProps) {
   const [messages, setMessages] = useState<LinkedInMessageItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +112,7 @@ export function LinkedInConversationView({
   const fetchMessages = useCallback(
     async (refresh = false) => {
       try {
-        const url = `/api/portal/inbox/linkedin/conversations/${conversationId}/messages${refresh ? "?refresh=true" : ""}`;
+        const url = `${messagesBasePath}/${conversationId}/messages${refresh ? "?refresh=true" : ""}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("Failed to load messages");
         const data = (await res.json()) as {
@@ -115,7 +124,7 @@ export function LinkedInConversationView({
         throw err;
       }
     },
-    [conversationId]
+    [conversationId, messagesBasePath]
   );
 
   // Initial load
@@ -230,10 +239,10 @@ export function LinkedInConversationView({
     setComposerText("");
 
     try {
-      const res = await fetch("/api/portal/inbox/linkedin/reply", {
+      const res = await fetch(replyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, message: text }),
+        body: JSON.stringify({ conversationId, message: text, ...replyExtraBody }),
       });
 
       if (!res.ok) {

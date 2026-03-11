@@ -11,6 +11,8 @@ export interface LinkedInConversationSummary {
   unreadCount: number;
   jobTitle: string | null;
   company: string | null;
+  workspaceName?: string; // For admin mode
+  workspaceSlug?: string; // For admin mode
 }
 
 function timeAgo(dateStr: string): string {
@@ -134,6 +136,15 @@ export function LinkedInConversationList({
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
                     {snippet}
                   </p>
+                )}
+
+                {/* Workspace badge — admin mode */}
+                {convo.workspaceName && (
+                  <div className="mt-1">
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                      {convo.workspaceName}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
