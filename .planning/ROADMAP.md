@@ -80,7 +80,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 29: Domain Health Foundation** — Schema, DNS validation library, bounce snapshots, and daily cron; everything downstream depends on this data layer (completed 2026-03-10)
 - [x] **Phase 30: Inbox Placement Testing** — On-demand mail-tester.com integration with "recommended for testing" badges on at-risk senders (completed 2026-03-11)
 - [x] **Phase 31: Auto-Rotation Engine** — Graduated status escalation, 4-hour bounce monitor cron, audit trail, notifications, and EmailBison API investigation (completed 2026-03-11)
-- [ ] **Phase 32: Deliverability Dashboard & Reporting** — Admin deliverability page, Intelligence Hub bento section, weekly digest, and client portal health summary
+- [x] **Phase 32: Deliverability Dashboard & Reporting** — Admin deliverability page, Intelligence Hub bento section, weekly digest, and client portal health summary (completed 2026-03-11)
 
 ### v5.0 Client Portal Inbox (In Progress)
 
@@ -146,7 +146,7 @@ Plans:
   3. The Intelligence Hub shows a deliverability bento card summarizing how many domains are healthy vs at-risk and which is worst
   4. A weekly digest fires every Monday containing bounce trends and domain health summary for all workspaces
   5. Clients can view per-sender bounce rates and domain health badges on their portal email-health page
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 Plans:
 - [ ] 32-01-PLAN.md — Deliverability API layer (summary, domains, senders, events endpoints)
 - [ ] 32-02-PLAN.md — Admin deliverability page with domain cards, sender table, activity feed + sidebar link
@@ -249,7 +249,7 @@ Plans:
 | 29. Domain Health Foundation | v4.0 | 3/3 | Complete | 2026-03-10 |
 | 30. Inbox Placement Testing | v4.0 | 2/2 | Complete | 2026-03-11 |
 | 31. Auto-Rotation Engine | 2/2 | Complete    | 2026-03-11 | - |
-| 32. Deliverability Dashboard & Reporting | 3/4 | In Progress|  | - |
+| 32. Deliverability Dashboard & Reporting | 4/4 | Complete   | 2026-03-11 | - |
 | 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
 | 34. LinkedIn Data Layer | v5.0 | 0/TBD | Not started | - |
 | 35. Email Inbox | v5.0 | 0/TBD | Not started | - |

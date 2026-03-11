@@ -23,16 +23,16 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: Phase 32 — Deliverability Dashboard Reporting
-Plan: 32-02 complete
-Status: Phase 32 Plan 02 done — deliverability UI page built (domain cards, sender table, activity feed, sidebar link)
-Last activity: 2026-03-11 — Phase 32 Plan 02 complete (deliverability dashboard page + components)
+Plan: 32-04 complete
+Status: Phase 32 Plan 04 done — weekly deliverability digest notification + enhanced portal email-health page
+Last activity: 2026-03-11 — Phase 32 Plan 04 complete (digest cron, DNS badges, bounce status in portal)
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 109 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 5)
+- Total plans completed: 112 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 8)
 - Average duration: ~15 min
 - Total execution time: ~22 hours
 
@@ -81,6 +81,10 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - [33-02]: Proxy support deferred — TODO comments left pending getSenderById() on ApiClient
 - [Phase 32-03]: DeliverabilityBentoCard fetches from existing /api/deliverability/summary endpoint — no new API needed
 - [Phase 32-03]: Insight dedup uses findFirst on observation contains senderEmail — prevents duplicate active insights per sender
+
+- [Phase 32-04]: Idempotency for digest enforced via NotificationAuditLog lookup (last 6 days) — prevents duplicate weekly sends
+- [Phase 32-04]: BounceSnapshot trend uses 2-day window vs 5-7-day-ago window for comparison — more reliable than exact day match
+- [Phase 32-04]: DB emailBounceStatus shown as separate column from EmailBison-derived health chip — they measure different things
 - [Phase 32-02]: Inline relative time helper instead of date-fns — not installed, consistent with sender-health-panel.tsx
 - [Phase 32-02]: Promise.allSettled for parallel fetches — each section degrades independently on error
 - [Phase 32-02]: Workspace options derived from senders response — avoids extra /api/workspaces call
@@ -100,5 +104,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 32-02-PLAN.md — deliverability dashboard UI: domain health cards, sender table with sparklines, activity feed, and sidebar nav.
+Stopped at: Completed 32-04-PLAN.md — weekly deliverability digest notification + enhanced portal email-health page.
 Resume file: None
