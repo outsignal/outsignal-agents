@@ -122,6 +122,7 @@ export interface SenderEmail {
   type?: string;
   status?: string;
   warmup_enabled?: boolean;
+  campaigns?: Array<{ id: number; name: string; status: string }>;
   emails_sent_count: number;
   total_replied_count: number;
   total_opened_count: number;

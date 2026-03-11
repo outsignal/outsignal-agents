@@ -269,6 +269,33 @@ export class EmailBisonClient {
     }
   }
 
+  async pauseCampaign(campaignId: number): Promise<Campaign> {
+    const res = await this.request<{ data: Campaign }>(
+      `/campaigns/${campaignId}/pause`,
+      { method: 'PATCH', body: JSON.stringify({}), revalidate: 0 },
+    );
+    return res.data;
+  }
+
+  async resumeCampaign(campaignId: number): Promise<Campaign> {
+    const res = await this.request<{ data: Campaign }>(
+      `/campaigns/${campaignId}/resume`,
+      { method: 'PATCH', body: JSON.stringify({}), revalidate: 0 },
+    );
+    return res.data;
+  }
+
+  async removeSenderFromCampaign(campaignId: number, senderEmailId: number): Promise<void> {
+    await this.request<unknown>(
+      `/campaigns/${campaignId}/remove-sender-emails`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ sender_email_ids: [senderEmailId] }),
+        revalidate: 0,
+      },
+    );
+  }
+
   async patchSenderEmail(senderEmailId: number, params: PatchSenderEmailParams): Promise<SenderEmail> {
     const res = await this.request<{ data: SenderEmail }>(
       `/sender-emails/${senderEmailId}`,

@@ -842,6 +842,8 @@ model Sender {
   consecutiveHealthyChecks  Int      @default(0) // for step-down: how many consecutive cron checks below threshold
   emailBisonSenderId        Int?     // EmailBison numeric ID for API management calls
   originalDailyLimit        Int?     // stored before 50% reduction, restored on step-down from warning
+  originalWarmupEnabled     Boolean? // stored before disabling warmup at critical, restored on step-down
+  removedFromCampaignIds    String?  // JSON array of campaign IDs sender was removed from at critical (e.g. "[123,456]")
 
   // Warm-up tracking
   warmupDay       Int       @default(0) // 0 = not started, 1-28 = warmup day
