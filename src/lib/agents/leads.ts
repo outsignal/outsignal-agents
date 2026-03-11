@@ -10,6 +10,7 @@ import { prospeoSearchAdapter } from "@/lib/discovery/adapters/prospeo-search";
 import { aiarkSearchAdapter } from "@/lib/discovery/adapters/aiark-search";
 import { serperAdapter } from "@/lib/discovery/adapters/serper";
 import { firecrawlDirectoryAdapter } from "@/lib/discovery/adapters/firecrawl-directory";
+import { apifyApolloAdapter } from "@/lib/discovery/adapters/apify-apollo";
 import { stageDiscoveredPeople } from "@/lib/discovery/staging";
 import { incrementDailySpend, PROVIDER_COSTS } from "@/lib/enrichment/costs";
 import { getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
@@ -165,6 +166,7 @@ const leadsTools = {
         z.object({
           name: z.enum([
             "apollo",
+            "apify-apollo",
             "prospeo",
             "aiark",
             "serper-web",
@@ -198,6 +200,7 @@ const leadsTools = {
       // Cost estimation per source using PROVIDER_COSTS
       const SOURCE_COST_MAP: Record<string, string> = {
         apollo: "apollo-search",
+        "apify-apollo": "apify-apollo-search",
         prospeo: "prospeo-search",
         aiark: "aiark-search",
         "serper-web": "serper-web",
@@ -208,12 +211,18 @@ const leadsTools = {
       const sourcesWithCost = params.sources.map((s) => {
         const costKey = SOURCE_COST_MAP[s.name] ?? s.name;
         const costPerCall = PROVIDER_COSTS[costKey] ?? 0;
-        // Apollo is free. Others: ~1 API call per 25 results.
-        const estimatedCalls =
-          s.name === "apollo"
-            ? 0
-            : Math.max(1, Math.ceil(s.estimatedVolume / 25));
-        const estimatedCost = costPerCall * estimatedCalls;
+        let estimatedCost: number;
+        if (s.name === "apollo") {
+          // Direct Apollo API search is free
+          estimatedCost = 0;
+        } else if (s.name === "apify-apollo") {
+          // Apify charges ~$0.75/1k leads, calculated per result
+          estimatedCost = s.estimatedVolume * 0.00075;
+        } else {
+          // Other sources: ~1 API call per 25 results
+          const estimatedCalls = Math.max(1, Math.ceil(s.estimatedVolume / 25));
+          estimatedCost = costPerCall * estimatedCalls;
+        }
         return { ...s, estimatedCost };
       });
 
@@ -333,6 +342,86 @@ const leadsTools = {
           name: [p.firstName, p.lastName].filter(Boolean).join(" "),
           title: p.jobTitle,
           company: p.company,
+          location: p.location,
+        })),
+      };
+    },
+  }),
+
+  searchApifyApollo: tool({
+    description:
+      "Search Apollo.io via Apify scraper. Returns emails and phone numbers (unlike direct Apollo). No Apollo account needed — uses Apify. COSTS ~$0.75 per 1,000 leads. Supports 7 filters. Use for B2B discovery when you need emails included in results.",
+    inputSchema: z.object({
+      workspaceSlug: z.string().describe("Workspace running the discovery"),
+      jobTitles: z
+        .array(z.string())
+        .optional()
+        .describe("Job titles to search for (e.g., ['CTO', 'VP Engineering'])"),
+      seniority: z
+        .array(z.string())
+        .optional()
+        .describe("Seniority levels: 'c_suite', 'vp', 'director', 'manager', 'ic'"),
+      industries: z
+        .array(z.string())
+        .optional()
+        .describe("Industry keywords (e.g., ['Software', 'Fintech'])"),
+      locations: z
+        .array(z.string())
+        .optional()
+        .describe("Locations (e.g., ['London, United Kingdom'])"),
+      companySizes: z
+        .array(z.string())
+        .optional()
+        .describe("Company size ranges: '1-10', '11-50', '51-200', '201-500', '500+'"),
+      companyDomains: z
+        .array(z.string())
+        .optional()
+        .describe("Target specific company domains"),
+      keywords: z
+        .array(z.string())
+        .optional()
+        .describe("Free-text keywords"),
+      limit: z.number().default(25).describe("Number of leads to request"),
+      pageToken: z
+        .string()
+        .optional()
+        .describe("Pagination token from previous search"),
+    }),
+    execute: async (params) => {
+      const filters = {
+        jobTitles: params.jobTitles,
+        seniority: params.seniority,
+        industries: params.industries,
+        locations: params.locations,
+        companySizes: params.companySizes,
+        companyDomains: params.companyDomains,
+        keywords: params.keywords,
+      };
+      const result = await apifyApolloAdapter.search(
+        filters,
+        params.limit,
+        params.pageToken,
+      );
+      await incrementDailySpend("apify-apollo-search", result.costUsd);
+      const { staged, runId } = await stageDiscoveredPeople({
+        people: result.people,
+        discoverySource: "apify-apollo",
+        workspaceSlug: params.workspaceSlug,
+        searchQuery: JSON.stringify(filters),
+      });
+      return {
+        source: "apify-apollo",
+        found: result.people.length,
+        staged,
+        runId,
+        hasMore: result.hasMore,
+        nextPageToken: result.nextPageToken,
+        costUsd: result.costUsd,
+        people: result.people.slice(0, 10).map((p) => ({
+          name: [p.firstName, p.lastName].filter(Boolean).join(" "),
+          title: p.jobTitle,
+          company: p.company,
+          email: p.email,
           location: p.location,
         })),
       };
@@ -682,7 +771,7 @@ const leadsTools = {
 const LEADS_SYSTEM_PROMPT = `You are the Outsignal Leads Agent — a specialist for managing the lead pipeline through natural language.
 
 ## Capabilities
-You can: search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Apollo, Prospeo, AI Ark, Serper, Firecrawl).
+You can: search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Apollo, Apify Apollo, Prospeo, AI Ark, Serper, Firecrawl).
 
 ## Discovery Workflow
 
@@ -707,7 +796,7 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
   * "Add Apollo with seniority=VP" -> add Apollo source, re-present
   * "That's too many leads" -> reduce estimated volumes, re-present
   * "What about Firecrawl?" -> add Firecrawl if relevant, re-present
-- NEVER call searchApollo, searchProspeo, searchAiArk, searchGoogle, or extractDirectory without prior approval of a discovery plan
+- NEVER call searchApollo, searchApifyApollo, searchProspeo, searchAiArk, searchGoogle, or extractDirectory without prior approval of a discovery plan
 
 ### Step 3: Execute the Plan
 - Say: "Starting discovery -- estimated ~30 seconds..."
@@ -729,6 +818,7 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 
 **Enterprise B2B (title + seniority + industry + location + company size):**
 - searchApollo -- 275M contacts, FREE search, best coverage for enterprise B2B. Basic filters only.
+- searchApifyApollo -- Same Apollo data via Apify scraper. COSTS ~$0.75/1k leads. Key advantage: returns emails and phone numbers directly (no separate enrichment needed). No Apollo API key required. Use when you want emails included in discovery results.
 - searchProspeo -- Strong B2B coverage, COSTS CREDITS. Advanced filters: funding stage/amount, revenue, technologies, company type, NAICS/SIC codes, departments, years of experience.
 - searchAiArk -- B2B people search, COSTS CREDITS. Advanced filters: revenue, funding stage/amount, technologies, company type, NAICS codes, company keywords, founded year. Equal coverage to Apollo/Prospeo (not a fallback -- a full peer).
 
@@ -749,7 +839,7 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 
 **Mixed/Ambiguous requests:**
 - Make your best guess and build the plan. The plan IS the clarification -- admin reviews and adjusts before execution.
-- For broad B2B requests, default to Apollo (free) + one paid source that adds unique filters.
+- For broad B2B requests, default to Apify Apollo (cheap, includes emails) or direct Apollo (free, no emails) + one paid source that adds unique filters.
 - AI Ark is an equal option alongside Apollo and Prospeo -- consider it when extra coverage or different data sources would help.
 
 ## Discovery Rules

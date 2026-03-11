@@ -78,10 +78,10 @@ Requirements for Client Portal Inbox. Each maps to roadmap phases.
 
 ### Email Inbox
 
-- [ ] **EMAIL-01**: Email thread list API groups replies by parent_id chain into threads
-- [ ] **EMAIL-02**: Email thread detail API returns chronological messages with outbound context
-- [ ] **EMAIL-03**: Client can send email reply from portal with sender selection
-- [ ] **EMAIL-04**: AI suggested reply displayed as "Use this" prefill option
+- [x] **EMAIL-01**: Email thread list API groups replies by parent_id chain into threads
+- [x] **EMAIL-02**: Email thread detail API returns chronological messages with outbound context
+- [x] **EMAIL-03**: Client can send email reply from portal with sender selection
+- [x] **EMAIL-04**: AI suggested reply displayed as "Use this" prefill option
 
 ### LinkedIn Inbox
 
@@ -189,10 +189,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LI-02 | Phase 34 | Complete |
 | LI-03 | Phase 34 | Complete |
 | LI-04 | Phase 34 | Complete |
-| EMAIL-01 | Phase 35 | Pending |
-| EMAIL-02 | Phase 35 | Pending |
-| EMAIL-03 | Phase 35 | Pending |
-| EMAIL-04 | Phase 35 | Pending |
+| EMAIL-01 | Phase 35 | Complete |
+| EMAIL-02 | Phase 35 | Complete |
+| EMAIL-03 | Phase 35 | Complete |
+| EMAIL-04 | Phase 35 | Complete |
 | LIIN-01 | Phase 36 | Pending |
 | LIIN-02 | Phase 36 | Pending |
 | LIIN-03 | Phase 36 | Pending |

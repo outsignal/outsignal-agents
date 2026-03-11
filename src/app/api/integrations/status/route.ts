@@ -376,6 +376,61 @@ async function checkTheirStack(): Promise<ProviderStatus> {
   }
 }
 
+async function checkApify(): Promise<ProviderStatus> {
+  const now = new Date().toISOString();
+  const token = process.env.APIFY_API_TOKEN;
+
+  if (!token) {
+    return {
+      id: "apify",
+      name: "Apify",
+      category: "scraping",
+      status: "disconnected",
+      configured: false,
+      dashboardUrl: "https://console.apify.com",
+      lastChecked: now,
+    };
+  }
+
+  try {
+    const res = await fetchWithTimeout(
+      "https://api.apify.com/v2/users/me",
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await res.json();
+
+    return {
+      id: "apify",
+      name: "Apify",
+      category: "scraping",
+      status: "connected",
+      configured: true,
+      plan: data?.data?.plan?.id ?? undefined,
+      credits: {
+        remaining: data?.data?.plan?.monthlyUsageCreditsUsd != null && data?.data?.plan?.usageCreditsUsedMonthlyUsd != null
+          ? data.data.plan.monthlyUsageCreditsUsd - data.data.plan.usageCreditsUsedMonthlyUsd
+          : undefined,
+        used: data?.data?.plan?.usageCreditsUsedMonthlyUsd ?? undefined,
+        total: data?.data?.plan?.monthlyUsageCreditsUsd ?? undefined,
+      },
+      dashboardUrl: "https://console.apify.com",
+      lastChecked: now,
+    };
+  } catch (err) {
+    console.error("[integrations/status] Apify check failed:", err);
+    return {
+      id: "apify",
+      name: "Apify",
+      category: "scraping",
+      status: "degraded",
+      configured: true,
+      dashboardUrl: "https://console.apify.com",
+      error: "Connection check failed",
+      lastChecked: now,
+    };
+  }
+}
+
 // =============================================================================
 // Env-var-only provider checks (no API call)
 // =============================================================================
@@ -594,6 +649,7 @@ export async function GET() {
       checkApollo(),
       checkSerper(),
       checkTheirStack(),
+      checkApify(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
