@@ -1,169 +1,170 @@
 # Project Research Summary
 
-**Project:** Outsignal v3.0 Campaign Intelligence Hub
-**Domain:** Outbound sales campaign intelligence — reply classification, performance analytics, feedback loops
-**Researched:** 2026-03-09
+**Project:** Outsignal v5.0 Client Portal Inbox
+**Domain:** Unified inbox — email reply sending + LinkedIn conversation messaging for B2B outbound client portal
+**Researched:** 2026-03-11
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The Campaign Intelligence Hub is a feedback-loop layer on top of Outsignal's existing outbound pipeline. Today, replies arrive via webhook, trigger notifications, update person status, and stop. v3.0 intercepts this flow to classify reply intent with Claude Haiku, aggregate campaign performance metrics locally, generate AI-powered actionable insights, and surface recommendations through an admin action queue. This is an application-layer build, not a stack expansion — zero new dependencies are needed. Every required capability (structured AI output, charting, scheduling, data aggregation) already exists in the installed stack.
+The Client Portal Inbox upgrades the existing read-only `/portal/replies` feed into a fully interactive two-panel inbox where clients can read threaded conversations and send replies across email and LinkedIn channels. This is a pure application-layer build — zero new packages are needed. Every required capability (email API client, LinkedIn Voyager integration, React two-panel layout, DB persistence) already exists in the installed stack. The work is primarily new API routes, new Prisma models, and new UI components following patterns that are already established across 5+ existing pages.
 
-The recommended approach follows a strict data-first sequence: persist reply data and classify it (foundation), pre-compute analytics into the existing CachedMetrics model (intelligence layer), build the dashboard UI on top of pre-computed data (visibility), then layer AI insight generation and action queue on top (automation). The critical architectural decision is pre-computing all analytics via cron rather than computing on-demand — Neon serverless cold starts and complex aggregation queries would make the dashboard unusable otherwise. Classification uses a two-tier approach: rule-based for obvious cases (OOO, unsubscribe, bounce — ~60% of replies), Claude Haiku for ambiguous cases (~$0.001/reply). Total AI cost projection is under $10/month.
+The recommended approach is a strict API-before-UI, external-validation-first sequence. The most dangerous unknown — whether EmailBison's `POST /replies/{id}/reply` endpoint works as documented — must be resolved in Phase 1 before any UI is built. LinkedIn conversation fetching uses a DB-intermediary pattern (worker syncs to DB, portal reads from DB) because the Voyager API requires proxy and session cookies that only exist on the Railway worker, not Vercel serverless. These two architectural constraints drive the entire build sequence.
 
-The primary risks are: (1) classification taxonomy that doesn't match real-world reply patterns — mitigated by labeling 100+ actual replies before finalizing categories, (2) cross-workspace data leakage in benchmarking — mitigated by anonymized-aggregate-only computation with no workspace identifiers in benchmark data, (3) insight generation hallucinating numbers — mitigated by having the LLM narrate pre-computed metrics rather than performing arithmetic, and (4) alert fatigue from too many insights — mitigated by hard-capping at 3-5 insights per workspace per cycle. The system must remain admin-driven: AI suggests, admin decides. No auto-actions, ever.
+The primary risks are: (1) EmailBison sendReply not working as expected — mitigated by a Phase 1 spike with a real reply ID and documented fallback to mailto: deeplink; (2) LinkedIn Voyager rate limiting or session expiry during conversation fetch — mitigated by 2-3 second delays between API calls, 5-minute sync cache, and graceful degradation; (3) email threading breaking on missing parent_id references — mitigated by treating orphaned parents as thread roots and fetching thread detail on demand. The LinkedIn sync must be fire-and-forget (202 Accepted, async processing) to avoid Vercel's 60-second function timeout.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new packages. The existing stack handles everything v3.0 requires. This is a strength — zero integration risk, zero new dependency management.
+No new dependencies. The entire v5.0 milestone is application-layer code using the existing stack. This eliminates integration risk and keeps the bundle unchanged.
 
 **Core technologies (all existing):**
-- **AI SDK `generateObject` + Haiku**: Reply classification with structured output — identical pattern to existing ICP scorer
-- **Prisma + PostgreSQL (Neon)**: 3 new models (ReplyClassification, Insight, AdminAction), aggregation via `$queryRaw` for date bucketing
-- **Recharts 3.7**: Campaign performance charts, benchmark visualizations — already installed
-- **CachedMetrics model**: Pre-computed analytics storage — already in schema, currently unused, perfect for this use case
-- **cron-job.org**: Scheduling for analytics computation and insight generation — Vercel Hobby cron slots are full
-- **Existing agent framework**: Reuse `src/lib/agents/runner.ts` for insight generation agent
+- **Next.js 16**: New API routes under `/api/portal/inbox/` + new portal page at `/portal/inbox`
+- **Prisma 6 + PostgreSQL (Neon)**: Two new models — `LinkedInConversation` and `LinkedInMessage` — following existing cuid/@@index/@@unique patterns
+- **React 19 + Tailwind CSS 4**: Two-panel inbox layout (CSS Grid), message bubbles, reply composer (plain textarea)
+- **Radix UI** (installed): Tabs (channel switcher), ScrollArea (thread list + conversation scroll)
+- **EmailBisonClient** (existing): New `sendReply()` method added to existing class
+- **VoyagerClient** (existing, Railway worker): New `fetchConversations()` / `fetchMessages()` methods
+- **LinkedInAction queue** (existing): Reused as-is for LinkedIn reply delivery — battle-tested, priority 1 for manual replies
+- **setInterval polling**: 15s when inbox is active, 60s background — matches existing pattern across 5+ pages, not SWR/React Query
+
+**What NOT to use:** WebSockets/SSE (Vercel has no persistent connections), rich text editor (plain text is correct for B2B replies), direct Voyager proxy from Vercel (requires Railway proxy agent).
 
 ### Expected Features
 
 **Must have (table stakes):**
-- Reply persistence (ReplyClassification) — currently replies pass through without storage, blocking all analytics
-- Reply classification with 8-9 intent categories — industry standard; binary interested/not-interested is obsolete
-- Sentiment scoring (positive/neutral/negative) — orthogonal to intent, classified in the same Haiku call
-- Local campaign performance metrics — currently fetched live from EmailBison API with no historical tracking
-- Per-step sequence analytics — which email step generates the most replies
-- Campaign ranking/comparison view — side-by-side performance within a workspace
+- Two-panel inbox layout — standard inbox UX, thread list left / conversation right
+- Email thread view — replies grouped by parent_id chain, chronological message display
+- Thread detail with message bubbles — inbound left-aligned, outbound right-aligned, timestamps
+- Unread indicators — dot/badge on unread threads, `readAt` field on Reply model
+- Intent/sentiment badges — display existing AI classification already stored on Reply model
+- Channel tabs — Email / LinkedIn / All, filtered by workspace package
+- Inbox nav item — replace "Replies" with "Inbox" in portal sidebar
 
-**Should have (differentiators):**
-- ICP score calibration — correlate icpScore with actual reply outcomes, auto-suggest threshold adjustments (killer feature, no SaaS competitor does this)
-- Cross-workspace benchmarking — unique multi-tenant advantage Instantly/Smartlead cannot replicate
-- Copy strategy effectiveness comparison — creative-ideas vs PVP vs one-liner aggregate metrics
-- AI insight generation — scheduled analysis producing actionable cards with data-backed recommendations
-- Admin action queue — approve/dismiss/defer AI suggestions
-- Objection pattern detection — cluster common objections for copy iteration
+**Should have (competitive differentiators):**
+- Email reply from portal — clients reply without leaving the portal via EmailBison API
+- LinkedIn conversation view — full message history via Voyager API, stored in DB
+- LinkedIn reply queue — queue a message via existing LinkedInAction model, optimistic UI
+- AI suggested reply display — pre-generated reply already stored, just needs a "Use this" button
+- Outbound context panel — show original outbound email/message that triggered the reply
+- Sender selection in composer — pick which sender email to reply from
 
-**Defer (build storage now, UI later):**
-- Objection pattern analysis UI — needs 50+ objection replies for statistical meaning
-- Signal-to-conversion tracking UI — needs signal campaigns running long enough to produce data
-- Digest notifications — low urgency, build after action queue exists
+**Defer to v2+:**
+- Unified cross-channel search — low value at current reply volume, complex to implement
+- Draft saving — over-engineering at 5-20 replies/day
+- Attachment sending — hurts deliverability, text-only is correct
+- Bulk reply — dangerous for cold outbound, defeats the purpose
+- Rich text composer — HTML emails harm deliverability
 
 ### Architecture Approach
 
-The intelligence layer hooks into 4 existing touchpoints (webhook handler, poll-replies cron, dashboard stats API, agent framework) without disrupting them. Classification runs as fire-and-forget in the webhook handler (same proven pattern as `generateReplySuggestion`). Analytics are pre-computed to CachedMetrics via external cron every 6 hours. The Intelligence Hub dashboard reads only from pre-computed data — zero raw aggregation queries at request time. All new code lives in `src/lib/intelligence/` with clear separation: classifier (function), aggregator (function), insight generator (agent), action queue (CRUD).
+Two distinct flows converge in the unified inbox UI. Email uses a direct API pattern: portal calls EmailBison API server-side via `EmailBisonClient`. LinkedIn uses a DB-intermediary pattern: Railway worker fetches from Voyager API and syncs to `LinkedInConversation` + `LinkedInMessage` tables, then the portal reads from DB only. This distinction is forced by Vercel's serverless constraints — the Voyager API's proxy + session cookie requirements are incompatible with cold-start serverless functions.
 
 **Major components:**
-1. **Reply Classifier** (`src/lib/intelligence/classifier.ts`) — rule-based + Haiku two-tier classification, hooks into webhook handler and poll-replies cron
-2. **Analytics Aggregator** (`src/lib/intelligence/aggregator.ts`) — computes campaign rankings, strategy comparisons, intent distributions, ICP calibration, writes to CachedMetrics
-3. **Insight Generator** (`src/lib/intelligence/insight-generator.ts`) — AI agent that reads pre-computed metrics and generates actionable insight cards
-4. **Intelligence Hub Page** (`src/app/(admin)/intelligence/page.tsx`) — dashboard with 6 visualization panels reading from 7 API endpoints
-5. **Action Queue** (`src/lib/intelligence/action-queue.ts`) — admin approve/dismiss/defer workflow for AI suggestions
+1. **EmailBisonClient extensions** — `sendReply()`, `getReply()`, `getRepliesPage()` added to `src/lib/emailbison/client.ts`
+2. **VoyagerClient extensions** — `fetchConversations()`, `fetchMessages()` added to `worker/src/voyager-client.ts` with new worker route `GET /sessions/{id}/conversations`
+3. **LinkedIn sync API** — `POST /api/portal/inbox/linkedin/sync` triggers worker sync (fire-and-forget, 202 Accepted); portal polls DB for fresh data
+4. **Email thread API** — `GET /api/portal/inbox` builds threads from parent_id chains; `GET /api/portal/inbox/thread/[replyId]` returns full thread
+5. **LinkedIn thread API** — `GET /api/portal/inbox/linkedin/[conversationId]` reads from DB
+6. **Reply APIs** — Email: `POST /api/portal/inbox/thread/[replyId]/reply`; LinkedIn: `POST /api/portal/inbox/linkedin/[conversationId]/reply` (creates LinkedInAction + optimistic LinkedInMessage)
+7. **Inbox UI** — `inbox-shell.tsx`, `thread-list.tsx`, `conversation-view.tsx`, `reply-composer.tsx` in `src/components/portal/inbox/`
+8. **DB models** — `LinkedInConversation` and `LinkedInMessage` in schema; add `channel`, `readAt`, `suggestedReply` fields to existing `Reply` model
 
 ### Critical Pitfalls
 
-1. **Classification taxonomy mismatch** — Design from real data, not theory. Label 100+ actual replies before finalizing categories. Add `classificationOverride` for admin corrections. Reconcile with existing `isAutomated` flag.
-2. **Cross-workspace data leakage** — Benchmark data must be anonymized aggregates only. Never expose campaign names, reply text, or per-workspace breakdowns in cross-workspace contexts. Add `benchmarkConsent` to Workspace model.
-3. **Analytics killing page load** — Pre-compute everything into CachedMetrics via cron. Dashboard reads single-row lookups only. Show "last computed" timestamps. Never run aggregation queries at request time.
-4. **LLM cost spiral** — Gate classification strictly on reply events only (not EMAIL_SENT/BOUNCE). Idempotency guard via `classifiedAt` timestamp. Use Haiku not Sonnet for classification. Track costs in DailyCostTotal.
-5. **Insight hallucinations** — LLM narrates pre-computed numbers, never computes them. Validate that referenced numbers match source data. System prompt constrains output to current workspace only.
+1. **EmailBison sendReply API broken** — Build the spike before any UI. If `POST /replies/{id}/reply` fails, pivot to mailto: deeplink. This is the #1 risk for the entire milestone.
+2. **LinkedIn Voyager rate limiting / session expiry** — 2-3s random delays between Voyager calls, limit to 20 recent conversations, 5-minute sync cache, graceful degradation on 401/429, no automatic retries.
+3. **Email threading breaks on missing parent_id** — Treat orphaned parents as thread roots. Fetch individual thread detail on conversation open, not the full reply list. Never re-derive threading from the full reply paginated list.
+4. **Vercel 60s timeout on LinkedIn sync** — Sync must be fire-and-forget: portal POSTs sync trigger, worker syncs asynchronously, portal polls DB. Never block on the sync chain.
+5. **Optimistic UI desync on failed reply** — Show "Sending..." state. On API error, show "Failed — retry" on the message bubble. For LinkedIn, show "Queued" not "Sent" since delivery is async.
 
 ## Implications for Roadmap
 
-Based on dependency analysis across all research, suggested phase structure:
+Based on dependency analysis across all research, the recommended phase structure enforces a strict external-API-validation-first, data-before-UI sequence.
 
-### Phase 1: Reply Storage and Classification Engine
-**Rationale:** Everything downstream depends on classified reply data. This is the absolute foundation — without it, the Intelligence Hub is just another stats dashboard.
-**Delivers:** ReplyClassification Prisma model, two-tier classifier (rule-based + Haiku), webhook handler integration, poll-replies integration, idempotency guards
-**Addresses:** Reply storage (P0), reply classification (P0), sentiment scoring (P0)
-**Avoids:** Taxonomy mismatch (label real replies first), cost spiral (strict event gating), status conflict (separate intent from lifecycle status)
+### Phase 1: API Spike and Client Extensions
+**Rationale:** The EmailBison sendReply endpoint is undocumented in live behavior — this MUST be validated before building any UI around it. Voyager conversation fetching is also new territory for this codebase. Both spikes must succeed (or have documented fallbacks) before any downstream work begins.
+**Delivers:** Verified EmailBison sendReply behavior + documented request/response shape; new `sendReply()`, `getReply()` methods on EmailBisonClient; new `fetchConversations()`, `fetchMessages()` methods on VoyagerClient; new worker route `GET /sessions/{id}/conversations`
+**Addresses:** Email reply (spike validation), LinkedIn conversation fetch (spike validation)
+**Avoids:** EmailBison API failure pitfall — spike first, build second
 
-### Phase 2: Analytics Aggregation Engine
-**Rationale:** Classification data needs to be aggregated before it can be visualized. Pre-computation infrastructure must exist before the dashboard UI.
-**Delivers:** Analytics aggregator, CachedMetrics population, cron endpoint (`/api/cron/compute-intelligence`), campaign performance snapshots, strategy comparison data, intent distributions
-**Addresses:** Campaign performance metrics (P0), per-step sequence analytics (P1), campaign ranking (P1), copy strategy comparison (P1)
-**Avoids:** Dashboard page load kills (all computation happens in cron, not at request time), sparse data misleading (minimum thresholds per metric)
+### Phase 2: LinkedIn Data Layer
+**Rationale:** DB models and sync API must exist before any LinkedIn UI. The DB-intermediary pattern means data layer is the bottleneck — nothing LinkedIn-related can be built until conversations exist in the database.
+**Delivers:** `LinkedInConversation` + `LinkedInMessage` Prisma models; `POST /api/portal/inbox/linkedin/sync` with fire-and-forget async pattern; 5-minute cache check; participant-to-Person matching
+**Addresses:** LinkedIn conversation storage, LinkedIn sync API
+**Avoids:** Vercel 60s timeout (async sync), Voyager rate limits (cache layer)
 
-### Phase 3: Intelligence Hub Dashboard
-**Rationale:** With pre-computed data available, the UI can be built as a pure read layer — fast, simple, no performance concerns.
-**Delivers:** Intelligence Hub page at `/admin/intelligence`, campaign rankings table, strategy comparison chart, intent breakdown visualization, workspace filter, "last computed" indicators
-**Addresses:** Intelligence Hub page (P1), cross-workspace benchmarking (P1)
-**Avoids:** Data leakage (anonymized benchmarks only), slow loads (reads from CachedMetrics only)
+### Phase 3: Email Inbox (Thread API + UI + Reply)
+**Rationale:** Email is lower risk than LinkedIn (only one external dependency, already spiked in Phase 1) and represents the majority of reply volume. Delivering a working email inbox first provides immediate client value and validates the two-panel UI shell.
+**Delivers:** Email thread API (`GET /api/portal/inbox`, `GET /api/portal/inbox/thread/[replyId]`); Reply schema additions (`channel`, `readAt`, `suggestedReply`); Two-panel inbox shell + thread list + conversation view; Email reply composer + `POST /api/portal/inbox/thread/[replyId]/reply`; AI suggested reply display
+**Addresses:** Two-panel layout, email threading, email reply sending, unread indicators, AI suggestion display, outbound context panel
+**Avoids:** Threading breaks (orphaned parent handling), wrong reply target (send to latest reply ID, not root)
 
-### Phase 4: ICP Score Calibration
-**Rationale:** By this point, classification data has been accumulating for weeks/months. ICP calibration requires sufficient data volume to be statistically meaningful.
-**Delivers:** ICP score vs conversion correlation analysis, score bucket breakdown, threshold recommendation, calibration visualization on Intelligence Hub
-**Addresses:** ICP score calibration (P2), signal-to-conversion tracking foundation (P2)
-**Avoids:** Chicken-and-egg problem (prospective data only, no retroactive analysis), insufficient data (minimum 50 data points per bucket threshold)
+### Phase 4: LinkedIn Inbox (Thread API + UI + Reply)
+**Rationale:** LinkedIn UI builds on the data layer from Phase 2 and follows the same UI patterns established in Phase 3. By this point, the inbox shell exists — this phase adds the LinkedIn-specific thread list, conversation view, and reply queue.
+**Delivers:** `GET /api/portal/inbox/linkedin/[conversationId]`; LinkedIn thread list items; LinkedIn conversation view + message bubbles; LinkedIn reply composer with queue semantics (`POST /api/portal/inbox/linkedin/[conversationId]/reply`); "Queued — sends within 2 minutes" optimistic UI
+**Addresses:** LinkedIn conversation view, LinkedIn reply queue, cross-channel person linking
+**Avoids:** Cross-channel confusion (keep channels separate, add "also active on [channel]" indicator), stale data (show "Last synced: X ago" + manual refresh)
 
-### Phase 5: AI Insight Generation and Action Queue
-**Rationale:** Insights depend on stable analytics data. The action queue depends on insights. Building these last means the insight generator has rich, validated data to analyze.
-**Delivers:** Insight generator agent, Insight Prisma model, AdminAction model, action queue UI (approve/dismiss/defer), insight cards on Intelligence Hub, weekly insight generation cron
-**Addresses:** AI insight generation (P2), admin action queue (P2), objection pattern detection storage (P2)
-**Avoids:** Hallucinations (LLM narrates pre-computed data only), alert fatigue (3-5 insights per workspace cap), autonomous actions (suggest-only, admin decides)
-
-### Phase 6: Digest Notifications
-**Rationale:** Last phase — requires insights, analytics, and action queue to all exist. Low complexity, leverages existing notification infrastructure.
-**Delivers:** Weekly digest via Slack and email, top insights summary, best/worst campaign highlights, pending action count
-**Addresses:** Digest notifications (P3)
+### Phase 5: Polish and Navigation
+**Rationale:** Final phase — cosmetic and UX refinements after all functional work is proven. Nav update is independent and low-risk. Polish includes empty states, loading skeletons, mobile single-panel layout, package enforcement, and channel tabs.
+**Delivers:** Portal sidebar nav update (Replies → Inbox); Channel tabs (Email / LinkedIn / All) filtered by workspace package; Mobile single-panel with back navigation; Empty states; Loading skeletons; Package enforcement in all API routes (400 for mismatched channel)
+**Addresses:** Channel tabs, inbox nav item, mobile layout, package-aware filtering
+**Avoids:** Mobile layout breaks (single-panel below md breakpoint), package field not checked in API routes
 
 ### Phase Ordering Rationale
 
-- **Data flows downhill:** Reply -> Classification -> Aggregation -> Visualization -> Insights -> Actions -> Notifications. Each phase produces data the next phase consumes.
-- **Immediate value at Phase 3:** Classified replies + analytics dashboard is useful without AI insights. Phases 1-3 deliver a functional Intelligence Hub. Phases 4-6 add the "intelligence" layer.
-- **Data accumulation:** ICP calibration and insight generation improve with more data. Placing them later gives 4-8 weeks of classification data to work with.
-- **Risk front-loading:** The hardest architectural decisions (taxonomy design, pre-computation strategy, webhook integration) are in Phases 1-2. Later phases are lower risk.
+- **Spike-first removes the biggest unknown:** EmailBison sendReply is undocumented in live behavior. Building UI first and discovering the endpoint doesn't work is a multi-phase waste. Phase 1 resolves this.
+- **Data before UI:** LinkedIn DB models (Phase 2) must exist before LinkedIn UI (Phase 4). There's no DB-intermediary workaround.
+- **Email before LinkedIn:** Email is lower risk, higher volume, and depends on fewer unknowns. A working email inbox delivers value even if LinkedIn has issues.
+- **Polish last:** Nav update and channel tabs are independent and cosmetic. They don't block any functionality. Doing them last avoids wasted polish work if upstream phases change UI shape.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 1 (Classification):** Needs real reply data labeling before taxonomy finalization. Export existing WebhookEvent reply data and manually classify 100+ samples. The two-tier rule-based/AI approach needs careful threshold tuning.
-- **Phase 4 (ICP Calibration):** Statistical analysis at low data volumes is tricky. May need to research confidence interval approaches for small samples. Minimum viable data thresholds need validation.
-- **Phase 5 (Insight Generation):** Prompt engineering for insight quality is the hard part. The difference between "your reply rate is 3%" (useless) and "your reply rate dropped 40% after switching copy strategy" (actionable) requires careful system prompt design and output validation.
+- **Phase 1 (API Spike):** The EmailBison sendReply endpoint behavior needs to be documented live before building — params, response shape, error codes, auth requirements. This IS the research. The voyager conversation API response schema also needs live testing.
+- **Phase 2 (LinkedIn Data Layer):** The fire-and-forget async sync pattern needs careful design. The worker must return 202 quickly; the portal must not be blocked. The sync cache invalidation logic needs explicit definition.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 2 (Analytics Aggregation):** Well-understood pattern — SQL aggregation + cron + cache table. Existing CachedMetrics model is ready.
-- **Phase 3 (Dashboard UI):** Standard Next.js page + Recharts components + API routes reading from cache. No novel patterns.
-- **Phase 6 (Digest Notifications):** Existing notification system with 17 types and audit logging. One more type following established patterns.
+- **Phase 3 (Email Inbox):** Well-understood pattern — email threading with parent_id is documented. EmailBisonClient pattern is established. Two-panel inbox follows existing admin dashboard layouts.
+- **Phase 4 (LinkedIn Inbox):** Follows exact same UI patterns as Phase 3 inbox shell. LinkedInAction queue is battle-tested. DB reads are straightforward.
+- **Phase 5 (Polish):** Straightforward — Tailwind responsive breakpoints, empty state components, sidebar nav line changes.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies. Every capability verified against existing codebase with line-level references. |
-| Features | MEDIUM-HIGH | Taxonomy based on competitor analysis (Instantly, Smartlead, Outreach, Reply.io). ICP calibration is novel — less external validation. |
-| Architecture | HIGH | All integration points verified against existing code. Patterns follow established project conventions. |
-| Pitfalls | MEDIUM-HIGH | Critical pitfalls well-documented. Neon cold-start estimates directional, not measured. Scheduling constraints verified. |
+| Stack | HIGH | Zero new dependencies. Every capability verified against existing codebase with specific file references. Pattern consistency with existing codebase confirmed. |
+| Features | HIGH | Derived from existing Reply model fields and business context. Anti-features are well-justified by deliverability and operational constraints. |
+| Architecture | HIGH | All integration points verified against existing code. DB-intermediary decision is forced by Vercel/Railway constraints — not a choice. |
+| Pitfalls | MEDIUM-HIGH | Critical pitfalls well-documented with mitigation strategies. EmailBison endpoint behavior is the unresolved unknown — mitigation is the Phase 1 spike itself. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Real reply data labeling:** Classification taxonomy is based on competitor analysis, not validated against actual Outsignal reply data. Must label 100+ real replies before finalizing Phase 1 plan.
-- **EmailBison webhook payload completeness:** Research assumes `sequence_step` and `campaign_id` are available in webhook payloads. Must verify with actual webhook data before relying on per-step analytics.
-- **CachedMetrics model behavior:** Model exists in schema but has zero usage anywhere in the codebase. Need to verify `upsert` behavior and unique constraint works as expected.
-- **Cron-job.org capacity:** Adding 3 more scheduled jobs. Free tier supports this, but 30-second timeout constraint needs testing with actual aggregation runtime.
-- **ICP calibration data volume:** At ~50-200 replies/month across 6 workspaces, meaningful per-workspace calibration may take 2-3 months of data accumulation.
+- **EmailBison `POST /replies/{id}/reply` live behavior:** Documented but not live-tested. Must spike in Phase 1. If it fails, the fallback plan (mailto: deeplink) must be implemented instead and the feature scoped accordingly.
+- **Voyager conversation API response schema:** The `GET /messaging/conversations` and `GET /messaging/conversations/{id}/events` endpoints are used by pattern analogy from the existing worker — response shapes need live validation before building the sync API parser.
+- **Parent_id pagination depth:** Research assumes 5 pages of replies covers most active threads. This may not hold for workspaces with long reply histories. The orphaned-parent-as-root fallback handles it, but the quality of threading degrades with deep history.
+- **LinkedIn sync performance at scale:** The fire-and-forget sync assumes the worker can fetch 20 conversations × their messages within a reasonable window. With slow Voyager responses or large message histories, the worker sync could take minutes. Need to time this with a real worker session in Phase 2.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Existing codebase: `prisma/schema.prisma`, `src/app/api/webhooks/emailbison/route.ts`, `src/app/api/cron/poll-replies/route.ts`, `src/lib/agents/runner.ts`, `src/lib/icp/scorer.ts`, `src/lib/notifications.ts` — direct inspection with line-level references
-- AI SDK `generateObject` usage pattern — verified in `src/lib/icp/scorer.ts`
-- CachedMetrics model — verified in schema (line 241), confirmed unused via codebase grep
+- Existing codebase: `prisma/schema.prisma`, `src/lib/emailbison/client.ts`, `src/lib/emailbison/types.ts`, `worker/src/voyager-client.ts`, `src/app/(portal)/portal/replies/page.tsx`, `src/components/portal/portal-sidebar.tsx`, `worker/src/routes/` — direct inspection
+- EmailBison API: `POST /replies/{id}/reply` confirmed in API documentation; `GET /replies` verified working in production
+- LinkedIn Voyager messaging API: `GET /messaging/conversations` and message events pattern derived from existing worker code
+- LinkedInAction queue: production-tested in worker, `enqueueAction()` verified
 
 ### Secondary (MEDIUM confidence)
-- [Instantly Cold Email Benchmark 2026](https://instantly.ai/cold-email-benchmark-report-2026) — reply rate benchmarks (3.43% average)
-- [Smartlead AI Categorization](https://helpcenter.smartlead.ai/en/articles/150-what-is-ai-categorization-and-how-does-it-work-with-smartlead) — classification taxonomy patterns
-- [Outreach Sentiment Classification](https://support.outreach.io/hc/en-us/articles/4408420569883-Outreach-Sequence-Email-Sentiment-Classification) — sentiment layer design
-- [Neon Connection Pooling](https://neon.com/docs/connect/connection-pooling) — cold start and connection behavior
-- [Vercel Function Timeouts](https://vercel.com/kb/guide/what-can-i-do-about-vercel-serverless-functions-timing-out) — Hobby tier limits
+- EmailBison white-label API base URL (`app.outsignal.ai/api`) — known from existing client configuration
+- LinkedIn Voyager detection behavior — inferred from existing worker delay patterns, not formally documented
 
 ### Tertiary (LOW confidence)
-- Neon cold-start latency estimates (300-500ms) — based on known architecture, not measured on this project
-- ICP calibration statistical validity thresholds (50+ data points per bucket) — general statistical practice, not validated for this domain
+- Voyager messaging API rate limits — inferred from general LinkedIn API behavior, not measured on this account
+- Vercel function cold-start impact on LinkedIn sync latency — estimated, not measured
 
 ---
-*Research completed: 2026-03-09*
+*Research completed: 2026-03-11*
 *Ready for roadmap: yes*
