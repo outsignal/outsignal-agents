@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Email Deliverability & Domain Infrastructure Monitoring
 status: unknown
-last_updated: "2026-03-11T12:08:00Z"
+last_updated: "2026-03-11T12:44:47.392Z"
 progress:
-  total_phases: 29
-  completed_phases: 26
-  total_plans: 92
-  completed_plans: 91
+  total_phases: 31
+  completed_phases: 27
+  total_plans: 96
+  completed_plans: 95
 ---
 
 # Project State
@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: Phase 33 — API Spike: Client Extensions (in progress)
-Plan: 33-02 complete
-Status: Phase 33 Plan 02 done — VoyagerClient messaging methods + SessionServer conversation endpoints ready for Phase 34
-Last activity: 2026-03-11 — Phase 33 Plan 02 complete (fetchConversations + fetchMessages + worker HTTP endpoints)
+Phase: Phase 32 — Deliverability Dashboard Reporting
+Plan: 32-01 complete
+Status: Phase 32 Plan 01 done — four /api/deliverability/* endpoints ready for Phase 32 Plan 02 UI
+Last activity: 2026-03-11 — Phase 32 Plan 01 complete (summary, domains, senders, events endpoints)
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -45,6 +45,10 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+- [32-01]: Batch BounceSnapshot lookup using senderEmail IN [...] then JS groupBy — avoids N queries for N senders
+- [32-01]: cursor pagination uses take N+1 trick — cleaner than separate count query
+- [32-01]: JSON parse fields (dkimSelectors, blacklistHits) wrapped in try/catch — malformed data returns empty array not 500
 
 - [31-01]: EmailHealthEvent.senderId is optional (SetNull on delete) — audit trail persists even after sender deletion
 - [31-01]: patchSenderEmail is a plain API wrapper; caller decides when to invoke based on EMAILBISON_SENDER_MGMT_ENABLED
@@ -75,6 +79,8 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - [33-02]: Messages fetched on-demand (separate endpoint) not inline with conversations — minimizes Voyager API calls
 - [33-02]: randomDelay(2-3s) applied before fetchMessages API call to mimic human browsing speed
 - [33-02]: Proxy support deferred — TODO comments left pending getSenderById() on ApiClient
+- [Phase 32-03]: DeliverabilityBentoCard fetches from existing /api/deliverability/summary endpoint — no new API needed
+- [Phase 32-03]: Insight dedup uses findFirst on observation contains senderEmail — prevents duplicate active insights per sender
 
 ### Blockers/Concerns
 
@@ -90,5 +96,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 33-01-PLAN.md — EmailBison spike + client extensions done. Plan 02 already previously complete.
+Stopped at: Completed 32-01-PLAN.md — four deliverability API endpoints built and committed.
 Resume file: None

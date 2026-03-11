@@ -42,16 +42,16 @@ Requirements for Email Deliverability & Domain Infrastructure Monitoring. Each m
 
 ### Dashboard
 
-- [ ] **DASH-01**: Deliverability page shows domain health cards with SPF/DKIM/DMARC badges and blacklist status
-- [ ] **DASH-02**: Per-sender 30-day bounce rate sparklines on deliverability page
-- [ ] **DASH-03**: Warmup status visualization (progress bars per sender)
-- [ ] **DASH-04**: Auto-rotation activity feed showing recent EmailHealthEvent timeline
+- [x] **DASH-01**: Deliverability page shows domain health cards with SPF/DKIM/DMARC badges and blacklist status
+- [x] **DASH-02**: Per-sender 30-day bounce rate sparklines on deliverability page
+- [x] **DASH-03**: Warmup status visualization (progress bars per sender)
+- [x] **DASH-04**: Auto-rotation activity feed showing recent EmailHealthEvent timeline
 - [ ] **DASH-05**: Deliverability link added to admin sidebar navigation
 
 ### Intelligence Integration
 
-- [ ] **INTEL-01**: Intelligence Hub shows deliverability summary bento card (domains healthy/at-risk, worst domain)
-- [ ] **INTEL-02**: Insight records generated when senders transition to warning/critical
+- [x] **INTEL-01**: Intelligence Hub shows deliverability summary bento card (domains healthy/at-risk, worst domain)
+- [x] **INTEL-02**: Insight records generated when senders transition to warning/critical
 - [ ] **INTEL-03**: Weekly deliverability digest fires on Mondays with bounce trends and domain health summary
 
 ### Portal
@@ -172,13 +172,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ROTATE-04 | Phase 31 | Complete |
 | ROTATE-05 | Phase 31 | Complete |
 | ROTATE-06 | Phase 31 | Complete |
-| DASH-01 | Phase 32 | Pending |
-| DASH-02 | Phase 32 | Pending |
-| DASH-03 | Phase 32 | Pending |
-| DASH-04 | Phase 32 | Pending |
+| DASH-01 | Phase 32 | Complete |
+| DASH-02 | Phase 32 | Complete |
+| DASH-03 | Phase 32 | Complete |
+| DASH-04 | Phase 32 | Complete |
 | DASH-05 | Phase 32 | Pending |
-| INTEL-01 | Phase 32 | Pending |
-| INTEL-02 | Phase 32 | Pending |
+| INTEL-01 | Phase 32 | Complete |
+| INTEL-02 | Phase 32 | Complete |
 | INTEL-03 | Phase 32 | Pending |
 | PORTAL-01 | Phase 32 | Pending |
 | API-01 | Phase 33 | Complete |
