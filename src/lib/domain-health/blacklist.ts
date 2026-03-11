@@ -152,6 +152,10 @@ export function reverseIp(ip: string): string {
  * Check a single DNSBL entry for a given query (domain or reversed IP).
  * Returns the DNSBL entry if listed, null if clean or on error.
  */
+// Spamhaus (and some other DNSBLs) return special IPs to signal errors, not actual listings.
+// 127.255.255.252 = excessive queries, 127.255.255.254 = public/open resolver, 127.255.255.255 = general error
+const DNSBL_ERROR_IPS = new Set(["127.255.255.252", "127.255.255.254", "127.255.255.255"]);
+
 async function checkSingleDnsbl(
   resolver: Resolver,
   query: string,
@@ -159,8 +163,13 @@ async function checkSingleDnsbl(
 ): Promise<DnsblEntry | null> {
   const lookupHost = `${query}.${entry.host}`;
   try {
-    // If it resolves (any A record returned), the address is listed
-    await resolver.resolve4(lookupHost);
+    const addresses = await resolver.resolve4(lookupHost);
+    // Filter out DNSBL error responses (not actual listings)
+    const realHits = addresses.filter((ip) => !DNSBL_ERROR_IPS.has(ip));
+    if (realHits.length === 0) {
+      console.warn(`${LOG_PREFIX} ${lookupHost}: DNSBL error response (${addresses.join(",")}), not a real listing`);
+      return null;
+    }
     return entry;
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
