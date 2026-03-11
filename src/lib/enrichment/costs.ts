@@ -20,6 +20,7 @@ export const PROVIDER_COSTS: Record<string, number> = {
   "serper-maps": 0.001,      // 1 credit per search
   "serper-social": 0.001,    // 1 credit per search
   "firecrawl-extract": 0.001, // 1 credit per extract
+  "apify-leads-finder": 0.002, // ~$2/1K leads, charged per lead
 };
 
 const DEFAULT_DAILY_CAP_USD = 10.0;

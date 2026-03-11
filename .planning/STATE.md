@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Email Deliverability & Domain Infrastructure Monitoring
 status: unknown
-last_updated: "2026-03-11T19:36:10.511Z"
+last_updated: "2026-03-11T19:50:08.568Z"
 progress:
   total_phases: 34
-  completed_phases: 31
+  completed_phases: 32
   total_plans: 105
-  completed_plans: 105
+  completed_plans: 106
 ---
 
 # Project State
@@ -114,6 +114,9 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - [Phase 37-02]: Mobile panel visibility uses CSS hidden md:flex not JS resize listeners — no hydration issues
 - [Phase 37-02]: Cross-channel data added to thread detail API response — single round-trip for full thread + cross-channel metadata
 - [Phase 37-02]: workspace package fetched from /api/portal/workspace on mount — dedicated endpoint, clean separation from inbox data
+- [Phase 37-03]: Admin routes use requireAdminAuth() not getPortalSession() — admin is not a portal client
+- [Phase 37-03]: Component override pattern for admin (replyEndpoint, extraBody props) — no component forking, backward compatible
+- [Phase 37-03]: Replying-as banner data from thread workspaceName field — no extra API fetch needed
 
 ### Blockers/Concerns
 
@@ -130,6 +133,7 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - LinkedIn Voyager rate limits unknown — 2-3s delays between calls, limit 20 conversations, 5-min cache, graceful 401/429 degradation
 | Phase 37-inbox-ui-polish-admin-inbox-navigation P01 | 4 | 2 tasks | 7 files |
 | Phase 37-inbox-ui-polish-admin-inbox-navigation P02 | 22 | 2 tasks | 8 files |
+| Phase 37-inbox-ui-polish-admin-inbox-navigation P03 | 10 | 2 tasks | 12 files |
 
 ### Pending Todos
 

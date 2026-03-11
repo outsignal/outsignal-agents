@@ -20,6 +20,12 @@ import {
   notifyBlacklistHit,
   notifyBlacklistDelisted,
   notifyDnsFailure,
+  sendBlacklistDigestEmail,
+  sendDnsFailureDigestEmail,
+} from "@/lib/domain-health/notifications";
+import type {
+  BlacklistDigestItem,
+  DnsFailureDigestItem,
 } from "@/lib/domain-health/notifications";
 
 export const maxDuration = 60;
@@ -228,6 +234,11 @@ function isDnsPersistent(firstFailingSince: Date | null): boolean {
 // Per-domain check
 // ---------------------------------------------------------------------------
 
+interface NotificationData {
+  blacklistHits?: BlacklistDigestItem;
+  dnsFailures?: DnsFailureDigestItem;
+}
+
 interface DomainCheckResult {
   domain: string;
   dnsChecked: boolean;
@@ -235,6 +246,7 @@ interface DomainCheckResult {
   overallHealth: string;
   blacklistHits: string[];
   errors: string[];
+  notificationData: NotificationData;
 }
 
 async function checkDomain(
@@ -322,8 +334,8 @@ async function checkDomain(
     errors.push(msg);
   }
 
-  // 6. Send notifications based on state changes
-  await sendChangeNotifications(priority, dnsResult, blacklistHits, blacklistChecked);
+  // 6. Send notifications based on state changes (Slack only — emails batched later)
+  const notificationData = await sendChangeNotifications(priority, dnsResult, blacklistHits, blacklistChecked);
 
   return {
     domain,
@@ -332,6 +344,7 @@ async function checkDomain(
     overallHealth,
     blacklistHits,
     errors,
+    notificationData,
   };
 }
 
@@ -344,8 +357,9 @@ async function sendChangeNotifications(
   dnsResult: Awaited<ReturnType<typeof checkAllDns>>,
   currentBlacklistHits: string[],
   blacklistChecked: boolean,
-): Promise<void> {
+): Promise<NotificationData> {
   const { domain, previousBlacklistHits, firstFailingSince } = priority;
+  const data: NotificationData = {};
 
   // --- Blacklist change detection ---
   if (blacklistChecked) {
@@ -368,7 +382,10 @@ async function sendChangeNotifications(
             delistUrl: entry?.delistUrl,
           };
         });
-        await notifyBlacklistHit({ domain, hits: hitsWithDetails });
+        // Send Slack immediately (skipEmail — emails are batched after the loop)
+        await notifyBlacklistHit({ domain, hits: hitsWithDetails, skipEmail: true });
+        // Collect for digest email
+        data.blacklistHits = { domain, hits: hitsWithDetails };
       } catch (err) {
         console.error(`${LOG_PREFIX} Failed to send blacklist hit notification for ${domain}:`, err);
       }
@@ -399,11 +416,16 @@ async function sendChangeNotifications(
   if (failures.length > 0) {
     const persistent = isDnsPersistent(firstFailingSince);
     try {
-      await notifyDnsFailure({ domain, failures, persistent });
+      // Send Slack immediately (skipEmail — emails are batched after the loop)
+      await notifyDnsFailure({ domain, failures, persistent, skipEmail: true });
+      // Collect for digest email
+      data.dnsFailures = { domain, failures, persistent };
     } catch (err) {
       console.error(`${LOG_PREFIX} Failed to send DNS failure notification for ${domain}:`, err);
     }
   }
+
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,12 +469,22 @@ export async function GET(request: Request) {
     const sendingIp = process.env.EMAILBISON_SENDING_IP;
     const results: DomainCheckResult[] = [];
     const allErrors: string[] = [];
+    const blacklistDigestItems: BlacklistDigestItem[] = [];
+    const dnsFailureDigestItems: DnsFailureDigestItem[] = [];
 
     for (const priority of toCheck) {
       try {
         const result = await checkDomain(priority, sendingIp);
         results.push(result);
         allErrors.push(...result.errors);
+
+        // Collect digest data for batched emails
+        if (result.notificationData.blacklistHits) {
+          blacklistDigestItems.push(result.notificationData.blacklistHits);
+        }
+        if (result.notificationData.dnsFailures) {
+          dnsFailureDigestItems.push(result.notificationData.dnsFailures);
+        }
       } catch (err) {
         const msg = `Unexpected error checking domain ${priority.domain}: ${err instanceof Error ? err.message : String(err)}`;
         console.error(`${LOG_PREFIX} ${msg}`);
@@ -460,7 +492,19 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Build summary
+    // 4. Send batched digest emails (one email per type, covering all domains)
+    try {
+      await sendBlacklistDigestEmail(blacklistDigestItems);
+    } catch (err) {
+      console.error(`${LOG_PREFIX} Failed to send blacklist digest email:`, err);
+    }
+    try {
+      await sendDnsFailureDigestEmail(dnsFailureDigestItems);
+    } catch (err) {
+      console.error(`${LOG_PREFIX} Failed to send DNS failure digest email:`, err);
+    }
+
+    // 5. Build summary
     const summary = {
       status: allErrors.length === 0 ? "ok" : "partial",
       domainsChecked: results.length,

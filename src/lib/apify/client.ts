@@ -20,7 +20,7 @@ function getClient(): ApifyClient {
 /**
  * Run an Apify actor and return its default dataset items.
  *
- * @param actorId - Full actor identifier, e.g. "supreme_coder/apollo-scraper"
+ * @param actorId - Full actor identifier, e.g. "author/actor-name"
  * @param input - Actor input object (passed as-is)
  * @param options - Optional timeout and memory overrides
  * @returns Array of dataset items typed as T

@@ -102,10 +102,10 @@ Requirements for Client Portal Inbox. Each maps to roadmap phases.
 
 ### Admin Inbox
 
-- [ ] **ADMIN-01**: Master inbox page on admin dashboard showing all workspaces
-- [ ] **ADMIN-02**: Workspace filter dropdown (default: All, can select specific workspace)
-- [ ] **ADMIN-03**: Same two-panel UI reused from portal inbox components
-- [ ] **ADMIN-04**: Admin can reply on behalf of any workspace (email + LinkedIn)
+- [x] **ADMIN-01**: Master inbox page on admin dashboard showing all workspaces
+- [x] **ADMIN-02**: Workspace filter dropdown (default: All, can select specific workspace)
+- [x] **ADMIN-03**: Same two-panel UI reused from portal inbox components
+- [x] **ADMIN-04**: Admin can reply on behalf of any workspace (email + LinkedIn)
 
 ### Navigation
 
@@ -204,10 +204,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-05 | Phase 37 | Complete |
 | UI-06 | Phase 37 | Complete |
 | UI-07 | Phase 37 | Complete |
-| ADMIN-01 | Phase 37 | Pending |
-| ADMIN-02 | Phase 37 | Pending |
-| ADMIN-03 | Phase 37 | Pending |
-| ADMIN-04 | Phase 37 | Pending |
+| ADMIN-01 | Phase 37 | Complete |
+| ADMIN-02 | Phase 37 | Complete |
+| ADMIN-03 | Phase 37 | Complete |
+| ADMIN-04 | Phase 37 | Complete |
 | NAV-01 | Phase 37 | Complete |
 | NAV-02 | Phase 37 | Complete |
 

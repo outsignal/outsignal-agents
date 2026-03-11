@@ -40,8 +40,9 @@ function tierBadge(tier: string): string {
 export async function notifyBlacklistHit(params: {
   domain: string;
   hits: Array<{ list: string; tier: string; delistUrl?: string }>;
+  skipEmail?: boolean;
 }): Promise<void> {
-  const { domain, hits } = params;
+  const { domain, hits, skipEmail } = params;
   const hasCritical = hits.some((h) => h.tier === "critical");
   const severityEmoji = hasCritical ? ":rotating_light:" : ":warning:";
   const headerText = `${severityEmoji} Domain Blacklisted: ${domain}`;
@@ -97,59 +98,61 @@ export async function notifyBlacklistHit(params: {
     }
   }
 
-  // --- Email ---
-  const adminEmail = getAdminEmail();
-  if (adminEmail) {
-    const verified = verifyEmailRecipients([adminEmail], "admin", "notifyBlacklistHit");
-    if (verified.length > 0) {
-      const hitRowsHtml = hits
-        .map((h) => {
-          const color = h.tier === "critical" ? "#dc2626" : "#d97706";
-          const label = h.tier === "critical" ? "CRITICAL" : "WARNING";
-          const delistLink = h.delistUrl
-            ? ` &mdash; <a href="${h.delistUrl}" style="color:#F0FF7A;">Request Removal</a>`
-            : "";
-          return `<tr>
-            <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-              <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:8px;">${label}</span>
-              ${h.list}${delistLink}
-            </td>
-          </tr>`;
-        })
-        .join("");
+  // --- Email (skipped when batching) ---
+  if (!skipEmail) {
+    const adminEmail = getAdminEmail();
+    if (adminEmail) {
+      const verified = verifyEmailRecipients([adminEmail], "admin", "notifyBlacklistHit");
+      if (verified.length > 0) {
+        const hitRowsHtml = hits
+          .map((h) => {
+            const color = h.tier === "critical" ? "#dc2626" : "#d97706";
+            const label = h.tier === "critical" ? "CRITICAL" : "WARNING";
+            const delistLink = h.delistUrl
+              ? ` &mdash; <a href="${h.delistUrl}" style="color:#F0FF7A;">Request Removal</a>`
+              : "";
+            return `<tr>
+              <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
+                <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:8px;">${label}</span>
+                ${h.list}${delistLink}
+              </td>
+            </tr>`;
+          })
+          .join("");
 
-      const html = buildEmailHtml({
-        title: `Domain Blacklisted: ${domain}`,
-        bodyContent: `
-          <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-            The domain <strong>${domain}</strong> has been detected on ${hits.length} DNSBL${hits.length !== 1 ? "s" : ""}.
-            This may impact email deliverability for all senders on this domain.
-          </p>
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-            ${hitRowsHtml}
-          </table>
-          <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
-            Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.
-          </p>`,
-      });
+        const html = buildEmailHtml({
+          title: `Domain Blacklisted: ${domain}`,
+          bodyContent: `
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
+              The domain <strong>${domain}</strong> has been detected on ${hits.length} DNSBL${hits.length !== 1 ? "s" : ""}.
+              This may impact email deliverability for all senders on this domain.
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              ${hitRowsHtml}
+            </table>
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
+              Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.
+            </p>`,
+        });
 
-      try {
-        await audited(
-          {
-            notificationType: "domain_blacklisted",
-            channel: "email",
-            recipient: verified.join(","),
-            metadata: { domain, hits: hits.length, hasCritical },
-          },
-          () =>
-            sendNotificationEmail({
-              to: verified,
-              subject: `[Outsignal] Domain Blacklisted: ${domain} (${hits.length} listing${hits.length !== 1 ? "s" : ""})`,
-              html,
-            }),
-        );
-      } catch (err) {
-        console.error(`${LOG_PREFIX} Failed to send blacklist email alert for ${domain}:`, err);
+        try {
+          await audited(
+            {
+              notificationType: "domain_blacklisted",
+              channel: "email",
+              recipient: verified.join(","),
+              metadata: { domain, hits: hits.length, hasCritical },
+            },
+            () =>
+              sendNotificationEmail({
+                to: verified,
+                subject: `[Outsignal] Domain Blacklisted: ${domain} (${hits.length} listing${hits.length !== 1 ? "s" : ""})`,
+                html,
+              }),
+          );
+        } catch (err) {
+          console.error(`${LOG_PREFIX} Failed to send blacklist email alert for ${domain}:`, err);
+        }
       }
     }
   }
@@ -228,8 +231,9 @@ export async function notifyDnsFailure(params: {
   domain: string;
   failures: Array<{ check: "spf" | "dkim" | "dmarc"; status: string }>;
   persistent: boolean;
+  skipEmail?: boolean;
 }): Promise<void> {
-  const { domain, failures, persistent } = params;
+  const { domain, failures, persistent, skipEmail } = params;
   const severity = persistent ? "critical" : "warning";
   const severityLabel = persistent ? "CRITICAL" : "Warning";
   const emoji = persistent ? ":rotating_light:" : ":warning:";
@@ -294,61 +298,250 @@ export async function notifyDnsFailure(params: {
     }
   }
 
-  // --- Email ---
+  // --- Email (skipped when batching) ---
+  if (!skipEmail) {
+    const adminEmail = getAdminEmail();
+    if (adminEmail) {
+      const verified = verifyEmailRecipients([adminEmail], "admin", "notifyDnsFailure");
+      if (verified.length > 0) {
+        const failureRowsHtml = failures
+          .map(
+            (f) => `<tr>
+              <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
+                <strong>${checkLabels[f.check] ?? f.check}:</strong> <code style="background:#f4f4f5;padding:2px 6px;border-radius:4px;">${f.status}</code>
+              </td>
+            </tr>`,
+          )
+          .join("");
+
+        const escalationHtml = persistent
+          ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#dc2626;font-weight:700;margin:16px 0 0 0;">
+              This DNS misconfiguration has been present for over 48 hours. Immediate action required.
+             </p>`
+          : "";
+
+        const html = buildEmailHtml({
+          title: `DNS ${severityLabel}: ${domain}`,
+          bodyContent: `
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
+              DNS validation failed for <strong>${domain}</strong>. The following checks did not pass:
+            </p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              ${failureRowsHtml}
+            </table>
+            ${escalationHtml}
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
+              DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.
+            </p>`,
+        });
+
+        try {
+          await audited(
+            {
+              notificationType: "domain_dns_failure",
+              channel: "email",
+              recipient: verified.join(","),
+              metadata: { domain, severity, checks: failures.map((f) => f.check), persistent },
+            },
+            () =>
+              sendNotificationEmail({
+                to: verified,
+                subject: `[Outsignal] DNS ${severityLabel}: ${domain} — ${failures.map((f) => checkLabels[f.check] ?? f.check).join(", ")} failed`,
+                html,
+              }),
+          );
+        } catch (err) {
+          console.error(`${LOG_PREFIX} Failed to send DNS failure email alert for ${domain}:`, err);
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Batch digest emails
+// ---------------------------------------------------------------------------
+
+export interface BlacklistDigestItem {
+  domain: string;
+  hits: Array<{ list: string; tier: string; delistUrl?: string }>;
+}
+
+export interface DnsFailureDigestItem {
+  domain: string;
+  failures: Array<{ check: string; status: string }>;
+  persistent: boolean;
+}
+
+/**
+ * Send a single digest email covering blacklist hits across all domains.
+ */
+export async function sendBlacklistDigestEmail(
+  items: BlacklistDigestItem[],
+): Promise<void> {
+  if (items.length === 0) return;
+
   const adminEmail = getAdminEmail();
-  if (adminEmail) {
-    const verified = verifyEmailRecipients([adminEmail], "admin", "notifyDnsFailure");
-    if (verified.length > 0) {
-      const failureRowsHtml = failures
+  if (!adminEmail) return;
+  const verified = verifyEmailRecipients([adminEmail], "admin", "sendBlacklistDigestEmail");
+  if (verified.length === 0) return;
+
+  const totalHits = items.reduce((sum, item) => sum + item.hits.length, 0);
+  const hasCritical = items.some((item) => item.hits.some((h) => h.tier === "critical"));
+
+  const domainSectionsHtml = items
+    .map((item) => {
+      const hitRowsHtml = item.hits
+        .map((h) => {
+          const color = h.tier === "critical" ? "#dc2626" : "#d97706";
+          const label = h.tier === "critical" ? "CRITICAL" : "WARNING";
+          const delistLink = h.delistUrl
+            ? ` &mdash; <a href="${h.delistUrl}" style="color:#F0FF7A;">Request Removal</a>`
+            : "";
+          return `<tr>
+            <td style="padding:4px 0 4px 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
+              <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:8px;">${label}</span>
+              ${h.list}${delistLink}
+            </td>
+          </tr>`;
+        })
+        .join("");
+
+      return `
+        <tr>
+          <td style="padding:16px 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#18181b;border-top:1px solid #e4e4e7;">
+            ${item.domain} &mdash; ${item.hits.length} listing${item.hits.length !== 1 ? "s" : ""}
+          </td>
+        </tr>
+        ${hitRowsHtml}`;
+    })
+    .join("");
+
+  const html = buildEmailHtml({
+    title: `Blacklist Alert: ${items.length} Domain${items.length !== 1 ? "s" : ""} Listed`,
+    bodyContent: `
+      <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
+        ${items.length} domain${items.length !== 1 ? "s have" : " has"} been detected on DNSBLs (${totalHits} total listing${totalHits !== 1 ? "s" : ""}).
+        This may impact email deliverability.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+        ${domainSectionsHtml}
+      </table>
+      <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
+        Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.
+      </p>`,
+  });
+
+  try {
+    await audited(
+      {
+        notificationType: "domain_blacklisted_digest",
+        channel: "email",
+        recipient: verified.join(","),
+        metadata: { domains: items.length, totalHits, hasCritical },
+      },
+      () =>
+        sendNotificationEmail({
+          to: verified,
+          subject: `[Outsignal] Blacklist Alert: ${items.length} domain${items.length !== 1 ? "s" : ""}, ${totalHits} listing${totalHits !== 1 ? "s" : ""}`,
+          html,
+        }),
+    );
+  } catch (err) {
+    console.error(`${LOG_PREFIX} Failed to send blacklist digest email:`, err);
+  }
+}
+
+/**
+ * Send a single digest email covering DNS failures across all domains.
+ */
+export async function sendDnsFailureDigestEmail(
+  items: DnsFailureDigestItem[],
+): Promise<void> {
+  if (items.length === 0) return;
+
+  const adminEmail = getAdminEmail();
+  if (!adminEmail) return;
+  const verified = verifyEmailRecipients([adminEmail], "admin", "sendDnsFailureDigestEmail");
+  if (verified.length === 0) return;
+
+  const hasPersistent = items.some((item) => item.persistent);
+  const severityLabel = hasPersistent ? "CRITICAL" : "Warning";
+
+  const checkLabels: Record<string, string> = {
+    spf: "SPF",
+    dkim: "DKIM",
+    dmarc: "DMARC",
+  };
+
+  const domainSectionsHtml = items
+    .map((item) => {
+      const persistentBadge = item.persistent
+        ? ` <span style="display:inline-block;background-color:#dc2626;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px;">48h+ PERSISTENT</span>`
+        : "";
+
+      const failureRowsHtml = item.failures
         .map(
           (f) => `<tr>
-            <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
+            <td style="padding:4px 0 4px 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
               <strong>${checkLabels[f.check] ?? f.check}:</strong> <code style="background:#f4f4f5;padding:2px 6px;border-radius:4px;">${f.status}</code>
             </td>
           </tr>`,
         )
         .join("");
 
-      const escalationHtml = persistent
-        ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#dc2626;font-weight:700;margin:16px 0 0 0;">
-            This DNS misconfiguration has been present for over 48 hours. Immediate action required.
-           </p>`
-        : "";
+      return `
+        <tr>
+          <td style="padding:16px 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#18181b;border-top:1px solid #e4e4e7;">
+            ${item.domain}${persistentBadge}
+          </td>
+        </tr>
+        ${failureRowsHtml}`;
+    })
+    .join("");
 
-      const html = buildEmailHtml({
-        title: `DNS ${severityLabel}: ${domain}`,
-        bodyContent: `
-          <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-            DNS validation failed for <strong>${domain}</strong>. The following checks did not pass:
-          </p>
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-            ${failureRowsHtml}
-          </table>
-          ${escalationHtml}
-          <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
-            DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.
-          </p>`,
-      });
+  const escalationHtml = hasPersistent
+    ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#dc2626;font-weight:700;margin:16px 0 0 0;">
+        One or more domains have had DNS misconfigurations for over 48 hours. Immediate action required.
+       </p>`
+    : "";
 
-      try {
-        await audited(
-          {
-            notificationType: "domain_dns_failure",
-            channel: "email",
-            recipient: verified.join(","),
-            metadata: { domain, severity, checks: failures.map((f) => f.check), persistent },
-          },
-          () =>
-            sendNotificationEmail({
-              to: verified,
-              subject: `[Outsignal] DNS ${severityLabel}: ${domain} — ${failures.map((f) => checkLabels[f.check] ?? f.check).join(", ")} failed`,
-              html,
-            }),
-        );
-      } catch (err) {
-        console.error(`${LOG_PREFIX} Failed to send DNS failure email alert for ${domain}:`, err);
-      }
-    }
+  const html = buildEmailHtml({
+    title: `DNS ${severityLabel}: ${items.length} Domain${items.length !== 1 ? "s" : ""} Failing`,
+    bodyContent: `
+      <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
+        DNS validation failed for ${items.length} domain${items.length !== 1 ? "s" : ""}. The following checks did not pass:
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+        ${domainSectionsHtml}
+      </table>
+      ${escalationHtml}
+      <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
+        DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.
+      </p>`,
+  });
+
+  try {
+    await audited(
+      {
+        notificationType: "domain_dns_failure_digest",
+        channel: "email",
+        recipient: verified.join(","),
+        metadata: {
+          domains: items.length,
+          hasPersistent,
+          checks: items.flatMap((i) => i.failures.map((f) => f.check)),
+        },
+      },
+      () =>
+        sendNotificationEmail({
+          to: verified,
+          subject: `[Outsignal] DNS ${severityLabel}: ${items.length} domain${items.length !== 1 ? "s" : ""} failing validation`,
+          html,
+        }),
+    );
+  } catch (err) {
+    console.error(`${LOG_PREFIX} Failed to send DNS failure digest email:`, err);
   }
 }
 

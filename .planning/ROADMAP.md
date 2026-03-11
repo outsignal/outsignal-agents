@@ -90,7 +90,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 34: LinkedIn Data Layer** — DB models for LinkedIn conversations + messages, fire-and-forget sync API, and participant-to-Person matching; gates all LinkedIn UI work (completed 2026-03-11)
 - [ ] **Phase 35: Email Inbox** — Thread grouping API, conversation view, email reply composer, and AI suggested reply display; delivers immediate client value on the highest-volume channel
 - [x] **Phase 36: LinkedIn Inbox** — Conversation list and detail views from DB, LinkedIn reply queue via LinkedInAction, and manual refresh trigger (completed 2026-03-11)
-- [ ] **Phase 37: Inbox UI Polish, Admin Inbox & Navigation** — Channel tabs, mobile single-panel layout, unread indicators, cross-channel indicator, admin master inbox, and portal sidebar nav update
+- [x] **Phase 37: Inbox UI Polish, Admin Inbox & Navigation** — Channel tabs, mobile single-panel layout, unread indicators, cross-channel indicator, admin master inbox, and portal sidebar nav update (completed 2026-03-11)
 
 ## Phase Details
 
@@ -219,7 +219,7 @@ Plans:
   3. Unread threads show a dot indicator and the Inbox nav item shows the total unread count; reading a thread clears its unread state
   4. When the same person has both an email reply and a LinkedIn conversation, a cross-channel indicator appears in both thread views linking to the other channel
   5. Admin can navigate to /admin/inbox, filter by workspace, and reply on behalf of any client using the same two-panel components built for the portal
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 37-01-PLAN.md — Schema migration (isRead on Reply) + unread tracking APIs + navigation updates (both portals)
 - [ ] 37-02-PLAN.md — Portal inbox UI polish (mobile layout, channel tabs, cross-channel indicator, intent badges, composer upgrade)
@@ -267,4 +267,4 @@ Plans:
 | 34. LinkedIn Data Layer | 1/1 | Complete    | 2026-03-11 | - |
 | 35. Email Inbox | 3/3 | Complete | 2026-03-11 | - |
 | 36. LinkedIn Inbox | 2/2 | Complete    | 2026-03-11 | - |
-| 37. Inbox UI Polish, Admin Inbox & Navigation | 2/3 | In Progress|  | - |
+| 37. Inbox UI Polish, Admin Inbox & Navigation | 3/3 | Complete   | 2026-03-11 | - |
