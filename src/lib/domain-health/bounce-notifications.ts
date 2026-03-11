@@ -1,6 +1,6 @@
 /**
  * Sender bounce health notification functions.
- * Admin-only notifications — uses OPS_SLACK_CHANNEL_ID and ADMIN_EMAIL.
+ * Admin-only notifications — uses ALERTS_SLACK_CHANNEL_ID and ADMIN_EMAIL.
  * All sends are wrapped with audited() for audit trail logging.
  *
  * Fires on status transitions only — the cron route (Plan 02) is responsible
@@ -19,8 +19,8 @@ const LOG_PREFIX = "[bounce-notifications]";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getOpsChannelId(): string | null {
-  return process.env.OPS_SLACK_CHANNEL_ID ?? null;
+function getAlertsChannelId(): string | null {
+  return process.env.ALERTS_SLACK_CHANNEL_ID ?? null;
 }
 
 function getAdminEmail(): string | null {
@@ -303,9 +303,9 @@ export async function notifySenderHealthTransition(params: {
   const label = statusLabel(toStatus);
 
   // --- Slack ---
-  const opsChannelId = getOpsChannelId();
-  if (opsChannelId) {
-    if (verifySlackChannel(opsChannelId, "admin", "notifySenderHealthTransition")) {
+  const alertsChannelId = getAlertsChannelId();
+  if (alertsChannelId) {
+    if (verifySlackChannel(alertsChannelId, "admin", "notifySenderHealthTransition")) {
       const { headerText, blocks } = buildSlackMessage({
         senderEmail, workspaceSlug, fromStatus, toStatus,
         reason, bouncePct, action, replacementEmail,
@@ -316,10 +316,10 @@ export async function notifySenderHealthTransition(params: {
           {
             notificationType,
             channel: "slack",
-            recipient: opsChannelId,
+            recipient: alertsChannelId,
             metadata: { senderEmail, workspaceSlug, fromStatus, toStatus, reason },
           },
-          () => postMessage(opsChannelId, headerText, blocks),
+          () => postMessage(alertsChannelId, headerText, blocks),
         );
       } catch (err) {
         console.error(

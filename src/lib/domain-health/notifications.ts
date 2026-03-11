@@ -1,6 +1,6 @@
 /**
  * Domain health notification functions.
- * Admin-only notifications — uses OPS_SLACK_CHANNEL_ID and ADMIN_EMAIL.
+ * Admin-only notifications — uses ALERTS_SLACK_CHANNEL_ID and ADMIN_EMAIL.
  * All sends are wrapped with audited() for audit trail logging.
  */
 
@@ -20,8 +20,8 @@ function getAdminEmail(): string | null {
   return process.env.ADMIN_EMAIL ?? null;
 }
 
-function getOpsChannelId(): string | null {
-  return process.env.OPS_SLACK_CHANNEL_ID ?? null;
+function getAlertsChannelId(): string | null {
+  return process.env.ALERTS_SLACK_CHANNEL_ID ?? null;
 }
 
 function tierBadge(tier: string): string {
@@ -48,9 +48,9 @@ export async function notifyBlacklistHit(params: {
   const headerText = `${severityEmoji} Domain Blacklisted: ${domain}`;
 
   // --- Slack ---
-  const opsChannelId = getOpsChannelId();
-  if (opsChannelId) {
-    if (verifySlackChannel(opsChannelId, "admin", "notifyBlacklistHit")) {
+  const alertsChannelId = getAlertsChannelId();
+  if (alertsChannelId) {
+    if (verifySlackChannel(alertsChannelId, "admin", "notifyBlacklistHit")) {
       const hitLines = hits
         .map((h) => {
           const badge = tierBadge(h.tier);
@@ -87,10 +87,10 @@ export async function notifyBlacklistHit(params: {
           {
             notificationType: "domain_blacklisted",
             channel: "slack",
-            recipient: opsChannelId,
+            recipient: alertsChannelId,
             metadata: { domain, hits: hits.length, hasCritical },
           },
-          () => postMessage(opsChannelId, headerText, blocks),
+          () => postMessage(alertsChannelId, headerText, blocks),
         );
       } catch (err) {
         console.error(`${LOG_PREFIX} Failed to send blacklist Slack alert for ${domain}:`, err);
@@ -173,9 +173,9 @@ export async function notifyBlacklistDelisted(params: {
   const { domain, delistedFrom } = params;
   const headerText = `:white_check_mark: Domain Delisted: ${domain}`;
 
-  const opsChannelId = getOpsChannelId();
-  if (!opsChannelId) return;
-  if (!verifySlackChannel(opsChannelId, "admin", "notifyBlacklistDelisted")) return;
+  const alertsChannelId = getAlertsChannelId();
+  if (!alertsChannelId) return;
+  if (!verifySlackChannel(alertsChannelId, "admin", "notifyBlacklistDelisted")) return;
 
   const listNames = delistedFrom.map((l) => `• ${l}`).join("\n");
 
@@ -207,10 +207,10 @@ export async function notifyBlacklistDelisted(params: {
       {
         notificationType: "domain_delisted",
         channel: "slack",
-        recipient: opsChannelId,
+        recipient: alertsChannelId,
         metadata: { domain, count: delistedFrom.length },
       },
-      () => postMessage(opsChannelId, headerText, blocks),
+      () => postMessage(alertsChannelId, headerText, blocks),
     );
   } catch (err) {
     console.error(`${LOG_PREFIX} Failed to send delist Slack notification for ${domain}:`, err);
@@ -254,9 +254,9 @@ export async function notifyDnsFailure(params: {
     : "";
 
   // --- Slack ---
-  const opsChannelId = getOpsChannelId();
-  if (opsChannelId) {
-    if (verifySlackChannel(opsChannelId, "admin", "notifyDnsFailure")) {
+  const alertsChannelId = getAlertsChannelId();
+  if (alertsChannelId) {
+    if (verifySlackChannel(alertsChannelId, "admin", "notifyDnsFailure")) {
       const blocks: KnownBlock[] = [
         {
           type: "header",
@@ -287,10 +287,10 @@ export async function notifyDnsFailure(params: {
           {
             notificationType: "domain_dns_failure",
             channel: "slack",
-            recipient: opsChannelId,
+            recipient: alertsChannelId,
             metadata: { domain, severity, checks: failures.map((f) => f.check), persistent },
           },
-          () => postMessage(opsChannelId, headerText, blocks),
+          () => postMessage(alertsChannelId, headerText, blocks),
         );
       } catch (err) {
         console.error(`${LOG_PREFIX} Failed to send DNS failure Slack alert for ${domain}:`, err);

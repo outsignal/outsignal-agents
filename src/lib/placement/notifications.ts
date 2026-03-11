@@ -1,6 +1,6 @@
 /**
  * Placement test notification functions.
- * Admin-only notifications — uses OPS_SLACK_CHANNEL_ID and ADMIN_EMAIL.
+ * Admin-only notifications — uses ALERTS_SLACK_CHANNEL_ID and ADMIN_EMAIL.
  * Only fires for warning (5-6.99) and critical (<5) scores.
  * Good scores (7+) do NOT generate notifications.
  * All sends are wrapped with audited() for audit trail logging.
@@ -22,8 +22,8 @@ function getAdminEmail(): string | null {
   return process.env.ADMIN_EMAIL ?? null;
 }
 
-function getOpsChannelId(): string | null {
-  return process.env.OPS_SLACK_CHANNEL_ID ?? null;
+function getAlertsChannelId(): string | null {
+  return process.env.ALERTS_SLACK_CHANNEL_ID ?? null;
 }
 
 function classificationLabel(classification: "warning" | "critical"): string {
@@ -65,9 +65,9 @@ export async function notifyPlacementResult(
   const badge = classificationLabel(classification);
 
   // --- Slack ---
-  const opsChannelId = getOpsChannelId();
-  if (opsChannelId) {
-    if (verifySlackChannel(opsChannelId, "admin", "notifyPlacementResult")) {
+  const alertsChannelId = getAlertsChannelId();
+  if (alertsChannelId) {
+    if (verifySlackChannel(alertsChannelId, "admin", "notifyPlacementResult")) {
       const headerText = `${classification === "critical" ? ":rotating_light:" : ":warning:"} Placement Test ${classification === "critical" ? "CRITICAL" : "Warning"}: ${senderEmail}`;
 
       const blocks: KnownBlock[] = [
@@ -113,10 +113,10 @@ export async function notifyPlacementResult(
           {
             notificationType: "placement_test_result",
             channel: "slack",
-            recipient: opsChannelId,
+            recipient: alertsChannelId,
             metadata: { senderEmail, score, classification, workspaceSlug, testId },
           },
-          () => postMessage(opsChannelId, headerText, blocks)
+          () => postMessage(alertsChannelId, headerText, blocks)
         );
       } catch (err) {
         console.error(

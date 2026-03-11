@@ -498,9 +498,9 @@ export async function POST(request: NextRequest) {
             if (workspace?.slackChannelId) {
               await postMessage(workspace.slackChannelId, `*Suggested Response for ${leadName || leadEmail}:*\n${suggestion}`).catch(() => {});
             }
-            const opsChannelId = process.env.OPS_SLACK_CHANNEL_ID;
-            if (opsChannelId) {
-              await postMessage(opsChannelId, `*Suggested Response for ${leadName || leadEmail}:*\n${suggestion}`).catch(() => {});
+            const repliesChannelId = process.env.REPLIES_SLACK_CHANNEL_ID;
+            if (repliesChannelId) {
+              await postMessage(repliesChannelId, `*Suggested Response for ${leadName || leadEmail}:*\n${suggestion}`).catch(() => {});
             }
             // Persist AI suggestion to Reply record
             if (replyRecordId) {

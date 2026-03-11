@@ -359,14 +359,14 @@ export async function notifyReply(params: {
     }
   }
 
-  // Slack notification — admin ops channel
-  const opsSlackChannelId = process.env.OPS_SLACK_CHANNEL_ID;
-  if (opsSlackChannelId) {
-    if (verifySlackChannel(opsSlackChannelId, "admin", "notifyReply")) {
+  // Slack notification — admin replies channel
+  const repliesSlackChannelId = process.env.REPLIES_SLACK_CHANNEL_ID;
+  if (repliesSlackChannelId) {
+    if (verifySlackChannel(repliesSlackChannelId, "admin", "notifyReply")) {
       try {
         await audited(
-          { notificationType: "reply", channel: "slack", recipient: opsSlackChannelId, workspaceSlug: params.workspaceSlug },
-          () => postMessage(opsSlackChannelId, slackFallback, slackBlocks),
+          { notificationType: "reply", channel: "slack", recipient: repliesSlackChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(repliesSlackChannelId, slackFallback, slackBlocks),
         );
       } catch (err) {
         console.error("Slack admin notification failed:", err);
@@ -1277,11 +1277,11 @@ export async function notifySenderHealth(params: {
 
   const reasonText = reasonLabel[params.reason] ?? params.reason;
 
-  // ---------- Slack (admin ops channel only) ----------
+  // ---------- Slack (admin alerts channel) ----------
 
-  const opsChannelId = process.env.OPS_SLACK_CHANNEL_ID;
-  if (opsChannelId) {
-    if (verifySlackChannel(opsChannelId, "admin", "notifySenderHealth")) {
+  const alertsChannelId = process.env.ALERTS_SLACK_CHANNEL_ID;
+  if (alertsChannelId) {
+    if (verifySlackChannel(alertsChannelId, "admin", "notifySenderHealth")) {
       try {
         const blocks: KnownBlock[] = [
           {
@@ -1335,8 +1335,8 @@ export async function notifySenderHealth(params: {
         ];
 
         await audited(
-          { notificationType: "sender_health", channel: "slack", recipient: opsChannelId, workspaceSlug: params.workspaceSlug },
-          () => postMessage(opsChannelId, headerText, blocks),
+          { notificationType: "sender_health", channel: "slack", recipient: alertsChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(alertsChannelId, headerText, blocks),
         );
       } catch (err) {
         console.error("Slack sender health notification failed:", err);
