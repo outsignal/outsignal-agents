@@ -253,7 +253,7 @@ Plans:
 | 31. Auto-Rotation Engine | 2/2 | Complete    | 2026-03-11 | - |
 | 32. Deliverability Dashboard & Reporting | 4/4 | Complete    | 2026-03-11 | - |
 | 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
-| 34. LinkedIn Data Layer | 1/1 | Complete   | 2026-03-11 | - |
+| 34. LinkedIn Data Layer | 1/1 | Complete    | 2026-03-11 | - |
 | 35. Email Inbox | v5.0 | 0/TBD | Not started | - |
 | 36. LinkedIn Inbox | v5.0 | 0/TBD | Not started | - |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 0/TBD | Not started | - |
