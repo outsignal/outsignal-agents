@@ -77,3 +77,26 @@ export const ACTION_TYPE_TO_LIMIT_FIELD: Record<string, string> = {
   profile_view: "dailyProfileViewLimit",
   check_connection: "dailyProfileViewLimit",
 };
+
+// LinkedIn Voyager API response types (mirrored from worker/src/voyager-client.ts)
+// These MUST match the worker's interfaces exactly.
+export interface VoyagerConversation {
+  entityUrn: string;
+  conversationId: string;
+  participantName: string | null;
+  participantUrn: string | null;
+  participantProfileUrl: string | null;
+  participantHeadline: string | null;
+  participantProfilePicUrl: string | null;
+  lastActivityAt: number;
+  unreadCount: number;
+  lastMessageSnippet: string | null;
+}
+
+export interface VoyagerMessage {
+  eventUrn: string;
+  senderUrn: string;
+  senderName: string | null;
+  body: string;
+  deliveredAt: number;
+}

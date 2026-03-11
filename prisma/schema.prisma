@@ -846,7 +846,9 @@ model Sender {
   dailyUsage        LinkedInDailyUsage[]
   connections       LinkedInConnection[]
   healthEvents      SenderHealthEvent[]
-  emailHealthEvents EmailHealthEvent[]
+  emailHealthEvents     EmailHealthEvent[]
+  linkedInConversations LinkedInConversation[]
+  linkedInSyncStatus    LinkedInSyncStatus?
 
   @@index([workspaceSlug])
   @@index([status])
@@ -1363,4 +1365,65 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([adminEmail])
   @@index([createdAt])
+}
+
+// --- LinkedIn Inbox Data Layer (v5.0 Phase 34) ---
+
+model LinkedInConversation {
+  id                     String   @id @default(cuid())
+  conversationId         String   @unique  // LinkedIn's conversation ID (from entityUrn)
+  entityUrn              String            // Full LinkedIn entityUrn
+  senderId               String            // Which sender account fetched this
+  workspaceSlug          String            // Denormalized for workspace-scoped queries
+  personId               String?           // Matched Person record (null if no URL match)
+
+  // Participant metadata
+  participantName        String?
+  participantUrn         String?
+  participantProfileUrl  String?           // Normalized to /in/username format
+  participantHeadline    String?
+  participantProfilePicUrl String?
+
+  // Message preview
+  lastMessageSnippet     String?
+  lastActivityAt         DateTime
+  unreadCount            Int      @default(0)
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  sender    Sender             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  messages  LinkedInMessage[]
+
+  @@index([workspaceSlug, lastActivityAt])
+  @@index([senderId])
+  @@index([personId])
+}
+
+model LinkedInMessage {
+  id               String   @id @default(cuid())
+  conversationId   String            // FK to LinkedInConversation.id (internal cuid)
+  eventUrn         String   @unique  // LinkedIn's eventUrn (dedup key)
+  senderUrn        String            // LinkedIn URN of message sender
+  senderName       String?
+  body             String
+  isOutbound       Boolean           // true = we sent it, false = they sent it
+  deliveredAt      DateTime
+
+  createdAt        DateTime @default(now())
+
+  conversation LinkedInConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, deliveredAt])
+}
+
+model LinkedInSyncStatus {
+  id                String    @id @default(cuid())
+  senderId          String    @unique
+  lastSyncedAt      DateTime?
+  conversationCount Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  sender Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }
