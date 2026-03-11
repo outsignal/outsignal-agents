@@ -66,8 +66,8 @@ Requirements for Client Portal Inbox. Each maps to roadmap phases.
 
 - [ ] **API-01**: EmailBison sendReply endpoint validated via live spike test
 - [ ] **API-02**: EmailBison client extended with sendReply(), getReply(), getRepliesPage() methods
-- [ ] **API-03**: LinkedIn Voyager client extended with fetchConversations() and fetchMessages() methods
-- [ ] **API-04**: Worker exposes GET /sessions/{senderId}/conversations endpoint
+- [x] **API-03**: LinkedIn Voyager client extended with fetchConversations() and fetchMessages() methods
+- [x] **API-04**: Worker exposes GET /sessions/{senderId}/conversations endpoint
 
 ### LinkedIn Data
 
@@ -183,8 +183,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PORTAL-01 | Phase 32 | Pending |
 | API-01 | Phase 33 | Pending |
 | API-02 | Phase 33 | Pending |
-| API-03 | Phase 33 | Pending |
-| API-04 | Phase 33 | Pending |
+| API-03 | Phase 33 | Complete |
+| API-04 | Phase 33 | Complete |
 | LI-01 | Phase 34 | Pending |
 | LI-02 | Phase 34 | Pending |
 | LI-03 | Phase 34 | Pending |

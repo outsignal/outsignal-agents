@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: Phase 31 — Auto Rotation Engine (complete, both plans done)
-Plan: 31-02 complete
-Status: Phase 31 fully complete — ready for Phase 32 (bounce snapshot ingestion)
-Last activity: 2026-03-11 — Phase 31 Plan 02 complete (bounce monitor cron + notifications + manual override)
+Phase: Phase 33 — API Spike: Client Extensions (in progress)
+Plan: 33-02 complete
+Status: Phase 33 Plan 02 done — VoyagerClient messaging methods + SessionServer conversation endpoints ready for Phase 34
+Last activity: 2026-03-11 — Phase 33 Plan 02 complete (fetchConversations + fetchMessages + worker HTTP endpoints)
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -67,6 +67,12 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 - [Phase 31-02]: workspaceSlug added to runBounceMonitor transitions so replaceSender has workspace scope
 - [Phase 31-02]: Manual override resets consecutiveHealthyChecks to 0 with no lock — next cron resumes auto-evaluation
 
+- [33-02]: VoyagerError 401/403 propagates without retry — SessionServer returns {error: session_expired, message: Reconnect LinkedIn in settings}
+- [33-02]: VoyagerError 429 fails fast, no retry — account safety is priority
+- [33-02]: Messages fetched on-demand (separate endpoint) not inline with conversations — minimizes Voyager API calls
+- [33-02]: randomDelay(2-3s) applied before fetchMessages API call to mimic human browsing speed
+- [33-02]: Proxy support deferred — TODO comments left pending getSenderById() on ApiClient
+
 ### Blockers/Concerns
 
 - EmailBison POST /replies/{id}/reply is undocumented in live behavior — Phase 33 spike resolves this; fallback is mailto: deeplink
@@ -81,5 +87,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 31-02-PLAN.md — Phase 31 fully done, Phase 32 ready
+Stopped at: Completed 33-02-PLAN.md — VoyagerClient messaging endpoints + SessionServer routes done
 Resume file: None
