@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Client Portal Inbox
 status: roadmap_created
-last_updated: "2026-03-11T00:00:00.000Z"
+last_updated: "2026-03-11T11:34:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 0
@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 
 ## Current Position
 
-Phase: Phase 33 — API Spike & Client Extensions (not started)
-Plan: —
-Status: Roadmap created, awaiting plan-phase
-Last activity: 2026-03-11 — v5.0 roadmap created (5 phases, 27 requirements mapped)
+Phase: Phase 31 — Auto Rotation Engine (in progress, plan 02 pending)
+Plan: 31-01 complete
+Status: Executing v4.0 Phase 31 in parallel with v5.0 planning
+Last activity: 2026-03-11 — Phase 31 Plan 01 complete (EmailHealthEvent model + bounce monitor state machine)
 
 Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 108 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 4)
+- Total plans completed: 109 (v1.0: 22, v1.1: 40, v2.0: 26, v3.0: 16, v4.0: 5)
 - Average duration: ~15 min
 - Total execution time: ~22 hours
 
@@ -45,6 +45,11 @@ Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+- [31-01]: EmailHealthEvent.senderId is optional (SetNull on delete) — audit trail persists even after sender deletion
+- [31-01]: patchSenderEmail is a plain API wrapper; caller decides when to invoke based on EMAILBISON_SENDER_MGMT_ENABLED
+- [31-01]: Campaign removal for critical senders deferred to 'campaign_removal_pending' — EmailBison API unknown per research
+- [31-01]: runBounceMonitor returns transition list without sending notifications — Plan 02 owns notification dispatch
 
 - [v5.0 Pre-Milestone]: No new dependencies — entire milestone is application-layer code on existing stack
 - [v5.0 Pre-Milestone]: DB-intermediary pattern for LinkedIn — portal reads from DB only; Railway worker syncs from Voyager
@@ -73,5 +78,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: v5.0 roadmap created — Phase 33 ready to plan
+Stopped at: Phase 31 Plan 01 complete — Phase 31 Plan 02 (cron route + notifications) ready to execute
 Resume file: None

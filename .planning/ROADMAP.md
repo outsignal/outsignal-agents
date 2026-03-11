@@ -157,7 +157,7 @@ Plans:
   2. EmailBisonClient exposes sendReply(), getReply(), and getRepliesPage() methods with correct TypeScript types
   3. VoyagerClient exposes fetchConversations() and fetchMessages() methods that return typed conversation and message objects from the Voyager messaging API
   4. The Railway worker exposes GET /sessions/{senderId}/conversations and returns conversations JSON the portal can consume
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 33-01-PLAN.md — EmailBison sendReply spike + client extensions (sendReply, getReply, getRepliesPage)
 - [ ] 33-02-PLAN.md — VoyagerClient conversation methods + worker conversations endpoint
@@ -243,7 +243,7 @@ Plans:
 | 28. Intelligence Hub Dashboard | v3.0 | 2/2 | Complete | 2026-03-10 |
 | 29. Domain Health Foundation | v4.0 | 3/3 | Complete | 2026-03-10 |
 | 30. Inbox Placement Testing | v4.0 | 2/2 | Complete | 2026-03-11 |
-| 31. Auto-Rotation Engine | v4.0 | 0/TBD | Not started | - |
+| 31. Auto-Rotation Engine | 1/2 | In Progress|  | - |
 | 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |
 | 33. API Spike & Client Extensions | v5.0 | 0/2 | Not started | - |
 | 34. LinkedIn Data Layer | v5.0 | 0/TBD | Not started | - |

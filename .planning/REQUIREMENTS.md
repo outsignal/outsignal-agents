@@ -34,11 +34,11 @@ Requirements for Email Deliverability & Domain Infrastructure Monitoring. Each m
 ### Auto-Rotation
 
 - [ ] **ROTATE-01**: Bounce monitor runs every 4 hours checking all sender emails across workspaces
-- [ ] **ROTATE-02**: Graduated health status: healthy (<3%), elevated (3-5%), warning (5-8%), critical (>8% or blacklisted)
-- [ ] **ROTATE-03**: Auto-recovery when bounce rate sustained below 3% for 7 consecutive days
-- [ ] **ROTATE-04**: EmailHealthEvent audit trail records all status transitions with reason and bounce percentage
+- [x] **ROTATE-02**: Graduated health status: healthy (<3%), elevated (3-5%), warning (5-8%), critical (>8% or blacklisted)
+- [x] **ROTATE-03**: Auto-recovery when bounce rate sustained below 3% for 7 consecutive days
+- [x] **ROTATE-04**: EmailHealthEvent audit trail records all status transitions with reason and bounce percentage
 - [ ] **ROTATE-05**: Admin receives notification with recommended action when sender reaches warning/critical status
-- [ ] **ROTATE-06**: EmailBison sender management methods added (pause, daily limit, warmup) — feature-flagged pending API investigation
+- [x] **ROTATE-06**: EmailBison sender management methods added (pause, daily limit, warmup) — feature-flagged pending API investigation
 
 ### Dashboard
 
@@ -167,11 +167,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLACE-03 | Phase 30 | Complete |
 | PLACE-04 | Phase 30 | Complete |
 | ROTATE-01 | Phase 31 | Pending |
-| ROTATE-02 | Phase 31 | Pending |
-| ROTATE-03 | Phase 31 | Pending |
-| ROTATE-04 | Phase 31 | Pending |
+| ROTATE-02 | Phase 31 | Complete |
+| ROTATE-03 | Phase 31 | Complete |
+| ROTATE-04 | Phase 31 | Complete |
 | ROTATE-05 | Phase 31 | Pending |
-| ROTATE-06 | Phase 31 | Pending |
+| ROTATE-06 | Phase 31 | Complete |
 | DASH-01 | Phase 32 | Pending |
 | DASH-02 | Phase 32 | Pending |
 | DASH-03 | Phase 32 | Pending |
