@@ -146,7 +146,12 @@ Plans:
   3. The Intelligence Hub shows a deliverability bento card summarizing how many domains are healthy vs at-risk and which is worst
   4. A weekly digest fires every Monday containing bounce trends and domain health summary for all workspaces
   5. Clients can view per-sender bounce rates and domain health badges on their portal email-health page
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 32-01-PLAN.md — Deliverability API layer (summary, domains, senders, events endpoints)
+- [ ] 32-02-PLAN.md — Admin deliverability page with domain cards, sender table, activity feed + sidebar link
+- [ ] 32-03-PLAN.md — Intelligence Hub bento card + auto-insight generation on warning/critical
+- [ ] 32-04-PLAN.md — Weekly digest notification + portal email-health enhancement
 
 ### Phase 33: API Spike & Client Extensions
 **Goal**: EmailBison sendReply behavior is validated live and both API clients are extended with inbox methods — unblocking every downstream phase
@@ -245,7 +250,7 @@ Plans:
 | 30. Inbox Placement Testing | v4.0 | 2/2 | Complete | 2026-03-11 |
 | 31. Auto-Rotation Engine | 2/2 | Complete    | 2026-03-11 | - |
 | 32. Deliverability Dashboard & Reporting | v4.0 | 0/TBD | Not started | - |
-| 33. API Spike & Client Extensions | 2/2 | Complete   | 2026-03-11 | - |
+| 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
 | 34. LinkedIn Data Layer | v5.0 | 0/TBD | Not started | - |
 | 35. Email Inbox | v5.0 | 0/TBD | Not started | - |
 | 36. LinkedIn Inbox | v5.0 | 0/TBD | Not started | - |
