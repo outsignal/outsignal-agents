@@ -205,11 +205,23 @@ export async function GET(request: Request) {
                   outboundBody,
                   source: "poll",
                   personId,
+                  // Inbox fields
+                  emailBisonParentId: reply.parent_id ?? null,
+                  leadEmail: reply.from_email_address.toLowerCase(),
+                  htmlBody: reply.html_body ?? null,
+                  ebSenderEmailId: reply.sender_email_id ?? null,
+                  interested: reply.interested ?? false,
+                  direction: (reply.folder === "Sent" || reply.type === "Outgoing Email") ? "outbound" : "inbound",
                 },
                 update: {
                   bodyText: replyBodyText,
                   subject: reply.subject,
                   senderName: reply.from_name,
+                  // Backfill inbox fields
+                  htmlBody: reply.html_body ?? undefined,
+                  interested: reply.interested ?? undefined,
+                  emailBisonParentId: reply.parent_id ?? undefined,
+                  ebSenderEmailId: reply.sender_email_id ?? undefined,
                 },
               });
 

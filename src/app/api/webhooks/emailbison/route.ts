@@ -409,11 +409,23 @@ export async function POST(request: NextRequest) {
             source: "webhook",
             webhookEventId: webhookEvent.id,
             personId,
+            // Inbox fields
+            emailBisonParentId: data.reply?.parent_id ?? null,
+            leadEmail: (data.reply?.from_email_address ?? leadEmail ?? "").toLowerCase() || null,
+            htmlBody: data.reply?.html_body ?? null,
+            ebSenderEmailId: data.reply?.sender_email_id ?? null,
+            interested: data.reply?.interested ?? false,
+            direction: (data.reply?.folder === "Sent" || data.reply?.type === "Outgoing Email") ? "outbound" : "inbound",
           },
           update: {
             bodyText: replyBodyText,
             subject,
             senderName: replySenderName,
+            // Backfill inbox fields on re-process
+            htmlBody: data.reply?.html_body ?? undefined,
+            interested: data.reply?.interested ?? undefined,
+            emailBisonParentId: data.reply?.parent_id ?? undefined,
+            ebSenderEmailId: data.reply?.sender_email_id ?? undefined,
           },
         });
 
@@ -489,6 +501,15 @@ export async function POST(request: NextRequest) {
             const opsChannelId = process.env.OPS_SLACK_CHANNEL_ID;
             if (opsChannelId) {
               await postMessage(opsChannelId, `*Suggested Response for ${leadName || leadEmail}:*\n${suggestion}`).catch(() => {});
+            }
+            // Persist AI suggestion to Reply record
+            if (replyRecordId) {
+              await prisma.reply.update({
+                where: { id: replyRecordId },
+                data: { aiSuggestedReply: suggestion },
+              }).catch((err) => {
+                console.error("[webhook] Failed to persist AI suggestion:", err);
+              });
             }
           }
         }).catch((err) => {
