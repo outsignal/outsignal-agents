@@ -249,7 +249,11 @@ Plans:
   3. `trigger.config.ts` contains `prismaExtension` with `mode: "legacy"` and `binaryTargets` in `schema.prisma` includes `debian-openssl-3.0.x`
   4. The Vercel integration is installed and Trigger.dev dashboard shows all production env vars synced from Vercel
   5. `/trigger/queues.ts` exists with a named `anthropicQueue` (concurrencyLimit: 3) and `emailBisonQueue` that all AI tasks can reference
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 38-01-PLAN.md — SDK install, trigger.config.ts with Prisma extension, binary targets, shared queues
+- [ ] 38-02-PLAN.md — Trigger.dev project creation, Vercel integration, env var sync, Neon connection config
+- [ ] 38-03-PLAN.md — Smoke test task (Prisma + Anthropic + Slack + EmailBison + Resend) and verification
 
 ### Phase 39: Webhook Reply Migration
 **Goal**: The EmailBison webhook handler returns 200 immediately and all reply processing (classification, LinkedIn fast-track) runs as Trigger.dev tasks — ending the fire-and-forget silent failure pattern
@@ -349,7 +353,7 @@ Plans:
 | 35. Email Inbox | v5.0 | 3/3 | Complete | 2026-03-11 |
 | 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
-| 38. Trigger.dev Foundation + Smoke Test | v6.0 | 0/TBD | Not started | - |
+| 38. Trigger.dev Foundation + Smoke Test | v6.0 | 0/3 | Planned | - |
 | 39. Webhook Reply Migration | v6.0 | 0/TBD | Not started | - |
 | 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
 | 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |
