@@ -39,7 +39,7 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 
 ### Decommission & Observability
 
-- [ ] **DECOMM-01**: All cron-job.org jobs disabled after Trigger.dev crons verified stable
+- [x] **DECOMM-01**: All cron-job.org jobs disabled after Trigger.dev crons verified stable
 - [ ] **DECOMM-02**: Fire-and-forget `.then()` patterns removed from webhook handlers
 - [x] **DECOMM-03**: `after()` campaign deploy pattern migrated to Trigger.dev task
 - [ ] **DECOMM-04**: Background task status visible in admin dashboard (task runs, failures, durations)
@@ -93,7 +93,7 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 | CRON-09 | Phase 42 | Complete (2026-03-12) |
 | CRON-10 | Phase 42 | Complete (2026-03-12) |
 | DECOMM-03 | Phase 42 | Complete (2026-03-12) |
-| DECOMM-01 | Phase 43 | Pending |
+| DECOMM-01 | Phase 43 | Complete |
 | DECOMM-02 | Phase 43 | Pending |
 | DECOMM-04 | Phase 43 | Pending |
 

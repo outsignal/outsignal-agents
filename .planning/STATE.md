@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 43 of 44 (Decommission + Observability Validation)
-Plan: 0 of TBD (not yet planned)
-Status: Phase 42 complete — all cron tasks deployed to Trigger.dev (10/10 schedules), 7 cron-job.org jobs disabled, campaign deploy after() replaced
-Last activity: 2026-03-12 — Phase 42 complete: consolidated 4 tasks to fit free tier, deployed, disabled cron-job.org
+Plan: 1 of TBD (43-01 complete)
+Status: Phase 43 Plan 01 complete — sync-senders merged into inbox-check, postmaster-stats-sync Trigger.dev task live (10am UTC), global onFailure Slack hook added, cron-job.org fully retired (0 active jobs)
+Last activity: 2026-03-12 — Phase 43-01 complete: zero active cron-job.org jobs, 10/10 Trigger.dev schedule slots used
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -45,6 +45,12 @@ Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+v6.0 Phase 43-01 decisions:
+- [Phase 43-01]: Two-step deploy required to swap sync-senders for postmaster-stats-sync — adding before removing hits 11/10 limit; remove first (10→9), then add (9→10)
+- [Phase 43-01]: onFailure hook uses inline fetch to Slack API — not src/lib/slack import (build-time import risk)
+- [Phase 43-01]: runSyncSenders() exported as plain async function; inbox-check calls it as Step 3 after sender health check
+- [Phase 43-01]: .trigger/ local dev cache added to .gitignore (was untracked, not in any previous .gitignore)
 
 v6.0 Phase 41-01 decisions:
 - [Phase 41-01]: retry-classification removes take:50 batch limit — no timeout constraint in Trigger.dev (300s), process all unclassified replies in one run
@@ -124,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 42-02-PLAN.md (poll-replies + domain-health Trigger.dev scheduled tasks)
+Stopped at: Completed 43-01-PLAN.md (sync-senders consolidation, postmaster-stats-sync, onFailure hook, cron-job.org retirement)
 Resume file: None
