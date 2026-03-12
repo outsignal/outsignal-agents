@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
-last_updated: "2026-03-12T21:44:21.976Z"
+last_updated: "2026-03-12T21:48:51.514Z"
 progress:
   total_phases: 42
-  completed_phases: 37
+  completed_phases: 38
   total_plans: 124
-  completed_plans: 121
+  completed_plans: 123
 ---
 
 # Project State
@@ -113,6 +113,8 @@ Recent v5.0 decisions carried forward (still relevant):
 - [Phase 42-02]: domain-health uses Promise.allSettled for concurrent checking — domains are independent, settled pattern provides per-domain error isolation
 - [Phase 45-01]: triggerStepRef derived as email_${step.position} for email_sent rules — webhook query now matches rules created at deploy time
 - [Phase 45-01]: Connect dedup scoped per workspace via sender relation filter — cross-workspace campaigns remain independent
+- [Phase 45]: conditionType=null + requireConnected=false => always passes — backward compat for legacy rules without migration
+- [Phase 45]: getConnectionsToCheck uses DEFAULT_CONNECTION_TIMEOUT_DAYS as DB pre-filter; pollConnectionAccepts applies per-campaign timeout per connection
 
 ### Pending Todos
 
@@ -130,5 +132,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 43-01-PLAN.md (sync-senders consolidation, postmaster-stats-sync, onFailure hook, cron-job.org retirement)
+Stopped at: Completed 45-02-PLAN.md (if/else branching conditions + per-campaign connection timeout)
 Resume file: None
