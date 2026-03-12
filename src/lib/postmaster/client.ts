@@ -8,7 +8,10 @@ import { prisma } from "@/lib/db";
 
 const LOG_PREFIX = "[postmaster]";
 
-const SCOPES = ["https://www.googleapis.com/auth/postmaster.readonly"];
+const SCOPES = [
+  "https://www.googleapis.com/auth/postmaster.readonly",
+  "https://www.googleapis.com/auth/siteverification",
+];
 
 /**
  * Create an OAuth2 client configured with env vars.
