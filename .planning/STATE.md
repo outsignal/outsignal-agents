@@ -1,7 +1,7 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Email Deliverability & Domain Infrastructure Monitoring
+milestone: v6.0
+milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
 last_updated: "2026-03-11T19:50:08.568Z"
 progress:
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v5.0 Client Portal Inbox (phases 33-37) | v4.0 Email Deliverability (phases 31-32, parallel)
+**Current focus:** v6.0 Trigger.dev Migration (phases 38+)
 
 ## Current Position
 
-Phase: Phase 37 — Inbox UI Polish & Admin Inbox Navigation
-Plan: 37-03 complete
-Status: Phase 37 Plan 03 done — admin master inbox with cross-workspace filtering, workspace badges, Replying-as banner, 6 admin inbox API routes (email threads/reply, LinkedIn conversations/messages/reply).
-Last activity: 2026-03-11 - Completed 37-03: admin inbox page, workspace filter, workspace badges, Replying-as banner, admin API endpoints
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements for v6.0 Trigger.dev Migration
+Last activity: 2026-03-12 — Milestone v6.0 started
 
-Progress: v5.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
 ## Performance Metrics
 

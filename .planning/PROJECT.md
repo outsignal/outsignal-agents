@@ -105,17 +105,18 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
 - Campaign builder UI — all campaign operations through chat (Cmd+J / CLI)
 
-## Current Milestone: v5.0 Client Portal Inbox
+## Current Milestone: v6.0 Trigger.dev Migration — Background Jobs Infrastructure
 
-**Goal:** Build a full inbox experience at /portal/inbox with threaded email conversations (via EmailBison) and LinkedIn messaging (via Voyager API), replacing the read-only replies feed with reply capability.
+**Goal:** Migrate all background operations (cron jobs, webhook async tasks, AI operations) from cron-job.org + Vercel fire-and-forget to Trigger.dev managed infrastructure. Eliminates 30s/60s timeout constraints causing silent failures.
 
 **Target features:**
-- LinkedIn conversation fetching + message storage
-- EmailBison reply capability (send replies from portal)
-- Unified inbox with email + LinkedIn channel tabs
-- Two-panel thread list + conversation view
-- Reply composer (email direct send, LinkedIn queue)
-- Package-aware channel filtering
+- Trigger.dev installation and Next.js integration
+- Migrate critical AI crons (retry-classification, generate-insights, snapshot-metrics)
+- Migrate webhook background work (reply classification, AI suggestions via writer agent, LinkedIn fast-track)
+- Migrate remaining crons (domain-health, poll-replies, sync-senders, bounce-monitor, inbox-health)
+- Restore writer agent for AI reply suggestions (replace Haiku shortcut)
+- Retire cron-job.org, remove fire-and-forget patterns
+- Background task observability
 
 ## Current State
 
