@@ -113,6 +113,7 @@ None.
 ### Roadmap Evolution
 
 - Phase 44 added: OOO Re-engagement Pipeline — AI-extracted return dates, Trigger.dev delayed tasks, personalised Welcome Back campaigns
+- Phase 45 added: Multi-Channel Sequencing Fix & If/Else Upgrade — fix triggerStepRef bug, bounce/unsub cancellation, connection dedup, if/else branching conditions, engagement-based routing
 
 ### Blockers/Concerns
 
