@@ -1268,6 +1268,12 @@ model DomainHealth {
   dmarcStatus String?   // "pass" | "fail" | "missing"
   dmarcPolicy String?   // "none" | "quarantine" | "reject"
   dmarcRecord String?   // Raw DMARC record text
+  dmarcAspf   String?   // "r" | "s" — SPF alignment mode
+  dmarcAdkim  String?   // "r" | "s" — DKIM alignment mode
+
+  // MX validation
+  mxStatus  String?   // "pass" | "missing"
+  mxHosts   String?   // JSON array of MX hostnames
 
   // Blacklist status (populated by Plan 03)
   blacklistHits     String?   // JSON array of DNSBL names where listed

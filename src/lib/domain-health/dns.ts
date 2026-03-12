@@ -11,6 +11,7 @@ import type {
   SpfResult,
   DkimResult,
   DmarcResult,
+  MxResult,
   DnsCheckResult,
 } from "./types";
 import { DKIM_SELECTORS } from "./types";
@@ -133,13 +134,13 @@ export async function checkDmarc(domain: string): Promise<DmarcResult> {
     );
 
     if (!dmarcRecord) {
-      return { status: "missing", policy: null, record: null };
+      return { status: "missing", policy: null, record: null, aspf: null, adkim: null };
     }
 
     // Parse policy from p= directive
     const policyMatch = dmarcRecord.match(/\bp=(\w+)/i);
     if (!policyMatch) {
-      return { status: "fail", policy: null, record: dmarcRecord };
+      return { status: "fail", policy: null, record: dmarcRecord, aspf: null, adkim: null };
     }
 
     const policyValue = policyMatch[1].toLowerCase();
@@ -148,38 +149,76 @@ export async function checkDmarc(domain: string): Promise<DmarcResult> {
       policyValue !== "quarantine" &&
       policyValue !== "reject"
     ) {
-      return { status: "fail", policy: null, record: dmarcRecord };
+      return { status: "fail", policy: null, record: dmarcRecord, aspf: null, adkim: null };
     }
+
+    // Parse alignment directives
+    const aspfMatch = dmarcRecord.match(/\baspf=([rs])/i);
+    const adkimMatch = dmarcRecord.match(/\badkim=([rs])/i);
+    const aspf = aspfMatch ? (aspfMatch[1].toLowerCase() as "r" | "s") : null;
+    const adkim = adkimMatch ? (adkimMatch[1].toLowerCase() as "r" | "s") : null;
 
     return {
       status: "pass",
       policy: policyValue as "none" | "quarantine" | "reject",
       record: dmarcRecord,
+      aspf,
+      adkim,
     };
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
-      return { status: "missing", policy: null, record: null };
+      return { status: "missing", policy: null, record: null, aspf: null, adkim: null };
     }
     console.error(
       `${LOG_PREFIX} DMARC lookup failed for ${domain}:`,
       (err as Error).message
     );
-    return { status: "missing", policy: null, record: null };
+    return { status: "missing", policy: null, record: null, aspf: null, adkim: null };
   }
 }
 
 /**
- * Run all three DNS checks (SPF, DKIM, DMARC) in parallel.
+ * Look up MX records for a domain.
+ * Returns pass if at least one valid MX record exists.
+ */
+export async function checkMx(domain: string): Promise<MxResult> {
+  const resolver = createResolver();
+  try {
+    const records = await resolver.resolveMx(domain);
+    const hosts = records
+      .sort((a, b) => a.priority - b.priority)
+      .map((r) => r.exchange);
+
+    if (hosts.length === 0) {
+      return { status: "missing", hosts: [] };
+    }
+    return { status: "pass", hosts };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
+      return { status: "missing", hosts: [] };
+    }
+    console.error(
+      `${LOG_PREFIX} MX lookup failed for ${domain}:`,
+      (err as Error).message
+    );
+    return { status: "missing", hosts: [] };
+  }
+}
+
+/**
+ * Run all DNS checks (SPF, DKIM, DMARC, MX) in parallel.
  * Returns combined results. Never throws.
  */
 export async function checkAllDns(domain: string): Promise<DnsCheckResult> {
-  const [spf, dkim, dmarc] = await Promise.all([
+  const [spf, dkim, dmarc, mx] = await Promise.all([
     checkSpf(domain),
     checkDkim(domain),
     checkDmarc(domain),
+    checkMx(domain),
   ]);
-  return { spf, dkim, dmarc };
+  return { spf, dkim, dmarc, mx };
 }
 
 /**
@@ -208,12 +247,14 @@ export function computeOverallHealth(
   if (dmarc.policy === "none") return "warning";
   if (dkim.status === "partial") return "warning";
   if (dkim.status === "missing") return "warning";
+  if (dns.mx.status === "missing") return "warning";
 
-  // Healthy: SPF pass, DKIM pass, DMARC pass with strong policy
+  // Healthy: SPF pass, DKIM pass, DMARC pass with strong policy, MX pass
   if (
     spf.status === "pass" &&
     dkim.status === "pass" &&
     dmarc.status === "pass" &&
+    dns.mx.status === "pass" &&
     (dmarc.policy === "quarantine" || dmarc.policy === "reject")
   ) {
     return "healthy";

@@ -308,6 +308,10 @@ async function checkDomain(
     dmarcStatus: dnsResult.dmarc.status,
     dmarcPolicy: dnsResult.dmarc.policy,
     dmarcRecord: dnsResult.dmarc.record,
+    dmarcAspf: dnsResult.dmarc.aspf,
+    dmarcAdkim: dnsResult.dmarc.adkim,
+    mxStatus: dnsResult.mx.status,
+    mxHosts: JSON.stringify(dnsResult.mx.hosts),
     overallHealth,
     lastDnsCheck: now,
   };
@@ -400,7 +404,7 @@ async function sendChangeNotifications(
   }
 
   // --- DNS failure detection ---
-  const failures: Array<{ check: "spf" | "dkim" | "dmarc"; status: string }> = [];
+  const failures: Array<{ check: "spf" | "dkim" | "dmarc" | "mx"; status: string }> = [];
 
   if (dnsResult.spf.status === "fail" || dnsResult.spf.status === "missing") {
     failures.push({ check: "spf", status: dnsResult.spf.status });
@@ -410,6 +414,9 @@ async function sendChangeNotifications(
   }
   if (dnsResult.dmarc.status === "fail" || dnsResult.dmarc.status === "missing") {
     failures.push({ check: "dmarc", status: dnsResult.dmarc.status });
+  }
+  if (dnsResult.mx.status === "missing") {
+    failures.push({ check: "mx", status: dnsResult.mx.status });
   }
 
   if (failures.length > 0) {

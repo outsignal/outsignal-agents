@@ -229,7 +229,7 @@ export async function notifyBlacklistDelisted(params: {
  */
 export async function notifyDnsFailure(params: {
   domain: string;
-  failures: Array<{ check: "spf" | "dkim" | "dmarc"; status: string }>;
+  failures: Array<{ check: "spf" | "dkim" | "dmarc" | "mx"; status: string }>;
   persistent: boolean;
   skipEmail?: boolean;
 }): Promise<void> {
@@ -243,6 +243,7 @@ export async function notifyDnsFailure(params: {
     spf: "SPF",
     dkim: "DKIM",
     dmarc: "DMARC",
+    mx: "MX",
   };
 
   const failureLines = failures
@@ -472,6 +473,7 @@ export async function sendDnsFailureDigestEmail(
     spf: "SPF",
     dkim: "DKIM",
     dmarc: "DMARC",
+    mx: "MX",
   };
 
   const domainSectionsHtml = items

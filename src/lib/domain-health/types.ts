@@ -32,13 +32,26 @@ export interface DmarcResult {
   policy: "none" | "quarantine" | "reject" | null;
   /** Raw DMARC record text, or null if not found */
   record: string | null;
+  /** SPF alignment mode from aspf= directive ("r" = relaxed, "s" = strict, null = not specified/defaults to relaxed) */
+  aspf: "r" | "s" | null;
+  /** DKIM alignment mode from adkim= directive ("r" = relaxed, "s" = strict, null = not specified/defaults to relaxed) */
+  adkim: "r" | "s" | null;
 }
 
-/** Combined DNS check results for all three record types */
+/** Result of MX record lookup */
+export interface MxResult {
+  /** "pass" if valid MX records found, "missing" if no MX records */
+  status: "pass" | "missing";
+  /** Array of MX hostnames found */
+  hosts: string[];
+}
+
+/** Combined DNS check results for all record types */
 export interface DnsCheckResult {
   spf: SpfResult;
   dkim: DkimResult;
   dmarc: DmarcResult;
+  mx: MxResult;
 }
 
 /** Full domain health summary combining DNS and blacklist data */
