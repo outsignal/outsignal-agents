@@ -14,6 +14,7 @@ import { apifyLeadsFinderAdapter } from "@/lib/discovery/adapters/apify-leads-fi
 import { checkDomainsForGoogleAds, searchGoogleAdsAdvertisers } from "../discovery/adapters/google-ads";
 import { checkTechStack } from "../discovery/adapters/builtwith";
 import { searchGoogleMaps } from "../discovery/adapters/google-maps";
+import { searchEcommerceStores } from "../discovery/adapters/ecommerce-stores";
 import { stageDiscoveredPeople } from "@/lib/discovery/staging";
 import { incrementDailySpend, PROVIDER_COSTS } from "@/lib/enrichment/costs";
 import { getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
@@ -176,6 +177,7 @@ const leadsTools = {
             "serper-maps",
             "firecrawl",
             "google-maps",
+            "ecommerce-stores",
           ]),
           reasoning: z
             .string()
@@ -211,6 +213,7 @@ const leadsTools = {
         "serper-maps": "serper-maps",
         firecrawl: "firecrawl-extract",
         "google-maps": "google-maps",
+        "ecommerce-stores": "ecommerce-stores",
       };
 
       const sourcesWithCost = params.sources.map((s) => {
@@ -223,6 +226,9 @@ const leadsTools = {
         } else if (s.name === "leads-finder") {
           // Leads Finder charges per lead (~$0.002/lead), not per API call
           estimatedCost = s.estimatedVolume * 0.002;
+        } else if (s.name === "ecommerce-stores") {
+          // Ecommerce Stores charges per lead (~$0.004/lead), not per API call
+          estimatedCost = s.estimatedVolume * 0.004;
         } else {
           // Other sources: ~1 API call per 25 results
           const estimatedCalls = Math.max(1, Math.ceil(s.estimatedVolume / 25));
@@ -909,6 +915,69 @@ const leadsTools = {
       };
     },
   }),
+
+  searchEcommerceStores: tool({
+    description:
+      "Search a 14M+ ecommerce store database by platform, category, country, and traffic. Returns store domain, name, platform (Shopify/WooCommerce/BigCommerce/etc.), email, phone, monthly visits, technologies/apps, categories, social links, employee count. Primary tool for ecommerce/DTC brand discovery — e.g. finding Shopify stores for BlankTag's paid media pipeline. Company-level data (no person data). Costs ~$0.004 per lead (pay-per-result). Requires Apify paid plan.",
+    inputSchema: z.object({
+      platform: z
+        .string()
+        .optional()
+        .describe("Ecommerce platform filter (e.g., 'shopify', 'woocommerce', 'bigcommerce', 'magento')"),
+      category: z
+        .string()
+        .optional()
+        .describe("Store category filter (e.g., 'Apparel', 'Electronics', 'Health & Beauty', 'Home & Garden')"),
+      country: z
+        .string()
+        .optional()
+        .describe("Country filter (e.g., 'US', 'GB', 'United States')"),
+      minMonthlyVisits: z
+        .number()
+        .optional()
+        .describe("Minimum monthly website visits (e.g., 10000 for established stores)"),
+      maxResults: z
+        .number()
+        .optional()
+        .default(50)
+        .describe("Maximum number of results to return (default: 50, max: 200)"),
+      keywords: z
+        .array(z.string())
+        .optional()
+        .describe("Keywords to filter stores by (matched against name/category/technologies)"),
+    }),
+    execute: async ({ platform, category, country, minMonthlyVisits, maxResults, keywords }) => {
+      const results = await searchEcommerceStores({
+        platform,
+        category,
+        country,
+        minMonthlyVisits,
+        maxResults,
+        keywords,
+      });
+      const costUsd = results.length * 0.004;
+      await incrementDailySpend("ecommerce-stores", costUsd);
+      return {
+        source: "ecommerce-stores",
+        found: results.length,
+        costUsd,
+        stores: results.map((r) => ({
+          domain: r.domain,
+          storeName: r.storeName,
+          platform: r.platform,
+          email: r.email,
+          phone: r.phone,
+          country: r.country,
+          city: r.city,
+          monthlyVisits: r.monthlyVisits,
+          technologies: r.technologies,
+          categories: r.categories,
+          socialLinks: r.socialLinks,
+          employeeCount: r.employeeCount,
+        })),
+      };
+    },
+  }),
 };
 
 // --- System Prompt ---
@@ -916,7 +985,7 @@ const leadsTools = {
 const LEADS_SYSTEM_PROMPT = `You are the Outsignal Leads Agent — a specialist for managing the lead pipeline through natural language.
 
 ## Capabilities
-You can: search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Apollo, Prospeo, AI Ark, Leads Finder, Serper, Firecrawl).
+You can: search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Apollo, Prospeo, AI Ark, Leads Finder, Serper, Firecrawl, Ecommerce Stores).
 
 ## Discovery Workflow
 
@@ -941,7 +1010,7 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
   * "Add Apollo with seniority=VP" -> add Apollo source, re-present
   * "That's too many leads" -> reduce estimated volumes, re-present
   * "What about Firecrawl?" -> add Firecrawl if relevant, re-present
-- NEVER call searchApollo, searchProspeo, searchAiArk, searchLeadsFinder, searchGoogle, or extractDirectory without prior approval of a discovery plan
+- NEVER call searchApollo, searchProspeo, searchAiArk, searchLeadsFinder, searchGoogle, searchEcommerceStores, or extractDirectory without prior approval of a discovery plan
 
 ### Step 3: Execute the Plan
 - Say: "Starting discovery -- estimated ~30 seconds..."
@@ -981,6 +1050,9 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 **Niche/Association/Government directories:**
 - searchGoogle (web mode) -- Find directory URLs first
 - extractDirectory -- Extract contacts from the directory URL
+
+**Ecommerce / DTC brand discovery:**
+- searchEcommerceStores -- PRIMARY tool for ecommerce store discovery. 14M+ store database. Filter by platform (Shopify, WooCommerce, BigCommerce, Magento), category, country, monthly traffic, keywords. Returns domain, store name, platform, email, phone, technologies/apps, categories, social links, employee count. ~$0.004/lead (pay-per-result). Best for finding DTC brands and online retailers — e.g. Shopify stores in Apparel for BlankTag's paid media pipeline. Company-level data (no person data). Requires Apify paid plan.
 
 **Local/SMB businesses:**
 - searchGoogleMaps -- Deep Google Maps/Places search via Apify. Returns name, address, phone, website, domain, rating, reviews, categories, city, countryCode. Best for finding businesses by category in specific areas (e.g. "umbrella companies in London" for 1210 Solutions, "recruitment agencies in Manchester"). Company-level data (no person data). ~$0.005/search. Requires Apify paid plan.

@@ -1,36 +1,33 @@
 /**
- * BuiltWith technology detection adapter.
+ * Technology stack detection adapter.
  *
  * Company-level signal checker — NOT a DiscoveryAdapter (domain-based, not filter-based).
- * Uses the Apify actor `supreme_coder/builtwith-scraper` to scrape BuiltWith.com
- * for technology stack data on a list of domains.
+ * Uses the Apify actor `automation-lab/tech-stack-detector` to detect technologies
+ * on websites independently (no BuiltWith dependency). Detects 100+ technologies
+ * with categories and confidence levels.
  *
  * Primary use case: tech qualification — e.g. finding Shopify stores for BlankTag,
  * checking if prospects use specific CMS/frameworks/analytics tools.
  *
- * Cost: ~$0.005 per domain checked (Apify compute).
+ * Cost: ~$0.002 per URL checked (Apify compute).
  */
 
 import { runApifyActor } from "@/lib/apify/client";
 
-const ACTOR_ID = "supreme_coder/builtwith-scraper";
+const ACTOR_ID = "automation-lab/tech-stack-detector";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Raw item returned by the Apify actor (one per domain). */
-interface BuiltWithRawItem {
-  domain?: string;
+/** Raw item returned by the Apify actor (one per URL). */
+interface TechStackRawItem {
   url?: string;
   technologies?: Array<{
     name?: string;
     category?: string;
-    description?: string;
-    link?: string;
+    confidence?: string | number;
   }>;
-  meta?: Record<string, unknown>;
-  company?: Record<string, unknown>;
 }
 
 /** A single detected technology on a domain. */
@@ -77,7 +74,7 @@ function extractDomain(raw: string): string {
  * optional technology names.
  */
 function processResults(
-  items: BuiltWithRawItem[],
+  items: TechStackRawItem[],
   requestedDomains: string[],
   filterTechnologies?: string[],
 ): TechStackResult[] {
@@ -101,7 +98,7 @@ function processResults(
     : null;
 
   for (const item of items) {
-    const rawDomain = item.domain ?? item.url ?? "";
+    const rawDomain = item.url ?? "";
     if (!rawDomain) continue;
 
     const key = extractDomain(rawDomain);
@@ -110,7 +107,6 @@ function processResults(
       .map((t) => ({
         name: t.name!,
         category: t.category,
-        description: t.description,
       }));
 
     const matched = filterSet
@@ -136,7 +132,7 @@ function processResults(
 // ---------------------------------------------------------------------------
 
 /**
- * Check the technology stack for a list of domains via BuiltWith.
+ * Check the technology stack for a list of domains via tech-stack-detector.
  *
  * Optionally pass `filterTechnologies` to flag domains that use specific
  * technologies (e.g. ['Shopify', 'WooCommerce', 'Magento']).
@@ -151,8 +147,13 @@ export async function checkTechStack(
 ): Promise<TechStackResult[]> {
   if (domains.length === 0) return [];
 
-  const items = await runApifyActor<BuiltWithRawItem>(ACTOR_ID, {
-    domains: domains.map((d) => d.toLowerCase()),
+  // Actor expects full URLs, not bare domains.
+  const urls = domains.map((d) =>
+    `https://${d.toLowerCase().replace(/^https?:\/\//, "")}`,
+  );
+
+  const items = await runApifyActor<TechStackRawItem>(ACTOR_ID, {
+    urls,
   });
 
   return processResults(items, domains, filterTechnologies);
