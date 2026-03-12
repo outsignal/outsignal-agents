@@ -22,6 +22,7 @@ const ACTOR_ID = "ecommerce_leads/store-leads-14m-e-commerce-leads";
 /** Raw item returned by the Apify actor (one per store). */
 interface EcommerceStoreRawItem {
   domain?: string;
+  merchant?: string;
   storeName?: string;
   store_name?: string;
   name?: string;
@@ -37,12 +38,15 @@ interface EcommerceStoreRawItem {
   phones?: string | string[];
   country?: string;
   city?: string;
+  region?: string;
   monthlyVisits?: number;
   monthly_visits?: number;
   visits?: number;
   traffic?: number;
   technologies?: string | string[];
   apps?: string | string[];
+  features?: string | string[];
+  theme?: string;
   categories?: string | string[];
   category?: string;
   socialLinks?: Record<string, string>;
@@ -53,6 +57,9 @@ interface EcommerceStoreRawItem {
   instagram?: string;
   twitter?: string;
   linkedin?: string;
+  pinterest?: string;
+  tiktok?: string;
+  youtube?: string;
   employeeCount?: number;
   employee_count?: number;
   employees?: number;
@@ -141,6 +148,9 @@ function buildSocialLinks(item: EcommerceStoreRawItem): Record<string, string> {
   if (item.instagram && !links.instagram) links.instagram = item.instagram;
   if (item.twitter && !links.twitter) links.twitter = item.twitter;
   if (item.linkedin && !links.linkedin) links.linkedin = item.linkedin;
+  if (item.pinterest && !links.pinterest) links.pinterest = item.pinterest;
+  if (item.tiktok && !links.tiktok) links.tiktok = item.tiktok;
+  if (item.youtube && !links.youtube) links.youtube = item.youtube;
 
   return links;
 }
@@ -148,7 +158,7 @@ function buildSocialLinks(item: EcommerceStoreRawItem): Record<string, string> {
 /**
  * Map raw Apify actor items into EcommerceStoreResult[].
  */
-function processResults(items: EcommerceStoreRawItem[]): EcommerceStoreResult[] {
+function processResults(items: EcommerceStoreRawItem[], platformOverride?: string): EcommerceStoreResult[] {
   const results: EcommerceStoreResult[] = [];
 
   for (const item of items) {
@@ -168,15 +178,20 @@ function processResults(items: EcommerceStoreRawItem[]): EcommerceStoreResult[] 
       rawCats.unshift(item.category);
     }
 
-    const rawEmail = item.email ?? item.contact_email
-      ?? (Array.isArray(item.emails) ? item.emails[0] : item.emails);
-    const rawPhone = item.phone ?? item.contact_phone
-      ?? (Array.isArray(item.phones) ? item.phones[0] : item.phones);
+    const emailsList = typeof item.emails === 'string'
+      ? item.emails.split('|').filter(Boolean)
+      : Array.isArray(item.emails) ? item.emails : [];
+    const rawEmail = item.email ?? item.contact_email ?? emailsList[0];
+
+    const phonesList = typeof item.phones === 'string'
+      ? item.phones.split('|').filter(Boolean)
+      : Array.isArray(item.phones) ? item.phones : [];
+    const rawPhone = item.phone ?? item.contact_phone ?? phonesList[0];
 
     results.push({
       domain,
-      storeName: item.storeName ?? item.store_name ?? item.name ?? item.title,
-      platform: item.platform ?? item.ecommerce ?? item.ecommerce_platform,
+      storeName: item.merchant ?? item.storeName ?? item.store_name ?? item.name ?? item.title,
+      platform: item.platform ?? item.ecommerce ?? item.ecommerce_platform ?? platformOverride,
       email: rawEmail,
       phone: rawPhone,
       country: item.country,
@@ -247,5 +262,5 @@ export async function searchEcommerceStores(
   // The actor may ignore maxItems — enforce the limit client-side.
   const trimmed = items.slice(0, options.maxResults ?? 100);
 
-  return processResults(trimmed);
+  return processResults(trimmed, options.platform);
 }
