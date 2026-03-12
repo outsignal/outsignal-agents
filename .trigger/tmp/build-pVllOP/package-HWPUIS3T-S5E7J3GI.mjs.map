@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../node_modules/@mendable/firecrawl-js/dist/package-HWPUIS3T.js"],
-  "sourcesContent": ["import {\n  require_package\n} from \"./chunk-YMCI3PLP.js\";\nexport default require_package();\n"],
-  "mappings": ";;;;;;;;AAAA;AAGA,IAAO,2BAAQ,gBAAgB;",
-  "names": []
-}

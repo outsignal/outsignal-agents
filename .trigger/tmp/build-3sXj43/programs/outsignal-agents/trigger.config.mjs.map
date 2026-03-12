@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../../../trigger.config.ts"],
-  "sourcesContent": ["import { defineConfig } from \"@trigger.dev/sdk\";\nimport { prismaExtension } from \"@trigger.dev/build/extensions/prisma\";\n\nexport default defineConfig({\n  project: process.env.TRIGGER_PROJECT_REF!,\n  maxDuration: 300,\n  dirs: [\"./trigger\"],\n  build: {},\n});\nexport const resolveEnvVars = undefined;"],
-  "mappings": ";;;;;;;;;AAAA;AAGA,IAAO,yBAAQ,aAAa;AAAA,EAC1B,SAAS,QAAQ,IAAI;AAAA,EACrB,aAAa;AAAA,EACb,MAAM,CAAC,WAAW;AAAA,EAClB,OAAO,CAAC;AACV,CAAC;AACM,IAAM,iBAAiB;",
-  "names": []
-}

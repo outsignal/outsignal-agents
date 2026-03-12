@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../trigger/queues.ts"],
-  "sourcesContent": ["import { queue } from \"@trigger.dev/sdk\";\n\n// Pre-declared queues are required in Trigger.dev v4 — inline concurrency limits are silently ignored.\n// All AI tasks must use anthropicQueue; all EmailBison tasks must use emailBisonQueue.\n\nexport const anthropicQueue = queue({\n  name: \"anthropic-queue\",\n  concurrencyLimit: 3,\n});\n\nexport const emailBisonQueue = queue({\n  name: \"emailbison-queue\",\n  concurrencyLimit: 3,\n});\n"],
-  "mappings": ";;;;;;;;AAAA;AAKO,IAAM,iBAAiB,MAAM;AAAA,EAClC,MAAM;AAAA,EACN,kBAAkB;AACpB,CAAC;AAEM,IAAM,kBAAkB,MAAM;AAAA,EACnC,MAAM;AAAA,EACN,kBAAkB;AACpB,CAAC;",
-  "names": []
-}

@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../../../../trigger/bounce-snapshots.ts"],
-  "sourcesContent": ["import { schedules } from \"@trigger.dev/sdk\";\nimport { captureAllWorkspaces } from \"@/lib/domain-health/snapshots\";\n\nexport const bounceSnapshotsTask = schedules.task({\n  id: \"bounce-snapshots\",\n  cron: \"0 8 * * *\", // daily 8am UTC\n  maxDuration: 300,\n  retry: {\n    maxAttempts: 2,\n    factor: 2,\n    minTimeoutInMs: 2_000,\n    maxTimeoutInMs: 30_000,\n  },\n\n  run: async () => {\n    console.log(\"[bounce-snapshots] Starting daily bounce snapshot capture\");\n\n    const result = await captureAllWorkspaces();\n\n    console.log(\n      `[bounce-snapshots] Complete: ${result.workspaces} workspaces, ${result.senders} senders captured, ${result.errors.length} errors`,\n    );\n\n    if (result.errors.length > 0) {\n      console.warn(\"[bounce-snapshots] Errors during capture:\", result.errors);\n    }\n\n    return result;\n  },\n});\n"],
-  "mappings": ";;;;;;;;;;;;;;;;AAAA;AAGO,IAAM,sBAAsB,kBAAU,KAAK;AAAA,EAChD,IAAI;AAAA,EACJ,MAAM;AAAA;AAAA,EACN,aAAa;AAAA,EACb,OAAO;AAAA,IACL,aAAa;AAAA,IACb,QAAQ;AAAA,IACR,gBAAgB;AAAA,IAChB,gBAAgB;AAAA,EAClB;AAAA,EAEA,KAAK,mCAAY;AACf,YAAQ,IAAI,2DAA2D;AAEvE,UAAM,SAAS,MAAM,qBAAqB;AAE1C,YAAQ;AAAA,MACN,gCAAgC,OAAO,UAAU,gBAAgB,OAAO,OAAO,sBAAsB,OAAO,OAAO,MAAM;AAAA,IAC3H;AAEA,QAAI,OAAO,OAAO,SAAS,GAAG;AAC5B,cAAQ,KAAK,6CAA6C,OAAO,MAAM;AAAA,IACzE;AAEA,WAAO;AAAA,EACT,GAdK;AAeP,CAAC;",
-  "names": []
-}

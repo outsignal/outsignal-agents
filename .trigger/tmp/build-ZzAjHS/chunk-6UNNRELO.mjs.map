@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../src/lib/db.ts"],
-  "sourcesContent": ["import { PrismaClient } from \"@prisma/client\";\n\nconst globalForPrisma = globalThis as unknown as { prisma: PrismaClient };\n\nexport const prisma = globalForPrisma.prisma || new PrismaClient();\n\nif (process.env.NODE_ENV !== \"production\") globalForPrisma.prisma = prisma;\n"],
-  "mappings": ";;;;;;;;;AAAA;AAAA,oBAA6B;AAE7B,IAAM,kBAAkB;AAEjB,IAAM,SAAS,gBAAgB,UAAU,IAAI,2BAAa;AAEjE,IAAI,QAAQ,IAAI,aAAa,aAAc,iBAAgB,SAAS;",
-  "names": []
-}

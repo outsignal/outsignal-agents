@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../../../../trigger/deliverability-digest.ts"],
-  "sourcesContent": ["import { schedules } from \"@trigger.dev/sdk\";\nimport { notifyDeliverabilityDigest } from \"@/lib/notifications\";\n\nexport const deliverabilityDigestTask = schedules.task({\n  id: \"deliverability-digest\",\n  cron: \"0 8 * * 1\", // weekly Monday 8am UTC\n  maxDuration: 300,\n  retry: {\n    maxAttempts: 2,\n    factor: 2,\n    minTimeoutInMs: 2_000,\n    maxTimeoutInMs: 30_000,\n  },\n\n  run: async () => {\n    console.log(\"[deliverability-digest] Starting weekly deliverability digest\");\n\n    await notifyDeliverabilityDigest();\n\n    console.log(\"[deliverability-digest] Digest complete\");\n\n    return { ok: true };\n  },\n});\n"],
-  "mappings": ";;;;;;;;;;;;;;;;;;;;;AAAA;AAGO,IAAM,2BAA2B,kBAAU,KAAK;AAAA,EACrD,IAAI;AAAA,EACJ,MAAM;AAAA;AAAA,EACN,aAAa;AAAA,EACb,OAAO;AAAA,IACL,aAAa;AAAA,IACb,QAAQ;AAAA,IACR,gBAAgB;AAAA,IAChB,gBAAgB;AAAA,EAClB;AAAA,EAEA,KAAK,mCAAY;AACf,YAAQ,IAAI,+DAA+D;AAE3E,UAAM,2BAA2B;AAEjC,YAAQ,IAAI,yCAAyC;AAErD,WAAO,EAAE,IAAI,KAAK;AAAA,EACpB,GARK;AASP,CAAC;",
-  "names": []
-}

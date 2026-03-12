@@ -51,3 +51,6 @@ worker/dist/
 # Extension build artifacts
 extension/*.zip
 worker-signals/node_modules/
+
+# Trigger.dev local dev cache
+/.trigger/
