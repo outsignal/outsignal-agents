@@ -314,15 +314,17 @@ export function EmailThreadView({
         {messages.map((msg) => (
           <MessageCard key={msg.id} msg={msg} />
         ))}
+      </div>
 
-        {/* AI suggestion card above composer */}
-        {latestAiSuggestion?.aiSuggestedReply && (
+      {/* AI suggestion — pinned between messages and composer */}
+      {latestAiSuggestion?.aiSuggestedReply && (
+        <div className="shrink-0 border-t border-border px-4 py-3 bg-muted/30">
           <AISuggestionCard
             suggestion={latestAiSuggestion.aiSuggestedReply}
             onUse={(text) => setComposerText(text)}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Reply composer */}
       <div className="shrink-0 border-t border-border">
