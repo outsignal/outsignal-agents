@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v6.0 Phase 40 — Writer Agent Restoration
+**Current focus:** v6.0 Phase 41 — AI Cron Migration
 
 ## Current Position
 
-Phase: 40 of 44 (Writer Agent Restoration)
-Plan: 1 of 3 (Plan 01 complete)
-Status: Phase 40 in progress — generate-suggestion Trigger.dev task created (Plan 01 complete)
-Last activity: 2026-03-12 — 40-01 complete: generate-suggestion task with full Opus writer agent + KB search
+Phase: 41 of 44 (AI Cron Migration)
+Plan: 1 of ? (Plan 01 complete)
+Status: Phase 41-01 complete — three Trigger.dev scheduled tasks created: retry-classification (30 min), snapshot-metrics (daily), generate-insights (6 hr)
+Last activity: 2026-03-12 — 41-01 complete: AI cron tasks created with no timeout constraint, Promise.all fan-out, anthropicQueue
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -45,6 +45,11 @@ Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+v6.0 Phase 41-01 decisions:
+- [Phase 41-01]: retry-classification removes take:50 batch limit — no timeout constraint in Trigger.dev (300s), process all unclassified replies in one run
+- [Phase 41-01]: snapshot-metrics and generate-insights use Promise.all fan-out (not sequential for loop) — workspaces are independent, parallelism is safe
+- [Phase 41-01]: sendDigestForWorkspace replicated inline in generate-insights.ts (not extracted to lib) — avoids premature abstraction for a function only called from one place
 
 v6.0 Phase 40-01 decisions:
 - [Phase 40-01]: Writer in reply mode returns plain text (not JSON) — use result.text directly as suggestion, not result.output
@@ -106,5 +111,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 40-01-PLAN.md (generate-suggestion Trigger.dev task with full Opus writer agent)
+Stopped at: Completed 41-01-PLAN.md (three AI cron Trigger.dev scheduled tasks created)
 Resume file: None

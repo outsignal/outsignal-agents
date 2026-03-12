@@ -360,7 +360,7 @@ Plans:
 | 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete    | 2026-03-12 | - |
 | 39. Webhook Reply Migration | 2/2 | Complete    | 2026-03-12 | - |
 | 40. Writer Agent Restoration | 1/2 | In Progress|  | - |
-| 41. AI Cron Migration | 0/2 | Planned    |  | - |
+| 41. AI Cron Migration | 1/2 | In Progress|  | - |
 | 42. Remaining Cron Lift-and-Shift | v6.0 | 0/TBD | Not started | - |
 | 43. Decommission + Observability Validation | v6.0 | 0/TBD | Not started | - |
 | 44. OOO Re-engagement Pipeline | v6.0 | 0/TBD | Not started | - |

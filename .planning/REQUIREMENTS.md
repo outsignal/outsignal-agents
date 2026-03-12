@@ -26,9 +26,9 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 
 ### Cron Migration
 
-- [ ] **CRON-01**: retry-classification migrated to `schedules.task()` with no batch size limit
-- [ ] **CRON-02**: generate-insights migrated with per-workspace parallelization
-- [ ] **CRON-03**: snapshot-metrics migrated with AI body element classification
+- [x] **CRON-01**: retry-classification migrated to `schedules.task()` with no batch size limit
+- [x] **CRON-02**: generate-insights migrated with per-workspace parallelization
+- [x] **CRON-03**: snapshot-metrics migrated with AI body element classification
 - [ ] **CRON-04**: poll-replies migrated with all-workspace concurrent fetching
 - [ ] **CRON-05**: domain-health migrated with full DNSBL checking (no 4-domain cap)
 - [ ] **CRON-06**: bounce-monitor migrated to scheduled task
@@ -82,9 +82,9 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 | WHOOK-04 | Phase 39 | Complete |
 | WHOOK-05 | Phase 39 | Complete |
 | WHOOK-02 | Phase 40 | Complete |
-| CRON-01 | Phase 41 | Pending |
-| CRON-02 | Phase 41 | Pending |
-| CRON-03 | Phase 41 | Pending |
+| CRON-01 | Phase 41 | Complete |
+| CRON-02 | Phase 41 | Complete |
+| CRON-03 | Phase 41 | Complete |
 | CRON-04 | Phase 42 | Pending |
 | CRON-05 | Phase 42 | Pending |
 | CRON-06 | Phase 42 | Pending |
