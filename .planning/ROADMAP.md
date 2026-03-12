@@ -105,7 +105,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 41: AI Cron Migration** — retry-classification, generate-insights, and snapshot-metrics migrated as scheduled tasks; these are the most timeout-vulnerable crons and most likely already failing silently (completed 2026-03-12)
 - [x] **Phase 42: Remaining Cron Lift-and-Shift** — poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, and inbox-health (split) migrated; campaign deploy after() pattern replaced (completed 2026-03-12)
 - [x] **Phase 43: Decommission + Observability Validation** — cron-job.org fully retired, fire-and-forget patterns removed, background task observability live in admin dashboard (completed 2026-03-12)
-- [ ] **Phase 44: OOO Re-engagement Pipeline** — AI-extracted return dates from OOO replies, Trigger.dev delayed tasks, auto-enrolment into personalised Welcome Back campaigns, OOO queue dashboard
+- [x] **Phase 44: OOO Re-engagement Pipeline** — AI-extracted return dates from OOO replies, Trigger.dev delayed tasks, auto-enrolment into personalised Welcome Back campaigns, OOO queue dashboard (completed 2026-03-12)
 
 ## Phase Details
 
@@ -376,7 +376,7 @@ Plans:
 | 41. AI Cron Migration | v6.0 | 2/2 | Complete | 2026-03-12 |
 | 42. Remaining Cron Lift-and-Shift | v6.0 | 5/5 | Complete | 2026-03-12 |
 | 43. Decommission + Observability Validation | 3/3 | Complete    | 2026-03-12 | - |
-| 44. OOO Re-engagement Pipeline | 2/3 | In Progress|  | - |
+| 44. OOO Re-engagement Pipeline | 3/3 | Complete   | 2026-03-12 | - |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
@@ -391,7 +391,7 @@ Plans:
   5. Admin dashboard shows an OOO queue page listing all leads currently out-of-office with return dates, reasons, and re-engagement status (pending/sent/failed)
   6. Client receives a notification when their OOO leads are re-engaged: "[Workspace] 3 leads back from OOO — Welcome Back campaign sent"
   7. If no return date can be extracted, a sensible default is used (14 days from OOO detection) and flagged for manual review
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 44-01-PLAN.md — Schema migration + OOO extraction + process-reply OOO pipeline
