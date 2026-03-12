@@ -27,6 +27,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/exclusions",       // Clay webhook (x-api-key)
   "/api/stripe/",          // Stripe webhook (signature verification)
   "/api/onboard",          // Public onboarding form (has own x-api-key check)
+  "/api/auth/google-postmaster", // Google Postmaster OAuth flow (initiate + callback)
 ];
 
 // Proposal accept is customer-facing (POST /api/proposals/:id/accept)
