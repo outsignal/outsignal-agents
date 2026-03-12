@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v6.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: ready_to_plan
-last_updated: "2026-03-12T00:00:00.000Z"
+last_updated: "2026-03-12T00:10:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 38 of 43 (Trigger.dev Foundation + Smoke Test)
-Plan: 1 of 3
+Plan: 2 of 3
 Status: In progress
-Last activity: 2026-03-12 — 38-01 complete: Trigger.dev SDK, trigger.config.ts, prisma binary targets, shared queues
+Last activity: 2026-03-12 — 38-02 complete: Trigger.dev Cloud project created, Vercel integration connected, .env.local configured
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -45,6 +45,12 @@ Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+v6.0 Phase 38-02 decisions:
+- [Phase 38-02]: Trigger.dev Cloud project ref is proj_difpmdhrzxdwuxzzeney — all tasks must target this project
+- [Phase 38-02]: DATABASE_URL override (?connection_limit=1) PENDING — must be applied in Trigger.dev dashboard before 38-03 smoke test
+- [Phase 38-02]: Neon IP allowlisting check PENDING — verify in Neon console before 38-03 smoke test
+- [Phase 38-02]: PROD secret key obtained (tr_prod_...) — user holds it; needed for Vercel env var TRIGGER_SECRET_KEY on production
 
 v6.0 Phase 38-01 decisions:
 - [Phase 38-01]: TRIGGER_PROJECT_REF from env var, not hardcoded — user creates project in Trigger.dev dashboard during 38-02 setup
@@ -71,11 +77,12 @@ None.
 
 ### Blockers/Concerns
 
-- Neon IP allowlisting status unknown — verify in Neon console before Phase 38 starts; if enabled, add Trigger.dev IP ranges
+- DATABASE_URL override (?connection_limit=1) not yet applied in Trigger.dev dashboard — MUST be done before 38-03 smoke test
+- Neon IP allowlisting check pending — if enabled, add Trigger.dev Cloud IP ranges before 38-03 smoke test
 - WHOOK-02 writer agent restoration depends on current Haiku shortcut implementation in src/lib/agents/runner.ts — review before scoping Phase 40 plans
 
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 38-01-PLAN.md (Trigger.dev SDK, config, prisma binary targets, shared queues)
+Stopped at: Completed 38-02-PLAN.md (Trigger.dev Cloud project, Vercel integration, .env.local configured)
 Resume file: None

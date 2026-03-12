@@ -249,7 +249,7 @@ Plans:
   3. `trigger.config.ts` contains `prismaExtension` with `mode: "legacy"` and `binaryTargets` in `schema.prisma` includes `debian-openssl-3.0.x`
   4. The Vercel integration is installed and Trigger.dev dashboard shows all production env vars synced from Vercel
   5. `/trigger/queues.ts` exists with a named `anthropicQueue` (concurrencyLimit: 3) and `emailBisonQueue` that all AI tasks can reference
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 - [ ] 38-01-PLAN.md — SDK install, trigger.config.ts with Prisma extension, binary targets, shared queues
 - [ ] 38-02-PLAN.md — Trigger.dev project creation, Vercel integration, env var sync, Neon connection config
@@ -353,7 +353,7 @@ Plans:
 | 35. Email Inbox | v5.0 | 3/3 | Complete | 2026-03-11 |
 | 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
-| 38. Trigger.dev Foundation + Smoke Test | 1/3 | In Progress|  | - |
+| 38. Trigger.dev Foundation + Smoke Test | 2/3 | In Progress|  | - |
 | 39. Webhook Reply Migration | v6.0 | 0/TBD | Not started | - |
 | 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
 | 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |
