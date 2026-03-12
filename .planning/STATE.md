@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
-last_updated: "2026-03-12T15:08:48Z"
+last_updated: "2026-03-12T15:19:18.893Z"
 progress:
-  total_phases: 35
-  completed_phases: 33
-  total_plans: 108
-  completed_plans: 110
+  total_phases: 37
+  completed_phases: 34
+  total_plans: 110
+  completed_plans: 111
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 39 of 44 (Webhook Reply Migration)
-Plan: 1 of 2 (COMPLETE)
-Status: Plan 01 complete — moving to Plan 02 (webhook handler migration)
-Last activity: 2026-03-12 — 39-01 complete: process-reply and linkedin-fast-track Trigger.dev tasks created, TypeScript clean
+Plan: 2 of 2 (COMPLETE)
+Status: Phase 39 complete — webhook handler migrated to Trigger.dev tasks, maxDuration=10, fire-and-forget eliminated
+Last activity: 2026-03-12 — 39-02 complete: webhook handler refactored to trigger process-reply + linkedin-fast-track tasks with inline fallback
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -82,6 +82,8 @@ Key v6.0 pre-milestone decisions:
 Recent v5.0 decisions carried forward (still relevant):
 - [Phase 35-01]: prisma db push used instead of migrate dev — pre-existing migration drift, reset would destroy production data
 - [Phase 37-03]: requireAdminAuth() not getPortalSession() for admin routes
+- [Phase 39-02]: Relative path used for import type (trigger/ is at project root, not under src/)
+- [Phase 39-02]: bumpPriority removed from webhook — fully handled inside linkedin-fast-track Trigger.dev task
 
 ### Pending Todos
 
@@ -98,5 +100,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 39-01-PLAN.md (process-reply + linkedin-fast-track Trigger.dev tasks, TypeScript clean)
+Stopped at: Completed 39-02-PLAN.md (webhook handler migrated to Trigger.dev tasks, Phase 39 complete)
 Resume file: None

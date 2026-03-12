@@ -21,8 +21,8 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 - [x] **WHOOK-01**: Reply classification moved from inline webhook to Trigger.dev task
 - [ ] **WHOOK-02**: AI reply suggestion restored to full writer agent (Opus + KB + quality rules) via Trigger.dev task
 - [x] **WHOOK-03**: LinkedIn fast-track actions moved to Trigger.dev task
-- [ ] **WHOOK-04**: Webhook handler reduced to: verify → write event → trigger task → return 200
-- [ ] **WHOOK-05**: Fallback pattern for task trigger failure (inline classification if Trigger.dev unavailable)
+- [x] **WHOOK-04**: Webhook handler reduced to: verify → write event → trigger task → return 200
+- [x] **WHOOK-05**: Fallback pattern for task trigger failure (inline classification if Trigger.dev unavailable)
 
 ### Cron Migration
 
@@ -79,8 +79,8 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 | FOUND-06 | Phase 38 | Complete |
 | WHOOK-01 | Phase 39 | Complete |
 | WHOOK-03 | Phase 39 | Complete |
-| WHOOK-04 | Phase 39 | Pending |
-| WHOOK-05 | Phase 39 | Pending |
+| WHOOK-04 | Phase 39 | Complete |
+| WHOOK-05 | Phase 39 | Complete |
 | WHOOK-02 | Phase 40 | Pending |
 | CRON-01 | Phase 41 | Pending |
 | CRON-02 | Phase 41 | Pending |

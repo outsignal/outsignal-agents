@@ -100,7 +100,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 **Milestone Goal:** Migrate all background operations from cron-job.org + Vercel fire-and-forget to Trigger.dev managed infrastructure, eliminating silent failures caused by 30s/60s serverless timeout constraints and providing full task observability.
 
 - [x] **Phase 38: Trigger.dev Foundation + Smoke Test** — SDK install, config, Prisma binary target, env var sync, concurrency queues, and smoke test verification; nothing else is unblockable without this (completed 2026-03-12)
-- [ ] **Phase 39: Webhook Reply Migration** — EmailBison webhook handler reduced to verify + trigger + 200; reply classification and LinkedIn fast-track moved to Trigger.dev tasks with inline fallback (2 plans)
+- [x] **Phase 39: Webhook Reply Migration** — EmailBison webhook handler reduced to verify + trigger + 200; reply classification and LinkedIn fast-track moved to Trigger.dev tasks with inline fallback (2 plans) (completed 2026-03-12)
 - [ ] **Phase 40: Writer Agent Restoration** — AI reply suggestion upgraded from Haiku shortcut to full Opus writer agent running as a Trigger.dev task with no timeout constraint
 - [ ] **Phase 41: AI Cron Migration** — retry-classification, generate-insights, and snapshot-metrics migrated as scheduled tasks; these are the most timeout-vulnerable crons and most likely already failing silently
 - [ ] **Phase 42: Remaining Cron Lift-and-Shift** — poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, and inbox-health (split) migrated; campaign deploy after() pattern replaced
@@ -358,7 +358,7 @@ Plans:
 | 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
 | 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete    | 2026-03-12 | - |
-| 39. Webhook Reply Migration | 1/2 | In Progress|  | - |
+| 39. Webhook Reply Migration | 2/2 | Complete   | 2026-03-12 | - |
 | 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
 | 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |
 | 42. Remaining Cron Lift-and-Shift | v6.0 | 0/TBD | Not started | - |
@@ -378,7 +378,7 @@ Plans:
   5. Admin dashboard shows an OOO queue page listing all leads currently out-of-office with return dates, reasons, and re-engagement status (pending/sent/failed)
   6. Client receives a notification when their OOO leads are re-engaged: "[Workspace] 3 leads back from OOO — Welcome Back campaign sent"
   7. If no return date can be extracted, a sensible default is used (14 days from OOO detection) and flagged for manual review
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] TBD (run /gsd:plan-phase 44 to break down)
