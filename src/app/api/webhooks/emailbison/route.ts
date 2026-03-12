@@ -453,13 +453,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      notify({
-        type: "system",
-        severity: "warning",
-        title: `Email bounced: ${leadEmail}`,
-        workspaceSlug,
-        metadata: { event: "BOUNCE", leadEmail, senderEmail: data.sender_email },
-      }).catch(() => {});
+      try {
+        await notify({
+          type: "system",
+          severity: "warning",
+          title: `Email bounced: ${leadEmail}`,
+          workspaceSlug,
+          metadata: { event: "BOUNCE", leadEmail, senderEmail: data.sender_email },
+        });
+      } catch (err) {
+        console.error("[webhook] System notification failed:", err);
+      }
     }
 
     // Handle UNSUBSCRIBED — mark person as unsubscribed
@@ -478,13 +482,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      notify({
-        type: "system",
-        severity: "info",
-        title: `Lead unsubscribed: ${leadEmail}`,
-        workspaceSlug,
-        metadata: { event: "UNSUBSCRIBED", leadEmail },
-      }).catch(() => {});
+      try {
+        await notify({
+          type: "system",
+          severity: "info",
+          title: `Lead unsubscribed: ${leadEmail}`,
+          workspaceSlug,
+          metadata: { event: "UNSUBSCRIBED", leadEmail },
+        });
+      } catch (err) {
+        console.error("[webhook] System notification failed:", err);
+      }
     }
 
     return NextResponse.json({ received: true });

@@ -64,6 +64,8 @@ export async function POST() {
       : null;
 
   // 7. Fire async sync for senders outside cooldown (fire-and-forget)
+  // Intentional fire-and-forget: returns 202 immediately while sync runs in background.
+  // This is a portal UX pattern, not a webhook handler — acceptable per Phase 43 cleanup scope.
   const syncing = sendersToSync.length > 0;
   if (syncing) {
     void Promise.allSettled(sendersToSync.map((s) => syncLinkedInConversations(s.id)));
