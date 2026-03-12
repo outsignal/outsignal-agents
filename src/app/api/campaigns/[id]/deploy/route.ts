@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { prisma } from "@/lib/db";
 import { getCampaign } from "@/lib/campaigns/operations";
-import { executeDeploy, retryDeployChannel } from "@/lib/campaigns/deploy";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { auditLog } from "@/lib/audit";
 
@@ -46,8 +45,10 @@ export async function POST(
       return NextResponse.json({ error: "Deploy is not in failed state" }, { status: 400 });
     }
 
-    after(async () => {
-      await retryDeployChannel(latestDeploy.id, retryChannel);
+    await tasks.trigger("campaign-deploy", {
+      campaignId: id,
+      deployId: latestDeploy.id,
+      retryChannel,
     });
 
     auditLog({
@@ -97,9 +98,10 @@ export async function POST(
     },
   });
 
-  // Fire-and-forget — execute deploy in background after response
-  after(async () => {
-    await executeDeploy(id, deploy.id);
+  // Trigger background task — execute deploy via Trigger.dev (retry, observability, no timeout)
+  await tasks.trigger("campaign-deploy", {
+    campaignId: id,
+    deployId: deploy.id,
   });
 
   auditLog({
