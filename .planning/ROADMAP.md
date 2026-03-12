@@ -353,7 +353,7 @@ Plans:
 | 35. Email Inbox | v5.0 | 3/3 | Complete | 2026-03-11 |
 | 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
-| 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete   | 2026-03-12 | - |
+| 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete    | 2026-03-12 | - |
 | 39. Webhook Reply Migration | v6.0 | 0/TBD | Not started | - |
 | 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
 | 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |
