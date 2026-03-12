@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && NODE_OPTIONS='--max-old-space-size=7168' next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
@@ -27,6 +27,7 @@
     "apify-client": "^2.22.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csv-parse": "^6.1.0",
     "dompurify": "^3.3.1",
     "googleapis": "^171.4.0",
     "handlebars": "^4.7.8",
