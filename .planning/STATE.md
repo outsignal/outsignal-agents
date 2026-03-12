@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
-last_updated: "2026-03-12T21:59:10.072Z"
+last_updated: "2026-03-12T22:33:46.122Z"
 progress:
   total_phases: 42
   completed_phases: 39
-  total_plans: 124
-  completed_plans: 125
+  total_plans: 127
+  completed_plans: 126
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v6.0 Phase 43 — Decommission + Observability Validation
+**Current focus:** v6.0 Phase 44 — OOO Re-engagement Pipeline
 
 ## Current Position
 
-Phase: 43 of 44 (Decommission + Observability Validation)
-Plan: 3 of TBD (43-03 complete)
-Status: Phase 43 Plan 03 complete — Background Tasks observability dashboard shipped, admin can monitor Trigger.dev runs without leaving the admin UI
-Last activity: 2026-03-12 — Phase 43-03 complete: Background Tasks admin page + API proxy + sidebar link (DECOMM-04 fulfilled)
+Phase: 44 of 44 (OOO Re-engagement Pipeline)
+Plan: 1 of 3 (44-01 complete)
+Status: Phase 44 Plan 01 complete — OOO detection pipeline integrated: schema, extractOooDetails lib, process-reply OOO step, ooo-reengage stub
+Last activity: 2026-03-12 — Phase 44-01 complete: OOO schema migration, Haiku extraction, delayed Trigger.dev task scheduling
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -127,6 +127,9 @@ Recent v5.0 decisions carried forward (still relevant):
 - [Phase 45-01]: Connect dedup scoped per workspace via sender relation filter — cross-workspace campaigns remain independent
 - [Phase 45]: conditionType=null + requireConnected=false => always passes — backward compat for legacy rules without migration
 - [Phase 45]: getConnectionsToCheck uses DEFAULT_CONNECTION_TIMEOUT_DAYS as DB pre-filter; pollConnectionAccepts applies per-campaign timeout per connection
+- [Phase 44-01]: ooo-reengage task payload passes reengagementId as empty string — Plan 02 task will look up OooReengagement record by personEmail+workspaceSlug+status=pending at run time
+- [Phase 44-01]: runs.reschedule() used for duplicate OOO dedup — existing pending record updated, not replaced, preserving triggerRunId integrity
+- [Phase 44-01]: extractOooDetails uses receivedAt (not now()) as the anchor for default date calculation
 
 ### Pending Todos
 

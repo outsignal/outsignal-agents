@@ -376,7 +376,7 @@ Plans:
 | 41. AI Cron Migration | v6.0 | 2/2 | Complete | 2026-03-12 |
 | 42. Remaining Cron Lift-and-Shift | v6.0 | 5/5 | Complete | 2026-03-12 |
 | 43. Decommission + Observability Validation | 3/3 | Complete    | 2026-03-12 | - |
-| 44. OOO Re-engagement Pipeline | v6.0 | 0/3 | Not started | - |
+| 44. OOO Re-engagement Pipeline | 1/3 | In Progress|  | - |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
@@ -391,7 +391,7 @@ Plans:
   5. Admin dashboard shows an OOO queue page listing all leads currently out-of-office with return dates, reasons, and re-engagement status (pending/sent/failed)
   6. Client receives a notification when their OOO leads are re-engaged: "[Workspace] 3 leads back from OOO — Welcome Back campaign sent"
   7. If no return date can be extracted, a sensible default is used (14 days from OOO detection) and flagged for manual review
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 44-01-PLAN.md — Schema migration + OOO extraction + process-reply OOO pipeline
