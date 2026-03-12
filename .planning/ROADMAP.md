@@ -304,7 +304,7 @@ Plans:
   3. inbox-health is split into at least 3 separate tasks (inbox checks, sender health, invoice processing) — each visible as a distinct scheduled task in the Trigger.dev dashboard with independent retry history
   4. A campaign deployment completes successfully via Trigger.dev task — the `after()` pattern in the deploy route is gone and the task run appears in dashboard history
   5. cron-job.org jobs for all 7 migrated crons are deactivated the same day each Trigger.dev cron is verified stable
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 Plans:
 - [ ] 42-01-PLAN.md — Simple cron tasks (sync-senders, bounce-snapshots, deliverability-digest, bounce-monitor)
 - [ ] 42-02-PLAN.md — Complex cron tasks (poll-replies with emailBisonQueue, domain-health with cap removed)
@@ -370,7 +370,7 @@ Plans:
 | 39. Webhook Reply Migration | 2/2 | Complete    | 2026-03-12 | - |
 | 40. Writer Agent Restoration | 1/2 | Complete    | 2026-03-12 | - |
 | 41. AI Cron Migration | v6.0 | 2/2 | Complete | 2026-03-12 |
-| 42. Remaining Cron Lift-and-Shift | 2/5 | In Progress|  | - |
+| 42. Remaining Cron Lift-and-Shift | 3/5 | In Progress|  | - |
 | 43. Decommission + Observability Validation | v6.0 | 0/TBD | Not started | - |
 | 44. OOO Re-engagement Pipeline | v6.0 | 0/TBD | Not started | - |
 

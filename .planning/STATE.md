@@ -97,6 +97,9 @@ Recent v5.0 decisions carried forward (still relevant):
 - [Phase 39-02]: bumpPriority removed from webhook — fully handled inside linkedin-fast-track Trigger.dev task
 - [Phase 42-04]: campaign-deploy has no queue — infrequent deploys, no concurrency concern
 - [Phase 42-04]: await tasks.trigger() used (not void) — ensures task registered before route responds
+- [Phase 42-01]: sync-senders, bounce-snapshots, deliverability-digest use no queue — lib functions handle prisma internally, no AI/EB concurrency risk
+- [Phase 42-01]: bounce-monitor uses PrismaClient at module scope for insight creation and sender queries
+- [Phase 42-01]: No anthropicQueue on any of the four tasks — none call Anthropic
 
 ### Pending Todos
 
@@ -113,5 +116,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 42-04-PLAN.md (campaign-deploy Trigger.dev task + deploy route refactor)
+Stopped at: Completed 42-01-PLAN.md (4 non-AI cron tasks: sync-senders, bounce-snapshots, deliverability-digest, bounce-monitor)
 Resume file: None

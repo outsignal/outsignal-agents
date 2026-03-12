@@ -31,10 +31,10 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 - [x] **CRON-03**: snapshot-metrics migrated with AI body element classification
 - [ ] **CRON-04**: poll-replies migrated with all-workspace concurrent fetching
 - [ ] **CRON-05**: domain-health migrated with full DNSBL checking (no 4-domain cap)
-- [ ] **CRON-06**: bounce-monitor migrated to scheduled task
-- [ ] **CRON-07**: sync-senders migrated to scheduled task
-- [ ] **CRON-08**: bounce-snapshots migrated to scheduled task
-- [ ] **CRON-09**: deliverability-digest migrated to scheduled task
+- [x] **CRON-06**: bounce-monitor migrated to scheduled task
+- [x] **CRON-07**: sync-senders migrated to scheduled task
+- [x] **CRON-08**: bounce-snapshots migrated to scheduled task
+- [x] **CRON-09**: deliverability-digest migrated to scheduled task
 - [ ] **CRON-10**: inbox-health split into separate tasks (inbox checks, sender health, invoices, LinkedIn maintenance)
 
 ### Decommission & Observability
@@ -87,10 +87,10 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 | CRON-03 | Phase 41 | Complete (2026-03-12) |
 | CRON-04 | Phase 42 | Pending |
 | CRON-05 | Phase 42 | Pending |
-| CRON-06 | Phase 42 | Pending |
-| CRON-07 | Phase 42 | Pending |
-| CRON-08 | Phase 42 | Pending |
-| CRON-09 | Phase 42 | Pending |
+| CRON-06 | Phase 42 | Complete |
+| CRON-07 | Phase 42 | Complete |
+| CRON-08 | Phase 42 | Complete |
+| CRON-09 | Phase 42 | Complete |
 | CRON-10 | Phase 42 | Pending |
 | DECOMM-03 | Phase 42 | Complete |
 | DECOMM-01 | Phase 43 | Pending |
