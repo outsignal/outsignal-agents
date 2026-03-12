@@ -123,7 +123,7 @@ export function EmailThreadList({
             key={thread.threadId}
             onClick={() => onSelectThread(thread.threadId)}
             className={cn(
-              "w-full text-left px-4 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "w-full text-left px-4 py-3.5 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isSelected && "bg-accent",
               thread.interested &&
                 !isSelected &&
@@ -162,7 +162,7 @@ export function EmailThreadList({
 
                 {/* Subject */}
                 {thread.subject && (
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  <p className="text-xs font-medium text-foreground/80 truncate mt-0.5">
                     {thread.subject}
                   </p>
                 )}
@@ -173,7 +173,7 @@ export function EmailThreadList({
                 </p>
 
                 {/* Tags row */}
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   {thread.workspaceName && (
                     <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                       {thread.workspaceName}

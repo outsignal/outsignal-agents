@@ -154,7 +154,7 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
       </div>
 
       {/* Message body */}
-      <div className="p-4">
+      <div className="px-4 py-5">
         {msg.htmlBody ? (
           <iframe
             srcDoc={msg.htmlBody}
@@ -269,7 +269,7 @@ export function EmailThreadView({
   return (
     <div className="flex flex-col h-full">
       {/* Thread header */}
-      <div className="px-5 py-3 border-b border-border shrink-0">
+      <div className="px-5 py-4 border-b border-border shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold truncate">
@@ -300,7 +300,7 @@ export function EmailThreadView({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Cross-channel indicator */}
         {crossChannel?.type === "linkedin" && onSwitchChannel && (
           <button
@@ -325,7 +325,7 @@ export function EmailThreadView({
       </div>
 
       {/* Reply composer */}
-      <div className="shrink-0">
+      <div className="shrink-0 border-t border-border">
         <EmailReplyComposer
           replyId={latestInbound?.id ?? null}
           composerText={composerText}
