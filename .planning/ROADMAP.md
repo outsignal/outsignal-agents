@@ -6,8 +6,9 @@
 - ✅ **v1.1 Outbound Pipeline** — Phases 7-14 (shipped 2026-03-03) — [archive](milestones/v1.1-ROADMAP.md)
 - ✅ **v2.0 Lead Discovery & Intelligence** — Phases 15-22 (shipped 2026-03-04) — [archive](milestones/v2.0-ROADMAP.md)
 - ✅ **v3.0 Campaign Intelligence Hub** — Phases 23-28 (shipped 2026-03-10) — [archive](milestones/v3.0-ROADMAP.md)
-- 🚧 **v4.0 Email Deliverability & Domain Infrastructure Monitoring** — Phases 29-32 (in progress)
-- 🚧 **v5.0 Client Portal Inbox** — Phases 33-37 (in progress)
+- ✅ **v4.0 Email Deliverability & Domain Infrastructure Monitoring** — Phases 29-32 (shipped 2026-03-11)
+- ✅ **v5.0 Client Portal Inbox** — Phases 33-37 (shipped 2026-03-11)
+- 🚧 **v6.0 Trigger.dev Migration — Background Jobs Infrastructure** — Phases 38-43 (in progress)
 
 ## Phases
 
@@ -73,24 +74,37 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 </details>
 
-### v4.0 Email Deliverability & Domain Infrastructure Monitoring (In Progress)
+<details>
+<summary>✅ v4.0 Email Deliverability & Domain Infrastructure Monitoring (Phases 29-32) — SHIPPED 2026-03-11</summary>
 
-**Milestone Goal:** Full-stack deliverability visibility — DNS health, bounce trends, placement testing, auto-rotation, and client-facing reporting — so every sender's health is observable and actionable before problems become crises.
+- [x] Phase 29: Domain Health Foundation (3/3 plans) — completed 2026-03-10
+- [x] Phase 30: Inbox Placement Testing (2/2 plans) — completed 2026-03-11
+- [x] Phase 31: Auto-Rotation Engine (2/2 plans) — completed 2026-03-11
+- [x] Phase 32: Deliverability Dashboard & Reporting (4/4 plans) — completed 2026-03-11
 
-- [x] **Phase 29: Domain Health Foundation** — Schema, DNS validation library, bounce snapshots, and daily cron; everything downstream depends on this data layer (completed 2026-03-10)
-- [x] **Phase 30: Inbox Placement Testing** — On-demand mail-tester.com integration with "recommended for testing" badges on at-risk senders (completed 2026-03-11)
-- [x] **Phase 31: Auto-Rotation Engine** — Graduated status escalation, 4-hour bounce monitor cron, audit trail, notifications, and EmailBison API investigation (completed 2026-03-11)
-- [x] **Phase 32: Deliverability Dashboard & Reporting** — Admin deliverability page, Intelligence Hub bento section, weekly digest, and client portal health summary (completed 2026-03-11)
+</details>
 
-### v5.0 Client Portal Inbox (In Progress)
+<details>
+<summary>✅ v5.0 Client Portal Inbox (Phases 33-37) — SHIPPED 2026-03-11</summary>
 
-**Milestone Goal:** Full inbox experience at /portal/inbox with threaded email conversations (via EmailBison) and LinkedIn messaging (via Voyager API), replacing the read-only replies feed with reply capability.
+- [x] Phase 33: API Spike & Client Extensions (2/2 plans) — completed 2026-03-11
+- [x] Phase 34: LinkedIn Data Layer (1/1 plans) — completed 2026-03-11
+- [x] Phase 35: Email Inbox (3/3 plans) — completed 2026-03-11
+- [x] Phase 36: LinkedIn Inbox (2/2 plans) — completed 2026-03-11
+- [x] Phase 37: Inbox UI Polish, Admin Inbox & Navigation (3/3 plans) — completed 2026-03-11
 
-- [x] **Phase 33: API Spike & Client Extensions** — Validate EmailBison sendReply live behavior and extend both the EmailBisonClient and VoyagerClient with inbox methods; all downstream phases depend on these contracts (completed 2026-03-11)
-- [x] **Phase 34: LinkedIn Data Layer** — DB models for LinkedIn conversations + messages, fire-and-forget sync API, and participant-to-Person matching; gates all LinkedIn UI work (completed 2026-03-11)
-- [ ] **Phase 35: Email Inbox** — Thread grouping API, conversation view, email reply composer, and AI suggested reply display; delivers immediate client value on the highest-volume channel
-- [x] **Phase 36: LinkedIn Inbox** — Conversation list and detail views from DB, LinkedIn reply queue via LinkedInAction, and manual refresh trigger (completed 2026-03-11)
-- [x] **Phase 37: Inbox UI Polish, Admin Inbox & Navigation** — Channel tabs, mobile single-panel layout, unread indicators, cross-channel indicator, admin master inbox, and portal sidebar nav update (completed 2026-03-11)
+</details>
+
+### v6.0 Trigger.dev Migration — Background Jobs Infrastructure (In Progress)
+
+**Milestone Goal:** Migrate all background operations from cron-job.org + Vercel fire-and-forget to Trigger.dev managed infrastructure, eliminating silent failures caused by 30s/60s serverless timeout constraints and providing full task observability.
+
+- [ ] **Phase 38: Trigger.dev Foundation + Smoke Test** — SDK install, config, Prisma binary target, env var sync, concurrency queues, and smoke test verification; nothing else is unblockable without this
+- [ ] **Phase 39: Webhook Reply Migration** — EmailBison webhook handler reduced to verify + trigger + 200; reply classification and LinkedIn fast-track moved to Trigger.dev tasks with inline fallback
+- [ ] **Phase 40: Writer Agent Restoration** — AI reply suggestion upgraded from Haiku shortcut to full Opus writer agent running as a Trigger.dev task with no timeout constraint
+- [ ] **Phase 41: AI Cron Migration** — retry-classification, generate-insights, and snapshot-metrics migrated as scheduled tasks; these are the most timeout-vulnerable crons and most likely already failing silently
+- [ ] **Phase 42: Remaining Cron Lift-and-Shift** — poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, and inbox-health (split) migrated; campaign deploy after() pattern replaced
+- [ ] **Phase 43: Decommission + Observability Validation** — cron-job.org fully retired, fire-and-forget patterns removed, background task observability live in admin dashboard
 
 ## Phase Details
 
@@ -106,9 +120,9 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
   5. Admin receives a warning notification when SPF, DKIM, or DMARC validation fails for any sending domain
 **Plans:** 3/3 plans complete
 Plans:
-- [ ] 29-01-PLAN.md — DomainHealth model + DNS validation library (SPF/DKIM/DMARC)
-- [ ] 29-02-PLAN.md — BounceSnapshot model + snapshot capture + warmup API + daily cron
-- [ ] 29-03-PLAN.md — DNSBL blacklist checker + notifications + domain health cron
+- [x] 29-01-PLAN.md — DomainHealth model + DNS validation library (SPF/DKIM/DMARC)
+- [x] 29-02-PLAN.md — BounceSnapshot model + snapshot capture + warmup API + daily cron
+- [x] 29-03-PLAN.md — DNSBL blacklist checker + notifications + domain health cron
 
 ### Phase 30: Inbox Placement Testing
 **Goal**: Admin can trigger on-demand inbox placement tests for at-risk senders and see historical results per sender
@@ -121,8 +135,8 @@ Plans:
   4. Admin can view a timeline of past placement test scores for any sender
 **Plans:** 2/2 plans complete
 Plans:
-- [ ] 30-01-PLAN.md — PlacementTest model + mail-tester.com client + recommended badge query
-- [ ] 30-02-PLAN.md — API endpoints (POST trigger + GET history) + auto-send + alerting
+- [x] 30-01-PLAN.md — PlacementTest model + mail-tester.com client + recommended badge query
+- [x] 30-02-PLAN.md — API endpoints (POST trigger + GET history) + auto-send + alerting
 
 ### Phase 31: Auto-Rotation Engine
 **Goal**: Sender health status escalates and recovers automatically based on bounce rate thresholds, with full audit trail and admin notifications
@@ -134,7 +148,7 @@ Plans:
   3. A sender in critical status auto-recovers to healthy after 7 consecutive days below 3% bounce rate
   4. Every status transition is recorded in the EmailHealthEvent audit trail with reason and bounce percentage at the time
   5. Admin receives a notification when any sender reaches warning or critical status with the current bounce rate and recommended action
-**Plans**: TBD
+**Plans**: 2/2 plans complete
 
 ### Phase 32: Deliverability Dashboard & Reporting
 **Goal**: Deliverability data is fully surfaced in the admin dashboard, Intelligence Hub, weekly digest, and client portal
@@ -148,10 +162,10 @@ Plans:
   5. Clients can view per-sender bounce rates and domain health badges on their portal email-health page
 **Plans:** 4/4 plans complete
 Plans:
-- [ ] 32-01-PLAN.md — Deliverability API layer (summary, domains, senders, events endpoints)
-- [ ] 32-02-PLAN.md — Admin deliverability page with domain cards, sender table, activity feed + sidebar link
-- [ ] 32-03-PLAN.md — Intelligence Hub bento card + auto-insight generation on warning/critical
-- [ ] 32-04-PLAN.md — Weekly digest notification + portal email-health enhancement
+- [x] 32-01-PLAN.md — Deliverability API layer (summary, domains, senders, events endpoints)
+- [x] 32-02-PLAN.md — Admin deliverability page with domain cards, sender table, activity feed + sidebar link
+- [x] 32-03-PLAN.md — Intelligence Hub bento card + auto-insight generation on warning/critical
+- [x] 32-04-PLAN.md — Weekly digest notification + portal email-health enhancement
 
 ### Phase 33: API Spike & Client Extensions
 **Goal**: EmailBison sendReply behavior is validated live and both API clients are extended with inbox methods — unblocking every downstream phase
@@ -164,8 +178,8 @@ Plans:
   4. The Railway worker exposes GET /sessions/{senderId}/conversations and returns conversations JSON the portal can consume
 **Plans:** 2/2 plans complete
 Plans:
-- [ ] 33-01-PLAN.md — EmailBison sendReply spike + client extensions (sendReply, getReply, getRepliesPage)
-- [ ] 33-02-PLAN.md — VoyagerClient conversation methods + worker conversations endpoint
+- [x] 33-01-PLAN.md — EmailBison sendReply spike + client extensions (sendReply, getReply, getRepliesPage)
+- [x] 33-02-PLAN.md — VoyagerClient conversation methods + worker conversations endpoint
 
 ### Phase 34: LinkedIn Data Layer
 **Goal**: LinkedIn conversations and messages are stored in the database and kept fresh via a fire-and-forget sync API — the data foundation all LinkedIn UI reads from
@@ -178,7 +192,7 @@ Plans:
   4. Participants in synced conversations are matched to existing Person records by LinkedIn profile URL where available
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 34-01-PLAN.md — Prisma models (LinkedInConversation, LinkedInMessage, LinkedInSyncStatus) + sync logic + portal sync API route
+- [x] 34-01-PLAN.md — Prisma models (LinkedInConversation, LinkedInMessage, LinkedInSyncStatus) + sync logic + portal sync API route
 
 ### Phase 35: Email Inbox
 **Goal**: Clients can read threaded email conversations and send replies from the portal inbox — delivering immediate value on the highest-volume channel
@@ -189,11 +203,11 @@ Plans:
   2. Opening a thread shows all messages in chronological order with inbound messages left-aligned, outbound messages right-aligned, and the original outbound email shown as context at the top
   3. Client can type a reply in the composer, select a sender email, hit Send, and the reply is delivered via EmailBison within the same portal session
   4. When an AI suggested reply exists on a reply record, a "Use this" button populates the composer with the suggestion text
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
-- [ ] 35-01-PLAN.md — Reply model inbox fields migration + webhook/poll-replies updates
-- [ ] 35-02-PLAN.md — Thread list, thread detail, and reply send API routes
-- [ ] 35-03-PLAN.md — Portal inbox UI (thread list, conversation view, composer, AI suggestion)
+- [x] 35-01-PLAN.md — Reply model inbox fields migration + webhook/poll-replies updates
+- [x] 35-02-PLAN.md — Thread list, thread detail, and reply send API routes
+- [x] 35-03-PLAN.md — Portal inbox UI (thread list, conversation view, composer, AI suggestion)
 
 ### Phase 36: LinkedIn Inbox
 **Goal**: Clients can read full LinkedIn conversation histories and queue replies from the portal, with a manual refresh to pull the latest messages
@@ -206,8 +220,8 @@ Plans:
   4. Client can click Refresh on any conversation to trigger a fresh Voyager sync and see new messages appear after the sync completes
 **Plans:** 2/2 plans complete
 Plans:
-- [ ] 36-01-PLAN.md — LinkedIn inbox API routes (conversation list, on-demand messages, reply queue, action status)
-- [ ] 36-02-PLAN.md — LinkedIn UI components (conversation list, chat bubble view, composer) + inbox page channel toggle
+- [x] 36-01-PLAN.md — LinkedIn inbox API routes (conversation list, on-demand messages, reply queue, action status)
+- [x] 36-02-PLAN.md — LinkedIn UI components (conversation list, chat bubble view, composer) + inbox page channel toggle
 
 ### Phase 37: Inbox UI Polish, Admin Inbox & Navigation
 **Goal**: The inbox is fully polished with channel tabs, mobile layout, unread tracking, cross-channel indicators, an admin master inbox, and updated navigation in both portals
@@ -221,9 +235,76 @@ Plans:
   5. Admin can navigate to /admin/inbox, filter by workspace, and reply on behalf of any client using the same two-panel components built for the portal
 **Plans:** 3/3 plans complete
 Plans:
-- [ ] 37-01-PLAN.md — Schema migration (isRead on Reply) + unread tracking APIs + navigation updates (both portals)
-- [ ] 37-02-PLAN.md — Portal inbox UI polish (mobile layout, channel tabs, cross-channel indicator, intent badges, composer upgrade)
-- [ ] 37-03-PLAN.md — Admin master inbox (API endpoints + page with workspace filter + reply on behalf)
+- [x] 37-01-PLAN.md — Schema migration (isRead on Reply) + unread tracking APIs + navigation updates (both portals)
+- [x] 37-02-PLAN.md — Portal inbox UI polish (mobile layout, channel tabs, cross-channel indicator, intent badges, composer upgrade)
+- [x] 37-03-PLAN.md — Admin master inbox (API endpoints + page with workspace filter + reply on behalf)
+
+### Phase 38: Trigger.dev Foundation + Smoke Test
+**Goal**: Trigger.dev is installed, configured, and verified working — Prisma connects, env vars are present, and the shared Anthropic concurrency queue exists; every downstream phase is blocked until this passes
+**Depends on**: Phase 37 (existing codebase baseline)
+**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05, FOUND-06
+**Success Criteria** (what must be TRUE):
+  1. `trigger.dev dev` starts without errors and discovers the smoke-test task in the local dashboard
+  2. The smoke-test task runs successfully: it reads one Person record from Neon and makes one Anthropic API call, and both return valid responses — proving DB connectivity and env var presence end-to-end
+  3. `trigger.config.ts` contains `prismaExtension` with `mode: "legacy"` and `binaryTargets` in `schema.prisma` includes `debian-openssl-3.0.x`
+  4. The Vercel integration is installed and Trigger.dev dashboard shows all production env vars synced from Vercel
+  5. `/trigger/queues.ts` exists with a named `anthropicQueue` (concurrencyLimit: 3) and `emailBisonQueue` that all AI tasks can reference
+**Plans**: TBD
+
+### Phase 39: Webhook Reply Migration
+**Goal**: The EmailBison webhook handler returns 200 immediately and all reply processing (classification, LinkedIn fast-track) runs as Trigger.dev tasks — ending the fire-and-forget silent failure pattern
+**Depends on**: Phase 38 (Trigger.dev must be installed and verified before any task is deployed)
+**Requirements**: WHOOK-01, WHOOK-03, WHOOK-04, WHOOK-05
+**Success Criteria** (what must be TRUE):
+  1. The webhook handler returns 200 within 500ms of receiving a payload — verified by checking webhook event logs in EmailBison showing consistent fast acknowledgment
+  2. A reply arrives, the webhook returns 200, and within 30 seconds the Reply record in the DB has a populated `intent` field — proving classification ran asynchronously via Trigger.dev
+  3. When Trigger.dev is unavailable (simulated by disabling the task), the webhook handler falls back to inline classification and still writes intent to the DB — the fallback is observable via error log entries
+  4. LinkedIn fast-track actions triggered from the webhook appear in the Trigger.dev dashboard run history with the correct workspace slug tag
+**Plans**: TBD
+
+### Phase 40: Writer Agent Restoration
+**Goal**: AI reply suggestions are generated by the full Opus writer agent with KB search and quality rules — restoring the capability that was degraded to Haiku as a Vercel timeout workaround
+**Depends on**: Phase 39 (reply must be classified and persisted in DB before suggestion generation begins)
+**Requirements**: WHOOK-02
+**Success Criteria** (what must be TRUE):
+  1. A new inbound reply triggers a `generate-suggestion` Trigger.dev task that completes successfully — the task run is visible in the Trigger.dev dashboard with a duration above 60 seconds (proving it runs beyond Vercel's constraint)
+  2. The generated suggestion uses the Opus model (visible in AgentRun logs) and references knowledge base results — not the single-model Haiku shortcut
+  3. The AI suggested reply appears on the Reply record within 5 minutes of the webhook arriving, and the portal "Use this" button surfaces it in the inbox composer
+**Plans**: TBD
+
+### Phase 41: AI Cron Migration
+**Goal**: retry-classification, generate-insights, and snapshot-metrics run as Trigger.dev scheduled tasks — eliminating the silent failures caused by multi-workspace Anthropic chains exceeding Vercel's 60s ceiling
+**Depends on**: Phase 38 (Trigger.dev foundation must exist; anthropicQueue must be pre-defined before AI tasks run)
+**Requirements**: CRON-01, CRON-02, CRON-03
+**Success Criteria** (what must be TRUE):
+  1. The Trigger.dev dashboard shows retry-classification, generate-insights, and snapshot-metrics running on their configured schedules — with run history showing successful completions, not timeouts
+  2. generate-insights processes all 6 workspaces in a single run (fan-out pattern) — Trigger.dev run log shows workspace-level subtask entries, not a sequential loop hitting a wall at workspace 3
+  3. snapshot-metrics completes AI body element classification within a single task run — no partial snapshots with null classification fields
+  4. The cron-job.org jobs for all three crons are deactivated the same day each Trigger.dev cron is verified stable — no double-processing window
+**Plans**: TBD
+
+### Phase 42: Remaining Cron Lift-and-Shift
+**Goal**: All remaining scheduled work (poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, inbox-health split into parts, and campaign deploy) runs on Trigger.dev
+**Depends on**: Phase 41 (idempotency and scheduling patterns established in Phase 41 carry forward here)
+**Requirements**: CRON-04, CRON-05, CRON-06, CRON-07, CRON-08, CRON-09, CRON-10, DECOMM-03
+**Success Criteria** (what must be TRUE):
+  1. poll-replies fetches across all workspaces concurrently in a single Trigger.dev run — no sequential workspace loop visible in task logs
+  2. domain-health runs with no 4-domain cap — all domains in the DB are checked per run, confirmed by comparing Trigger.dev run output against total domain count in DB
+  3. inbox-health is split into at least 3 separate tasks (inbox checks, sender health, invoice processing) — each visible as a distinct scheduled task in the Trigger.dev dashboard with independent retry history
+  4. A campaign deployment completes successfully via Trigger.dev task — the `after()` pattern in the deploy route is gone and the task run appears in dashboard history
+  5. cron-job.org jobs for all 7 migrated crons are deactivated the same day each Trigger.dev cron is verified stable
+**Plans**: TBD
+
+### Phase 43: Decommission + Observability Validation
+**Goal**: cron-job.org is fully retired, all fire-and-forget patterns are removed from the codebase, and the admin dashboard surfaces background task status so failures are no longer silent
+**Depends on**: Phase 42 (all tasks must be running on Trigger.dev before external crons can be retired)
+**Requirements**: DECOMM-01, DECOMM-02, DECOMM-04
+**Success Criteria** (what must be TRUE):
+  1. The cron-job.org account has zero active jobs — all previously-external crons are now Trigger.dev schedules
+  2. A search of the codebase for `.then(` in webhook handler files returns no background work — all async operations are `tasks.trigger()` calls
+  3. Admin can navigate to a Background Tasks page (or panel) in the dashboard and see a list of recent task runs with status (success/failed/running), duration, and workspace tag — making failures visible without logging into Trigger.dev
+  4. A deliberately-failed task appears in the admin dashboard within 5 minutes of the failure, with enough context to identify which workspace and operation was affected
+**Plans**: TBD
 
 ## Progress
 
@@ -261,10 +342,16 @@ Plans:
 | 28. Intelligence Hub Dashboard | v3.0 | 2/2 | Complete | 2026-03-10 |
 | 29. Domain Health Foundation | v4.0 | 3/3 | Complete | 2026-03-10 |
 | 30. Inbox Placement Testing | v4.0 | 2/2 | Complete | 2026-03-11 |
-| 31. Auto-Rotation Engine | 2/2 | Complete    | 2026-03-11 | - |
-| 32. Deliverability Dashboard & Reporting | 4/4 | Complete    | 2026-03-11 | - |
-| 33. API Spike & Client Extensions | 2/2 | Complete    | 2026-03-11 | - |
-| 34. LinkedIn Data Layer | 1/1 | Complete    | 2026-03-11 | - |
-| 35. Email Inbox | 3/3 | Complete | 2026-03-11 | - |
-| 36. LinkedIn Inbox | 2/2 | Complete    | 2026-03-11 | - |
-| 37. Inbox UI Polish, Admin Inbox & Navigation | 3/3 | Complete   | 2026-03-11 | - |
+| 31. Auto-Rotation Engine | v4.0 | 2/2 | Complete | 2026-03-11 |
+| 32. Deliverability Dashboard & Reporting | v4.0 | 4/4 | Complete | 2026-03-11 |
+| 33. API Spike & Client Extensions | v5.0 | 2/2 | Complete | 2026-03-11 |
+| 34. LinkedIn Data Layer | v5.0 | 1/1 | Complete | 2026-03-11 |
+| 35. Email Inbox | v5.0 | 3/3 | Complete | 2026-03-11 |
+| 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
+| 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
+| 38. Trigger.dev Foundation + Smoke Test | v6.0 | 0/TBD | Not started | - |
+| 39. Webhook Reply Migration | v6.0 | 0/TBD | Not started | - |
+| 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
+| 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |
+| 42. Remaining Cron Lift-and-Shift | v6.0 | 0/TBD | Not started | - |
+| 43. Decommission + Observability Validation | v6.0 | 0/TBD | Not started | - |

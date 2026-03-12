@@ -71,37 +71,37 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | TBD | Pending |
-| FOUND-02 | TBD | Pending |
-| FOUND-03 | TBD | Pending |
-| FOUND-04 | TBD | Pending |
-| FOUND-05 | TBD | Pending |
-| FOUND-06 | TBD | Pending |
-| WHOOK-01 | TBD | Pending |
-| WHOOK-02 | TBD | Pending |
-| WHOOK-03 | TBD | Pending |
-| WHOOK-04 | TBD | Pending |
-| WHOOK-05 | TBD | Pending |
-| CRON-01 | TBD | Pending |
-| CRON-02 | TBD | Pending |
-| CRON-03 | TBD | Pending |
-| CRON-04 | TBD | Pending |
-| CRON-05 | TBD | Pending |
-| CRON-06 | TBD | Pending |
-| CRON-07 | TBD | Pending |
-| CRON-08 | TBD | Pending |
-| CRON-09 | TBD | Pending |
-| CRON-10 | TBD | Pending |
-| DECOMM-01 | TBD | Pending |
-| DECOMM-02 | TBD | Pending |
-| DECOMM-03 | TBD | Pending |
-| DECOMM-04 | TBD | Pending |
+| FOUND-01 | Phase 38 | Pending |
+| FOUND-02 | Phase 38 | Pending |
+| FOUND-03 | Phase 38 | Pending |
+| FOUND-04 | Phase 38 | Pending |
+| FOUND-05 | Phase 38 | Pending |
+| FOUND-06 | Phase 38 | Pending |
+| WHOOK-01 | Phase 39 | Pending |
+| WHOOK-03 | Phase 39 | Pending |
+| WHOOK-04 | Phase 39 | Pending |
+| WHOOK-05 | Phase 39 | Pending |
+| WHOOK-02 | Phase 40 | Pending |
+| CRON-01 | Phase 41 | Pending |
+| CRON-02 | Phase 41 | Pending |
+| CRON-03 | Phase 41 | Pending |
+| CRON-04 | Phase 42 | Pending |
+| CRON-05 | Phase 42 | Pending |
+| CRON-06 | Phase 42 | Pending |
+| CRON-07 | Phase 42 | Pending |
+| CRON-08 | Phase 42 | Pending |
+| CRON-09 | Phase 42 | Pending |
+| CRON-10 | Phase 42 | Pending |
+| DECOMM-03 | Phase 42 | Pending |
+| DECOMM-01 | Phase 43 | Pending |
+| DECOMM-02 | Phase 43 | Pending |
+| DECOMM-04 | Phase 43 | Pending |
 
 **Coverage:**
 - v6.0 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after initial definition*
+*Last updated: 2026-03-12 — traceability complete after roadmap creation*
