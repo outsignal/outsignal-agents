@@ -1275,6 +1275,19 @@ model DomainHealth {
   mxStatus  String?   // "pass" | "missing"
   mxHosts   String?   // JSON array of MX hostnames
 
+  // MTA-STS validation
+  mtaStsStatus String?   // "pass" | "missing"
+  mtaStsId     String?   // Policy ID from id= directive
+
+  // TLS-RPT validation
+  tlsRptStatus String?   // "pass" | "missing"
+  tlsRptRua    String?   // Reporting URI from rua= directive
+
+  // BIMI validation
+  bimiStatus   String?   // "pass" | "missing"
+  bimiLogoUrl  String?   // Logo URL from l= directive
+  bimiVmcUrl   String?   // VMC certificate URL from a= directive
+
   // Blacklist status (populated by Plan 03)
   blacklistHits     String?   // JSON array of DNSBL names where listed
   blacklistSeverity String?   // "none" | "warning" | "critical"

@@ -12,6 +12,9 @@ import type {
   DkimResult,
   DmarcResult,
   MxResult,
+  MtaStsResult,
+  TlsRptResult,
+  BimiResult,
   DnsCheckResult,
 } from "./types";
 import { DKIM_SELECTORS } from "./types";
@@ -208,17 +211,132 @@ export async function checkMx(domain: string): Promise<MxResult> {
 }
 
 /**
- * Run all DNS checks (SPF, DKIM, DMARC, MX) in parallel.
+ * Look up MTA-STS record for a domain.
+ * Finds TXT record at _mta-sts.{domain} starting with "v=STSv1".
+ */
+export async function checkMtaSts(domain: string): Promise<MtaStsResult> {
+  const resolver = createResolver();
+  const mtaStsHost = `_mta-sts.${domain}`;
+
+  try {
+    const records = await resolver.resolveTxt(mtaStsHost);
+    const txtValues = records.map((chunks) => chunks.join(""));
+    const stsRecord = txtValues.find((txt) =>
+      txt.toLowerCase().startsWith("v=stsv1")
+    );
+
+    if (!stsRecord) {
+      return { status: "missing", id: null };
+    }
+
+    // Parse id= directive
+    const idMatch = stsRecord.match(/\bid=(\S+)/i);
+    return { status: "pass", id: idMatch ? idMatch[1] : null };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
+      return { status: "missing", id: null };
+    }
+    console.error(
+      `${LOG_PREFIX} MTA-STS lookup failed for ${domain}:`,
+      (err as Error).message
+    );
+    return { status: "missing", id: null };
+  }
+}
+
+/**
+ * Look up TLS-RPT record for a domain.
+ * Finds TXT record at _smtp._tls.{domain} starting with "v=TLSRPTv1".
+ */
+export async function checkTlsRpt(domain: string): Promise<TlsRptResult> {
+  const resolver = createResolver();
+  const tlsRptHost = `_smtp._tls.${domain}`;
+
+  try {
+    const records = await resolver.resolveTxt(tlsRptHost);
+    const txtValues = records.map((chunks) => chunks.join(""));
+    const rptRecord = txtValues.find((txt) =>
+      txt.toLowerCase().startsWith("v=tlsrptv1")
+    );
+
+    if (!rptRecord) {
+      return { status: "missing", rua: null };
+    }
+
+    // Parse rua= directive
+    const ruaMatch = rptRecord.match(/\brua=(\S+)/i);
+    return { status: "pass", rua: ruaMatch ? ruaMatch[1] : null };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
+      return { status: "missing", rua: null };
+    }
+    console.error(
+      `${LOG_PREFIX} TLS-RPT lookup failed for ${domain}:`,
+      (err as Error).message
+    );
+    return { status: "missing", rua: null };
+  }
+}
+
+/**
+ * Look up BIMI record for a domain.
+ * Finds TXT record at default._bimi.{domain} starting with "v=BIMI1".
+ */
+export async function checkBimi(domain: string): Promise<BimiResult> {
+  const resolver = createResolver();
+  const bimiHost = `default._bimi.${domain}`;
+
+  try {
+    const records = await resolver.resolveTxt(bimiHost);
+    const txtValues = records.map((chunks) => chunks.join(""));
+    const bimiRecord = txtValues.find((txt) =>
+      txt.toLowerCase().startsWith("v=bimi1")
+    );
+
+    if (!bimiRecord) {
+      return { status: "missing", logoUrl: null, vmcUrl: null };
+    }
+
+    // Parse l= directive (logo URL)
+    const logoMatch = bimiRecord.match(/\bl=(\S+)/i);
+    // Parse a= directive (VMC certificate URL, optional)
+    const vmcMatch = bimiRecord.match(/\ba=(\S+)/i);
+
+    return {
+      status: "pass",
+      logoUrl: logoMatch ? logoMatch[1] : null,
+      vmcUrl: vmcMatch ? vmcMatch[1] : null,
+    };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA" || code === "ESERVFAIL") {
+      return { status: "missing", logoUrl: null, vmcUrl: null };
+    }
+    console.error(
+      `${LOG_PREFIX} BIMI lookup failed for ${domain}:`,
+      (err as Error).message
+    );
+    return { status: "missing", logoUrl: null, vmcUrl: null };
+  }
+}
+
+/**
+ * Run all DNS checks (SPF, DKIM, DMARC, MX, MTA-STS, TLS-RPT, BIMI) in parallel.
  * Returns combined results. Never throws.
  */
 export async function checkAllDns(domain: string): Promise<DnsCheckResult> {
-  const [spf, dkim, dmarc, mx] = await Promise.all([
+  const [spf, dkim, dmarc, mx, mtaSts, tlsRpt, bimi] = await Promise.all([
     checkSpf(domain),
     checkDkim(domain),
     checkDmarc(domain),
     checkMx(domain),
+    checkMtaSts(domain),
+    checkTlsRpt(domain),
+    checkBimi(domain),
   ]);
-  return { spf, dkim, dmarc, mx };
+  return { spf, dkim, dmarc, mx, mtaSts, tlsRpt, bimi };
 }
 
 /**

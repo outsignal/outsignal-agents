@@ -46,12 +46,41 @@ export interface MxResult {
   hosts: string[];
 }
 
+/** Result of MTA-STS TXT record lookup */
+export interface MtaStsResult {
+  /** "pass" if valid MTA-STS record found, "missing" if absent */
+  status: "pass" | "missing";
+  /** Policy ID from id= directive, or null if not found */
+  id: string | null;
+}
+
+/** Result of TLS-RPT TXT record lookup */
+export interface TlsRptResult {
+  /** "pass" if valid TLS-RPT record found, "missing" if absent */
+  status: "pass" | "missing";
+  /** Reporting URI from rua= directive, or null if not found */
+  rua: string | null;
+}
+
+/** Result of BIMI TXT record lookup */
+export interface BimiResult {
+  /** "pass" if valid BIMI record found, "missing" if absent */
+  status: "pass" | "missing";
+  /** Logo URL from l= directive, or null if not found */
+  logoUrl: string | null;
+  /** VMC certificate URL from a= directive, or null if not found */
+  vmcUrl: string | null;
+}
+
 /** Combined DNS check results for all record types */
 export interface DnsCheckResult {
   spf: SpfResult;
   dkim: DkimResult;
   dmarc: DmarcResult;
   mx: MxResult;
+  mtaSts: MtaStsResult;
+  tlsRpt: TlsRptResult;
+  bimi: BimiResult;
 }
 
 /** Full domain health summary combining DNS and blacklist data */

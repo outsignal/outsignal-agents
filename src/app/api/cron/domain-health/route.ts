@@ -312,6 +312,13 @@ async function checkDomain(
     dmarcAdkim: dnsResult.dmarc.adkim,
     mxStatus: dnsResult.mx.status,
     mxHosts: JSON.stringify(dnsResult.mx.hosts),
+    mtaStsStatus: dnsResult.mtaSts.status,
+    mtaStsId: dnsResult.mtaSts.id,
+    tlsRptStatus: dnsResult.tlsRpt.status,
+    tlsRptRua: dnsResult.tlsRpt.rua,
+    bimiStatus: dnsResult.bimi.status,
+    bimiLogoUrl: dnsResult.bimi.logoUrl,
+    bimiVmcUrl: dnsResult.bimi.vmcUrl,
     overallHealth,
     lastDnsCheck: now,
   };

@@ -5,6 +5,9 @@
  * against bounce rate thresholds and fires Slack + email notifications for any
  * sender status transitions. No notifications for sustained states (transition-only).
  *
+ * Also monitors reply volume trends per workspace (rolling 3-day windows) and
+ * alerts when reply rates decline by >30% — an early deliverability warning.
+ *
  * Register on cron-job.org:
  *   Schedule: every 4 hours (0:00, 4:00, 8:00, 12:00, 16:00, 20:00 UTC)
  *   URL: https://admin.outsignal.ai/api/cron/bounce-monitor
@@ -14,8 +17,10 @@
 import { NextResponse } from "next/server";
 import { validateCronSecret } from "@/lib/cron-auth";
 import { runBounceMonitor, replaceSender } from "@/lib/domain-health/bounce-monitor";
-import { notifySenderHealthTransition, sendSenderHealthDigestEmail } from "@/lib/domain-health/bounce-notifications";
+import { notifySenderHealthTransition, sendSenderHealthDigestEmail, notifyBounceRateTrend } from "@/lib/domain-health/bounce-notifications";
 import type { SenderHealthDigestItem } from "@/lib/domain-health/bounce-notifications";
+import { detectBounceRateTrend, shouldAlertOnTrend } from "@/lib/domain-health/trend-detection";
+import { runReplyTrendMonitor, notifyReplyTrendDecline } from "@/lib/domain-health/reply-trend";
 import { prisma } from "@/lib/db";
 
 export const maxDuration = 60;
@@ -146,7 +151,82 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. Send one combined digest email for all transitions
+    // 3. Bounce rate trend detection — early warning for rising rates
+    //    Run across ALL active senders (not just those that transitioned).
+    let trendAlerts = 0;
+    try {
+      const activeSenders = await prisma.sender.findMany({
+        where: {
+          emailAddress: { not: null },
+          status: { not: "disabled" },
+        },
+        select: {
+          emailAddress: true,
+          workspaceSlug: true,
+          workspace: { select: { name: true } },
+        },
+      });
+
+      for (const sender of activeSenders) {
+        const email = sender.emailAddress as string;
+        const domain = email.split("@")[1] ?? "";
+
+        try {
+          const trendResult = await detectBounceRateTrend(email);
+
+          if (shouldAlertOnTrend(trendResult)) {
+            await notifyBounceRateTrend({
+              senderEmail: email,
+              senderDomain: domain,
+              workspaceName: sender.workspace.name,
+              currentRate: trendResult.currentRate,
+              previousRate: trendResult.previousRate,
+              changePercent: trendResult.changePercent,
+              skipEmail: true,
+            });
+            trendAlerts++;
+          }
+        } catch (trendErr) {
+          console.error(`${LOG_PREFIX} Trend detection failed for ${email}:`, trendErr);
+        }
+      }
+
+      if (trendAlerts > 0) {
+        console.log(`${LOG_PREFIX} Sent ${trendAlerts} bounce rate trend alert(s)`);
+      }
+    } catch (trendQueryErr) {
+      console.error(`${LOG_PREFIX} Failed to run trend detection:`, trendQueryErr);
+    }
+
+    // 4. Reply volume trend detection — early warning for declining reply rates
+    //    Compares reply counts over rolling 3-day windows per workspace.
+    let replyTrendAlerts = 0;
+    try {
+      const replyTrendResult = await runReplyTrendMonitor();
+
+      for (const declining of replyTrendResult.declining) {
+        try {
+          await notifyReplyTrendDecline(declining);
+          replyTrendAlerts++;
+        } catch (notifErr) {
+          console.error(
+            `${LOG_PREFIX} Failed to send reply trend alert for ${declining.workspaceSlug}:`,
+            notifErr,
+          );
+        }
+      }
+
+      if (replyTrendAlerts > 0) {
+        console.log(`${LOG_PREFIX} Sent ${replyTrendAlerts} reply trend decline alert(s)`);
+      }
+      console.log(
+        `${LOG_PREFIX} Reply trends: ${replyTrendResult.checked} checked, ${replyTrendResult.declining.length} declining, ${replyTrendResult.improving.length} improving, ${replyTrendResult.stable} stable`,
+      );
+    } catch (replyTrendErr) {
+      console.error(`${LOG_PREFIX} Failed to run reply trend monitor:`, replyTrendErr);
+    }
+
+    // 5. Send one combined digest email for all transitions
     if (digestItems.length > 0) {
       try {
         await sendSenderHealthDigestEmail(digestItems);
@@ -157,7 +237,7 @@ export async function GET(request: Request) {
     }
 
     console.log(
-      `${LOG_PREFIX} Evaluated ${result.evaluated}, transitioned ${result.transitioned}, skipped ${result.skipped}`,
+      `${LOG_PREFIX} Evaluated ${result.evaluated}, transitioned ${result.transitioned}, skipped ${result.skipped}, bounceTrendAlerts ${trendAlerts}, replyTrendAlerts ${replyTrendAlerts}`,
     );
 
     return NextResponse.json({
@@ -165,6 +245,8 @@ export async function GET(request: Request) {
       evaluated: result.evaluated,
       transitioned: result.transitioned,
       skipped: result.skipped,
+      trendAlerts,
+      replyTrendAlerts,
       transitions: result.transitions,
       timestamp,
     });

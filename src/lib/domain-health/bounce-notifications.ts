@@ -275,6 +275,84 @@ function buildEmailWrapper(params: { title: string; bodyContent: string }): stri
 }
 
 // ---------------------------------------------------------------------------
+// notifyBounceRateTrend — early-warning Slack alert for rising bounce rates
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a Slack-only notification when a sender's bounce rate shows 3+
+ * consecutive increases. Email is intentionally skipped (Slack-only keeps
+ * noise low — trend alerts are early warnings, not action-requiring alerts).
+ */
+export async function notifyBounceRateTrend(params: {
+  senderEmail: string;
+  senderDomain: string;
+  workspaceName: string;
+  currentRate: number;
+  previousRate: number;
+  changePercent: number;
+  skipEmail?: boolean;
+}): Promise<void> {
+  const {
+    senderEmail, senderDomain, workspaceName,
+    currentRate, previousRate, changePercent,
+  } = params;
+
+  const alertsChannelId = getAlertsChannelId();
+  if (!alertsChannelId) return;
+  if (!verifySlackChannel(alertsChannelId, "admin", "notifyBounceRateTrend")) return;
+
+  const headerText = `:chart_with_upwards_trend: Bounce Rate Rising: ${senderEmail}`;
+
+  const blocks: KnownBlock[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `Bounce Rate Rising: ${senderEmail}`,
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          `*Sender:* \`${senderEmail}\`\n` +
+          `*Domain:* ${senderDomain}\n` +
+          `*Workspace:* ${workspaceName}\n` +
+          `*Current:* ${(currentRate * 100).toFixed(1)}% — was ${(previousRate * 100).toFixed(1)}% (:arrow_up: ${Math.abs(changePercent).toFixed(1)}%)\n` +
+          `3+ consecutive increases detected`,
+      },
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `Trend detected at ${new Date().toUTCString()}`,
+        },
+      ],
+    },
+  ];
+
+  try {
+    await audited(
+      {
+        notificationType: "bounce_rate_trend_rising",
+        channel: "slack",
+        recipient: alertsChannelId,
+        metadata: { senderEmail, senderDomain, workspaceName, currentRate, previousRate, changePercent },
+      },
+      () => postMessage(alertsChannelId, headerText, blocks),
+    );
+  } catch (err) {
+    console.error(
+      `${LOG_PREFIX} Failed to send bounce rate trend notification for ${senderEmail}:`,
+      err,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Digest types
 // ---------------------------------------------------------------------------
 
