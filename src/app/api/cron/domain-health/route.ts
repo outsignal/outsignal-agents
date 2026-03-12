@@ -85,6 +85,8 @@ interface DomainPriority {
   firstFailingSince: Date | null;
   /** Current overall health status */
   overallHealth: string | null;
+  /** Previous blacklist severity from DB */
+  previousBlacklistSeverity: "none" | "warning" | "critical";
 }
 
 /**
@@ -101,6 +103,7 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
       lastDnsCheck: true,
       lastBlacklistCheck: true,
       blacklistHits: true,
+      blacklistSeverity: true,
       spfStatus: true,
       dkimStatus: true,
       dmarcStatus: true,
@@ -171,6 +174,7 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
       previousBlacklistHits,
       firstFailingSince,
       overallHealth: health?.overallHealth ?? null,
+      previousBlacklistSeverity: (health?.blacklistSeverity as "none" | "warning" | "critical") ?? "none",
     };
   });
 
@@ -279,24 +283,29 @@ async function checkDomain(
     blacklistHits = priority.previousBlacklistHits;
   }
 
-  // 3. Compute overall health
-  overallHealth = computeOverallHealth(dnsResult, blacklistHits);
-
-  // 4. Determine blacklist severity
+  // 3. Determine blacklist severity (must happen before overall health computation)
   let blacklistSeverity: "none" | "warning" | "critical" = "none";
-  if (blacklistChecked && blacklistHits.length > 0) {
-    // Look up tiers from current check result
-    try {
-      const { DNSBL_LIST } = await import("@/lib/domain-health/blacklist");
-      const hasCritical = blacklistHits.some((hitName) => {
-        const entry = DNSBL_LIST.find((e) => e.name === hitName);
-        return entry?.tier === "critical";
-      });
-      blacklistSeverity = hasCritical ? "critical" : "warning";
-    } catch {
-      blacklistSeverity = "warning";
+  if (blacklistHits.length > 0) {
+    if (blacklistChecked) {
+      // Fresh check — look up tiers from DNSBL_LIST
+      try {
+        const { DNSBL_LIST } = await import("@/lib/domain-health/blacklist");
+        const hasCritical = blacklistHits.some((hitName) => {
+          const entry = DNSBL_LIST.find((e) => e.name === hitName);
+          return entry?.tier === "critical";
+        });
+        blacklistSeverity = hasCritical ? "critical" : "warning";
+      } catch {
+        blacklistSeverity = "warning";
+      }
+    } else {
+      // Using previous hits — carry forward previous severity from DB
+      blacklistSeverity = priority.previousBlacklistSeverity;
     }
   }
+
+  // 4. Compute overall health (now tier-aware for blacklist hits)
+  overallHealth = computeOverallHealth(dnsResult, blacklistHits, blacklistSeverity);
 
   // 5. Upsert DomainHealth record
   const now = new Date();

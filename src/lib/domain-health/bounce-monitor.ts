@@ -401,10 +401,11 @@ export async function runBounceMonitor(): Promise<{
     ),
   );
 
-  // Domain health records
+  // Domain health records — use blacklistSeverity to determine blacklist status,
+  // not overallHealth (which can be "critical" for non-blacklist reasons like SPF fail)
   const domainHealthRecords = await prisma.domainHealth.findMany({
     where: { domain: { in: senderDomains } },
-    select: { domain: true, overallHealth: true },
+    select: { domain: true, blacklistSeverity: true },
   });
 
   // Build lookup maps
@@ -413,9 +414,11 @@ export async function runBounceMonitor(): Promise<{
     if (snap) bounceRateByEmail.set(snap.senderEmail, snap.bounceRate ?? null);
   }
 
+  // Only treat domains with critical-tier blacklist hits as blacklisted.
+  // Warning-tier hits (URIBL, SURBL) should not trigger sender CRITICAL escalation.
   const isBlacklistedByDomain = new Map<string, boolean>();
   for (const dh of domainHealthRecords) {
-    isBlacklistedByDomain.set(dh.domain, dh.overallHealth === "critical");
+    isBlacklistedByDomain.set(dh.domain, dh.blacklistSeverity === "critical");
   }
 
   // 3. Evaluate each sender

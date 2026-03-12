@@ -343,23 +343,25 @@ export async function checkAllDns(domain: string): Promise<DnsCheckResult> {
  * Compute overall health string from DNS results and blacklist hits.
  *
  * Rules:
- * - "critical"  → any blacklist hits, or SPF fail, or DMARC fail
- * - "warning"   → DKIM partial, or DMARC policy is "none", or SPF/DMARC missing
+ * - "critical"  → critical-tier blacklist hits (Spamhaus DBL), or SPF fail, or DMARC fail
+ * - "warning"   → warning-tier-only blacklist hits, DKIM partial, DMARC policy "none", SPF/DMARC missing
  * - "healthy"   → SPF pass, DKIM pass/partial with no blacklists, DMARC pass with quarantine/reject
  * - "unknown"   → any other combination (e.g. all missing with no data)
  */
 export function computeOverallHealth(
   dns: DnsCheckResult,
-  blacklistHits: string[]
+  blacklistHits: string[],
+  blacklistSeverity?: "none" | "warning" | "critical",
 ): "healthy" | "warning" | "critical" | "unknown" {
   const { spf, dkim, dmarc } = dns;
 
-  // Critical: blacklist hits or hard fails
-  if (blacklistHits.length > 0) return "critical";
+  // Critical: critical-tier blacklist hits or hard fails
+  if (blacklistHits.length > 0 && blacklistSeverity === "critical") return "critical";
   if (spf.status === "fail") return "critical";
   if (dmarc.status === "fail") return "critical";
 
-  // Warning: missing records or weak DMARC policy
+  // Warning: warning-tier blacklist hits, missing records, or weak DMARC policy
+  if (blacklistHits.length > 0 && blacklistSeverity === "warning") return "warning";
   if (spf.status === "missing") return "warning";
   if (dmarc.status === "missing") return "warning";
   if (dmarc.policy === "none") return "warning";
