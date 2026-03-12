@@ -358,7 +358,7 @@ Plans:
 | 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
 | 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete    | 2026-03-12 | - |
-| 39. Webhook Reply Migration | v6.0 | 0/2 | Not started | - |
+| 39. Webhook Reply Migration | 1/2 | In Progress|  | - |
 | 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
 | 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |
 | 42. Remaining Cron Lift-and-Shift | v6.0 | 0/TBD | Not started | - |
@@ -378,7 +378,7 @@ Plans:
   5. Admin dashboard shows an OOO queue page listing all leads currently out-of-office with return dates, reasons, and re-engagement status (pending/sent/failed)
   6. Client receives a notification when their OOO leads are re-engaged: "[Workspace] 3 leads back from OOO — Welcome Back campaign sent"
   7. If no return date can be extracted, a sensible default is used (14 days from OOO detection) and flagged for manual review
-**Plans:** 0/TBD
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] TBD (run /gsd:plan-phase 44 to break down)

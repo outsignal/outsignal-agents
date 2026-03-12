@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
-last_updated: "2026-03-12T14:38:09.948Z"
+last_updated: "2026-03-12T15:08:48Z"
 progress:
   total_phases: 35
   completed_phases: 33
   total_plans: 108
-  completed_plans: 109
+  completed_plans: 110
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v6.0 Phase 38 — Trigger.dev Foundation + Smoke Test
+**Current focus:** v6.0 Phase 39 — Webhook Reply Migration to Trigger.dev
 
 ## Current Position
 
-Phase: 38 of 43 (Trigger.dev Foundation + Smoke Test)
-Plan: 3 of 3 (COMPLETE)
-Status: Phase complete — moving to Phase 39
-Last activity: 2026-03-12 — 38-03 complete: Smoke test passed allPassed=true, all 5 services verified (Prisma, Anthropic, Slack, EmailBison, Resend)
+Phase: 39 of 44 (Webhook Reply Migration)
+Plan: 1 of 2 (COMPLETE)
+Status: Plan 01 complete — moving to Plan 02 (webhook handler migration)
+Last activity: 2026-03-12 — 39-01 complete: process-reply and linkedin-fast-track Trigger.dev tasks created, TypeScript clean
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -45,6 +45,12 @@ Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+v6.0 Phase 39-01 decisions:
+- [Phase 39-01]: ebReplyId typed as number (not string|number) — Prisma Reply.emailBisonReplyId is Int? in schema
+- [Phase 39-01]: replyParentId and replySenderEmailId typed as number|null — map to Int? schema fields emailBisonParentId and ebSenderEmailId
+- [Phase 39-01]: linkedin-fast-track has no queue — only DB operations, no Anthropic or EmailBison calls
+- [Phase 39-01]: Classification failure in process-reply is non-blocking — retry-classification cron handles intent=null replies
 
 v6.0 Phase 38-03 decisions:
 - [Phase 38-03]: Smoke test allPassed=true — Prisma (943ms), Anthropic (656ms), Slack (190ms), EmailBison (428ms), Resend (210ms) all confirmed operational
@@ -81,6 +87,10 @@ Recent v5.0 decisions carried forward (still relevant):
 
 None.
 
+### Roadmap Evolution
+
+- Phase 44 added: OOO Re-engagement Pipeline — AI-extracted return dates, Trigger.dev delayed tasks, personalised Welcome Back campaigns
+
 ### Blockers/Concerns
 
 - WHOOK-02 writer agent restoration depends on current Haiku shortcut implementation in src/lib/agents/runner.ts — review before scoping Phase 40 plans
@@ -88,5 +98,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 38-03-PLAN.md (smoke test: allPassed=true, 5/5 services, Phase 38 complete)
+Stopped at: Completed 39-01-PLAN.md (process-reply + linkedin-fast-track Trigger.dev tasks, TypeScript clean)
 Resume file: None
