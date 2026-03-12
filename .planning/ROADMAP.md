@@ -102,7 +102,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 38: Trigger.dev Foundation + Smoke Test** — SDK install, config, Prisma binary target, env var sync, concurrency queues, and smoke test verification; nothing else is unblockable without this (completed 2026-03-12)
 - [x] **Phase 39: Webhook Reply Migration** — EmailBison webhook handler reduced to verify + trigger + 200; reply classification and LinkedIn fast-track moved to Trigger.dev tasks with inline fallback (2 plans) (completed 2026-03-12)
 - [x] **Phase 40: Writer Agent Restoration** — AI reply suggestion upgraded from Haiku shortcut to full Opus writer agent running as a Trigger.dev task with no timeout constraint (completed 2026-03-12)
-- [ ] **Phase 41: AI Cron Migration** — retry-classification, generate-insights, and snapshot-metrics migrated as scheduled tasks; these are the most timeout-vulnerable crons and most likely already failing silently
+- [x] **Phase 41: AI Cron Migration** — retry-classification, generate-insights, and snapshot-metrics migrated as scheduled tasks; these are the most timeout-vulnerable crons and most likely already failing silently (completed 2026-03-12)
 - [ ] **Phase 42: Remaining Cron Lift-and-Shift** — poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, and inbox-health (split) migrated; campaign deploy after() pattern replaced
 - [ ] **Phase 43: Decommission + Observability Validation** — cron-job.org fully retired, fire-and-forget patterns removed, background task observability live in admin dashboard
 - [ ] **Phase 44: OOO Re-engagement Pipeline** — AI-extracted return dates from OOO replies, Trigger.dev delayed tasks, auto-enrolment into personalised Welcome Back campaigns, OOO queue dashboard
@@ -289,7 +289,10 @@ Plans:
   2. generate-insights processes all 6 workspaces in a single run (fan-out pattern) — Trigger.dev run log shows workspace-level subtask entries, not a sequential loop hitting a wall at workspace 3
   3. snapshot-metrics completes AI body element classification within a single task run — no partial snapshots with null classification fields
   4. The cron-job.org jobs for all three crons are deactivated the same day each Trigger.dev cron is verified stable — no double-processing window
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+Plans:
+- [x] 41-01-PLAN.md — Three Trigger.dev scheduled tasks (retry-classification, snapshot-metrics, generate-insights)
+- [x] 41-02-PLAN.md — Deploy to Trigger.dev Cloud + disable cron-job.org jobs
 
 ### Phase 42: Remaining Cron Lift-and-Shift
 **Goal**: All remaining scheduled work (poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, inbox-health split into parts, and campaign deploy) runs on Trigger.dev
@@ -301,7 +304,13 @@ Plans:
   3. inbox-health is split into at least 3 separate tasks (inbox checks, sender health, invoice processing) — each visible as a distinct scheduled task in the Trigger.dev dashboard with independent retry history
   4. A campaign deployment completes successfully via Trigger.dev task — the `after()` pattern in the deploy route is gone and the task run appears in dashboard history
   5. cron-job.org jobs for all 7 migrated crons are deactivated the same day each Trigger.dev cron is verified stable
-**Plans**: TBD
+**Plans:** 5/5 plans
+Plans:
+- [ ] 42-01-PLAN.md — Simple cron tasks (sync-senders, bounce-snapshots, deliverability-digest, bounce-monitor)
+- [ ] 42-02-PLAN.md — Complex cron tasks (poll-replies with emailBisonQueue, domain-health with cap removed)
+- [ ] 42-03-PLAN.md — inbox-health split (4 tasks) + enrichment-job-processor
+- [ ] 42-04-PLAN.md — campaign-deploy task + route refactor (after() → tasks.trigger())
+- [ ] 42-05-PLAN.md — Deploy to Trigger.dev Cloud + remove Vercel crons + disable cron-job.org jobs
 
 ### Phase 43: Decommission + Observability Validation
 **Goal**: cron-job.org is fully retired, all fire-and-forget patterns are removed from the codebase, and the admin dashboard surfaces background task status so failures are no longer silent
@@ -360,8 +369,8 @@ Plans:
 | 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete    | 2026-03-12 | - |
 | 39. Webhook Reply Migration | 2/2 | Complete    | 2026-03-12 | - |
 | 40. Writer Agent Restoration | 1/2 | Complete    | 2026-03-12 | - |
-| 41. AI Cron Migration | 1/2 | In Progress|  | - |
-| 42. Remaining Cron Lift-and-Shift | v6.0 | 0/TBD | Not started | - |
+| 41. AI Cron Migration | v6.0 | 2/2 | Complete | 2026-03-12 |
+| 42. Remaining Cron Lift-and-Shift | v6.0 | 0/5 | Planned | - |
 | 43. Decommission + Observability Validation | v6.0 | 0/TBD | Not started | - |
 | 44. OOO Re-engagement Pipeline | v6.0 | 0/TBD | Not started | - |
 
