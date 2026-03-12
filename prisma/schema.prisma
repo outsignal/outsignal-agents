@@ -138,6 +138,11 @@ model Person {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // OOO tracking fields (Phase 44)
+  oooUntil       DateTime?
+  oooReason      String?   // "holiday" | "illness" | "conference" | "generic"
+  oooDetectedAt  DateTime?
+
   workspaces           PersonWorkspace[]
   lists                TargetListPerson[]
   signalCampaignLeads  SignalCampaignLead[]
@@ -1515,4 +1520,31 @@ model PostmasterAuth {
   scopes       String    // OAuth scopes granted
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+// Phase 44: OOO Re-engagement Pipeline
+model OooReengagement {
+  id                    String    @id @default(cuid())
+  personEmail           String
+  workspaceSlug         String
+  ebLeadId              Int?
+  oooUntil              DateTime
+  oooReason             String    // "holiday" | "illness" | "conference" | "generic"
+  oooDetectedAt         DateTime
+  eventName             String?
+  triggerRunId          String?
+  status                String    @default("pending") // "pending" | "sent" | "cancelled" | "failed"
+  needsManualReview     Boolean   @default(false)
+  originalCampaignId    String?
+  welcomeBackCampaignId Int?
+  sentAt                DateTime?
+  cancelledAt           DateTime?
+  failureReason         String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([personEmail, workspaceSlug, status], name: "unique_pending_ooo")
+  @@index([workspaceSlug, status])
+  @@index([oooUntil])
+  @@index([status])
 }
