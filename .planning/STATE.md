@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 38 of 43 (Trigger.dev Foundation + Smoke Test)
-Plan: 2 of 3
-Status: In progress
-Last activity: 2026-03-12 — 38-02 complete: Trigger.dev Cloud project created, Vercel integration connected, .env.local configured
+Plan: 3 of 3 (COMPLETE)
+Status: Phase complete — moving to Phase 39
+Last activity: 2026-03-12 — 38-03 complete: Smoke test passed allPassed=true, all 5 services verified (Prisma, Anthropic, Slack, EmailBison, Resend)
 
 Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
@@ -45,6 +45,12 @@ Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░�
 ## Accumulated Context
 
 ### Decisions
+
+v6.0 Phase 38-03 decisions:
+- [Phase 38-03]: Smoke test allPassed=true — Prisma (943ms), Anthropic (656ms), Slack (190ms), EmailBison (428ms), Resend (210ms) all confirmed operational
+- [Phase 38-03]: EmailBison check uses workspace-scoped URL (/workspaces/myacq/leads) — /api/workspaces returns 404
+- [Phase 38-03]: Resend check uses domains.list() — apiKeys.list() fails with restricted send-only key
+- [Phase 38-03]: smoke-test.ts kept as permanent diagnostic tool for post-deploy verification
 
 v6.0 Phase 38-02 decisions:
 - [Phase 38-02]: Trigger.dev Cloud project ref is proj_difpmdhrzxdwuxzzeney — all tasks must target this project
@@ -77,12 +83,10 @@ None.
 
 ### Blockers/Concerns
 
-- DATABASE_URL override (?connection_limit=1) not yet applied in Trigger.dev dashboard — MUST be done before 38-03 smoke test
-- Neon IP allowlisting check pending — if enabled, add Trigger.dev Cloud IP ranges before 38-03 smoke test
 - WHOOK-02 writer agent restoration depends on current Haiku shortcut implementation in src/lib/agents/runner.ts — review before scoping Phase 40 plans
 
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 38-02-PLAN.md (Trigger.dev Cloud project, Vercel integration, .env.local configured)
+Stopped at: Completed 38-03-PLAN.md (smoke test: allPassed=true, 5/5 services, Phase 38 complete)
 Resume file: None

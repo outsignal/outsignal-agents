@@ -99,7 +99,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 **Milestone Goal:** Migrate all background operations from cron-job.org + Vercel fire-and-forget to Trigger.dev managed infrastructure, eliminating silent failures caused by 30s/60s serverless timeout constraints and providing full task observability.
 
-- [ ] **Phase 38: Trigger.dev Foundation + Smoke Test** — SDK install, config, Prisma binary target, env var sync, concurrency queues, and smoke test verification; nothing else is unblockable without this
+- [x] **Phase 38: Trigger.dev Foundation + Smoke Test** — SDK install, config, Prisma binary target, env var sync, concurrency queues, and smoke test verification; nothing else is unblockable without this (completed 2026-03-12)
 - [ ] **Phase 39: Webhook Reply Migration** — EmailBison webhook handler reduced to verify + trigger + 200; reply classification and LinkedIn fast-track moved to Trigger.dev tasks with inline fallback
 - [ ] **Phase 40: Writer Agent Restoration** — AI reply suggestion upgraded from Haiku shortcut to full Opus writer agent running as a Trigger.dev task with no timeout constraint
 - [ ] **Phase 41: AI Cron Migration** — retry-classification, generate-insights, and snapshot-metrics migrated as scheduled tasks; these are the most timeout-vulnerable crons and most likely already failing silently
@@ -249,7 +249,7 @@ Plans:
   3. `trigger.config.ts` contains `prismaExtension` with `mode: "legacy"` and `binaryTargets` in `schema.prisma` includes `debian-openssl-3.0.x`
   4. The Vercel integration is installed and Trigger.dev dashboard shows all production env vars synced from Vercel
   5. `/trigger/queues.ts` exists with a named `anthropicQueue` (concurrencyLimit: 3) and `emailBisonQueue` that all AI tasks can reference
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 38-01-PLAN.md — SDK install, trigger.config.ts with Prisma extension, binary targets, shared queues
 - [ ] 38-02-PLAN.md — Trigger.dev project creation, Vercel integration, env var sync, Neon connection config
@@ -353,7 +353,7 @@ Plans:
 | 35. Email Inbox | v5.0 | 3/3 | Complete | 2026-03-11 |
 | 36. LinkedIn Inbox | v5.0 | 2/2 | Complete | 2026-03-11 |
 | 37. Inbox UI Polish, Admin Inbox & Navigation | v5.0 | 3/3 | Complete | 2026-03-11 |
-| 38. Trigger.dev Foundation + Smoke Test | 2/3 | In Progress|  | - |
+| 38. Trigger.dev Foundation + Smoke Test | 3/3 | Complete   | 2026-03-12 | - |
 | 39. Webhook Reply Migration | v6.0 | 0/TBD | Not started | - |
 | 40. Writer Agent Restoration | v6.0 | 0/TBD | Not started | - |
 | 41. AI Cron Migration | v6.0 | 0/TBD | Not started | - |

@@ -13,7 +13,7 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 - [x] **FOUND-02**: Vercel integration set up for bidirectional env var sync
 - [x] **FOUND-03**: Prisma schema updated with `debian-openssl-3.0.x` binary target
 - [x] **FOUND-04**: Neon DATABASE_URL configured with `connection_limit=1` for Trigger.dev tasks
-- [ ] **FOUND-05**: Smoke test task deployed and verified (Prisma read + Anthropic call)
+- [x] **FOUND-05**: Smoke test task deployed and verified (Prisma read + Anthropic call)
 - [x] **FOUND-06**: Shared concurrency queues defined (Anthropic rate limit queue, EmailBison queue)
 
 ### Webhook Tasks
@@ -75,7 +75,7 @@ Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each 
 | FOUND-02 | Phase 38 | Complete |
 | FOUND-03 | Phase 38 | Complete |
 | FOUND-04 | Phase 38 | Complete |
-| FOUND-05 | Phase 38 | Pending |
+| FOUND-05 | Phase 38 | Complete |
 | FOUND-06 | Phase 38 | Complete |
 | WHOOK-01 | Phase 39 | Pending |
 | WHOOK-03 | Phase 39 | Pending |
