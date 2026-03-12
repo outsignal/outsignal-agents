@@ -97,6 +97,46 @@ export interface EvaluateSequenceRulesParams {
 }
 
 /**
+ * Evaluate a condition on a CampaignSequenceRule.
+ * Returns true if the condition passes (action should fire), false if it fails (else-path should fire).
+ * Handles backward compatibility: if conditionType is null, falls back to requireConnected boolean.
+ */
+async function evaluateCondition(
+  rule: { conditionType: string | null; requireConnected: boolean },
+  personId: string,
+  workspaceSlug: string,
+): Promise<boolean> {
+  const conditionType = rule.conditionType ?? (rule.requireConnected ? "requireConnected" : null);
+
+  if (!conditionType) return true; // No condition — always passes
+
+  switch (conditionType) {
+    case "requireConnected": {
+      const conn = await prisma.linkedInConnection.findFirst({
+        where: { personId, status: "connected" },
+      });
+      return !!conn;
+    }
+    case "hasReplied": {
+      const reply = await prisma.reply.findFirst({
+        where: { personId, workspaceSlug },
+      });
+      return !!reply;
+    }
+    case "emailBounced": {
+      const person = await prisma.person.findUnique({
+        where: { id: personId },
+        select: { status: true },
+      });
+      return person?.status === "bounced";
+    }
+    default:
+      console.warn(`[sequencing] Unknown conditionType: ${conditionType}, treating as pass`);
+      return true;
+  }
+}
+
+/**
  * Evaluate all CampaignSequenceRules matching the given trigger event for a
  * campaign, returning action descriptors that the caller should enqueue.
  *
@@ -133,29 +173,38 @@ export async function evaluateSequenceRules(
   const descriptors: SequenceActionDescriptor[] = [];
 
   for (const rule of rules) {
-    // 2. If rule requires connected status, check the connection record
-    if (rule.requireConnected) {
-      const connection = await prisma.linkedInConnection.findFirst({
-        where: { personId, status: "connected" },
-      });
-      if (!connection) {
-        // Not yet connected — skip this rule
-        continue;
-      }
-    }
+    // 2. Evaluate condition (supports both legacy requireConnected and new conditionType)
+    const conditionPassed = await evaluateCondition(rule, personId, workspaceSlug);
 
-    // 3. Build template context and compile message
+    // 3. Build template context
     const context = buildTemplateContext(person, emailContext);
-    const messageBody = rule.messageTemplate
-      ? compileTemplate(rule.messageTemplate, context)
-      : null;
 
-    descriptors.push({
-      actionType: rule.actionType,
-      messageBody,
-      delayMinutes: rule.delayMinutes,
-      sequenceStepRef: `rule_${rule.id}`,
-    });
+    if (conditionPassed) {
+      // Main path — condition passes, use primary action
+      const messageBody = rule.messageTemplate
+        ? compileTemplate(rule.messageTemplate, context)
+        : null;
+
+      descriptors.push({
+        actionType: rule.actionType,
+        messageBody,
+        delayMinutes: rule.delayMinutes,
+        sequenceStepRef: `rule_${rule.id}`,
+      });
+    } else if (rule.elseActionType) {
+      // Else path — condition failed, use alternative action
+      const messageBody = rule.elseMessageTemplate
+        ? compileTemplate(rule.elseMessageTemplate, context)
+        : null;
+
+      descriptors.push({
+        actionType: rule.elseActionType,
+        messageBody,
+        delayMinutes: rule.elseDelayMinutes ?? rule.delayMinutes,
+        sequenceStepRef: `rule_${rule.id}_else`,
+      });
+    }
+    // If condition fails and no else-path, skip (same as current behavior)
   }
 
   return descriptors;
@@ -171,6 +220,12 @@ export interface LinkedInSequenceStep {
   triggerEvent?: string;  // Override trigger event
   triggerStepRef?: string;
   requireConnected?: boolean;
+  // New if/else fields
+  conditionType?: string;
+  conditionStepRef?: string;
+  elseActionType?: string;
+  elseMessageTemplate?: string;
+  elseDelayHours?: number;
 }
 
 export interface CreateSequenceRulesParams {
@@ -209,6 +264,11 @@ export async function createSequenceRulesForCampaign(
     messageTemplate: step.body ?? null,
     delayMinutes: (step.delayHours ?? 0) * 60,
     requireConnected: step.requireConnected ?? step.type === "message",
+    conditionType: step.conditionType ?? null,
+    conditionStepRef: step.conditionStepRef ?? null,
+    elseActionType: step.elseActionType ?? null,
+    elseMessageTemplate: step.elseMessageTemplate ?? null,
+    elseDelayMinutes: step.elseDelayHours != null ? step.elseDelayHours * 60 : null,
     position: step.position,
   }));
 

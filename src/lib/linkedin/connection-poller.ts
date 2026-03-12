@@ -16,11 +16,42 @@ import { evaluateSequenceRules } from "./sequencing";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** Days after which an unaccepted connection request is considered timed out */
-const CONNECTION_TIMEOUT_DAYS = 14;
+/** Fallback timeout days — used when no campaign is found for a connection */
+const DEFAULT_CONNECTION_TIMEOUT_DAYS = 14;
 
 /** Hours to wait after a timeout before retrying the connection request */
 const WITHDRAWAL_COOLDOWN_HOURS = 48;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Look up the connectionTimeoutDays for the campaign associated with a person's
+ * most recent connect action in the given workspace.
+ * Falls back to DEFAULT_CONNECTION_TIMEOUT_DAYS if no campaign is found.
+ */
+async function getConnectionTimeoutDaysForPerson(
+  personId: string,
+  workspaceSlug: string,
+): Promise<number> {
+  const campaignAction = await prisma.linkedInAction.findFirst({
+    where: {
+      personId,
+      workspaceSlug,
+      actionType: "connect",
+      campaignName: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!campaignAction?.campaignName) return DEFAULT_CONNECTION_TIMEOUT_DAYS;
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { workspaceSlug_name: { workspaceSlug, name: campaignAction.campaignName } },
+    select: { connectionTimeoutDays: true },
+  });
+
+  return campaign?.connectionTimeoutDays ?? DEFAULT_CONNECTION_TIMEOUT_DAYS;
+}
 
 // ─── Poll Entry Point ─────────────────────────────────────────────────────────
 
@@ -59,15 +90,21 @@ export async function pollConnectionAccepts(workspaceSlug: string): Promise<Poll
   });
 
   const now = new Date();
-  const timeoutCutoff = new Date(
-    now.getTime() - CONNECTION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000,
-  );
 
   for (const conn of pendingConnections) {
     result.checked++;
 
     // Skip if no request timestamp (shouldn't happen, but guard defensively)
     if (!conn.requestSentAt) continue;
+
+    // Look up per-campaign timeout (falls back to DEFAULT_CONNECTION_TIMEOUT_DAYS)
+    const timeoutDays = await getConnectionTimeoutDaysForPerson(
+      conn.personId,
+      conn.sender.workspaceSlug,
+    );
+    const timeoutCutoff = new Date(
+      now.getTime() - timeoutDays * 24 * 60 * 60 * 1000,
+    );
 
     // Check if the connection request has timed out
     const isTimedOut = conn.requestSentAt < timeoutCutoff;
@@ -104,7 +141,7 @@ export async function pollConnectionAccepts(workspaceSlug: string): Promise<Poll
     } else {
       // First timeout — check if cooldown period has passed before retrying
       const timeoutTime = new Date(
-        conn.requestSentAt.getTime() + CONNECTION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000,
+        conn.requestSentAt.getTime() + timeoutDays * 24 * 60 * 60 * 1000,
       );
       const cooldownEndTime = new Date(
         timeoutTime.getTime() + WITHDRAWAL_COOLDOWN_HOURS * 60 * 60 * 1000,
@@ -266,8 +303,10 @@ export async function getConnectionsToCheck(
   workspaceSlug: string,
 ): Promise<ConnectionToCheck[]> {
   const now = new Date();
+  // Use default timeout as the cutoff — connections older than this are handled
+  // by pollConnectionAccepts (which applies per-campaign timeout per connection).
   const timeoutCutoff = new Date(
-    now.getTime() - CONNECTION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000,
+    now.getTime() - DEFAULT_CONNECTION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000,
   );
 
   const connections = await prisma.linkedInConnection.findMany({
