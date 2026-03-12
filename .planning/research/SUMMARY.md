@@ -1,170 +1,182 @@
 # Project Research Summary
 
-**Project:** Outsignal v5.0 Client Portal Inbox
-**Domain:** Unified inbox — email reply sending + LinkedIn conversation messaging for B2B outbound client portal
-**Researched:** 2026-03-11
+**Project:** Outsignal Agents — v6.0 Trigger.dev Background Jobs Migration
+**Domain:** Background jobs infrastructure — replacing cron-job.org + Vercel fire-and-forget with Trigger.dev v4
+**Researched:** 2026-03-12
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The Client Portal Inbox upgrades the existing read-only `/portal/replies` feed into a fully interactive two-panel inbox where clients can read threaded conversations and send replies across email and LinkedIn channels. This is a pure application-layer build — zero new packages are needed. Every required capability (email API client, LinkedIn Voyager integration, React two-panel layout, DB persistence) already exists in the installed stack. The work is primarily new API routes, new Prisma models, and new UI components following patterns that are already established across 5+ existing pages.
+The current Outsignal codebase has a structural reliability problem: background work is being executed inside Vercel serverless functions that impose hard 30-60 second timeouts. Cron-job.org HTTP-polls Vercel endpoints, AI operations (.then() chains after webhook handlers) silently die when Vercel kills the function after sending the response, and AI-heavy crons (generate-insights, retry-classification) almost certainly fail silently when multi-workspace Anthropic calls exceed the timeout ceiling. The fix is well-established: migrate all background work to Trigger.dev v4, which runs tasks on its own compute with no timeout constraint, built-in retries, and a full observability dashboard.
 
-The recommended approach is a strict API-before-UI, external-validation-first sequence. The most dangerous unknown — whether EmailBison's `POST /replies/{id}/reply` endpoint works as documented — must be resolved in Phase 1 before any UI is built. LinkedIn conversation fetching uses a DB-intermediary pattern (worker syncs to DB, portal reads from DB) because the Voyager API requires proxy and session cookies that only exist on the Railway worker, not Vercel serverless. These two architectural constraints drive the entire build sequence.
+The recommended approach is a phased migration using Trigger.dev Cloud (Hobby, $20/month). Two new npm packages are needed (`@trigger.dev/sdk` as a runtime dep, `@trigger.dev/build` as a dev dep), a `/trigger/` directory is created at the project root, and all task files live there — separated from the Next.js src/ tree. Existing business logic in `src/lib/` is imported unchanged by both Next.js routes and Trigger.dev tasks. The webhook handler is simplified to: verify signature, write WebhookEvent to DB, call `tasks.trigger()`, return 200. Cron-job.org jobs are replaced one-for-one by `schedules.task()` definitions with declarative cron expressions that sync on every `trigger.dev deploy`.
 
-The primary risks are: (1) EmailBison sendReply not working as expected — mitigated by a Phase 1 spike with a real reply ID and documented fallback to mailto: deeplink; (2) LinkedIn Voyager rate limiting or session expiry during conversation fetch — mitigated by 2-3 second delays between API calls, 5-minute sync cache, and graceful degradation; (3) email threading breaking on missing parent_id references — mitigated by treating orphaned parents as thread roots and fetching thread detail on demand. The LinkedIn sync must be fire-and-forget (202 Accepted, async processing) to avoid Vercel's 60-second function timeout.
+The main risks are all infrastructure-setup risks that must be resolved in Phase 1 before any real migration work begins: Prisma binary target mismatch (tasks crash on first run), environment variables not synced to Trigger.dev's own dashboard (all API calls return undefined), Neon connection pool exhaustion under concurrent task load, and task file discovery misconfiguration (0 tasks found). None of these are hard problems — they are all one-line fixes — but they will block everything downstream if not addressed first. A smoke-test task that verifies DB connectivity and env var presence is the Phase 1 exit criterion before any real task is written.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependencies. The entire v5.0 milestone is application-layer code using the existing stack. This eliminates integration risk and keeps the bundle unchanged.
+Trigger.dev v4 is the clear choice for this migration. Only two packages are added: `@trigger.dev/sdk@4.3.3` (runtime, used in task files and `tasks.trigger()` calls from API routes) and `@trigger.dev/build@4.4.2` (dev-only, used in `trigger.config.ts` for the Prisma extension). All existing dependencies — Prisma, Anthropic SDK, Resend, Slack SDK, EmailBison client — are imported directly inside task files without any changes. The Vercel integration (installed from the Trigger.dev dashboard) handles bidirectional env var sync and atomic task deployments on every Vercel deploy, replacing the need for the `syncVercelEnvVars` build extension.
 
-**Core technologies (all existing):**
-- **Next.js 16**: New API routes under `/api/portal/inbox/` + new portal page at `/portal/inbox`
-- **Prisma 6 + PostgreSQL (Neon)**: Two new models — `LinkedInConversation` and `LinkedInMessage` — following existing cuid/@@index/@@unique patterns
-- **React 19 + Tailwind CSS 4**: Two-panel inbox layout (CSS Grid), message bubbles, reply composer (plain textarea)
-- **Radix UI** (installed): Tabs (channel switcher), ScrollArea (thread list + conversation scroll)
-- **EmailBisonClient** (existing): New `sendReply()` method added to existing class
-- **VoyagerClient** (existing, Railway worker): New `fetchConversations()` / `fetchMessages()` methods
-- **LinkedInAction queue** (existing): Reused as-is for LinkedIn reply delivery — battle-tested, priority 1 for manual replies
-- **setInterval polling**: 15s when inbox is active, 60s background — matches existing pattern across 5+ pages, not SWR/React Query
+**Core technologies:**
+- `@trigger.dev/sdk@4.3.3`: Task authoring, triggering from API routes, schedule definitions — single package for all Trigger.dev SDK usage
+- `@trigger.dev/build@4.4.2` (dev): `prismaExtension` with `mode: "legacy"` for Prisma 6 binary bundling — required or tasks crash on first DB access
+- Trigger.dev Cloud Hobby ($20/month): 25 concurrent runs + 100 schedules — covers 10 crons + webhook spikes with headroom; free tier (10 schedules) is insufficient
+- Vercel Integration: Atomic task deployments + bidirectional env var sync — do NOT also use `syncVercelEnvVars` extension (documented conflict)
 
-**What NOT to use:** WebSockets/SSE (Vercel has no persistent connections), rich text editor (plain text is correct for B2B replies), direct Voyager proxy from Vercel (requires Railway proxy agent).
+**Do not use:** `@trigger.dev/nextjs` (v2, EOL Jan 2025), `@trigger.dev/sdk/v3` import path (breaks April 2026), `tasks.triggerAndWait()` from Next.js API routes (throws — only valid inside other tasks), cron-job.org after migration (double-execution risk).
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Two-panel inbox layout — standard inbox UX, thread list left / conversation right
-- Email thread view — replies grouped by parent_id chain, chronological message display
-- Thread detail with message bubbles — inbound left-aligned, outbound right-aligned, timestamps
-- Unread indicators — dot/badge on unread threads, `readAt` field on Reply model
-- Intent/sentiment badges — display existing AI classification already stored on Reply model
-- Channel tabs — Email / LinkedIn / All, filtered by workspace package
-- Inbox nav item — replace "Replies" with "Inbox" in portal sidebar
+The migration has a clear two-tier priority structure. P1 features are the table stakes — without them the migration either does not work or delivers no value over the current setup. P2 features are unlocked by the migration and represent genuine capability improvements that were not possible under Vercel's timeout constraints.
 
-**Should have (competitive differentiators):**
-- Email reply from portal — clients reply without leaving the portal via EmailBison API
-- LinkedIn conversation view — full message history via Voyager API, stored in DB
-- LinkedIn reply queue — queue a message via existing LinkedInAction model, optimistic UI
-- AI suggested reply display — pre-generated reply already stored, just needs a "Use this" button
-- Outbound context panel — show original outbound email/message that triggered the reply
-- Sender selection in composer — pick which sender email to reply from
+**Must have (table stakes — P1):**
+- Trigger.dev Next.js App Router setup — foundation, nothing else works without this
+- Scheduled tasks via `schedules.task()` — replaces all 10 cron-job.org jobs
+- Event-triggered background tasks via `tasks.trigger()` — replaces .then() fire-and-forget chains
+- Long-running task support (`maxDuration` config) — eliminates the core timeout problem
+- Automatic retry with exponential backoff — replaces zero retry infrastructure
+- Task observability dashboard — replaces zero visibility into cron success/failure
+- Run tags per workspace slug — minimum observability to verify migration correctness
+- Idempotency keys — prevents double-processing during cron-job.org transition overlap
 
-**Defer to v2+:**
-- Unified cross-channel search — low value at current reply volume, complex to implement
-- Draft saving — over-engineering at 5-20 replies/day
-- Attachment sending — hurts deliverability, text-only is correct
-- Bulk reply — dangerous for cold outbound, defeats the purpose
-- Rich text composer — HTML emails harm deliverability
+**Should have (competitive — P2, after core migration validated):**
+- Writer agent restoration via Opus subtasks — Haiku shortcut was forced by Vercel timeout; Trigger.dev removes the constraint
+- Campaign deploy migration (replace `after()` pattern, currently 300s Vercel ceiling)
+- Per-task concurrency control via shared Anthropic queue — prevents rate limit storms
+- Batch workspace parallelisation — fan-out crons per workspace instead of sequential loop
+
+**Defer (v2+):**
+- `useRealtimeRun` React hooks for live deploy status UI — frontend complexity, low urgency
+- Human-in-the-loop wait tokens — future portal approval flow, architecturally enabled but not needed now
+- Streaming AI responses to dashboard — separate milestone
+- LinkedIn Railway worker migration to Trigger.dev — stateful ProxyAgent pattern requires non-trivial refactor
 
 ### Architecture Approach
 
-Two distinct flows converge in the unified inbox UI. Email uses a direct API pattern: portal calls EmailBison API server-side via `EmailBisonClient`. LinkedIn uses a DB-intermediary pattern: Railway worker fetches from Voyager API and syncs to `LinkedInConversation` + `LinkedInMessage` tables, then the portal reads from DB only. This distinction is forced by Vercel's serverless constraints — the Voyager API's proxy + session cookie requirements are incompatible with cold-start serverless functions.
+The architectural boundary is clean: Vercel routes stay thin (auth, DB write, task trigger, return 200); all heavy computation moves into `/trigger/` task files running on Trigger.dev's infrastructure. The `/trigger/` directory lives at the project root (not inside `src/`), signaling that these files run on different compute. All business logic stays in `src/lib/` unchanged — tasks import from `@/lib/*` using the same TypeScript path alias as Next.js routes. The Prisma singleton from `src/lib/db.ts` is shared. The Railway LinkedIn worker is explicitly excluded from this migration: its stateful ProxyAgent session management does not map cleanly to Trigger.dev's invocation model.
 
 **Major components:**
-1. **EmailBisonClient extensions** — `sendReply()`, `getReply()`, `getRepliesPage()` added to `src/lib/emailbison/client.ts`
-2. **VoyagerClient extensions** — `fetchConversations()`, `fetchMessages()` added to `worker/src/voyager-client.ts` with new worker route `GET /sessions/{id}/conversations`
-3. **LinkedIn sync API** — `POST /api/portal/inbox/linkedin/sync` triggers worker sync (fire-and-forget, 202 Accepted); portal polls DB for fresh data
-4. **Email thread API** — `GET /api/portal/inbox` builds threads from parent_id chains; `GET /api/portal/inbox/thread/[replyId]` returns full thread
-5. **LinkedIn thread API** — `GET /api/portal/inbox/linkedin/[conversationId]` reads from DB
-6. **Reply APIs** — Email: `POST /api/portal/inbox/thread/[replyId]/reply`; LinkedIn: `POST /api/portal/inbox/linkedin/[conversationId]/reply` (creates LinkedInAction + optimistic LinkedInMessage)
-7. **Inbox UI** — `inbox-shell.tsx`, `thread-list.tsx`, `conversation-view.tsx`, `reply-composer.tsx` in `src/components/portal/inbox/`
-8. **DB models** — `LinkedInConversation` and `LinkedInMessage` in schema; add `channel`, `readAt`, `suggestedReply` fields to existing `Reply` model
+1. **Webhook route handler** (`src/app/api/webhooks/emailbison/route.ts`, modified) — verify signature, write WebhookEvent to DB, call `tasks.trigger("process-reply", payload)`, return 200; no business logic
+2. **`/trigger/reply/` orchestration** (new) — `process-reply` receives webhook payload, fans out classify + notify in parallel via `triggerAndWait`, then triggers `generate-suggestion`
+3. **`/trigger/crons/`** (new, 9 files) — one `schedules.task()` per cron-job.org job; each imports the existing business logic function from `src/lib/` and calls it
+4. **`/trigger/queues.ts`** (new) — pre-defined queues with `concurrencyLimit`; v4 requires ahead-of-time queue definition; shared `anthropicQueue` with limit of 3 prevents rate limit storms
+5. **`src/lib/`** (unchanged) — PrismaClient, EmailBisonClient, agents/runner.ts, classifyReply, notifications.ts — all imported by both Next.js routes and Trigger.dev tasks without modification
 
 ### Critical Pitfalls
 
-1. **EmailBison sendReply API broken** — Build the spike before any UI. If `POST /replies/{id}/reply` fails, pivot to mailto: deeplink. This is the #1 risk for the entire milestone.
-2. **LinkedIn Voyager rate limiting / session expiry** — 2-3s random delays between Voyager calls, limit to 20 recent conversations, 5-minute sync cache, graceful degradation on 401/429, no automatic retries.
-3. **Email threading breaks on missing parent_id** — Treat orphaned parents as thread roots. Fetch individual thread detail on conversation open, not the full reply list. Never re-derive threading from the full reply paginated list.
-4. **Vercel 60s timeout on LinkedIn sync** — Sync must be fire-and-forget: portal POSTs sync trigger, worker syncs asynchronously, portal polls DB. Never block on the sync chain.
-5. **Optimistic UI desync on failed reply** — Show "Sending..." state. On API error, show "Failed — retry" on the message bubble. For LinkedIn, show "Queued" not "Sent" since delivery is async.
+1. **Prisma binary target mismatch** — Trigger.dev Cloud runs on `debian-openssl-3.0.x`; add this target to `binaryTargets` in `schema.prisma` before first deploy. Tasks fail at startup with a misleading native library error, not at query time. Fix: one line in `schema.prisma` + `prisma generate`.
+
+2. **Environment variables not synced to Trigger.dev** — Trigger.dev is separate cloud infrastructure; Vercel env vars are not automatically available. Use the Vercel integration (preferred) OR `syncVercelEnvVars` extension — never both simultaneously (documented conflict). Verify with a smoke-test task that logs env var presence before any real tasks.
+
+3. **Anthropic rate limit storm from unthrottled concurrent AI tasks** — Trigger.dev removes Vercel's accidental throttle (60s timeout). Without explicit concurrency limits, 10+ tasks can call Anthropic simultaneously. Pre-define a shared `anthropicQueue` with `concurrencyLimit: 3` in `/trigger/queues.ts` and reference it in every AI task.
+
+4. **cron-job.org double processing** — running both systems on the same schedule creates duplicate DB records, double Slack notifications, and doubled API costs. Deactivate each cron-job.org job the same day the corresponding Trigger.dev cron is confirmed working — not after a waiting period.
+
+5. **Idempotency missing on cron tasks** — Trigger.dev auto-retries failed tasks (3 attempts). Without idempotency keys, a partial failure creates duplicate `DomainHealthSnapshot`, `AgentInsight`, and `CachedMetrics` records. Use `upsert` instead of `create` everywhere possible; add idempotency keys to all child task triggers with `idempotencyKey: \`task-${workspace}-${runDate}\``.
 
 ## Implications for Roadmap
 
-Based on dependency analysis across all research, the recommended phase structure enforces a strict external-API-validation-first, data-before-UI sequence.
+Based on combined research, the migration follows a natural dependency order: infrastructure foundation first, high-value webhook migration second, AI writer agent restoration third, cron lift-and-shift fourth, and decommission + validation last.
 
-### Phase 1: API Spike and Client Extensions
-**Rationale:** The EmailBison sendReply endpoint is undocumented in live behavior — this MUST be validated before building any UI around it. Voyager conversation fetching is also new territory for this codebase. Both spikes must succeed (or have documented fallbacks) before any downstream work begins.
-**Delivers:** Verified EmailBison sendReply behavior + documented request/response shape; new `sendReply()`, `getReply()` methods on EmailBisonClient; new `fetchConversations()`, `fetchMessages()` methods on VoyagerClient; new worker route `GET /sessions/{id}/conversations`
-**Addresses:** Email reply (spike validation), LinkedIn conversation fetch (spike validation)
-**Avoids:** EmailBison API failure pitfall — spike first, build second
+### Phase 1: Trigger.dev Foundation + Smoke Test
+**Rationale:** All other phases are blocked until the toolchain is verified. Five critical pitfalls (Prisma binary targets, env var sync, Neon IP allowlisting, task discovery, v4 import paths) must be resolved before any real task can run. The phase is entirely infrastructure — no business logic changes.
+**Delivers:** Working Trigger.dev setup with a smoke-test task that proves DB connectivity, env var presence, and task discovery. `trigger.dev dev` shows correct task count. `trigger.config.ts` in place with `prismaExtension` mode: "legacy", `dirs: ["./trigger"]`, and Vercel integration installed.
+**Addresses:** TRIGGER_SECRET_KEY configured in both Vercel and Trigger.dev dashboards; Prisma binaryTargets updated; `/trigger/queues.ts` with `anthropicQueue` pre-defined
+**Avoids:** Prisma binary mismatch, env var sync failure, Neon IP allowlisting, task discovery failure, v4 import path confusion — all caught here before any real task is written
 
-### Phase 2: LinkedIn Data Layer
-**Rationale:** DB models and sync API must exist before any LinkedIn UI. The DB-intermediary pattern means data layer is the bottleneck — nothing LinkedIn-related can be built until conversations exist in the database.
-**Delivers:** `LinkedInConversation` + `LinkedInMessage` Prisma models; `POST /api/portal/inbox/linkedin/sync` with fire-and-forget async pattern; 5-minute cache check; participant-to-Person matching
-**Addresses:** LinkedIn conversation storage, LinkedIn sync API
-**Avoids:** Vercel 60s timeout (async sync), Voyager rate limits (cache layer)
+### Phase 2: Webhook Reply Processing Migration
+**Rationale:** The highest-value migration — the .then() fire-and-forget chains in the EmailBison webhook handler are the most user-visible failure point. Reply classification and AI suggestions silently dying after 60s directly impacts client notification quality. Must include fallback to inline processing in case Trigger.dev is unavailable.
+**Delivers:** `process-reply`, `classify-reply` tasks; webhook handler simplified to trigger + return 200; fallback pattern in place (try-catch around `tasks.trigger()` with inline classification fallback)
+**Uses:** `tasks.trigger()` with type-only import pattern; shared `anthropicQueue` with `concurrencyLimit: 3`
+**Implements:** Webhook → Immediate 200 → Trigger.dev Task pattern; Subtask Fan-out for reply processing
 
-### Phase 3: Email Inbox (Thread API + UI + Reply)
-**Rationale:** Email is lower risk than LinkedIn (only one external dependency, already spiked in Phase 1) and represents the majority of reply volume. Delivering a working email inbox first provides immediate client value and validates the two-panel UI shell.
-**Delivers:** Email thread API (`GET /api/portal/inbox`, `GET /api/portal/inbox/thread/[replyId]`); Reply schema additions (`channel`, `readAt`, `suggestedReply`); Two-panel inbox shell + thread list + conversation view; Email reply composer + `POST /api/portal/inbox/thread/[replyId]/reply`; AI suggested reply display
-**Addresses:** Two-panel layout, email threading, email reply sending, unread indicators, AI suggestion display, outbound context panel
-**Avoids:** Threading breaks (orphaned parent handling), wrong reply target (send to latest reply ID, not root)
+### Phase 3: AI Reply Suggestion Restoration (Opus Writer Agent)
+**Rationale:** The writer agent was downgraded from Opus to Haiku specifically because of Vercel's 60s constraint. With Phase 2 in place (reply persisted in DB, classification done), the `generate-suggestion` task can be extended to use full Opus chains via `triggerAndWait` subtasks — no timeout concern. This restores the original AI quality that was compromised as a workaround.
+**Delivers:** `generate-suggestion` task using full Opus writer agent; subtask fan-out for KB search + draft generation; `maxDuration: 300` on AI tasks
+**Uses:** `tasks.triggerAndWait()` for task-to-task orchestration; `agents/runner.ts` imported unchanged from `src/lib/`
 
-### Phase 4: LinkedIn Inbox (Thread API + UI + Reply)
-**Rationale:** LinkedIn UI builds on the data layer from Phase 2 and follows the same UI patterns established in Phase 3. By this point, the inbox shell exists — this phase adds the LinkedIn-specific thread list, conversation view, and reply queue.
-**Delivers:** `GET /api/portal/inbox/linkedin/[conversationId]`; LinkedIn thread list items; LinkedIn conversation view + message bubbles; LinkedIn reply composer with queue semantics (`POST /api/portal/inbox/linkedin/[conversationId]/reply`); "Queued — sends within 2 minutes" optimistic UI
-**Addresses:** LinkedIn conversation view, LinkedIn reply queue, cross-channel person linking
-**Avoids:** Cross-channel confusion (keep channels separate, add "also active on [channel]" indicator), stale data (show "Last synced: X ago" + manual refresh)
+### Phase 4: High-Risk Cron Migration (AI + Analytics)
+**Rationale:** The AI-heavy crons (generate-insights, retry-classification, snapshot-metrics) are the most likely to be silently failing under Vercel's timeout today. They involve multi-workspace Anthropic calls that can easily exceed 60s. Each migrated cron must use idempotency keys and have cron-job.org deactivated immediately after verification.
+**Delivers:** `generate-insights`, `retry-classification`, `snapshot-metrics` as Trigger.dev scheduled tasks; idempotency pattern established for all cron tasks; corresponding cron-job.org jobs deactivated same day each is verified
+**Avoids:** Double processing from parallel cron systems; idempotency failures on retry; Anthropic rate limit storms
 
-### Phase 5: Polish and Navigation
-**Rationale:** Final phase — cosmetic and UX refinements after all functional work is proven. Nav update is independent and low-risk. Polish includes empty states, loading skeletons, mobile single-panel layout, package enforcement, and channel tabs.
-**Delivers:** Portal sidebar nav update (Replies → Inbox); Channel tabs (Email / LinkedIn / All) filtered by workspace package; Mobile single-panel with back navigation; Empty states; Loading skeletons; Package enforcement in all API routes (400 for mismatched channel)
-**Addresses:** Channel tabs, inbox nav item, mobile layout, package-aware filtering
-**Avoids:** Mobile layout breaks (single-panel below md breakpoint), package field not checked in API routes
+### Phase 5: Remaining Cron Lift-and-Shift
+**Rationale:** Lower-risk crons (domain-health, poll-replies, sync-senders, bounce-monitor, inbox-health, deliverability-digest) follow the identical pattern established in Phase 4. Less timeout-sensitive but benefit from Trigger.dev's retry and observability. Straightforward lift-and-shift — business logic in `src/lib/` is imported unchanged. Campaign deploy `after()` pattern also migrated here.
+**Delivers:** All remaining scheduled tasks migrated; cron-job.org fully deactivated; campaign deploy `after()` pattern replaced with `tasks.trigger()`
+**Implements:** Declarative Scheduled Tasks pattern for all 10 cron jobs; Per-Sender Concurrency via `concurrencyKey` for LinkedIn fast-track
+
+### Phase 6: Decommission + Observability Validation
+**Rationale:** Only after all tasks have run in production for 1+ week should cron-job.org be fully retired and old cron API routes cleaned up. This phase validates the Trigger.dev dashboard provides adequate production observability and ensures the "Looks Done But Isn't" checklist passes completely.
+**Delivers:** cron-job.org account deactivated; old cron HTTP endpoints cleaned up or converted to manual-trigger stubs; run tags verified in Trigger.dev dashboard per workspace; full pitfall checklist verified (binaryTargets, env vars, concurrency, idempotency, v4 imports, Railway boundary)
+**Addresses:** Full cron-job.org retirement; observability validated per workspace slug tag
 
 ### Phase Ordering Rationale
 
-- **Spike-first removes the biggest unknown:** EmailBison sendReply is undocumented in live behavior. Building UI first and discovering the endpoint doesn't work is a multi-phase waste. Phase 1 resolves this.
-- **Data before UI:** LinkedIn DB models (Phase 2) must exist before LinkedIn UI (Phase 4). There's no DB-intermediary workaround.
-- **Email before LinkedIn:** Email is lower risk, higher volume, and depends on fewer unknowns. A working email inbox delivers value even if LinkedIn has issues.
-- **Polish last:** Nav update and channel tabs are independent and cosmetic. They don't block any functionality. Doing them last avoids wasted polish work if upstream phases change UI shape.
+- Phase 1 must come first: 5 pitfalls are Phase 1 blockers; nothing can run until toolchain is proven
+- Phases 2-3 are ordered by user-visible impact: missing client reply notifications are immediately visible; Opus quality restoration is an improvement once reliability is established
+- Phase 4 before Phase 5: high-risk AI crons are prioritized because they are most likely already silently failing; lower-risk crons come second
+- Phase 6 is last: retirement of external systems only after extended production observation window
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 1 (API Spike):** The EmailBison sendReply endpoint behavior needs to be documented live before building — params, response shape, error codes, auth requirements. This IS the research. The voyager conversation API response schema also needs live testing.
-- **Phase 2 (LinkedIn Data Layer):** The fire-and-forget async sync pattern needs careful design. The worker must return 202 quickly; the portal must not be blocked. The sync cache invalidation logic needs explicit definition.
+Phases with standard, well-documented patterns (skip additional research):
+- **Phase 1:** Trigger.dev init is fully documented and linear — official docs cover every step
+- **Phase 5:** Cron lift-and-shift follows identical pattern to Phase 4; no new patterns introduced
+- **Phase 6:** Decommission is operational, not technical
 
-Phases with standard patterns (skip research-phase):
-- **Phase 3 (Email Inbox):** Well-understood pattern — email threading with parent_id is documented. EmailBisonClient pattern is established. Two-panel inbox follows existing admin dashboard layouts.
-- **Phase 4 (LinkedIn Inbox):** Follows exact same UI patterns as Phase 3 inbox shell. LinkedInAction queue is battle-tested. DB reads are straightforward.
-- **Phase 5 (Polish):** Straightforward — Tailwind responsive breakpoints, empty state components, sidebar nav line changes.
+Phases that benefit from codebase review during planning:
+- **Phase 2:** Webhook handler has accumulated complexity (notification-before-AI sequencing, webhook event dedup, LinkedIn fast-track) — review `src/app/api/webhooks/emailbison/route.ts` carefully before scoping to understand what stays inline vs moves to task
+- **Phase 3:** Writer agent restoration requires reviewing the current Haiku shortcut implementation in `src/lib/agents/runner.ts` to understand what Opus restoration entails and whether subtask decomposition is required
+- **Phase 4:** `generate-insights` and `retry-classification` cron logic should be audited for hidden timeout assumptions baked into the lib functions (e.g., hardcoded timeouts, sequential workspace loops that assume short execution)
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies. Every capability verified against existing codebase with specific file references. Pattern consistency with existing codebase confirmed. |
-| Features | HIGH | Derived from existing Reply model fields and business context. Anti-features are well-justified by deliverability and operational constraints. |
-| Architecture | HIGH | All integration points verified against existing code. DB-intermediary decision is forced by Vercel/Railway constraints — not a choice. |
-| Pitfalls | MEDIUM-HIGH | Critical pitfalls well-documented with mitigation strategies. EmailBison endpoint behavior is the unresolved unknown — mitigation is the Phase 1 spike itself. |
+| Stack | HIGH | All verified against official Trigger.dev docs via WebFetch; npm versions confirmed; Vercel integration GA status confirmed via v4.4.0 changelog |
+| Features | HIGH | Complete jobs inventory from codebase analysis; official docs for every feature used; MVP vs defer boundary is clearly justified |
+| Architecture | HIGH | Official docs + codebase source file analysis; patterns verified against actual route handlers and lib files; Railway LinkedIn boundary is well-reasoned with explicit future migration path |
+| Pitfalls | HIGH | Each pitfall backed by official docs or confirmed GitHub issues; recovery strategies documented; pitfall-to-phase mapping explicit with verification steps |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **EmailBison `POST /replies/{id}/reply` live behavior:** Documented but not live-tested. Must spike in Phase 1. If it fails, the fallback plan (mailto: deeplink) must be implemented instead and the feature scoped accordingly.
-- **Voyager conversation API response schema:** The `GET /messaging/conversations` and `GET /messaging/conversations/{id}/events` endpoints are used by pattern analogy from the existing worker — response shapes need live validation before building the sync API parser.
-- **Parent_id pagination depth:** Research assumes 5 pages of replies covers most active threads. This may not hold for workspaces with long reply histories. The orphaned-parent-as-root fallback handles it, but the quality of threading degrades with deep history.
-- **LinkedIn sync performance at scale:** The fire-and-forget sync assumes the worker can fetch 20 conversations × their messages within a reasonable window. With slow Voyager responses or large message histories, the worker sync could take minutes. Need to time this with a real worker session in Phase 2.
+- **LinkedIn worker fast-track boundary:** Research recommends keeping Railway as-is for v6.0, but the fast-track LinkedIn enqueue from the webhook handler needs clarification — does it call Railway's HTTP API or write directly to `LinkedInAction` DB table? This affects Phase 2 scoping. Review `src/app/api/webhooks/emailbison/route.ts` at planning time.
+
+- **Neon IP allowlisting status:** Research flags Trigger.dev IP allowlisting as a Phase 1 concern, but it is unknown whether this Neon project has IP restrictions enabled. Verify in Neon console before Phase 1 starts — if not enabled, this pitfall does not apply.
+
+- **Vercel integration vs `syncVercelEnvVars` choice:** Research flags a documented conflict between the Vercel integration and the `syncVercelEnvVars` build extension. The Vercel integration is preferred (simpler, no bootstrapping problem). Decision must be made in Phase 1 and committed to — do not use both.
+
+- **Campaign deploy `after()` complexity:** The campaign deploy endpoint uses a 300s Vercel max duration. Research places this in Phase 5, but if the deploy logic has complex state (EmailBison + LinkedIn + DB sequencing) that requires careful migration, it may warrant its own phase. Review `src/app/api/campaigns/[id]/deploy/route.ts` at planning time.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Existing codebase: `prisma/schema.prisma`, `src/lib/emailbison/client.ts`, `src/lib/emailbison/types.ts`, `worker/src/voyager-client.ts`, `src/app/(portal)/portal/replies/page.tsx`, `src/components/portal/portal-sidebar.tsx`, `worker/src/routes/` — direct inspection
-- EmailBison API: `POST /replies/{id}/reply` confirmed in API documentation; `GET /replies` verified working in production
-- LinkedIn Voyager messaging API: `GET /messaging/conversations` and message events pattern derived from existing worker code
-- LinkedInAction queue: production-tested in worker, `enqueueAction()` verified
+- [Trigger.dev Next.js setup guide](https://trigger.dev/docs/guides/frameworks/nextjs) — Installation, TRIGGER_SECRET_KEY, route handler patterns
+- [Trigger.dev scheduled tasks docs](https://trigger.dev/docs/tasks/scheduled) — `schedules.task()` syntax, cron format, dev vs production behavior
+- [Trigger.dev config file docs](https://trigger.dev/docs/config/config-file) — `trigger.config.ts` options, dirs, retries, build extensions
+- [Trigger.dev Prisma extension docs](https://trigger.dev/docs/config/extensions/prismaExtension) — binary targets, `mode: "legacy"` for Prisma 6
+- [Trigger.dev triggering docs](https://trigger.dev/docs/triggering) — `tasks.trigger()`, `triggerAndWait()` restrictions from API routes
+- [Trigger.dev concurrency and queues docs](https://trigger.dev/docs/queue-concurrency) — pre-defined queues in v4, `concurrencyKey` pattern
+- [Trigger.dev idempotency docs](https://trigger.dev/docs/idempotency) — TTL, scope behavior, v4.3.1 breaking change
+- [Trigger.dev v4 GA changelog](https://trigger.dev/changelog/trigger-v4-ga) — Vercel integration GA, v3 shutdown timeline
+- [Trigger.dev limits](https://trigger.dev/docs/limits) — Concurrency, schedule caps, log retention by plan
+- [Trigger.dev migrating from v3](https://trigger.dev/docs/migrating-from-v3) — Import path changes, queue definition, IP allowlisting
+- [Neon connection pooling docs](https://neon.com/docs/connect/connection-pooling) — Pool limits by compute size, pooled vs unpooled URL
+- [Anthropic rate limits docs](https://docs.anthropic.com/en/api/rate-limits) — TPM limits per tier
+- [@trigger.dev/build npm](https://www.npmjs.com/package/@trigger.dev/build) — Version 4.4.2, extensions import paths
 
 ### Secondary (MEDIUM confidence)
-- EmailBison white-label API base URL (`app.outsignal.ai/api`) — known from existing client configuration
-- LinkedIn Voyager detection behavior — inferred from existing worker delay patterns, not formally documented
+- [GitHub Issue #1685 — Slow start times](https://github.com/triggerdotdev/trigger.dev/issues/1685) — Cold start reality; warm starts at 100-300ms in v4
+- Existing codebase analysis: `src/app/api/webhooks/emailbison/route.ts`, `src/app/api/cron/*/route.ts`, `src/lib/agents/runner.ts` — confirmed .then() patterns and current timeout constraints
 
-### Tertiary (LOW confidence)
-- Voyager messaging API rate limits — inferred from general LinkedIn API behavior, not measured on this account
-- Vercel function cold-start impact on LinkedIn sync latency — estimated, not measured
+### Tertiary (HIGH confidence, specific issues)
+- [GitHub Issue #1358 — Prisma binaryTargets](https://github.com/triggerdotdev/trigger.dev/issues/1358) — Confirmed `debian-openssl-3.0.x` requirement for Trigger.dev Cloud
+- [GitHub Issue #1565/#1635 — Prisma schemaFolder](https://github.com/triggerdotdev/trigger.dev/issues/1565) — Multi-file schema breaks Trigger.dev build (not applicable here, single schema file)
 
 ---
-*Research completed: 2026-03-11*
+*Research completed: 2026-03-12*
 *Ready for roadmap: yes*
