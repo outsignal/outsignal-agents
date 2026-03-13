@@ -9,6 +9,17 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RevenueResponse } from "@/app/api/revenue/route";
+import {
+  ComposedChart,
+  Area,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
 
 // ---- Types ------------------------------------------------------------------
 
@@ -22,6 +33,7 @@ interface CostData {
     category: string;
     client: string | null;
     url: string | null;
+    billingDay: number | null;
   }>;
   totalMonthly: number;
   byCategory: Record<string, number>;
@@ -176,6 +188,51 @@ export default function CashflowPage() {
     return rows;
   }, [revenue, costs]);
 
+  // Chart: cumulative cash timeline
+  const todayDay = new Date().getDate();
+  const daysInMonth = new Date(
+    new Date().getFullYear(),
+    new Date().getMonth() + 1,
+    0,
+  ).getDate();
+
+  const chartData = useMemo(() => {
+    if (!costs || !revenue) return [];
+    const mrrVal = revenue.mrrPence / 100;
+
+    // Group costs by billing day
+    const costsByDay: Record<number, number> = {};
+    for (const s of costs.services) {
+      if (s.billingDay != null) {
+        costsByDay[s.billingDay] = (costsByDay[s.billingDay] ?? 0) + s.monthlyCost;
+      }
+    }
+
+    // Costs without a billing day: distribute evenly on day 1
+    const unscheduledCost = costs.services
+      .filter((s) => s.billingDay == null)
+      .reduce((sum, s) => sum + s.monthlyCost, 0);
+    if (unscheduledCost > 0) {
+      costsByDay[1] = (costsByDay[1] ?? 0) + unscheduledCost;
+    }
+
+    let cumCosts = 0;
+    const days = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      cumCosts += costsByDay[day] ?? 0;
+      const balance = mrrVal - cumCosts;
+      days.push({
+        day,
+        cumulativeCosts: Math.round(cumCosts * 100) / 100,
+        revenue: Math.round(mrrVal * 100) / 100,
+        balance: Math.round(balance * 100) / 100,
+        balancePositive: balance >= 0 ? Math.round(balance * 100) / 100 : 0,
+        balanceNegative: balance < 0 ? Math.round(balance * 100) / 100 : 0,
+      });
+    }
+    return days;
+  }, [costs, revenue, daysInMonth]);
+
   return (
     <div>
       <Header
@@ -230,6 +287,142 @@ export default function CashflowPage() {
             </>
           )}
         </div>
+
+        {/* Monthly Cash Timeline Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly Cash Timeline</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[300px] w-full rounded-lg" />
+            ) : chartData.length === 0 ? (
+              <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                No data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart
+                  data={chartData}
+                  margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="oklch(0.3 0 0)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fontSize: 11, fill: "oklch(0.55 0 0)" }}
+                    tickLine={false}
+                    axisLine={{ stroke: "oklch(0.3 0 0)" }}
+                    tickFormatter={(d: number) => (d % 5 === 1 ? String(d) : "")}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "oklch(0.55 0 0)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v: number) =>
+                      v >= 1000
+                        ? `£${(v / 1000).toFixed(1)}k`
+                        : `£${v.toFixed(0)}`
+                    }
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "oklch(0.18 0 0)",
+                      border: "1px solid oklch(0.3 0 0)",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    labelFormatter={(day) => `Day ${day}`}
+                    formatter={(value, name) => [
+                      fmtGbp(Number(value)),
+                      name === "cumulativeCosts"
+                        ? "Cumulative Costs"
+                        : name === "revenue"
+                        ? "MRR"
+                        : name === "balancePositive"
+                        ? "Balance"
+                        : name === "balanceNegative"
+                        ? "Balance (deficit)"
+                        : String(name),
+                    ]}
+                  />
+
+                  {/* Cumulative costs stepped area */}
+                  <Area
+                    type="stepAfter"
+                    dataKey="cumulativeCosts"
+                    stroke="oklch(0.65 0.15 25)"
+                    fill="oklch(0.65 0.15 25)"
+                    fillOpacity={0.15}
+                    strokeWidth={2}
+                    name="cumulativeCosts"
+                    dot={false}
+                    activeDot={false}
+                  />
+
+                  {/* Balance area — positive (green) */}
+                  <Area
+                    type="stepAfter"
+                    dataKey="balancePositive"
+                    stroke="none"
+                    fill="oklch(0.75 0.15 155)"
+                    fillOpacity={0.12}
+                    name="balancePositive"
+                    dot={false}
+                    activeDot={false}
+                  />
+
+                  {/* Balance area — negative (red) */}
+                  <Area
+                    type="stepAfter"
+                    dataKey="balanceNegative"
+                    stroke="none"
+                    fill="oklch(0.65 0.15 25)"
+                    fillOpacity={0.12}
+                    name="balanceNegative"
+                    dot={false}
+                    activeDot={false}
+                  />
+
+                  {/* MRR flat reference line */}
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="oklch(0.75 0.15 155)"
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    dot={false}
+                    activeDot={false}
+                    name="revenue"
+                  />
+
+                  {/* Today marker */}
+                  <ReferenceLine
+                    x={todayDay}
+                    stroke="oklch(0.6 0 0)"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: "Today",
+                      position: "insideTopRight",
+                      fontSize: 11,
+                      fill: "oklch(0.55 0 0)",
+                    }}
+                  />
+
+                  {/* Zero line */}
+                  <ReferenceLine
+                    y={0}
+                    stroke="oklch(0.35 0 0)"
+                    strokeWidth={1}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Per-Client P&L Table */}
         <Card>
