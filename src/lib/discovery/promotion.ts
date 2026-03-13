@@ -98,50 +98,92 @@ interface StagedRecord {
 }
 
 /**
- * Check whether an existing Person record matches a staged DiscoveredPerson.
- * Returns the matching Person's ID, or null if no match found.
- *
- * Three-leg matching:
- *   Leg 1: Email exact match (skips placeholder emails)
- *   Leg 2: LinkedIn URL exact match
- *   Leg 3: Full-name fuzzy match within same companyDomain (Levenshtein >= 0.85)
+ * Pre-load all potential matches for a batch of staged records in 3 queries,
+ * then resolve matches in-memory. Replaces per-record findExistingPerson.
  */
-async function findExistingPerson(dp: StagedRecord): Promise<string | null> {
-  // Leg 1: Email exact match (skip placeholders and null)
+interface DedupMaps {
+  byEmail: Map<string, string>;       // email -> personId
+  byLinkedin: Map<string, string>;     // linkedinUrl -> personId
+  byDomain: Map<string, Array<{ id: string; firstName: string; lastName: string }>>;
+}
+
+async function buildDedupMaps(staged: StagedRecord[]): Promise<DedupMaps> {
+  // Collect unique lookup keys
+  const emails = staged
+    .filter((dp) => dp.email && !dp.email.includes("@discovery.internal"))
+    .map((dp) => dp.email!);
+  const linkedinUrls = staged
+    .filter((dp) => dp.linkedinUrl)
+    .map((dp) => dp.linkedinUrl!);
+  const domains = [...new Set(
+    staged
+      .filter((dp) => dp.firstName && dp.lastName && dp.companyDomain)
+      .map((dp) => dp.companyDomain!),
+  )];
+
+  // 3 batch queries instead of up to 3N
+  const [emailMatches, linkedinMatches, domainCandidates] = await Promise.all([
+    emails.length > 0
+      ? prisma.person.findMany({
+          where: { email: { in: emails } },
+          select: { id: true, email: true },
+        })
+      : [],
+    linkedinUrls.length > 0
+      ? prisma.person.findMany({
+          where: { linkedinUrl: { in: linkedinUrls } },
+          select: { id: true, linkedinUrl: true },
+        })
+      : [],
+    domains.length > 0
+      ? prisma.person.findMany({
+          where: { companyDomain: { in: domains } },
+          select: { id: true, firstName: true, lastName: true, companyDomain: true },
+        })
+      : [],
+  ]);
+
+  const byEmail = new Map(emailMatches.map((p) => [p.email, p.id]));
+  const byLinkedin = new Map(
+    linkedinMatches.filter((p) => p.linkedinUrl).map((p) => [p.linkedinUrl!, p.id]),
+  );
+
+  const byDomain = new Map<string, Array<{ id: string; firstName: string; lastName: string }>>();
+  for (const p of domainCandidates) {
+    if (!p.companyDomain || !p.firstName || !p.lastName) continue;
+    const list = byDomain.get(p.companyDomain) ?? [];
+    list.push({ id: p.id, firstName: p.firstName, lastName: p.lastName });
+    byDomain.set(p.companyDomain, list);
+  }
+
+  return { byEmail, byLinkedin, byDomain };
+}
+
+/**
+ * Find existing person match using pre-loaded dedup maps (in-memory).
+ * Three-leg matching: email → LinkedIn → fuzzy name+domain.
+ */
+function findExistingPersonFromMaps(dp: StagedRecord, maps: DedupMaps): string | null {
+  // Leg 1: Email exact match
   if (dp.email && !dp.email.includes("@discovery.internal")) {
-    const match = await prisma.person.findUnique({
-      where: { email: dp.email },
-      select: { id: true },
-    });
-    if (match) return match.id;
+    const match = maps.byEmail.get(dp.email);
+    if (match) return match;
   }
 
   // Leg 2: LinkedIn URL exact match
   if (dp.linkedinUrl) {
-    const match = await prisma.person.findFirst({
-      where: { linkedinUrl: dp.linkedinUrl },
-      select: { id: true },
-    });
-    if (match) return match.id;
+    const match = maps.byLinkedin.get(dp.linkedinUrl);
+    if (match) return match;
   }
 
   // Leg 3: Fuzzy name + companyDomain match
-  // Only attempt when we have enough signal: firstName + lastName + companyDomain
   if (dp.firstName && dp.lastName && dp.companyDomain) {
     const candidateName = `${dp.firstName} ${dp.lastName}`.toLowerCase().trim();
-
-    const candidates = await prisma.person.findMany({
-      where: { companyDomain: dp.companyDomain },
-      select: { id: true, firstName: true, lastName: true },
-      take: 100,
-    });
+    const candidates = maps.byDomain.get(dp.companyDomain) ?? [];
 
     for (const candidate of candidates) {
-      if (!candidate.firstName || !candidate.lastName) continue;
-      const existingName =
-        `${candidate.firstName} ${candidate.lastName}`.toLowerCase().trim();
-      const similarity = stringSimilarity(candidateName, existingName);
-      if (similarity >= 0.85) {
+      const existingName = `${candidate.firstName} ${candidate.lastName}`.toLowerCase().trim();
+      if (stringSimilarity(candidateName, existingName) >= 0.85) {
         return candidate.id;
       }
     }
@@ -272,8 +314,11 @@ export async function deduplicateAndPromote(
   const duplicateNames: string[] = [];
   const now = new Date();
 
+  // Pre-load all potential matches in 3 batch queries
+  const dedupMaps = await buildDedupMaps(staged);
+
   for (const dp of staged) {
-    const existingPersonId = await findExistingPerson(dp);
+    const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps);
 
     if (existingPersonId) {
       // Duplicate — mark as duplicate, set personId, do NOT set promotedAt (free for quota)

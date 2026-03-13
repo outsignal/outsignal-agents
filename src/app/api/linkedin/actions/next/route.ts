@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWorkerAuth } from "@/lib/linkedin/auth";
-import { getNextBatch, markRunning } from "@/lib/linkedin/queue";
+import { getNextBatch } from "@/lib/linkedin/queue";
 import { prisma } from "@/lib/db";
 
 /**
@@ -30,22 +30,35 @@ export async function GET(request: NextRequest) {
 
     const actions = await getNextBatch(senderId, limit);
 
-    // Mark each as running and resolve LinkedIn URLs
-    const enrichedActions = [];
-    for (const action of actions) {
-      await markRunning(action.id);
-
-      // Resolve person's LinkedIn URL
-      const person = await prisma.person.findUnique({
-        where: { id: action.personId },
-        select: { linkedinUrl: true },
-      });
-
-      enrichedActions.push({
-        ...action,
-        linkedinUrl: person?.linkedinUrl ?? null,
-      });
+    if (actions.length === 0) {
+      return NextResponse.json({ actions: [] });
     }
+
+    const actionIds = actions.map((a) => a.id);
+    const personIds = [...new Set(actions.map((a) => a.personId))];
+
+    // Batch mark all actions as running (single UPDATE instead of N)
+    await prisma.linkedInAction.updateMany({
+      where: { id: { in: actionIds } },
+      data: {
+        status: "running",
+        attempts: { increment: 1 },
+        lastAttemptAt: new Date(),
+      },
+    });
+
+    // Batch fetch all person LinkedIn URLs (single SELECT instead of N)
+    const people = await prisma.person.findMany({
+      where: { id: { in: personIds } },
+      select: { id: true, linkedinUrl: true },
+    });
+    const personUrlMap = new Map(people.map((p) => [p.id, p.linkedinUrl]));
+
+    // Build enriched response from in-memory join
+    const enrichedActions = actions.map((action) => ({
+      ...action,
+      linkedinUrl: personUrlMap.get(action.personId) ?? null,
+    }));
 
     return NextResponse.json({ actions: enrichedActions });
   } catch (error) {

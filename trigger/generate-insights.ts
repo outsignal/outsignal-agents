@@ -143,7 +143,7 @@ async function sendDigestForWorkspace(workspaceSlug: string): Promise<WorkspaceD
 
 export const generateInsightsTask = schedules.task({
   id: "generate-insights",
-  cron: "0 8 * * *", // daily at 08:00 UTC
+  cron: "10 8 * * *", // daily at 08:10 UTC (staggered from domain-health at 08:00)
   queue: anthropicQueue,
   maxDuration: 300, // 5 min — all workspaces with AI insight generation
   retry: {

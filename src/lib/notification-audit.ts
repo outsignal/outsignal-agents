@@ -28,7 +28,7 @@ export async function audited(
   try {
     await sendFn();
     writeAudit({ ...entry, status: "sent", durationMs: Date.now() - start }).catch(
-      (err) => console.error("[notification-audit] Failed to write audit log:", err),
+      (err) => auditFallbackLog({ ...entry, status: "sent", durationMs: Date.now() - start }, err),
     );
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -38,7 +38,7 @@ export async function audited(
       errorMessage,
       durationMs: Date.now() - start,
     }).catch((auditErr) =>
-      console.error("[notification-audit] Failed to write failure audit:", auditErr),
+      auditFallbackLog({ ...entry, status: "failed", errorMessage, durationMs: Date.now() - start }, auditErr),
     );
     if (!opts?.skipOpsAlert) {
       alertOpsOnFailure(entry, errorMessage).catch((alertErr) =>
@@ -54,8 +54,39 @@ export async function audited(
  */
 export function auditSkipped(entry: AuditEntry): void {
   writeAudit({ ...entry, status: "skipped" }).catch((err) =>
-    console.error("[notification-audit] Failed to write skipped audit:", err),
+    auditFallbackLog({ ...entry, status: "skipped" }, err),
   );
+}
+
+/**
+ * Structured fallback log when DB audit write fails.
+ * Outputs JSON to stderr so observability tools can parse it.
+ */
+function auditFallbackLog(
+  auditData: {
+    notificationType: string;
+    channel: string;
+    recipient: string;
+    status: string;
+    workspaceSlug?: string;
+    durationMs?: number;
+    errorMessage?: string;
+  },
+  dbWriteError: unknown,
+): void {
+  const fallback = {
+    _tag: "notification_audit_fallback",
+    timestamp: new Date().toISOString(),
+    status: auditData.status,
+    notificationType: auditData.notificationType,
+    channel: auditData.channel,
+    recipient: auditData.recipient,
+    workspaceSlug: auditData.workspaceSlug ?? null,
+    durationMs: auditData.durationMs ?? null,
+    notificationError: auditData.errorMessage ?? null,
+    dbWriteError: dbWriteError instanceof Error ? dbWriteError.message : String(dbWriteError),
+  };
+  console.error("[notification-audit] DB write failed, fallback log:", JSON.stringify(fallback));
 }
 
 async function writeAudit(data: {

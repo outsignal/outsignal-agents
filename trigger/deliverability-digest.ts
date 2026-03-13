@@ -3,7 +3,7 @@ import { notifyDeliverabilityDigest } from "@/lib/notifications";
 
 export const deliverabilityDigestTask = schedules.task({
   id: "deliverability-digest",
-  cron: "0 8 * * 1", // weekly Monday 8am UTC
+  cron: "20 8 * * 1", // weekly Monday 8:20am UTC (staggered from domain-health/insights)
   maxDuration: 300,
   retry: {
     maxAttempts: 2,

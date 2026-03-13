@@ -1,12 +1,9 @@
 import { task, tasks, runs } from "@trigger.dev/sdk";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/db";
 import { classifyReply } from "@/lib/classification/classify-reply";
 import { notifyReply } from "@/lib/notifications";
 import { extractOooDetails } from "@/lib/ooo/extract-ooo";
 import { anthropicQueue } from "./queues";
-
-// PrismaClient at module scope — not inside run() (pattern from smoke-test.ts)
-const prisma = new PrismaClient();
 
 export interface ProcessReplyPayload {
   workspaceSlug: string;

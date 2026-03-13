@@ -18,7 +18,7 @@ model ExclusionEntry {
   reason        String?
   createdAt     DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceSlug], references: [slug])
+  workspace Workspace @relation(fields: [workspaceSlug], references: [slug], onDelete: Cascade)
 
   @@unique([workspaceSlug, domain])
   @@index([workspaceSlug])
@@ -146,6 +146,7 @@ model Person {
   workspaces           PersonWorkspace[]
   lists                TargetListPerson[]
   signalCampaignLeads  SignalCampaignLead[]
+  replies              Reply[]
 
   @@index([source])
   @@index([status])
@@ -316,6 +317,7 @@ model Reply {
   source           String   @default("webhook") // webhook|poll|backfill
   webhookEventId   String?  // Link to WebhookEvent for audit trail
   personId         String?  // Link to Person (looked up by email)
+  person           Person?  @relation(fields: [personId], references: [id], onDelete: SetNull)
 
   // Inbox / thread grouping
   emailBisonParentId  Int?     // EB reply.parent_id — thread root for grouping
@@ -348,6 +350,7 @@ model Reply {
   @@index([workspaceSlug, emailBisonParentId])  // Thread grouping queries
   @@index([workspaceSlug, leadEmail])           // Thread grouping by lead email
   @@index([workspaceSlug, isRead])              // Unread count queries
+  @@index([personId])
 }
 
 model Insight {
@@ -738,7 +741,7 @@ model Campaign {
   deployedAt  DateTime? // When deployed to EmailBison/LinkedIn
 
   // Relations
-  workspace    Workspace            @relation(fields: [workspaceSlug], references: [slug])
+  workspace    Workspace            @relation(fields: [workspaceSlug], references: [slug], onDelete: Cascade)
   deploys      CampaignDeploy[]
   signalLeads  SignalCampaignLead[]
 
@@ -873,7 +876,7 @@ model Sender {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace         Workspace            @relation(fields: [workspaceSlug], references: [slug])
+  workspace         Workspace            @relation(fields: [workspaceSlug], references: [slug], onDelete: Cascade)
   actions           LinkedInAction[]
   dailyUsage        LinkedInDailyUsage[]
   connections       LinkedInConnection[]

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { normalizeCompanyName } from "@/lib/normalize";
+import { parseJsonBody } from "@/lib/parse-json";
 import { rateLimit } from "@/lib/rate-limit";
 
 const enrichLimiter = rateLimit({ windowMs: 60_000, max: 30 });
@@ -71,19 +72,20 @@ async function linkPersonToWorkspaceAndList(
   personId: string,
   payload: EnrichmentPayload,
   vertical?: string | null,
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0] = prisma,
 ): Promise<{ workspaceLinked?: boolean; listAdded?: boolean }> {
   const result: { workspaceLinked?: boolean; listAdded?: boolean } = {};
 
   if (payload.workspace) {
     // Validate workspace exists
-    const ws = await prisma.workspace.findUnique({
+    const ws = await tx.workspace.findUnique({
       where: { slug: payload.workspace },
     });
     if (!ws) {
       return result; // silently skip — workspace doesn't exist
     }
 
-    await prisma.personWorkspace.upsert({
+    await tx.personWorkspace.upsert({
       where: {
         personId_workspace: {
           personId,
@@ -102,7 +104,7 @@ async function linkPersonToWorkspaceAndList(
 
   if (payload.targetListId) {
     // Validate target list exists
-    const list = await prisma.targetList.findUnique({
+    const list = await tx.targetList.findUnique({
       where: { id: payload.targetListId },
     });
     if (!list) {
@@ -110,7 +112,7 @@ async function linkPersonToWorkspaceAndList(
     }
 
     // Check if already in list to avoid duplicate error
-    const existing = await prisma.targetListPerson.findUnique({
+    const existing = await tx.targetListPerson.findUnique({
       where: {
         listId_personId: {
           listId: payload.targetListId,
@@ -119,7 +121,7 @@ async function linkPersonToWorkspaceAndList(
       },
     });
     if (!existing) {
-      await prisma.targetListPerson.create({
+      await tx.targetListPerson.create({
         data: {
           listId: payload.targetListId,
           personId,
@@ -185,55 +187,58 @@ async function enrichPerson(
   });
 
   if (!existing) {
-    // Create new person
-    await prisma.person.create({
-      data: {
-        email: normalizedEmail,
-        firstName: payload.firstName ?? null,
-        lastName: payload.lastName ?? null,
-        company: companyName ?? null,
-        companyDomain: payload.companyDomain ?? null,
-        jobTitle: payload.jobTitle ?? null,
-        phone: payload.phone ?? null,
-        linkedinUrl: payload.linkedinUrl ?? null,
-        location: payload.location ?? null,
-        vertical: vertical ?? null,
-        source: "clay",
-        enrichmentData: extraJson,
-      },
+    // Create new person, company, and workspace link in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const person = await tx.person.create({
+        data: {
+          email: normalizedEmail,
+          firstName: payload.firstName ?? null,
+          lastName: payload.lastName ?? null,
+          company: companyName ?? null,
+          companyDomain: payload.companyDomain ?? null,
+          jobTitle: payload.jobTitle ?? null,
+          phone: payload.phone ?? null,
+          linkedinUrl: payload.linkedinUrl ?? null,
+          location: payload.location ?? null,
+          vertical: vertical ?? null,
+          source: "clay",
+          enrichmentData: extraJson,
+        },
+      });
+
+      // Auto-create Company record
+      const domain = payload.companyDomain;
+      if (domain) {
+        const normalizedDomain = domain.toLowerCase().trim();
+        try {
+          await tx.company.upsert({
+            where: { domain: normalizedDomain },
+            create: {
+              domain: normalizedDomain,
+              name: companyName ?? normalizedDomain,
+              industry: vertical ?? null,
+              location: payload.location ?? null,
+            },
+            update: {
+              ...(companyName ? { name: companyName } : {}),
+              ...(vertical ? { industry: vertical } : {}),
+            },
+          });
+        } catch {
+          // Non-critical
+        }
+      }
+
+      // Link to workspace and target list
+      const linkResult = await linkPersonToWorkspaceAndList(person.id, payload, vertical, tx);
+
+      return { created: true, updated: false, ...linkResult };
     });
 
-    // Auto-create Company record
-    const domain = payload.companyDomain;
-    if (domain) {
-      const normalizedDomain = domain.toLowerCase().trim();
-      try {
-        await prisma.company.upsert({
-          where: { domain: normalizedDomain },
-          create: {
-            domain: normalizedDomain,
-            name: companyName ?? normalizedDomain,
-            industry: vertical ?? null,
-            location: payload.location ?? null,
-          },
-          update: {
-            ...(companyName ? { name: companyName } : {}),
-            ...(vertical ? { industry: vertical } : {}),
-          },
-        });
-      } catch {
-        // Non-critical
-      }
-    }
-
-    // Link to workspace and target list
-    const person = await prisma.person.findUnique({ where: { email: normalizedEmail } });
-    const linkResult = await linkPersonToWorkspaceAndList(person!.id, payload, vertical);
-
-    return { created: true, updated: false, ...linkResult };
+    return result;
   }
 
-  // Update existing person
+  // Update existing person, company, and workspace link in a transaction
   const updateData: Record<string, unknown> = {};
 
   if (payload.linkedinUrl) updateData.linkedinUrl = payload.linkedinUrl;
@@ -255,41 +260,45 @@ async function enrichPerson(
     updateData.enrichmentData = JSON.stringify({ ...prev, ...extraFields });
   }
 
-  if (Object.keys(updateData).length > 0) {
-    await prisma.person.update({
-      where: { id: existing.id },
-      data: updateData,
-    });
-  }
-
-  // Auto-create/update Company record
-  const domain = (updateData.companyDomain as string) ?? existing.companyDomain;
-  if (domain) {
-    const normalizedDomain = domain.toLowerCase().trim();
-    const name = (updateData.company as string) ?? existing.company;
-    try {
-      await prisma.company.upsert({
-        where: { domain: normalizedDomain },
-        create: {
-          domain: normalizedDomain,
-          name: name ?? normalizedDomain,
-          industry: vertical ?? null,
-          location: (payload.location as string) ?? null,
-        },
-        update: {
-          ...(name ? { name } : {}),
-          ...(vertical ? { industry: vertical } : {}),
-        },
+  const result = await prisma.$transaction(async (tx) => {
+    if (Object.keys(updateData).length > 0) {
+      await tx.person.update({
+        where: { id: existing.id },
+        data: updateData,
       });
-    } catch {
-      // Non-critical
     }
-  }
 
-  // Link to workspace and target list
-  const linkResult = await linkPersonToWorkspaceAndList(existing.id, payload, vertical);
+    // Auto-create/update Company record
+    const domain = (updateData.companyDomain as string) ?? existing.companyDomain;
+    if (domain) {
+      const normalizedDomain = domain.toLowerCase().trim();
+      const name = (updateData.company as string) ?? existing.company;
+      try {
+        await tx.company.upsert({
+          where: { domain: normalizedDomain },
+          create: {
+            domain: normalizedDomain,
+            name: name ?? normalizedDomain,
+            industry: vertical ?? null,
+            location: (payload.location as string) ?? null,
+          },
+          update: {
+            ...(name ? { name } : {}),
+            ...(vertical ? { industry: vertical } : {}),
+          },
+        });
+      } catch {
+        // Non-critical
+      }
+    }
 
-  return { created: false, updated: Object.keys(updateData).length > 0, ...linkResult };
+    // Link to workspace and target list
+    const linkResult = await linkPersonToWorkspaceAndList(existing.id, payload, vertical, tx);
+
+    return { created: false, updated: Object.keys(updateData).length > 0, ...linkResult };
+  });
+
+  return result;
 }
 
 export async function POST(request: NextRequest) {
@@ -336,7 +345,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await parseJsonBody<any>(request);
+    if (body instanceof Response) return body;
 
     // Batch mode: body is an array
     if (Array.isArray(body)) {

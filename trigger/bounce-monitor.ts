@@ -17,7 +17,7 @@ const LOG_PREFIX = "[bounce-monitor]";
 
 export const bounceMonitorTask = schedules.task({
   id: "bounce-monitor",
-  cron: "0 */4 * * *", // every 4 hours
+  cron: "5 */4 * * *", // every 4 hours at :05 (staggered to avoid collisions)
   maxDuration: 300,
   retry: {
     maxAttempts: 2,

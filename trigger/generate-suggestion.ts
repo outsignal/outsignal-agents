@@ -1,12 +1,9 @@
 import { task } from "@trigger.dev/sdk";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/db";
 import { runAgent } from "@/lib/agents/runner";
 import { writerConfig } from "@/lib/agents/writer";
 import { postMessage } from "@/lib/slack";
 import { anthropicQueue } from "./queues";
-
-// PrismaClient at module scope — not inside run() (pattern from smoke-test.ts)
-const prisma = new PrismaClient();
 
 export interface GenerateSuggestionPayload {
   replyId: string; // cuid from Reply table
