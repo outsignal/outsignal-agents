@@ -101,7 +101,7 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
           </Button>
         }
       />
-      <div className="p-8 space-y-6">
+      <div className="p-6 space-y-6">
         {error && <ErrorBanner message={error} />}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -326,7 +326,7 @@ function PendingWorkspaceView({
           </Badge>
         }
       />
-      <div className="p-8 space-y-6 max-w-4xl">
+      <div className="p-6 space-y-6 max-w-4xl">
         {/* Setup Checklist */}
         <Card>
           <CardHeader>

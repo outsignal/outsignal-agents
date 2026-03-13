@@ -81,7 +81,7 @@ export default async function WorkspaceSettingsPage({
         title={`${workspace.name} — Settings`}
         description="Manage workspace configuration, ICP, and campaign brief"
       />
-      <div className="p-8 max-w-4xl space-y-6">
+      <div className="p-6 max-w-4xl space-y-6">
         <WorkspaceSettingsForm workspace={workspace} />
         {packageData && <PackageQuotasForm data={packageData} />}
       </div>

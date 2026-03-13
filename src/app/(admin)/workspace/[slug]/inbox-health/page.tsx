@@ -107,7 +107,7 @@ export default async function InboxHealthPage({
         title="Inbox Health"
         description={`${workspace.name} - ${senderHealth.length} sender emails monitored`}
       />
-      <div className="p-8 space-y-6">
+      <div className="p-6 space-y-6">
         {error && <ErrorBanner message={error} />}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

@@ -58,7 +58,7 @@ export default function CreateOnboardingInvitePage() {
     return (
       <div>
         <Header title="Invite Created" />
-        <div className="p-8 max-w-2xl">
+        <div className="p-6 max-w-2xl">
           <Card>
             <CardHeader>
               <CardTitle className="font-heading">
@@ -99,7 +99,7 @@ export default function CreateOnboardingInvitePage() {
         title="Create Onboarding Invite"
         description="Send the onboarding questionnaire to a client"
       />
-      <div className="p-8 max-w-2xl">
+      <div className="p-6 max-w-2xl">
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             {error}

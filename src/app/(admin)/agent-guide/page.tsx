@@ -128,7 +128,7 @@ export default function AgentGuidePage() {
         description="Quick reference for calling agents from Claude Code CLI"
       />
 
-      <div className="p-8 space-y-8">
+      <div className="p-6 space-y-6">
         {/* Intro */}
         <Card>
           <CardContent className="pt-6">

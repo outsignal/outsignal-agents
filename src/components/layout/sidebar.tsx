@@ -464,11 +464,13 @@ export function Sidebar({ workspaces }: SidebarProps) {
         )}
       >
         {isCollapsed ? (
-          <button onClick={toggleCollapsed} className="cursor-pointer" title="Expand sidebar" aria-label="Expand sidebar">
+          <Link href="/" title="Go to dashboard" aria-label="Go to dashboard">
             <OutsignalLogo variant="mark" className="h-7 w-7" />
-          </button>
+          </Link>
         ) : (
-          <OutsignalLogo className="h-7 w-auto" />
+          <Link href="/" aria-label="Go to dashboard">
+            <OutsignalLogo className="h-7 w-auto" />
+          </Link>
         )}
       </div>
 

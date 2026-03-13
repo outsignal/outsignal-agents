@@ -74,7 +74,7 @@ export default async function CampaignDetailPage({
           </Badge>
         }
       />
-      <div className="p-8 space-y-6">
+      <div className="p-6 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <MetricCard label="Sent" value={sent.toLocaleString()} />
           <MetricCard

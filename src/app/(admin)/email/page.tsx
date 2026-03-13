@@ -117,7 +117,7 @@ export default async function EmailHealthPage() {
         title="Email Health"
         description={`Monitoring ${totalSenders} senders across ${activeWorkspaces.length} workspaces`}
       />
-      <div className="p-8 space-y-6">
+      <div className="p-6 space-y-6">
         {/* Alert banners */}
         {disconnected.length > 0 && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4">

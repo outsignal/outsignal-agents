@@ -52,7 +52,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
         title="LinkedIn"
         description={`Manage LinkedIn senders for ${workspace.name}`}
       />
-      <div className="p-8 space-y-6">
+      <div className="p-6 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="font-heading">Senders</CardTitle>

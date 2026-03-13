@@ -201,7 +201,7 @@ export default function NotificationHealthPage() {
         }
       />
 
-      <div className="p-8 space-y-6">
+      <div className="p-6 space-y-6">
         {/* Error state */}
         {error && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4">

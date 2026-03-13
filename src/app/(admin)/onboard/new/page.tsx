@@ -94,7 +94,7 @@ export default function CreateProposalPage() {
     return (
       <div>
         <Header title="Proposal Created" />
-        <div className="p-8 max-w-2xl">
+        <div className="p-6 max-w-2xl">
           <Card>
             <CardHeader>
               <CardTitle className="font-heading">
@@ -132,7 +132,7 @@ export default function CreateProposalPage() {
   return (
     <div>
       <Header title="Create Proposal" description="Set up a new client proposal" />
-      <div className="p-8 max-w-2xl">
+      <div className="p-6 max-w-2xl">
         {error && <ErrorBanner message={error} />}
 
         <form onSubmit={handleSubmit} className="space-y-6">
