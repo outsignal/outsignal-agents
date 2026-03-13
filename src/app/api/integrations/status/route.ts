@@ -547,19 +547,24 @@ function checkAnthropic(): ProviderStatus {
   };
 }
 
-function checkResend(): ProviderStatus {
+async function checkResend(): Promise<ProviderStatus> {
   const now = new Date().toISOString();
-  const configured = !!process.env.RESEND_API_KEY;
-
-  return {
-    id: "resend",
-    name: "Resend",
-    category: "notifications",
-    status: configured ? "no_api" : "disconnected",
-    configured,
-    dashboardUrl: "https://resend.com/overview",
-    lastChecked: now,
-  };
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    return { id: "resend", name: "Resend", category: "notifications", status: "disconnected", configured: false, dashboardUrl: "https://resend.com/overview", lastChecked: now };
+  }
+  try {
+    const res = await fetchWithTimeout(
+      "https://api.resend.com/domains",
+      { headers: { Authorization: `Bearer ${key}` } },
+    );
+    if (res.ok) {
+      return { id: "resend", name: "Resend", category: "notifications", status: "connected", configured: true, dashboardUrl: "https://resend.com/overview", lastChecked: now };
+    }
+    return { id: "resend", name: "Resend", category: "notifications", status: "degraded", configured: true, dashboardUrl: "https://resend.com/overview", error: `API returned ${res.status}`, lastChecked: now };
+  } catch {
+    return { id: "resend", name: "Resend", category: "notifications", status: "degraded", configured: true, dashboardUrl: "https://resend.com/overview", error: "API check failed", lastChecked: now };
+  }
 }
 
 function checkSlack(): ProviderStatus {
@@ -740,6 +745,7 @@ export async function GET() {
       checkVercel(),
       checkTriggerDev(),
       checkEmailBison(),
+      checkResend(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
@@ -766,7 +772,6 @@ export async function GET() {
       checkAiArk(),
       checkPredictLeads(),
       checkAnthropic(),
-      checkResend(),
       checkSlack(),
       checkCheapInboxes(),
     ];
