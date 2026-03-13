@@ -1,9 +1,9 @@
 import { timingSafeEqual } from "crypto";
 
-export function validateCronSecret(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
+export function validateApiSecret(req: Request): boolean {
+  const secret = process.env.API_SECRET;
   if (!secret) {
-    console.warn("[cron-auth] CRON_SECRET not configured — rejecting request");
+    console.warn("[api-auth] API_SECRET not configured — rejecting request");
     return false;
   }
 

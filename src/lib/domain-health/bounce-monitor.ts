@@ -41,8 +41,12 @@ export function computeEmailBounceStatus(
   bounceRate: number | null,
   isBlacklisted: boolean,
 ): EmailBounceStatus | null {
+  if (bounceRate === null) {
+    // No bounce data — blacklist alone is a warning signal, not critical
+    return isBlacklisted ? "warning" : null;
+  }
+  // From here, bounceRate is not null
   if (isBlacklisted) return "critical";
-  if (bounceRate === null) return null;
   if (bounceRate >= 0.05) return "critical";
   if (bounceRate >= 0.03) return "warning";
   if (bounceRate >= 0.02) return "elevated";
@@ -100,6 +104,7 @@ export async function evaluateSender(params: {
   to?: string;
   reason?: string;
   action?: string;
+  bouncePct?: number | null;
 }> {
   const { sender, bounceRate, isBlacklisted } = params;
 
@@ -107,7 +112,7 @@ export async function evaluateSender(params: {
   const newStatus = computeEmailBounceStatus(bounceRate, isBlacklisted);
   if (newStatus === null) {
     console.log(`${LOG_PREFIX} Skipping ${sender.emailAddress} — no bounce data`);
-    return { transitioned: false };
+    return { transitioned: false, bouncePct: null };
   }
 
   const currentStatus = sender.emailBounceStatus as EmailBounceStatus;
@@ -240,7 +245,7 @@ export async function evaluateSender(params: {
     ]);
 
     console.log(`${LOG_PREFIX} ${sender.emailAddress}: ${currentStatus} → ${newStatus} (${reason})`);
-    return { transitioned: true, from: currentStatus, to: newStatus, reason, action };
+    return { transitioned: true, from: currentStatus, to: newStatus, reason, action, bouncePct: bounceRate };
   }
 
   // ── 2b. SAME SEVERITY or LOWER — check step-down eligibility ─────────────
@@ -248,7 +253,7 @@ export async function evaluateSender(params: {
 
   // If currently healthy, nothing to do
   if (currentStatus === "healthy") {
-    return { transitioned: false };
+    return { transitioned: false, bouncePct: bounceRate };
   }
 
   const threshold = stepDownThreshold(currentStatus);
@@ -331,7 +336,7 @@ export async function evaluateSender(params: {
       ]);
 
       console.log(`${LOG_PREFIX} ${sender.emailAddress}: step-down ${currentStatus} → ${stepDownStatus} (${newCount} consecutive healthy checks)`);
-      return { transitioned: true, from: currentStatus, to: stepDownStatus, reason: "step_down", action };
+      return { transitioned: true, from: currentStatus, to: stepDownStatus, reason: "step_down", action, bouncePct: bounceRate };
     } else {
       // Increment counter, not ready yet
       await prisma.sender.update({
@@ -339,7 +344,7 @@ export async function evaluateSender(params: {
         data: { consecutiveHealthyChecks: newCount },
       });
       console.log(`${LOG_PREFIX} ${sender.emailAddress}: below threshold (${newCount}/${CONSECUTIVE_CHECKS_FOR_STEPDOWN} healthy checks)`);
-      return { transitioned: false };
+      return { transitioned: false, bouncePct: bounceRate };
     }
   } else {
     // At or above threshold — reset counter
@@ -347,7 +352,7 @@ export async function evaluateSender(params: {
       where: { id: sender.id },
       data: { consecutiveHealthyChecks: 0 },
     });
-    return { transitioned: false };
+    return { transitioned: false, bouncePct: bounceRate };
   }
 }
 
@@ -361,7 +366,7 @@ export async function runBounceMonitor(): Promise<{
   evaluated: number;
   transitioned: number;
   skipped: number;
-  transitions: Array<{ senderEmail: string; workspaceSlug: string; from: string; to: string; reason: string; action?: string }>;
+  transitions: Array<{ senderEmail: string; workspaceSlug: string; from: string; to: string; reason: string; action?: string; bouncePct: number | null }>;
 }> {
   console.log(`${LOG_PREFIX} Starting bounce monitor run`);
 
@@ -425,7 +430,7 @@ export async function runBounceMonitor(): Promise<{
   let evaluated = 0;
   let transitioned = 0;
   let skipped = 0;
-  const transitions: Array<{ senderEmail: string; workspaceSlug: string; from: string; to: string; reason: string; action?: string }> = [];
+  const transitions: Array<{ senderEmail: string; workspaceSlug: string; from: string; to: string; reason: string; action?: string; bouncePct: number | null }> = [];
 
   for (const sender of senders) {
     const email = sender.emailAddress as string;
@@ -451,6 +456,7 @@ export async function runBounceMonitor(): Promise<{
           to: result.to,
           reason: result.reason ?? "unknown",
           action: result.action,
+          bouncePct: result.bouncePct ?? null,
         });
       }
     } catch (err) {

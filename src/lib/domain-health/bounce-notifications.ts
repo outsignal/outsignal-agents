@@ -502,9 +502,17 @@ export async function sendSenderHealthDigestEmail(
       const label = statusLabel(item.toStatus);
       const recovery = isRecovery(item.fromStatus, item.toStatus);
 
-      const bounceTd = item.bouncePct !== undefined
+      const bounceTd = item.bouncePct != null
         ? `${(item.bouncePct * 100).toFixed(1)}%`
         : "—";
+
+      const reasonLabel = item.reason === "blacklist"
+        ? "Blacklist"
+        : item.reason === "bounce_rate"
+          ? "Bounce"
+          : item.reason === "step_down"
+            ? "Recovery"
+            : item.reason || "—";
 
       let actionText = "";
       if (item.action === "daily_limit_reduced") {
@@ -533,6 +541,7 @@ export async function sendSenderHealthDigestEmail(
           ${recovery ? '<span style="margin-left:4px;font-size:11px;color:#16a34a;">&#x2191; Recovery</span>' : ""}
         </td>
         <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#3f3f46;">${bounceTd}</td>
+        <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#3f3f46;">${reasonLabel}</td>
         <td style="padding:8px 0 8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#3f3f46;">${actionText || "—"}</td>
       </tr>`;
     })
@@ -559,6 +568,7 @@ export async function sendSenderHealthDigestEmail(
         <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Was</td>
         <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Now</td>
         <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Bounce %</td>
+        <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Reason</td>
         <td style="padding:4px 0 4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Action</td>
       </tr>
       ${rowsHtml}

@@ -3,10 +3,10 @@ import { prisma } from "@/lib/db";
 import { getAllWorkspaces, getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { normalizeCompanyName } from "@/lib/normalize";
-import { validateCronSecret } from "@/lib/cron-auth";
+import { validateApiSecret } from "@/lib/api-auth";
 
 export async function POST(request: Request) {
-  if (!validateCronSecret(request)) {
+  if (!validateApiSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const allWorkspaces = await getAllWorkspaces();

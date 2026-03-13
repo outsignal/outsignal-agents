@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import { processNextChunk } from "@/lib/enrichment/queue";
 import { enrichEmail, enrichCompany, createCircuitBreaker } from "@/lib/enrichment/waterfall";
 import { prisma } from "@/lib/db";
-import { validateCronSecret } from "@/lib/cron-auth";
+import { validateApiSecret } from "@/lib/api-auth";
 
 export async function GET(request: Request) {
   return handleProcess(request);
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 }
 
 async function handleProcess(request: Request) {
-  if (!validateCronSecret(request)) {
+  if (!validateApiSecret(request)) {
     console.log(`[${new Date().toISOString()}] Unauthorized: POST /api/enrichment/jobs/process`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

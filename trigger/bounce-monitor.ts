@@ -79,6 +79,7 @@ export const bounceMonitorTask = schedules.task({
           toStatus: transition.to,
           reason: transition.reason,
           action: transition.action,
+          bouncePct: transition.bouncePct ?? undefined,
           replacementEmail,
         });
 
