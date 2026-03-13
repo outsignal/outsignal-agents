@@ -610,21 +610,72 @@ async function checkRailway(): Promise<ProviderStatus> {
   }
 }
 
-function checkVercel(): ProviderStatus {
+async function checkVercel(): Promise<ProviderStatus> {
   const now = new Date().toISOString();
-  return { id: "vercel", name: "Vercel", category: "infrastructure", status: "no_api", configured: true, plan: "Pro", dashboardUrl: "https://vercel.com/outsignals-projects/cold-outbound-dashboard", lastChecked: now };
+  const token = process.env.VERCEL_API_TOKEN;
+  if (!token) {
+    return { id: "vercel", name: "Vercel", category: "infrastructure", status: "no_api", configured: true, plan: "Pro", dashboardUrl: "https://vercel.com/outsignals-projects/cold-outbound-dashboard", lastChecked: now };
+  }
+  try {
+    const res = await fetchWithTimeout(
+      "https://api.vercel.com/v6/deployments?projectId=cold-outbound-dashboard&limit=1&state=READY",
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const data = await res.json();
+    const latest = data?.deployments?.[0];
+    const readyAt = latest?.ready ? new Date(latest.ready).toISOString() : undefined;
+    return {
+      id: "vercel", name: "Vercel", category: "infrastructure",
+      status: "connected", configured: true, plan: "Pro",
+      dashboardUrl: "https://vercel.com/outsignals-projects/cold-outbound-dashboard",
+      lastChecked: now,
+      ...(readyAt ? { billing: { nextDate: readyAt, period: "Last deploy" } } : {}),
+    };
+  } catch (err) {
+    return { id: "vercel", name: "Vercel", category: "infrastructure", status: "degraded", configured: true, plan: "Pro", dashboardUrl: "https://vercel.com/outsignals-projects/cold-outbound-dashboard", error: "API check failed", lastChecked: now };
+  }
 }
 
-function checkTriggerDev(): ProviderStatus {
+async function checkTriggerDev(): Promise<ProviderStatus> {
   const now = new Date().toISOString();
-  const configured = !!process.env.TRIGGER_SECRET_KEY;
-  return { id: "triggerdev", name: "Trigger.dev", category: "infrastructure", status: configured ? "no_api" : "disconnected", configured, dashboardUrl: "https://cloud.trigger.dev", lastChecked: now };
+  const secretKey = process.env.TRIGGER_SECRET_KEY;
+  if (!secretKey) {
+    return { id: "triggerdev", name: "Trigger.dev", category: "infrastructure", status: "disconnected", configured: false, dashboardUrl: "https://cloud.trigger.dev", lastChecked: now };
+  }
+  try {
+    // Check recent runs via Trigger.dev management API
+    const res = await fetchWithTimeout(
+      "https://api.trigger.dev/api/v1/runs?limit=1",
+      { headers: { Authorization: `Bearer ${secretKey}` } },
+    );
+    if (res.ok) {
+      return { id: "triggerdev", name: "Trigger.dev", category: "infrastructure", status: "connected", configured: true, dashboardUrl: "https://cloud.trigger.dev", lastChecked: now };
+    }
+    return { id: "triggerdev", name: "Trigger.dev", category: "infrastructure", status: "degraded", configured: true, dashboardUrl: "https://cloud.trigger.dev", error: `API returned ${res.status}`, lastChecked: now };
+  } catch (err) {
+    return { id: "triggerdev", name: "Trigger.dev", category: "infrastructure", status: "degraded", configured: true, dashboardUrl: "https://cloud.trigger.dev", error: "API check failed", lastChecked: now };
+  }
 }
 
-function checkEmailBison(): ProviderStatus {
+async function checkEmailBison(): Promise<ProviderStatus> {
   const now = new Date().toISOString();
-  const configured = !!process.env.EMAILBISON_ADMIN_TOKEN;
-  return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: configured ? "no_api" : "disconnected", configured, dashboardUrl: "https://app.outsignal.ai", lastChecked: now };
+  const token = process.env.EMAILBISON_ADMIN_TOKEN;
+  if (!token) {
+    return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: "disconnected", configured: false, dashboardUrl: "https://app.outsignal.ai", lastChecked: now };
+  }
+  try {
+    // Lightweight connection test — fetch first page of campaigns
+    const res = await fetchWithTimeout(
+      "https://app.outsignal.ai/api/campaigns?page=1",
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (res.ok) {
+      return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: "connected", configured: true, dashboardUrl: "https://app.outsignal.ai", lastChecked: now };
+    }
+    return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: "degraded", configured: true, dashboardUrl: "https://app.outsignal.ai", error: `API returned ${res.status}`, lastChecked: now };
+  } catch (err) {
+    return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: "degraded", configured: true, dashboardUrl: "https://app.outsignal.ai", error: "API check failed", lastChecked: now };
+  }
 }
 
 function checkCheapInboxes(): ProviderStatus {
@@ -708,6 +759,9 @@ export async function GET() {
       checkApify(),
       checkNeon(),
       checkRailway(),
+      checkVercel(),
+      checkTriggerDev(),
+      checkEmailBison(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
@@ -736,9 +790,6 @@ export async function GET() {
       checkAnthropic(),
       checkResend(),
       checkSlack(),
-      checkVercel(),
-      checkTriggerDev(),
-      checkEmailBison(),
       checkCheapInboxes(),
     ];
 
