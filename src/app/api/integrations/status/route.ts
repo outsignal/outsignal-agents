@@ -693,8 +693,6 @@ async function checkWebhookHealth(): Promise<WebhookHealth[]> {
   const [
     emailBisonCount,
     emailBisonLatest,
-    clayPersonCount,
-    clayPersonLatest,
   ] = await Promise.all([
     // EmailBison — webhook events in last 24h
     prisma.webhookEvent.count({
@@ -702,19 +700,6 @@ async function checkWebhookHealth(): Promise<WebhookHealth[]> {
     }),
     prisma.webhookEvent.findFirst({
       orderBy: { receivedAt: "desc" },
-    }),
-
-    // Clay — Person records enriched in last 24h
-    prisma.person.count({
-      where: {
-        updatedAt: { gte: twentyFourHoursAgo },
-        enrichmentData: { not: null },
-      },
-    }),
-    prisma.person.findFirst({
-      where: { enrichmentData: { not: null } },
-      orderBy: { updatedAt: "desc" },
-      select: { updatedAt: true },
     }),
   ]);
 
@@ -725,13 +710,6 @@ async function checkWebhookHealth(): Promise<WebhookHealth[]> {
       lastEventAt: emailBisonLatest?.receivedAt?.toISOString() ?? null,
       last24hCount: emailBisonCount,
       status: emailBisonCount > 0 ? "healthy" : "inactive",
-    },
-    {
-      id: "clay",
-      name: "Clay Enrichment",
-      lastEventAt: clayPersonLatest?.updatedAt?.toISOString() ?? null,
-      last24hCount: clayPersonCount,
-      status: clayPersonCount > 0 ? "healthy" : "inactive",
     },
   ];
 }
@@ -804,13 +782,6 @@ export async function GET() {
         {
           id: "emailbison",
           name: "EmailBison Webhooks",
-          lastEventAt: null,
-          last24hCount: 0,
-          status: "inactive",
-        },
-        {
-          id: "clay",
-          name: "Clay Enrichment",
           lastEventAt: null,
           last24hCount: 0,
           status: "inactive",
