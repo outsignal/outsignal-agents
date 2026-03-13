@@ -104,7 +104,7 @@ export async function DELETE(
       err instanceof Error &&
       err.message.includes("Cannot delete campaign in status")
     ) {
-      return NextResponse.json({ error: err.message }, { status: 400 });
+      return NextResponse.json({ error: "Cannot perform this action" }, { status: 400 });
     }
 
     console.error("[DELETE /api/campaigns/[id]] Error:", err);

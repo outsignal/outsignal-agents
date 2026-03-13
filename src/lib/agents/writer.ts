@@ -6,6 +6,7 @@ import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
 import { writerOutputSchema } from "./types";
 import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft } from "./types";
+import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 
 // --- Writer Agent Tools ---
 
@@ -572,7 +573,7 @@ Always include "strategy" and "references" fields.`;
 const writerConfig: AgentConfig = {
   name: "writer",
   model: "claude-sonnet-4-20250514",
-  systemPrompt: WRITER_SYSTEM_PROMPT,
+  systemPrompt: WRITER_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: writerTools,
   maxSteps: 10,
   outputSchema: writerOutputSchema,
@@ -609,7 +610,7 @@ function buildWriterMessage(input: WriterInput): string {
     parts.push(`Channel: ${input.channel}`);
   }
   if (input.campaignName) {
-    parts.push(`Campaign: ${input.campaignName}`);
+    parts.push(`Campaign: ${sanitizePromptInput(input.campaignName)}`);
   }
   if (input.campaignId) {
     parts.push(`Campaign ID: ${input.campaignId}`);
@@ -624,21 +625,21 @@ function buildWriterMessage(input: WriterInput): string {
     parts.push(`Copy strategy: ${input.copyStrategy}`);
   }
   if (input.copyStrategy === "custom" && input.customStrategyPrompt) {
-    parts.push(`Custom strategy instructions:\n${input.customStrategyPrompt}`);
+    parts.push(`Custom strategy instructions:\n${sanitizePromptInput(input.customStrategyPrompt)}`);
   }
   // Phase 20: Signal context (internal only — writer uses for angle selection)
   if (input.signalContext) {
     parts.push("");
     parts.push("[INTERNAL SIGNAL CONTEXT — never mention to recipient]");
     parts.push(`Signal type: ${input.signalContext.signalType}`);
-    parts.push(`Target company: ${input.signalContext.companyName ?? input.signalContext.companyDomain}`);
-    parts.push(`Company domain: ${input.signalContext.companyDomain}`);
+    parts.push(`Target company: ${sanitizePromptInput(input.signalContext.companyName ?? input.signalContext.companyDomain)}`);
+    parts.push(`Company domain: ${sanitizePromptInput(input.signalContext.companyDomain)}`);
     parts.push(`High intent: ${input.signalContext.isHighIntent}`);
   }
   if (input.feedback) {
-    parts.push(`\nFeedback to incorporate:\n${input.feedback}`);
+    parts.push(`\nFeedback to incorporate:\n${sanitizePromptInput(input.feedback)}`);
   }
-  parts.push("", `Task: ${input.task}`);
+  parts.push("", `Task: ${sanitizePromptInput(input.task)}`);
 
   return parts.join("\n");
 }

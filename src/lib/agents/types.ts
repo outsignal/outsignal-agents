@@ -145,6 +145,7 @@ export interface CampaignInput {
   task: string;
   campaignId?: string;    // For operations on existing campaign
   campaignName?: string;  // For creating or finding by name
+  feedback?: string;      // User feedback to incorporate
 }
 
 export interface CampaignOutput {

@@ -79,8 +79,7 @@ export async function GET(
       if (!liAt || !jsessionId) {
         return NextResponse.json(
           {
-            error: "Session cookies missing required values (li_at or JSESSIONID)",
-            detail: { hasLiAt: !!liAt, hasJsessionId: !!jsessionId },
+            error: "Session cookies missing required values",
           },
           { status: 422 },
         );

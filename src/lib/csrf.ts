@@ -13,8 +13,7 @@ export function generateCsrfToken(): string {
  * Validate the CSRF double-submit cookie pattern.
  * Checks that the `x-csrf-token` header matches the `__csrf` cookie value.
  *
- * NOTE: This is NOT enforced on any route yet — call this from middleware
- * or individual route handlers when ready to enforce.
+ * Enforced via middleware.ts on all API mutation routes (POST/PUT/PATCH/DELETE).
  */
 export function validateCsrf(request: Request): boolean {
   const headerToken = request.headers.get("x-csrf-token");

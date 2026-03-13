@@ -39,11 +39,9 @@ export async function GET(_request: Request, context: RouteContext) {
       },
     });
   } catch (err) {
-    // intentional business message for Export blocked
-
-    // Verification gate block → 400
+    // Verification gate block → 400 (static message, no dynamic DB data)
     if (err instanceof Error && err.message.includes("Export blocked")) {
-      return Response.json({ error: err.message }, { status: 400 });
+      return Response.json({ error: "Export blocked: some people have unverified emails. Verify first." }, { status: 400 });
     }
 
     console.error("[GET /api/lists/[id]/export] Unexpected error:", err);

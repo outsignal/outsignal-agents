@@ -32,17 +32,29 @@ function verifyWebhookSignature(
     request.headers.get("x-webhook-signature");
 
   if (!secret) {
-    console.warn(
-      "[EmailBison Webhook] EMAILBISON_WEBHOOK_SECRET not configured — allowing unsigned request",
+    console.error(
+      "[EmailBison Webhook] EMAILBISON_WEBHOOK_SECRET not configured — rejecting unsigned request",
     );
-    return { valid: true };
+    return {
+      valid: false,
+      response: NextResponse.json(
+        { error: "Webhook signature verification not configured" },
+        { status: 401 },
+      ),
+    };
   }
 
   if (!signature) {
     console.warn(
-      "[EmailBison Webhook] No signature header present — allowing unsigned request",
+      "[EmailBison Webhook] No signature header present — rejecting unsigned request",
     );
-    return { valid: true };
+    return {
+      valid: false,
+      response: NextResponse.json(
+        { error: "Missing webhook signature header" },
+        { status: 401 },
+      ),
+    };
   }
 
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
@@ -121,6 +133,24 @@ export async function POST(request: NextRequest) {
       emailSubject.includes("service update") ||
       emailSubject.includes("retention settings");
     const isAutomatedFlag = automatedReply || isNonRealReply;
+
+    // Idempotency: skip if we already processed this exact event recently
+    const replyId = data.reply?.id;
+    if (replyId != null) {
+      const existing = await prisma.webhookEvent.findFirst({
+        where: {
+          workspace: workspaceSlug,
+          eventType,
+          leadEmail,
+          payload: { contains: `"id":${replyId}` },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        console.log(`[EmailBison Webhook] Idempotent skip — duplicate reply event (replyId=${replyId}, existing=${existing.id})`);
+        return NextResponse.json({ received: true, deduplicated: true });
+      }
+    }
 
     const webhookEvent = await prisma.webhookEvent.create({
       data: {
@@ -358,7 +388,9 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // 2. Classify inline
+          // 2. Classify inline, then notify only if classification succeeds
+          let fallbackIntent: string | null = null;
+          let fallbackSentiment: string | null = null;
           try {
             const classification = await classifyReply({
               subject,
@@ -367,6 +399,8 @@ export async function POST(request: NextRequest) {
               outboundSubject: reply.outboundSubject,
               outboundBody: reply.outboundBody,
             });
+            fallbackIntent = classification.intent;
+            fallbackSentiment = classification.sentiment;
             await prisma.reply.update({
               where: { id: reply.id },
               data: {
@@ -378,24 +412,26 @@ export async function POST(request: NextRequest) {
               },
             });
           } catch (classErr) {
-            console.error("[webhook] Fallback classification failed:", classErr);
+            console.error("[webhook] Fallback classification failed — skipping notification (retry-classification cron will handle):", classErr);
           }
 
-          // 3. Notify inline
-          try {
-            await notifyReply({
-              workspaceSlug,
-              leadName,
-              leadEmail: leadEmail ?? "unknown",
-              senderEmail: senderEmail ?? "unknown",
-              subject,
-              bodyPreview: textBody,
-              interested,
-              suggestedResponse: null,
-              replyId: reply.id,
-            });
-          } catch (notifyErr) {
-            console.error("[webhook] Fallback notification failed:", notifyErr);
+          // 3. Notify inline — only if classification populated intent + sentiment
+          if (fallbackIntent && fallbackSentiment) {
+            try {
+              await notifyReply({
+                workspaceSlug,
+                leadName,
+                leadEmail: leadEmail ?? "unknown",
+                senderEmail: senderEmail ?? "unknown",
+                subject,
+                bodyPreview: `[${fallbackIntent}/${fallbackSentiment}] ${textBody}`,
+                interested,
+                suggestedResponse: null,
+                replyId: reply.id,
+              });
+            } catch (notifyErr) {
+              console.error("[webhook] Fallback notification failed:", notifyErr);
+            }
           }
         } catch (fallbackErr) {
           console.error("[webhook] Fallback processing failed:", fallbackErr);

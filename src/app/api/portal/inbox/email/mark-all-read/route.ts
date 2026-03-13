@@ -18,7 +18,7 @@ export async function POST() {
 
     return NextResponse.json({ updated: result.count });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unauthorized";
+    const message = err instanceof Error ? err.message : "";
     if (
       message === "No portal session cookie" ||
       message === "Invalid or expired portal session"

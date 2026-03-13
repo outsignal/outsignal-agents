@@ -82,7 +82,7 @@ export async function PATCH(
           data: {
             status: "failed",
             executionResult: JSON.stringify({
-              error: execErr instanceof Error ? execErr.message : String(execErr),
+              error: "Execution failed",
             }),
           },
         });

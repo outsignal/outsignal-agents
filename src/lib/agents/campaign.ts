@@ -6,6 +6,7 @@ import * as leadsOperations from "@/lib/leads/operations";
 import { runAgent } from "./runner";
 import { campaignOutputSchema } from "./types";
 import type { AgentConfig, CampaignInput, CampaignOutput } from "./types";
+import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { prisma } from "@/lib/db";
 import { hasModule, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
 
@@ -461,7 +462,7 @@ Professional, clear, action-oriented. Brief confirmations after each action.`;
 const campaignConfig: AgentConfig = {
   name: "campaign",
   model: "claude-sonnet-4-20250514",
-  systemPrompt: CAMPAIGN_SYSTEM_PROMPT,
+  systemPrompt: CAMPAIGN_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: campaignTools,
   maxSteps: 10,
   outputSchema: campaignOutputSchema,
@@ -500,9 +501,12 @@ function buildCampaignMessage(input: CampaignInput): string {
     parts.push(`Campaign ID: ${input.campaignId}`);
   }
   if (input.campaignName) {
-    parts.push(`Campaign Name: ${input.campaignName}`);
+    parts.push(`Campaign Name: ${sanitizePromptInput(input.campaignName)}`);
   }
-  parts.push("", `Task: ${input.task}`);
+  if (input.feedback) {
+    parts.push(`\nFeedback:\n${sanitizePromptInput(input.feedback)}`);
+  }
+  parts.push("", `Task: ${sanitizePromptInput(input.task)}`);
 
   return parts.join("\n");
 }

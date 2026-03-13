@@ -83,7 +83,7 @@ export async function POST(
       type: "provisioning",
       severity: "error",
       title: "Manual EmailBison provisioning failed",
-      message: err instanceof Error ? err.message : String(err),
+      message: "Provisioning failed — check server logs",
       workspaceSlug: slug,
     }).catch(() => {});
 

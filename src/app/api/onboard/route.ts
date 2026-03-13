@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { createChannelWithMembers, postMessage } from "@/lib/slack";
 import { runResearchAgent } from "@/lib/agents/research";
 import { notify } from "@/lib/notify";
+import { parseJsonBody } from "@/lib/parse-json";
 import {
   verifyAdminSession,
   ADMIN_COOKIE_NAME,
@@ -27,7 +28,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const parseResult = onboardSchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json({ error: "Validation failed", details: parseResult.error.flatten().fieldErrors }, { status: 400 });
@@ -175,7 +177,7 @@ export async function POST(request: NextRequest) {
             type: "provisioning",
             severity: "error",
             title: "EmailBison provisioning failed",
-            message: err instanceof Error ? err.message : String(err),
+            message: "EmailBison provisioning failed — check server logs",
             workspaceSlug: slug,
           }).catch(() => {});
         }
@@ -259,7 +261,7 @@ export async function POST(request: NextRequest) {
       type: "error",
       severity: "error",
       title: "Onboarding failed",
-      message: error instanceof Error ? error.message : String(error),
+      message: "Onboarding failed — check server logs",
     }).catch(() => {});
     return NextResponse.json(
       { error: "Failed to create workspace" },

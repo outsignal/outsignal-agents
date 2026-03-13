@@ -75,7 +75,7 @@ export async function PATCH(
       err instanceof Error &&
       err.message.includes("Invalid status transition")
     ) {
-      return NextResponse.json({ error: err.message }, { status: 400 });
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
     return NextResponse.json({ error: "Failed to update invoice" }, { status: 500 });

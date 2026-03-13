@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createExtensionToken, extensionCorsHeaders } from "@/lib/extension-auth";
 import { prisma } from "@/lib/db";
+import { parseJsonBody } from "@/lib/parse-json";
+import { rateLimit } from "@/lib/rate-limit";
+
+const extensionAuthLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 /**
  * OPTIONS /api/extension/auth
  * CORS preflight for Chrome extension popup fetch calls.
@@ -24,8 +28,22 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = extensionCorsHeaders(request);
   try {
-    const body = await request.json();
-    const { token } = body as { token?: string };
+    // Rate limiting — 5 requests per minute per IP
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip") ??
+      "unknown";
+    const { success: rateLimitOk } = extensionAuthLimiter(ip);
+    if (!rateLimitOk) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429, headers: { ...cors, "Retry-After": "60" } },
+      );
+    }
+
+    const body = await parseJsonBody<{ token?: string }>(request);
+    if (body instanceof Response) return body;
+    const { token } = body;
 
     if (!token || typeof token !== "string" || token.trim() === "") {
       return NextResponse.json(

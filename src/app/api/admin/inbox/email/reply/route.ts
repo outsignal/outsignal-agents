@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     if (!result.data.success) {
       return NextResponse.json(
-        { error: result.data.message },
+        { error: "Failed to send reply" },
         { status: 422 }
       );
     }
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof EmailBisonError) {
       return NextResponse.json(
-        { error: err.message },
+        { error: "Failed to send reply via email provider" },
         { status: err.statusCode }
       );
     }

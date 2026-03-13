@@ -5,6 +5,7 @@ import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
 import { leadsOutputSchema } from "./types";
 import type { AgentConfig, LeadsInput, LeadsOutput } from "./types";
+import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { apolloAdapter } from "@/lib/discovery/adapters/apollo";
 import { prospeoSearchAdapter } from "@/lib/discovery/adapters/prospeo-search";
 import { aiarkSearchAdapter } from "@/lib/discovery/adapters/aiark-search";
@@ -1101,7 +1102,7 @@ Friendly but brief. Warm and efficient, light personality. Examples:
 const leadsConfig: AgentConfig = {
   name: "leads",
   model: "claude-sonnet-4-20250514",
-  systemPrompt: LEADS_SYSTEM_PROMPT,
+  systemPrompt: LEADS_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: leadsTools,
   maxSteps: 15,
   outputSchema: leadsOutputSchema,
@@ -1137,9 +1138,9 @@ function buildLeadsMessage(input: LeadsInput): string {
     parts.push(`Workspace: ${input.workspaceSlug}`);
   }
   if (input.conversationContext) {
-    parts.push(`Context: ${input.conversationContext}`);
+    parts.push(`Context: ${sanitizePromptInput(input.conversationContext)}`);
   }
-  parts.push("", `Task: ${input.task}`);
+  parts.push("", `Task: ${sanitizePromptInput(input.task)}`);
 
   return parts.join("\n");
 }

@@ -7,6 +7,7 @@ import { runAgent } from "./runner";
 import { searchKnowledgeBase } from "./shared-tools";
 import { researchOutputSchema } from "./types";
 import type { AgentConfig, ResearchInput, ResearchOutput } from "./types";
+import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 
 // --- Research Agent Tools ---
 
@@ -240,7 +241,7 @@ You have access to the Knowledge Base via \`searchKnowledgeBase\`. Use it to loo
 const researchConfig: AgentConfig = {
   name: "research",
   model: "claude-opus-4-20250514",
-  systemPrompt: RESEARCH_SYSTEM_PROMPT,
+  systemPrompt: RESEARCH_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: researchTools,
   maxSteps: 8,
   outputSchema: researchOutputSchema,
@@ -289,7 +290,7 @@ function buildResearchMessage(input: ResearchInput): string {
   if (input.url) {
     parts.push(`Website URL: ${input.url}`);
   }
-  parts.push("", `Task: ${input.task}`);
+  parts.push("", `Task: ${sanitizePromptInput(input.task)}`);
 
   return parts.join("\n");
 }

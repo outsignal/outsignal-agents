@@ -38,7 +38,17 @@ export async function POST(
         err.message.includes("without a target list");
 
       if (isValidationError) {
-        return NextResponse.json({ error: err.message }, { status: 400 });
+        let safeMessage: string;
+        if (err.message.includes("Cannot publish campaign in status")) {
+          safeMessage = "Campaign must be in 'internal_review' status to publish.";
+        } else if (err.message.includes("without content")) {
+          safeMessage = "Campaign cannot be published without content.";
+        } else if (err.message.includes("without a target list")) {
+          safeMessage = "Campaign cannot be published without a target list.";
+        } else {
+          safeMessage = "Cannot publish campaign.";
+        }
+        return NextResponse.json({ error: safeMessage }, { status: 400 });
       }
     }
 

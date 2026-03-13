@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateAdminPassword } from "@/lib/admin-auth";
 import { createExtensionToken, extensionCorsHeaders } from "@/lib/extension-auth";
 import { prisma } from "@/lib/db";
+import { parseJsonBody } from "@/lib/parse-json";
 import { rateLimit } from "@/lib/rate-limit";
 
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
@@ -42,12 +43,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { email, workspaceSlug, password } = body as {
-      email?: string;
-      workspaceSlug?: string;
-      password?: string;
-    };
+    const body = await parseJsonBody<{ email?: string; workspaceSlug?: string; password?: string }>(request);
+    if (body instanceof Response) return body;
+    const { email, workspaceSlug, password } = body;
 
     if (!email || !workspaceSlug || !password) {
       return NextResponse.json(

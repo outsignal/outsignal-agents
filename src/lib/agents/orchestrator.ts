@@ -15,6 +15,7 @@ import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { searchKnowledgeBase } from "./shared-tools";
 import { getWorkspaceQuotaUsage, parseModules } from "@/lib/workspaces/quota";
 import type { AgentConfig } from "./types";
+import { USER_INPUT_GUARD } from "./utils";
 
 // --- Delegation Tools ---
 
@@ -675,7 +676,7 @@ Signal campaigns skip the client portal approval flow — leads auto-deploy when
 export const orchestratorConfig: AgentConfig = {
   name: "orchestrator",
   model: "claude-sonnet-4-20250514",
-  systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
+  systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: orchestratorTools,
   maxSteps: 12,
 };
