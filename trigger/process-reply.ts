@@ -339,8 +339,13 @@ export const processReply = task({
     // Step 4: Trigger AI reply suggestion (async — runs as separate task)
     // ----------------------------------------------------------------
 
+    const skipSuggestionIntents = ["out_of_office", "auto_reply", "unsubscribe", "not_relevant"];
     const replyTriggerEvents = ["LEAD_REPLIED", "LEAD_INTERESTED"];
-    if (replyTriggerEvents.includes(eventType) && textBody) {
+    if (
+      replyTriggerEvents.includes(eventType) &&
+      textBody &&
+      !(classificationIntent && skipSuggestionIntents.includes(classificationIntent))
+    ) {
       try {
         await tasks.trigger("generate-suggestion", {
           replyId,
@@ -351,6 +356,10 @@ export const processReply = task({
         console.error("[process-reply] Failed to trigger generate-suggestion:", err);
         // Non-blocking — notification already fired, suggestion will be missing but reply is processed
       }
+    } else if (classificationIntent && skipSuggestionIntents.includes(classificationIntent)) {
+      console.log(
+        `[process-reply] Skipped generate-suggestion for reply ${replyId} — non-actionable intent: ${classificationIntent}`,
+      );
     }
 
     return {

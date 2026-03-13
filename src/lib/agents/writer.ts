@@ -571,7 +571,7 @@ Always include "strategy" and "references" fields.`;
 
 const writerConfig: AgentConfig = {
   name: "writer",
-  model: "claude-opus-4-20250514",
+  model: "claude-sonnet-4-20250514",
   systemPrompt: WRITER_SYSTEM_PROMPT,
   tools: writerTools,
   maxSteps: 10,
