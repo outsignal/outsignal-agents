@@ -664,9 +664,9 @@ async function checkEmailBison(): Promise<ProviderStatus> {
     return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: "disconnected", configured: false, dashboardUrl: "https://app.outsignal.ai", lastChecked: now };
   }
   try {
-    // Lightweight connection test — fetch first page of campaigns
+    // Lightweight connection test — fetch first page of sender emails
     const res = await fetchWithTimeout(
-      "https://app.outsignal.ai/api/campaigns?page=1",
+      "https://app.outsignal.ai/api/sender-emails?page=1",
       { headers: { Authorization: `Bearer ${token}` } },
     );
     if (res.ok) {
