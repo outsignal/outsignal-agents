@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
-import { Check } from "lucide-react";
+import { Check, ExternalLink } from "lucide-react";
 
 // ---- Types ------------------------------------------------------------------
 
@@ -39,8 +39,14 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const CATEGORY_ORDER = ["tools", "api", "email", "infrastructure"];
 
+type ViewMode = "category" | "client";
+
 function fmtGbp(amount: number): string {
   return `\u00A3${amount.toFixed(2)}`;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---- Sub-components ---------------------------------------------------------
@@ -50,14 +56,16 @@ function SummaryCard({
   value,
   detail,
   accent,
+  wide,
 }: {
   label: string;
   value: string;
   detail?: string;
   accent?: boolean;
+  wide?: boolean;
 }) {
   return (
-    <Card density="compact">
+    <Card density="compact" className={wide ? "col-span-2 lg:col-span-1" : ""}>
       <CardContent>
         <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
           {label}
@@ -175,12 +183,281 @@ function EditableCell({
   );
 }
 
+// ---- Service Row (shared between views) ------------------------------------
+
+function ServiceRow({
+  row,
+  showClient,
+  showCategory,
+  onSave,
+}: {
+  row: PlatformCostRecord;
+  showClient: boolean;
+  showCategory: boolean;
+  onSave: (id: string, field: "monthlyCost" | "notes", value: string) => Promise<void>;
+}) {
+  return (
+    <tr className="border-b border-border/50 hover:bg-muted/30">
+      <td className="px-4 py-3">
+        <span className="flex items-center gap-2">
+          {showCategory && (
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+              style={{
+                backgroundColor:
+                  CATEGORY_COLORS[row.category] ?? "oklch(0.5 0 0)",
+              }}
+            />
+          )}
+          {row.url ? (
+            <a
+              href={row.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline text-foreground inline-flex items-center gap-1"
+            >
+              {row.label}
+              <ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </a>
+          ) : (
+            <span>{row.label}</span>
+          )}
+        </span>
+      </td>
+      {showClient && (
+        <td className="px-4 py-3">
+          {row.client ? (
+            <span className="text-xs font-mono text-muted-foreground">
+              {row.client}
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full bg-muted/50 border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Shared
+            </span>
+          )}
+        </td>
+      )}
+      <td className="px-4 py-3 text-right">
+        <EditableCell
+          value={String(row.monthlyCost)}
+          type="number"
+          onSave={(v) => onSave(row.id, "monthlyCost", v)}
+        />
+      </td>
+      <td className="px-4 py-3 text-muted-foreground">
+        <EditableCell
+          value={row.notes ?? ""}
+          type="text"
+          onSave={(v) => onSave(row.id, "notes", v)}
+        />
+      </td>
+    </tr>
+  );
+}
+
+// ---- View Toggle Tabs -------------------------------------------------------
+
+function ViewTabs({
+  active,
+  onChange,
+}: {
+  active: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) {
+  return (
+    <div className="inline-flex items-center rounded-lg bg-muted p-0.5">
+      {(["category", "client"] as const).map((mode) => (
+        <button
+          key={mode}
+          onClick={() => onChange(mode)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            active === mode
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          By {capitalize(mode)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---- Category View ----------------------------------------------------------
+
+function CategoryView({
+  data,
+  onSave,
+}: {
+  data: CostData;
+  onSave: (id: string, field: "monthlyCost" | "notes", value: string) => Promise<void>;
+}) {
+  const grouped = useMemo(() => {
+    const result: Array<{
+      category: string;
+      subtotal: number;
+      items: PlatformCostRecord[];
+    }> = [];
+
+    for (const cat of CATEGORY_ORDER) {
+      const items = data.services.filter((s) => s.category === cat);
+      if (items.length > 0) {
+        result.push({
+          category: cat,
+          subtotal: items.reduce((sum, s) => sum + s.monthlyCost, 0),
+          items,
+        });
+      }
+    }
+    // Any categories not in CATEGORY_ORDER
+    const knownCats = new Set(CATEGORY_ORDER);
+    const otherItems = data.services.filter((s) => !knownCats.has(s.category));
+    if (otherItems.length > 0) {
+      result.push({
+        category: "other",
+        subtotal: otherItems.reduce((sum, s) => sum + s.monthlyCost, 0),
+        items: otherItems,
+      });
+    }
+    return result;
+  }, [data.services]);
+
+  return (
+    <div className="space-y-4">
+      {grouped.map((group) => (
+        <Card density="compact" key={group.category}>
+          <CardHeader
+            className="border-b"
+            style={{
+              borderLeft: `4px solid ${CATEGORY_COLORS[group.category] ?? "oklch(0.5 0 0)"}`,
+            }}
+          >
+            <CardTitle className="text-sm flex items-center justify-between">
+              <span>{capitalize(group.category)}</span>
+              <span className="text-muted-foreground font-normal">
+                {fmtGbp(group.subtotal)}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="!px-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Service</th>
+                  <th className="text-left px-4 py-2">Client</th>
+                  <th className="text-right px-4 py-2">Monthly Cost</th>
+                  <th className="text-left px-4 py-2">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.items.map((row) => (
+                  <ServiceRow
+                    key={row.id}
+                    row={row}
+                    showClient
+                    showCategory={false}
+                    onSave={onSave}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ---- Client View ------------------------------------------------------------
+
+function ClientView({
+  data,
+  onSave,
+}: {
+  data: CostData;
+  onSave: (id: string, field: "monthlyCost" | "notes", value: string) => Promise<void>;
+}) {
+  const grouped = useMemo(() => {
+    const byClient: Record<string, PlatformCostRecord[]> = {};
+
+    for (const s of data.services) {
+      const key = s.client ?? "shared";
+      if (!byClient[key]) byClient[key] = [];
+      byClient[key].push(s);
+    }
+
+    // Sort: "shared" last, rest alphabetical
+    const keys = Object.keys(byClient).sort((a, b) => {
+      if (a === "shared") return 1;
+      if (b === "shared") return -1;
+      return a.localeCompare(b);
+    });
+
+    return keys.map((key) => ({
+      client: key,
+      items: byClient[key],
+      subtotal: byClient[key].reduce((sum, s) => sum + s.monthlyCost, 0),
+    }));
+  }, [data.services]);
+
+  return (
+    <div className="space-y-4">
+      {grouped.map((group) => (
+        <Card density="compact" key={group.client}>
+          <CardHeader className="border-b">
+            <CardTitle className="text-sm flex items-center justify-between">
+              <span>
+                {group.client === "shared" ? (
+                  <span className="inline-flex items-center gap-2">
+                    Shared
+                    <span className="inline-flex items-center rounded-full bg-muted/50 border border-border px-2 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                      Not client-specific
+                    </span>
+                  </span>
+                ) : (
+                  capitalize(group.client)
+                )}
+              </span>
+              <span className="text-muted-foreground font-normal">
+                {fmtGbp(group.subtotal)}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="!px-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Service</th>
+                  <th className="text-right px-4 py-2">Monthly Cost</th>
+                  <th className="text-left px-4 py-2">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.items.map((row) => (
+                  <ServiceRow
+                    key={row.id}
+                    row={row}
+                    showClient={false}
+                    showCategory
+                    onSave={onSave}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ---- Main Page --------------------------------------------------------------
 
 export default function PlatformCostsPage() {
   const [data, setData] = useState<CostData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("category");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -253,38 +530,6 @@ export default function PlatformCostsPage() {
     });
   };
 
-  // Group services by category in defined order
-  const grouped: Array<{
-    category: string;
-    subtotal: number;
-    items: PlatformCostRecord[];
-  }> = [];
-
-  if (data) {
-    for (const cat of CATEGORY_ORDER) {
-      const items = data.services.filter((s) => s.category === cat);
-      if (items.length > 0) {
-        grouped.push({
-          category: cat,
-          subtotal: items.reduce((sum, s) => sum + s.monthlyCost, 0),
-          items,
-        });
-      }
-    }
-    // Any categories not in CATEGORY_ORDER
-    const knownCats = new Set(CATEGORY_ORDER);
-    const otherItems = data.services.filter((s) => !knownCats.has(s.category));
-    if (otherItems.length > 0) {
-      grouped.push({
-        category: "other",
-        subtotal: otherItems.reduce((sum, s) => sum + s.monthlyCost, 0),
-        items: otherItems,
-      });
-    }
-  }
-
-  const sharedTotal = data?.byClient?.shared ?? 0;
-  const clientTotal = (data?.totalMonthly ?? 0) - sharedTotal;
   const serviceCount = data?.services.length ?? 0;
 
   return (
@@ -303,10 +548,11 @@ export default function PlatformCostsPage() {
           />
         )}
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Summary cards — 2 rows on mobile, single row on desktop */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {loading ? (
             <>
+              <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
@@ -317,136 +563,38 @@ export default function PlatformCostsPage() {
               <SummaryCard
                 label="Total Monthly Burn"
                 value={fmtGbp(data.totalMonthly)}
+                detail={`${serviceCount} services`}
                 accent
+                wide
               />
-              <SummaryCard
-                label="Shared Costs"
-                value={fmtGbp(sharedTotal)}
-                detail="Services not tied to a client"
-              />
-              <SummaryCard
-                label="Client-Specific"
-                value={fmtGbp(clientTotal)}
-                detail={`${Object.keys(data.byClient).filter((k) => k !== "shared").length} clients`}
-              />
-              <SummaryCard
-                label="Services"
-                value={String(serviceCount)}
-                detail={`${Object.keys(data.byCategory).length} categories`}
-              />
+              {CATEGORY_ORDER.map((cat) => (
+                <SummaryCard
+                  key={cat}
+                  label={capitalize(cat)}
+                  value={fmtGbp(data.byCategory[cat] ?? 0)}
+                  detail={`${data.services.filter((s) => s.category === cat).length} services`}
+                />
+              ))}
             </>
           ) : null}
         </div>
 
-        {/* Services table */}
+        {/* View toggle + services */}
         {!loading && data && (
-          <Card density="compact">
-            <CardHeader className="border-b">
-              <CardTitle className="text-sm">All Services</CardTitle>
-            </CardHeader>
-            <CardContent className="!px-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
-                    <th className="text-left px-4 py-2">Service</th>
-                    <th className="text-left px-4 py-2">Client</th>
-                    <th className="text-right px-4 py-2">Monthly Cost</th>
-                    <th className="text-left px-4 py-2">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grouped.map((group) => (
-                    <>
-                      {/* Category header row */}
-                      <tr
-                        key={`cat-${group.category}`}
-                        className="bg-muted/30"
-                      >
-                        <td
-                          colSpan={2}
-                          className="px-4 py-1.5 text-xs uppercase text-muted-foreground font-medium tracking-wide"
-                        >
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="inline-block w-2 h-2 rounded-full"
-                              style={{
-                                backgroundColor:
-                                  CATEGORY_COLORS[group.category] ?? "oklch(0.5 0 0)",
-                              }}
-                            />
-                            {group.category}
-                          </span>
-                        </td>
-                        <td className="px-4 py-1.5 text-xs text-muted-foreground text-right font-medium">
-                          {fmtGbp(group.subtotal)}
-                        </td>
-                        <td />
-                      </tr>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <ViewTabs active={viewMode} onChange={setViewMode} />
+              <p className="text-xs text-muted-foreground">
+                Click any cost or note to edit inline
+              </p>
+            </div>
 
-                      {/* Service rows */}
-                      {group.items.map((row) => (
-                        <tr
-                          key={row.id}
-                          className="border-b border-border/50 hover:bg-muted/30"
-                        >
-                          <td className="px-4 py-3">
-                            <span className="flex items-center gap-2">
-                              <span
-                                className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{
-                                  backgroundColor:
-                                    CATEGORY_COLORS[row.category] ?? "oklch(0.5 0 0)",
-                                }}
-                              />
-                              {row.url ? (
-                                <a
-                                  href={row.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="hover:underline text-foreground"
-                                >
-                                  {row.label}
-                                </a>
-                              ) : (
-                                <span>{row.label}</span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {row.client ? (
-                              <span className="text-xs font-mono text-muted-foreground">
-                                {row.client}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                                Shared
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <EditableCell
-                              value={String(row.monthlyCost)}
-                              type="number"
-                              onSave={(v) =>
-                                handleSave(row.id, "monthlyCost", v)
-                              }
-                            />
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            <EditableCell
-                              value={row.notes ?? ""}
-                              type="text"
-                              onSave={(v) => handleSave(row.id, "notes", v)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
+            {viewMode === "category" ? (
+              <CategoryView data={data} onSave={handleSave} />
+            ) : (
+              <ClientView data={data} onSave={handleSave} />
+            )}
+          </div>
         )}
       </div>
     </div>
