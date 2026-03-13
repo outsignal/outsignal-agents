@@ -121,6 +121,15 @@ None - no external service configuration required.
 - vercel.json crons section only contains enrichment-job-processor (as designed)
 - Ready for Phase 43-03 (observability validation) or final phase wrap-up
 
+## Self-Check: PASSED
+
+- `src/app/api/webhooks/emailbison/route.ts` — FOUND
+- `43-02-SUMMARY.md` — FOUND
+- `src/app/api/cron/poll-replies` — CONFIRMED DELETED
+- `src/app/api/inbox-health` — CONFIRMED DELETED
+- `src/app/api/cron/` — only `backfill-replies` remains
+- Commits `3b194e1` and `47a5cea` — FOUND
+
 ---
 *Phase: 43-decommission-observability-validation*
 *Completed: 2026-03-12*

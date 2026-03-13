@@ -17,10 +17,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/webhooks/",        // EmailBison webhooks (HMAC auth)
   "/api/extension/",       // Chrome extension (JWT auth)
   "/api/portal/",          // Client portal (magic link session)
-  "/api/cron/",            // Vercel cron (CRON_SECRET)
   "/api/inbox-health/",    // Cron job (CRON_SECRET)
   "/api/enrichment/jobs/", // Cron job (CRON_SECRET)
-  "/api/linkedin/",        // Worker API (WORKER_API_SECRET) + cron maintenance
+  "/api/linkedin/",        // Worker API (WORKER_API_SECRET)
   "/api/pipeline/",        // Railway worker (PIPELINE_INTERNAL_SECRET)
   "/api/people/enrich",    // Clay webhook (x-api-key)
   "/api/companies/enrich", // Clay webhook (x-api-key)

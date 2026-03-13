@@ -1,17 +1,21 @@
 /**
- * Automate Google Postmaster Tools domain verification via Dynadot DNS API.
+ * Automate Google Postmaster Tools domain verification via Porkbun DNS API.
  *
  * For each unique sending domain in the Sender table:
  *   1. Request a DNS TXT verification token from Google Site Verification API
- *   2. Add the TXT record via Dynadot API (preserving existing records)
+ *   2. Add the TXT record via Porkbun API (appends, doesn't overwrite)
  *   3. Wait briefly for DNS propagation
  *   4. Trigger verification via Google Site Verification API
  *
- * Usage: npx tsx scripts/verify-postmaster-domains.ts
+ * Usage: npx tsx scripts/verify-postmaster-domains.ts [--verify-only]
+ *
+ * Flags:
+ *   --verify-only  Skip DNS record creation (assume TXT records already exist)
  *
  * Required env vars:
  *   DATABASE_URL                    — Postgres connection string
- *   DYNADOT_API_KEY                 — Dynadot API key
+ *   PORKBUN_API_KEY                 — Porkbun API key (pk1_...)
+ *   PORKBUN_SECRET_KEY              — Porkbun secret key (sk1_...)
  *   GOOGLE_POSTMASTER_CLIENT_ID     — Google OAuth client ID
  *   GOOGLE_POSTMASTER_CLIENT_SECRET — Google OAuth client secret
  */
@@ -25,8 +29,7 @@ import { google } from "googleapis";
 // ---------------------------------------------------------------------------
 
 const LOG_PREFIX = "[verify-domains]";
-const DYNADOT_DELAY_MS = 2_000; // Min delay between Dynadot API calls
-const DNS_PROPAGATION_WAIT_MS = 5_000; // Wait after setting DNS before verifying
+const DNS_PROPAGATION_WAIT_MS = 10_000; // Wait after setting DNS before verifying
 const VERIFICATION_METHOD = "DNS_TXT";
 const SITE_TYPE = "INET_DOMAIN";
 
@@ -118,44 +121,38 @@ async function getAuthenticatedOAuth2Client() {
 }
 
 // ---------------------------------------------------------------------------
-// Dynadot API
+// Porkbun API
 // ---------------------------------------------------------------------------
 
-async function setDynadotTxtRecord(
+async function setPorkbunTxtRecord(
   domain: string,
   txtValue: string,
-  apiKey: string
+  apiKey: string,
+  secretKey: string
 ): Promise<void> {
-  const url = new URL("https://api.dynadot.com/api3.json");
-  url.searchParams.set("key", apiKey);
-  url.searchParams.set("command", "set_dns2");
-  url.searchParams.set("domain", domain);
-  url.searchParams.set("main_record_type0", "txt");
-  url.searchParams.set("main_record0", txtValue);
-  url.searchParams.set("add_dns_to_current_setting", "yes");
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Dynadot API HTTP ${res.status}: ${body}`);
-  }
+  const res = await fetch(
+    `https://api.porkbun.com/api/json/v3/dns/create/${domain}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secretapikey: secretKey,
+        apikey: apiKey,
+        type: "TXT",
+        content: txtValue,
+        name: "", // root domain
+        ttl: "300",
+      }),
+    }
+  );
 
   const json = await res.json();
 
-  // Dynadot returns { "SetDnsResponse": { "Status": "success" } } on success
-  const status =
-    json?.SetDnsResponse?.Status ??
-    json?.SetDns2Response?.Status ??
-    json?.status;
-  if (
-    status &&
-    typeof status === "string" &&
-    status.toLowerCase() !== "success"
-  ) {
-    throw new Error(`Dynadot API error: ${JSON.stringify(json)}`);
+  if (json.status !== "SUCCESS") {
+    throw new Error(`Porkbun API error: ${JSON.stringify(json)}`);
   }
 
-  log(`  DNS TXT record added for ${domain}`);
+  log(`  DNS TXT record added for ${domain} (ID: ${json.id})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,12 +200,18 @@ async function verifyDomain(
 // ---------------------------------------------------------------------------
 
 async function main() {
-  log("Starting Google Postmaster domain verification");
+  const verifyOnly = process.argv.includes("--verify-only");
+  log(`Starting Google Postmaster domain verification${verifyOnly ? " (verify-only mode — skipping DNS)" : " (via Porkbun)"}`);
 
   // --- Validate env vars ---
-  const dynadotKey = process.env.DYNADOT_API_KEY;
-  if (!dynadotKey) {
-    throw new Error("Missing DYNADOT_API_KEY environment variable");
+  let porkbunApiKey: string | undefined;
+  let porkbunSecretKey: string | undefined;
+  if (!verifyOnly) {
+    porkbunApiKey = process.env.PORKBUN_API_KEY;
+    porkbunSecretKey = process.env.PORKBUN_SECRET_KEY;
+    if (!porkbunApiKey || !porkbunSecretKey) {
+      throw new Error("Missing PORKBUN_API_KEY or PORKBUN_SECRET_KEY");
+    }
   }
 
   // --- Authenticate with Google ---
@@ -253,18 +256,16 @@ async function main() {
       const token = await getVerificationToken(siteVerification, domain);
       log(`  Token: ${token.substring(0, 40)}...`);
 
-      // Step 2: Add TXT record via Dynadot
-      log(`  Adding TXT record via Dynadot...`);
-      await setDynadotTxtRecord(domain, token, dynadotKey);
+      // Step 2 & 3: Add TXT record via Porkbun and wait (skip in verify-only mode)
+      if (!verifyOnly) {
+        log(`  Adding TXT record via Porkbun...`);
+        await setPorkbunTxtRecord(domain, token, porkbunApiKey!, porkbunSecretKey!);
 
-      // Rate-limit Dynadot calls
-      await sleep(DYNADOT_DELAY_MS);
-
-      // Step 3: Wait for DNS propagation
-      log(
-        `  Waiting ${DNS_PROPAGATION_WAIT_MS / 1000}s for DNS propagation...`
-      );
-      await sleep(DNS_PROPAGATION_WAIT_MS);
+        log(
+          `  Waiting ${DNS_PROPAGATION_WAIT_MS / 1000}s for DNS propagation...`
+        );
+        await sleep(DNS_PROPAGATION_WAIT_MS);
+      }
 
       // Step 4: Verify with Google
       log(`  Verifying domain with Google...`);
