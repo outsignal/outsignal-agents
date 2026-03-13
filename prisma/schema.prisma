@@ -1548,3 +1548,20 @@ model OooReengagement {
   @@index([oooUntil])
   @@index([status])
 }
+
+// --- Platform Costs (Quick Task 4) ---
+
+model PlatformCost {
+  id          String   @id @default(cuid())
+  service     String            // "cheapinboxes", "clay", "vercel"
+  label       String            // "CheapInboxes (Rise)", "Clay"
+  monthlyCost Float             // GBP per month
+  notes       String?           // "Pro plan", "Starter"
+  category    String   @default("infrastructure") // infrastructure | api | email | tools
+  client      String?           // workspace slug or null = shared
+  url         String?           // link to service dashboard
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([service, client])
+}
