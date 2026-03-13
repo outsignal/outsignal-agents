@@ -17,7 +17,8 @@ interface ProviderStatus {
     | "discovery"
     | "scraping"
     | "signals"
-    | "notifications";
+    | "notifications"
+    | "infrastructure";
   status: ConnectionStatus;
   configured: boolean;
   credits?: { used?: number; remaining?: number; total?: number };
@@ -577,6 +578,61 @@ function checkSlack(): ProviderStatus {
 }
 
 // =============================================================================
+// Infrastructure provider checks
+// =============================================================================
+
+async function checkNeon(): Promise<ProviderStatus> {
+  const now = new Date().toISOString();
+  const configured = !!process.env.DATABASE_URL;
+  if (!configured) {
+    return { id: "neon", name: "Neon (PostgreSQL)", category: "infrastructure", status: "disconnected", configured: false, dashboardUrl: "https://console.neon.tech", lastChecked: now };
+  }
+  try {
+    // Simple connectivity check
+    await prisma.$queryRaw`SELECT 1`;
+    return { id: "neon", name: "Neon (PostgreSQL)", category: "infrastructure", status: "connected", configured: true, dashboardUrl: "https://console.neon.tech", lastChecked: now };
+  } catch (err) {
+    return { id: "neon", name: "Neon (PostgreSQL)", category: "infrastructure", status: "degraded", configured: true, dashboardUrl: "https://console.neon.tech", error: "Database connection failed", lastChecked: now };
+  }
+}
+
+async function checkRailway(): Promise<ProviderStatus> {
+  const now = new Date().toISOString();
+  const workerUrl = process.env.LINKEDIN_WORKER_URL;
+  if (!workerUrl) {
+    return { id: "railway", name: "Railway (LinkedIn Worker)", category: "infrastructure", status: "disconnected", configured: false, dashboardUrl: "https://railway.com/dashboard", lastChecked: now };
+  }
+  try {
+    const res = await fetchWithTimeout(`${workerUrl}/health`, {}, 5000);
+    return { id: "railway", name: "Railway (LinkedIn Worker)", category: "infrastructure", status: res.ok ? "connected" : "degraded", configured: true, dashboardUrl: "https://railway.com/dashboard", lastChecked: now, ...(res.ok ? {} : { error: `Health check returned ${res.status}` }) };
+  } catch (err) {
+    return { id: "railway", name: "Railway (LinkedIn Worker)", category: "infrastructure", status: "degraded", configured: true, dashboardUrl: "https://railway.com/dashboard", error: "Worker unreachable", lastChecked: now };
+  }
+}
+
+function checkVercel(): ProviderStatus {
+  const now = new Date().toISOString();
+  return { id: "vercel", name: "Vercel", category: "infrastructure", status: "no_api", configured: true, plan: "Pro", dashboardUrl: "https://vercel.com/outsignals-projects/cold-outbound-dashboard", lastChecked: now };
+}
+
+function checkTriggerDev(): ProviderStatus {
+  const now = new Date().toISOString();
+  const configured = !!process.env.TRIGGER_SECRET_KEY;
+  return { id: "triggerdev", name: "Trigger.dev", category: "infrastructure", status: configured ? "no_api" : "disconnected", configured, dashboardUrl: "https://cloud.trigger.dev", lastChecked: now };
+}
+
+function checkEmailBison(): ProviderStatus {
+  const now = new Date().toISOString();
+  const configured = !!process.env.EMAILBISON_ADMIN_TOKEN;
+  return { id: "emailbison", name: "EmailBison", category: "infrastructure", status: configured ? "no_api" : "disconnected", configured, dashboardUrl: "https://app.outsignal.ai", lastChecked: now };
+}
+
+function checkCheapInboxes(): ProviderStatus {
+  const now = new Date().toISOString();
+  return { id: "cheapinboxes", name: "CheapInboxes", category: "infrastructure", status: "no_api", configured: true, dashboardUrl: "https://cheapinboxes.com", lastChecked: now };
+}
+
+// =============================================================================
 // Webhook health checks
 // =============================================================================
 
@@ -650,6 +706,8 @@ export async function GET() {
       checkSerper(),
       checkTheirStack(),
       checkApify(),
+      checkNeon(),
+      checkRailway(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
@@ -678,6 +736,10 @@ export async function GET() {
       checkAnthropic(),
       checkResend(),
       checkSlack(),
+      checkVercel(),
+      checkTriggerDev(),
+      checkEmailBison(),
+      checkCheapInboxes(),
     ];
 
     const providers = [...apiProviders, ...envProviders];

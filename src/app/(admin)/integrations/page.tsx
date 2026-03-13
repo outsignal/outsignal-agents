@@ -22,7 +22,8 @@ interface ProviderStatus {
     | "discovery"
     | "scraping"
     | "signals"
-    | "notifications";
+    | "notifications"
+    | "infrastructure";
   status: ConnectionStatus;
   configured: boolean;
   credits?: { used?: number; remaining?: number; total?: number };
@@ -50,6 +51,7 @@ interface IntegrationsResponse {
 // ─── Category config ──────────────────────────────────────────────────────────
 
 const CATEGORY_ORDER: ProviderStatus["category"][] = [
+  "infrastructure",
   "enrichment",
   "discovery",
   "ai",
@@ -59,6 +61,7 @@ const CATEGORY_ORDER: ProviderStatus["category"][] = [
 ];
 
 const CATEGORY_LABELS: Record<ProviderStatus["category"], string> = {
+  infrastructure: "Infrastructure",
   enrichment: "Enrichment",
   discovery: "Discovery",
   ai: "AI / LLM",
