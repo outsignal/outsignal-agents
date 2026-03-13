@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createInvoice, listInvoices } from "@/lib/invoices/operations";
+import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createInvoiceSchema } from "@/lib/validations/invoices";
 
@@ -35,7 +36,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = createInvoiceSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

@@ -3,6 +3,7 @@ import {
   listCampaigns,
   createCampaign,
 } from "@/lib/campaigns/operations";
+import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createCampaignSchema } from "@/lib/validations/campaigns";
 
@@ -44,7 +45,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = createCampaignSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

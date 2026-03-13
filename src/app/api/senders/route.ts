@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
+import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createSenderSchema } from "@/lib/validations/senders";
 import { auditLog } from "@/lib/audit";
@@ -71,7 +72,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = createSenderSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

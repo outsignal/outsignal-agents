@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { parseJsonBody } from "@/lib/parse-json";
 import { rateLimit } from "@/lib/rate-limit";
 
 const exclusionLimiter = rateLimit({ windowMs: 60_000, max: 30 });
@@ -135,7 +136,9 @@ export async function POST(request: NextRequest) {
     const auth = authenticateRequest(request);
     if (!auth.ok) return auth.response;
 
-    const body = await request.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await parseJsonBody<any>(request);
+    if (body instanceof Response) return body;
 
     const workspace: string | undefined = body.workspace;
     if (!workspace || typeof workspace !== "string") {

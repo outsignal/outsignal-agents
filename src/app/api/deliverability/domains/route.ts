@@ -90,8 +90,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[deliverability/domains] Error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[deliverability/domains] Error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

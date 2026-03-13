@@ -127,8 +127,7 @@ export async function POST(
       eventId: event.id,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     console.error(`${LOG_PREFIX} Error:`, error);
-    return NextResponse.json({ error: "Failed to override email health status", message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to override email health status" }, { status: 500 });
   }
 }

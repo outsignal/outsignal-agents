@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { parseJsonBody } from "@/lib/parse-json";
 import { getStripeClient } from "@/lib/stripe";
 import { PACKAGE_LABELS } from "@/lib/proposal-templates";
 import { stripeCheckoutSchema } from "@/lib/validations/stripe";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = stripeCheckoutSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

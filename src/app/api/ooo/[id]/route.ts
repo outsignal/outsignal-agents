@@ -66,7 +66,7 @@ export async function PATCH(
   } catch (err) {
     console.error(`[PATCH /api/ooo/${id}]`, err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
@@ -121,7 +121,7 @@ export async function DELETE(
   } catch (err) {
     console.error(`[DELETE /api/ooo/${id}]`, err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

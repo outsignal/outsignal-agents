@@ -5,6 +5,7 @@ import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { notify } from "@/lib/notify";
+import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createProposalSchema } from "@/lib/validations/proposals";
 
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = createProposalSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

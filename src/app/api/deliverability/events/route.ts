@@ -53,8 +53,7 @@ export async function GET(request: NextRequest) {
       nextCursor,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[deliverability/events] Error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[deliverability/events] Error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importClayContacts, importClayCompany } from "@/lib/clay/sync";
 import { notify } from "@/lib/notify";
+import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { importPeopleSchema } from "@/lib/validations/people";
 
@@ -11,7 +12,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = importPeopleSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

@@ -63,7 +63,7 @@ async function handleProcess(request: Request) {
   } catch (error) {
     console.error("Job processing error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Job processing failed" },
+      { error: "Job processing failed" },
       { status: 500 },
     );
   }

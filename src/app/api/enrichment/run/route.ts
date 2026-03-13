@@ -23,6 +23,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
 import { validateApiSecret } from "@/lib/api-auth";
+import { parseJsonBody } from "@/lib/parse-json";
 
 export async function POST(request: NextRequest) {
   if (!validateApiSecret(request)) {
@@ -31,12 +32,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { entityType, workspaceSlug, limit = 100 } = body as {
-      entityType: string;
-      workspaceSlug?: string;
-      limit?: number;
-    };
+    const body = await parseJsonBody<{ entityType: string; workspaceSlug?: string; limit?: number }>(request);
+    if (body instanceof Response) return body;
+    const { entityType, workspaceSlug, limit = 100 } = body;
 
     if (!entityType || !["person", "company"].includes(entityType)) {
       return NextResponse.json(
@@ -104,7 +102,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Enrichment run error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to enqueue enrichment job" },
+      { error: "Failed to enqueue enrichment job" },
       { status: 500 },
     );
   }

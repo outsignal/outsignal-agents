@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listClients, createClient } from "@/lib/clients/operations";
+import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createClientSchema } from "@/lib/validations/clients";
 
@@ -39,7 +40,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body instanceof Response) return body;
     const result = createClientSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });

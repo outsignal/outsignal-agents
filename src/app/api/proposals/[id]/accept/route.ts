@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notify";
+import { parseJsonBody } from "@/lib/parse-json";
 import { acceptProposalSchema } from "@/lib/validations/proposals";
 
 export async function POST(
@@ -8,7 +9,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const body = await request.json();
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
   const result = acceptProposalSchema.safeParse(body);
   if (!result.success) {
     return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
