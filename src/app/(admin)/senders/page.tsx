@@ -52,9 +52,22 @@ interface WorkspaceOption {
   name: string;
 }
 
+interface BudgetMetric {
+  sent: number;
+  limit: number;
+  remaining: number;
+}
+
+interface Budget {
+  connections: BudgetMetric;
+  messages: BudgetMetric;
+  profileViews: BudgetMetric;
+}
+
 export default function SendersPage() {
   const [senders, setSenders] = useState<SenderWithWorkspace[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
+  const [budgets, setBudgets] = useState<Record<string, Budget | null>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -83,6 +96,17 @@ export default function SendersPage() {
           }
         }
         setWorkspaces(wsOptions);
+      }
+
+      // Batch-fetch budgets for all senders
+      if (fetchedSenders.length > 0) {
+        const ids = fetchedSenders.map((s) => s.id).join(",");
+        fetch(`/api/senders/budgets?ids=${ids}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((result) => {
+            if (result?.budgets) setBudgets(result.budgets);
+          })
+          .catch(() => {});
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load senders");
@@ -167,6 +191,8 @@ export default function SendersPage() {
                 key={sender.id}
                 sender={sender}
                 workspaces={workspaces}
+                initialBudget={budgets[sender.id]}
+                onMutate={fetchSenders}
               />
             ))}
           </div>
@@ -178,6 +204,7 @@ export default function SendersPage() {
         open={addOpen}
         onOpenChange={setAddOpen}
         workspaces={workspaces}
+        onSaved={fetchSenders}
       />
     </div>
   );

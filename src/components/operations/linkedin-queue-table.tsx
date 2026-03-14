@@ -39,6 +39,11 @@ export interface LinkedInQueueAction {
     id: string;
     name: string;
     workspaceSlug: string;
+    status?: string;
+    healthStatus?: string;
+    dailyConnectionLimit?: number;
+    dailyMessageLimit?: number;
+    dailyProfileViewLimit?: number;
   };
   personEmail: string | null;
   personName: string | null;
@@ -340,9 +345,33 @@ export function LinkedInQueueTable({ actions }: LinkedInQueueTableProps) {
 
               {/* Sender */}
               <TableCell className="py-1.5">
-                <p className="text-xs text-foreground truncate max-w-[120px]">
-                  {action.sender.name}
-                </p>
+                <div className="max-w-[160px]">
+                  <p className="text-xs text-foreground truncate">
+                    {action.sender.name}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {action.sender.status && (
+                      <Badge
+                        variant={
+                          action.sender.status === "active"
+                            ? "success"
+                            : action.sender.status === "paused"
+                              ? "warning"
+                              : "secondary"
+                        }
+                        size="xs"
+                        className="text-[9px]"
+                      >
+                        {action.sender.status}
+                      </Badge>
+                    )}
+                    {action.sender.dailyConnectionLimit != null && (
+                      <span className="text-[9px] text-muted-foreground">
+                        {action.sender.dailyConnectionLimit}c/{action.sender.dailyMessageLimit ?? 0}m/{action.sender.dailyProfileViewLimit ?? 0}pv
+                      </span>
+                    )}
+                  </div>
+                </div>
               </TableCell>
 
               {/* Workspace */}

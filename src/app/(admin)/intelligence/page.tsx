@@ -83,8 +83,9 @@ export default function IntelligenceHubPage() {
   const [insights, setInsights] = useState<InsightData[] | null>(null);
   const [deliverabilityData, setDeliverabilityData] = useState<DeliverabilityData | null>(null);
 
-  // Loading states
+  // Loading & error states
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [benchmarksLoading, setBenchmarksLoading] = useState(false);
   const [icpLoading, setIcpLoading] = useState(false);
   const [deliverabilityLoading, setDeliverabilityLoading] = useState(false);
@@ -92,6 +93,7 @@ export default function IntelligenceHubPage() {
   // ─── Fetch all data ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       // Build params for campaigns
       const campaignParams = new URLSearchParams();
@@ -195,6 +197,7 @@ export default function IntelligenceHubPage() {
       }
     } catch (err) {
       console.error("[intelligence] Failed to fetch data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load intelligence data. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -325,6 +328,13 @@ export default function IntelligenceHubPage() {
           onWorkspaceChange={handleWorkspaceChange}
           onPeriodChange={handlePeriodChange}
         />
+
+        {/* Error state */}
+        {error && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
         {/* KPI Row */}
         <KpiRow

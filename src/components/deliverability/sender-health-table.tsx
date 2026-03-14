@@ -190,6 +190,14 @@ export function SenderHealthTable({ senders }: SenderHealthTableProps) {
     }
   }
 
+  // Severity order for bounce status sorting (lower = more severe)
+  const SEVERITY_ORDER: Record<string, number> = {
+    critical: 0,
+    warning: 1,
+    elevated: 2,
+    healthy: 3,
+  };
+
   const sorted = [...senders].sort((a, b) => {
     let aVal: string | number | null = a[sortKey] ?? null;
     let bVal: string | number | null = b[sortKey] ?? null;
@@ -197,6 +205,13 @@ export function SenderHealthTable({ senders }: SenderHealthTableProps) {
     // Treat null as -1 for numeric sorts so they sort to the bottom
     if (aVal === null) aVal = sortDir === "asc" ? Infinity : -Infinity;
     if (bVal === null) bVal = sortDir === "asc" ? Infinity : -Infinity;
+
+    // Use severity order for bounce status column
+    if (sortKey === "emailBounceStatus" && typeof aVal === "string" && typeof bVal === "string") {
+      const aOrder = SEVERITY_ORDER[aVal] ?? 99;
+      const bOrder = SEVERITY_ORDER[bVal] ?? 99;
+      return sortDir === "asc" ? aOrder - bOrder : bOrder - aOrder;
+    }
 
     if (typeof aVal === "string" && typeof bVal === "string") {
       return sortDir === "asc"

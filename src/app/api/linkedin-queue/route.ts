@@ -40,7 +40,16 @@ export async function GET(request: NextRequest) {
         where: actionWhere,
         include: {
           sender: {
-            select: { id: true, name: true, workspaceSlug: true },
+            select: {
+              id: true,
+              name: true,
+              workspaceSlug: true,
+              status: true,
+              healthStatus: true,
+              dailyConnectionLimit: true,
+              dailyMessageLimit: true,
+              dailyProfileViewLimit: true,
+            },
           },
         },
         orderBy: [{ priority: "asc" }, { scheduledFor: "asc" }],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -142,6 +142,13 @@ export function ActivityFeed({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState<string | undefined>(initialCursor);
   const [loading, setLoading] = useState(false);
+
+  // Reset state when initial data changes (e.g. workspace filter changed)
+  useEffect(() => {
+    setEvents(initialEvents);
+    setHasMore(initialHasMore);
+    setNextCursor(initialCursor);
+  }, [initialEvents, initialHasMore, initialCursor]);
 
   async function handleLoadMore() {
     if (!nextCursor || loading) return;

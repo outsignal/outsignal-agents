@@ -26,6 +26,7 @@ interface SenderFormModalProps {
   onOpenChange: (open: boolean) => void;
   sender?: SenderWithWorkspace;
   workspaces: Array<{ slug: string; name: string }>;
+  onSaved?: () => void;
 }
 
 interface FormState {
@@ -56,7 +57,7 @@ function getInitialState(sender?: SenderWithWorkspace, defaultWorkspace?: string
   };
 }
 
-export function SenderFormModal({ open, onOpenChange, sender, workspaces }: SenderFormModalProps) {
+export function SenderFormModal({ open, onOpenChange, sender, workspaces, onSaved }: SenderFormModalProps) {
   const router = useRouter();
   const isEdit = Boolean(sender);
   const [form, setForm] = useState<FormState>(() => getInitialState(sender, workspaces[0]?.slug));
@@ -122,7 +123,11 @@ export function SenderFormModal({ open, onOpenChange, sender, workspaces }: Send
       }
 
       onOpenChange(false);
-      router.refresh();
+      if (onSaved) {
+        onSaved();
+      } else {
+        router.refresh();
+      }
     } catch {
       setError("Network error. Please try again.");
     } finally {

@@ -14,6 +14,7 @@ import {
 import { getAllWorkspaces, getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { SenderEmail } from "@/lib/emailbison/types";
+import { WorkspaceFilterSelect } from "@/components/email/workspace-filter-select";
 
 interface SenderHealthRow {
   email: string;
@@ -55,9 +56,19 @@ function computeHealth(sender: SenderEmail, workspaceName: string, workspaceSlug
   };
 }
 
-export default async function EmailHealthPage() {
+export default async function EmailHealthPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ workspace?: string; page?: string }>;
+}) {
+  const { workspace: workspaceFilter, page: pageParam } = await searchParams;
+  const currentPage = Math.max(1, parseInt(pageParam ?? "1"));
+  const PAGE_SIZE = 50;
   const allWorkspaces = await getAllWorkspaces();
-  const activeWorkspaces = allWorkspaces.filter((ws) => ws.hasApiToken);
+  const allActiveWorkspaces = allWorkspaces.filter((ws) => ws.hasApiToken);
+  const activeWorkspaces = workspaceFilter
+    ? allActiveWorkspaces.filter((ws) => ws.slug === workspaceFilter)
+    : allActiveWorkspaces;
 
   const allSenders: SenderHealthRow[] = [];
   const failedWorkspaces: string[] = [];
@@ -73,14 +84,15 @@ export default async function EmailHealthPage() {
     }),
   );
 
-  for (const result of results) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
     if (result.status === "fulfilled") {
       const { slug, name, senders } = result.value;
       for (const sender of senders) {
         allSenders.push(computeHealth(sender, name, slug));
       }
     } else {
-      failedWorkspaces.push("unknown");
+      failedWorkspaces.push(activeWorkspaces[i].name);
     }
   }
 
@@ -103,6 +115,21 @@ export default async function EmailHealthPage() {
   const avgReplyRate = totalSent > 0 ? (totalReplies / totalSent) * 100 : 0;
   const highBounce = allSenders.filter((s) => s.bounceRate > 5 && s.status !== "Disconnected");
 
+  // Pagination
+  const totalPages = Math.ceil(totalSenders / PAGE_SIZE);
+  const paginatedSenders = allSenders.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  function buildPageUrl(page: number): string {
+    const params = new URLSearchParams();
+    if (workspaceFilter) params.set("workspace", workspaceFilter);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    return qs ? `/email?${qs}` : "/email";
+  }
+
   const bounceTrend = avgBounceRate > 5 ? "down" : avgBounceRate > 2 ? "warning" : "up";
 
   const healthBadgeStyles = {
@@ -118,6 +145,14 @@ export default async function EmailHealthPage() {
         description={`Monitoring ${totalSenders} senders across ${activeWorkspaces.length} workspaces`}
       />
       <div className="p-6 space-y-6">
+        {/* Workspace filter */}
+        <div className="flex justify-end">
+          <WorkspaceFilterSelect
+            workspaces={allActiveWorkspaces.map((ws) => ({ slug: ws.slug, name: ws.name }))}
+            currentWorkspace={workspaceFilter ?? ""}
+          />
+        </div>
+
         {/* Alert banners */}
         {disconnected.length > 0 && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4">
@@ -164,7 +199,7 @@ export default async function EmailHealthPage() {
         {failedWorkspaces.length > 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
             <p className="text-sm text-amber-800">
-              Failed to fetch data from {failedWorkspaces.length} workspace{failedWorkspaces.length !== 1 ? "s" : ""}. Partial data shown.
+              Failed to fetch data from {failedWorkspaces.length} workspace{failedWorkspaces.length !== 1 ? "s" : ""}: {failedWorkspaces.join(", ")}. Partial data shown.
             </p>
           </div>
         )}
@@ -215,7 +250,7 @@ export default async function EmailHealthPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allSenders.map((sender) => (
+                {paginatedSenders.map((sender) => (
                   <TableRow key={`${sender.workspaceSlug}-${sender.email}`}>
                     <TableCell className="font-medium text-sm">
                       {sender.email}
@@ -284,6 +319,33 @@ export default async function EmailHealthPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalSenders)} of {totalSenders} senders
+            </p>
+            <div className="flex items-center gap-2">
+              {currentPage > 1 && (
+                <Link
+                  href={buildPageUrl(currentPage - 1)}
+                  className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  Previous
+                </Link>
+              )}
+              {currentPage < totalPages && (
+                <Link
+                  href={buildPageUrl(currentPage + 1)}
+                  className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  Next
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
