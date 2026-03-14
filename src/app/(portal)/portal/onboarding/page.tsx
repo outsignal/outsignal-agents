@@ -1,7 +1,7 @@
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { CheckCircle2, Circle, AlertCircle, Clock } from "lucide-react";
 
 const STAGE_LABELS: Record<string, string> = {
   onboarding: "Onboarding",
@@ -141,13 +141,16 @@ export default async function PortalOnboardingPage() {
                 <ul className="space-y-3">
                   {stageTasks.map((task) => {
                     const completed = task.status === "complete";
-                    const overdue = !completed && isOverdue(task.dueDate);
+                    const inProgress = task.status === "in_progress";
+                    const overdue = !completed && !inProgress && isOverdue(task.dueDate);
                     const dueDateStr = formatDate(task.dueDate);
 
                     return (
                       <li key={task.id} className="flex items-start gap-3">
                         {completed ? (
                           <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5 shrink-0" />
+                        ) : inProgress ? (
+                          <Clock className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                         ) : overdue ? (
                           <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
                         ) : (
@@ -158,7 +161,9 @@ export default async function PortalOnboardingPage() {
                             className={`text-sm ${
                               completed
                                 ? "text-muted-foreground line-through"
-                                : "text-foreground"
+                                : inProgress
+                                  ? "text-amber-700 font-medium"
+                                  : "text-foreground"
                             }`}
                           >
                             {task.title}

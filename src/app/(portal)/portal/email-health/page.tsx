@@ -307,12 +307,22 @@ export default async function PortalEmailHealthPage() {
       )}
 
       {/* Domain Health (DNS badges) */}
-      {domainHealthRows.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading">Domain Health</CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-heading">Domain Health</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {domainHealthRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                <Mail className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium">No domain health data</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Domain DNS health records will appear here once your sending domains are checked.
+              </p>
+            </div>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -369,9 +379,9 @@ export default async function PortalEmailHealthPage() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Sender Health Table */}
       <Card>
@@ -404,6 +414,7 @@ export default async function PortalEmailHealthPage() {
                   <TableHead>Health</TableHead>
                   <TableHead>Bounce Status</TableHead>
                   <TableHead>Recent</TableHead>
+                  <TableHead className="text-right">Warmup Day</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -475,6 +486,13 @@ export default async function PortalEmailHealthPage() {
                           <span className="text-xs text-muted-foreground">
                             {dbData.recentEventNote}
                           </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {dbData?.warmupDay != null ? (
+                          <span className="text-xs">{dbData.warmupDay}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}

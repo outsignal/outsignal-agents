@@ -15,6 +15,9 @@ interface ThreadSummary {
   interested: boolean;
   replyStatus: ReplyStatus;
   hasAiSuggestion: boolean;
+  isRead: boolean;
+  intent: string | null;
+  sentiment: string | null;
 }
 
 // GET /api/portal/inbox/email/threads — returns replies grouped into threads
@@ -90,6 +93,11 @@ export async function GET(request: NextRequest) {
         .trim()
         .slice(0, 80);
 
+      // Derive intent/sentiment from latest inbound reply (prefer overrides)
+      const latestInbound = sortedDesc.find((m) => m.direction === "inbound");
+      const threadIntent = latestInbound?.overrideIntent ?? latestInbound?.intent ?? null;
+      const threadSentiment = latestInbound?.overrideSentiment ?? latestInbound?.sentiment ?? null;
+
       threads.push({
         threadId,
         leadEmail:
@@ -106,6 +114,9 @@ export async function GET(request: NextRequest) {
         interested: messages.some((m) => m.interested),
         replyStatus,
         hasAiSuggestion: messages.some((m) => m.aiSuggestedReply != null),
+        isRead: messages.every((m) => m.isRead),
+        intent: threadIntent,
+        sentiment: threadSentiment,
       });
     }
 

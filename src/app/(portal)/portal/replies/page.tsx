@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, Star } from "lucide-react";
+import Link from "next/link";
+
+const PAGE_SIZE = 25;
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -23,74 +26,63 @@ function timeAgo(dateStr: string): string {
   return `${months}mo ago`;
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const INTENT_COLORS: Record<string, string> = {
+  interested: "bg-emerald-100 text-emerald-800",
+  not_interested: "bg-red-100 text-red-800",
+  out_of_office: "bg-blue-100 text-blue-800",
+  wrong_person: "bg-orange-100 text-orange-800",
+  unsubscribe: "bg-gray-100 text-gray-600",
+  question: "bg-purple-100 text-purple-800",
+};
 
-interface Reply {
-  id: string;
-  fromName: string | null;
-  fromEmail: string | null;
-  subject: string | null;
-  bodyPreview: string | null;
-  receivedAt: string;
-  isInterested: boolean;
-}
+const SENTIMENT_COLORS: Record<string, string> = {
+  positive: "bg-emerald-100 text-emerald-800",
+  negative: "bg-red-100 text-red-800",
+  neutral: "bg-gray-100 text-gray-600",
+};
 
-interface ReplyPayload {
-  from_name?: string;
-  from_email?: string;
-  subject?: string;
-  text_body?: string;
-  body_preview?: string;
-  lead_name?: string;
-  lead_email?: string;
-}
-
-export default async function PortalRepliesPage() {
+export default async function PortalRepliesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const { workspaceSlug } = await getPortalSession();
+  const { page } = await searchParams;
+  const currentPage = Math.max(1, parseInt(page ?? "1", 10) || 1);
+  const skip = (currentPage - 1) * PAGE_SIZE;
 
-  const events = await prisma.webhookEvent.findMany({
-    where: {
-      workspace: workspaceSlug,
-      eventType: { in: ["LEAD_REPLIED", "LEAD_INTERESTED", "POLLED_REPLY"] },
-      isAutomated: false,
-    },
-    orderBy: { receivedAt: "desc" },
-    take: 50,
-  });
+  const whereClause = {
+    workspaceSlug,
+    direction: "inbound" as const,
+  };
 
-  const replies: Reply[] = events.map((event) => {
-    let parsed: ReplyPayload = {};
-    try {
-      parsed = JSON.parse(event.payload) as ReplyPayload;
-    } catch {
-      // payload may not be valid JSON
-    }
+  const [replies, totalCount] = await Promise.all([
+    prisma.reply.findMany({
+      where: whereClause,
+      orderBy: { receivedAt: "desc" },
+      skip,
+      take: PAGE_SIZE,
+      select: {
+        id: true,
+        senderName: true,
+        senderEmail: true,
+        leadEmail: true,
+        subject: true,
+        bodyText: true,
+        receivedAt: true,
+        interested: true,
+        intent: true,
+        overrideIntent: true,
+        sentiment: true,
+        overrideSentiment: true,
+        emailBisonParentId: true,
+        emailBisonReplyId: true,
+      },
+    }),
+    prisma.reply.count({ where: whereClause }),
+  ]);
 
-    const fromName = parsed.from_name || parsed.lead_name || null;
-    const fromEmail = parsed.from_email || parsed.lead_email || event.leadEmail || null;
-    const subject = parsed.subject || null;
-
-    let bodyPreview: string | null = null;
-    const rawBody = parsed.text_body || parsed.body_preview || null;
-    if (rawBody) {
-      bodyPreview = stripHtml(rawBody).slice(0, 200);
-    }
-
-    return {
-      id: event.id,
-      fromName,
-      fromEmail,
-      subject,
-      bodyPreview,
-      receivedAt: event.receivedAt.toISOString(),
-      isInterested: event.eventType === "LEAD_INTERESTED",
-    };
-  });
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div className="p-6 space-y-6">
@@ -102,9 +94,9 @@ export default async function PortalRepliesPage() {
             Recent replies from your campaigns
           </p>
         </div>
-        {replies.length > 0 && (
+        {totalCount > 0 && (
           <Badge className="bg-emerald-100 text-emerald-800 ml-auto text-sm">
-            {replies.length}
+            {totalCount}
           </Badge>
         )}
       </div>
@@ -126,54 +118,108 @@ export default async function PortalRepliesPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {replies.map((reply) => (
-            <Card key={reply.id}>
-              <CardContent className="pt-5 pb-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0 space-y-1">
-                    {/* From line */}
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
-                        {reply.fromName || reply.fromEmail || "Unknown sender"}
-                      </p>
-                      {reply.isInterested && (
-                        <Badge className="bg-amber-100 text-amber-800 text-xs shrink-0">
-                          <Star className="h-3 w-3 mr-1" />
-                          Interested
-                        </Badge>
+          {replies.map((reply) => {
+            const threadId = reply.emailBisonParentId ?? reply.emailBisonReplyId;
+            const displayIntent = reply.overrideIntent ?? reply.intent;
+            const displaySentiment = reply.overrideSentiment ?? reply.sentiment;
+            const bodyPreview = reply.bodyText
+              ? reply.bodyText.replace(/\s+/g, " ").trim().slice(0, 200)
+              : null;
+
+            const content = (
+              <Card className={threadId ? "hover:bg-muted/50 transition-colors cursor-pointer" : ""}>
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {/* From line */}
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">
+                          {reply.senderName || reply.senderEmail || reply.leadEmail || "Unknown sender"}
+                        </p>
+                        {reply.interested && (
+                          <Badge className="bg-amber-100 text-amber-800 text-xs shrink-0">
+                            <Star className="h-3 w-3 mr-1" />
+                            Interested
+                          </Badge>
+                        )}
+                        {displayIntent && INTENT_COLORS[displayIntent] && (
+                          <Badge className={`text-xs shrink-0 ${INTENT_COLORS[displayIntent]}`}>
+                            {displayIntent.replace(/_/g, " ")}
+                          </Badge>
+                        )}
+                        {displaySentiment && SENTIMENT_COLORS[displaySentiment] && (
+                          <Badge className={`text-xs shrink-0 ${SENTIMENT_COLORS[displaySentiment]}`}>
+                            {displaySentiment}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Email (if name is shown) */}
+                      {reply.senderName && (reply.senderEmail || reply.leadEmail) && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {reply.senderEmail || reply.leadEmail}
+                        </p>
+                      )}
+
+                      {/* Subject */}
+                      {reply.subject && (
+                        <p className="text-sm text-foreground truncate">
+                          {reply.subject}
+                        </p>
+                      )}
+
+                      {/* Body preview */}
+                      {bodyPreview && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {bodyPreview}
+                        </p>
                       )}
                     </div>
 
-                    {/* Email (if name is shown) */}
-                    {reply.fromName && reply.fromEmail && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {reply.fromEmail}
-                      </p>
-                    )}
-
-                    {/* Subject */}
-                    {reply.subject && (
-                      <p className="text-sm text-foreground truncate">
-                        {reply.subject}
-                      </p>
-                    )}
-
-                    {/* Body preview */}
-                    {reply.bodyPreview && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {reply.bodyPreview}
-                      </p>
-                    )}
+                    {/* Timestamp */}
+                    <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                      {timeAgo(reply.receivedAt.toISOString())}
+                    </p>
                   </div>
+                </CardContent>
+              </Card>
+            );
 
-                  {/* Timestamp */}
-                  <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                    {timeAgo(reply.receivedAt)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+            if (threadId) {
+              return (
+                <Link key={reply.id} href={`/portal/inbox?thread=${threadId}`} className="block">
+                  {content}
+                </Link>
+              );
+            }
+
+            return <div key={reply.id}>{content}</div>;
+          })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          {currentPage > 1 && (
+            <Link
+              href={`/portal/replies?page=${currentPage - 1}`}
+              className="px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors"
+            >
+              Previous
+            </Link>
+          )}
+          <span className="text-xs text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          {currentPage < totalPages && (
+            <Link
+              href={`/portal/replies?page=${currentPage + 1}`}
+              className="px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors"
+            >
+              Next
+            </Link>
+          )}
         </div>
       )}
     </div>
