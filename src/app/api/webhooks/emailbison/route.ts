@@ -17,11 +17,9 @@ export const maxDuration = 10;
 
 const webhookLimiter = rateLimit({ windowMs: 60_000, max: 60 });
 
-/**
- * Verify HMAC-SHA256 signature from EmailBison webhook.
- * Returns { valid: true } if signature matches.
- * Returns { valid: false, response } with a 401 response if verification fails.
- */
+// EmailBison does not currently support webhook signing.
+// When EMAILBISON_WEBHOOK_SECRET is set and EB sends a signature header,
+// we verify it. Otherwise we accept unsigned requests with a warning.
 function verifyWebhookSignature(
   rawBody: string,
   request: NextRequest,
@@ -32,29 +30,17 @@ function verifyWebhookSignature(
     request.headers.get("x-webhook-signature");
 
   if (!secret) {
-    console.error(
-      "[EmailBison Webhook] EMAILBISON_WEBHOOK_SECRET not configured — rejecting unsigned request",
+    console.warn(
+      "[EmailBison Webhook] EMAILBISON_WEBHOOK_SECRET not configured — accepting unsigned request",
     );
-    return {
-      valid: false,
-      response: NextResponse.json(
-        { error: "Webhook signature verification not configured" },
-        { status: 401 },
-      ),
-    };
+    return { valid: true };
   }
 
   if (!signature) {
     console.warn(
-      "[EmailBison Webhook] No signature header present — rejecting unsigned request",
+      "[EmailBison Webhook] No signature header present — accepting unsigned request (EB does not send signatures)",
     );
-    return {
-      valid: false,
-      response: NextResponse.json(
-        { error: "Missing webhook signature header" },
-        { status: 401 },
-      ),
-    };
+    return { valid: true };
   }
 
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
