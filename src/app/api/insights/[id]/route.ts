@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { executeAction } from "@/lib/insights/actions";
+import { requireAdminAuth } from "@/lib/require-admin-auth";
 
 /**
  * PATCH /api/insights/[id]
@@ -12,6 +13,11 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   try {

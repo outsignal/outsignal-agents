@@ -5,11 +5,17 @@ import {
   SENTIMENTS,
   OBJECTION_SUBTYPES,
 } from "@/lib/classification/types";
+import { requireAdminAuth } from "@/lib/require-admin-auth";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();

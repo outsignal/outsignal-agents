@@ -12,6 +12,12 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const { requireAdminAuth } = await import("@/lib/require-admin-auth");
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   const sender = await prisma.sender.findUnique({
