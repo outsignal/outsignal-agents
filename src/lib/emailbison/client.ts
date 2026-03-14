@@ -147,6 +147,29 @@ export class EmailBisonClient {
     return this.getAllPages<Campaign>("/campaigns");
   }
 
+  async getCampaignById(campaignId: number): Promise<Campaign | null> {
+    try {
+      const res = await this.request<{ data: Campaign }>(
+        `/campaigns/${campaignId}`,
+        { revalidate: 60 },
+      );
+      return res.data ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getCampaignLeads(
+    campaignId: number,
+    page = 1,
+    limit = 25,
+  ): Promise<PaginatedResponse<Lead>> {
+    return this.request<PaginatedResponse<Lead>>(
+      `/campaigns/${campaignId}/leads?page=${page}&limit=${limit}`,
+      { revalidate: 60 },
+    );
+  }
+
   async getReplies(): Promise<Reply[]> {
     return this.getAllPages<Reply>("/replies");
   }

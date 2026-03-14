@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, MessageSquare, ChevronDown, Mail, Linkedin, Loader2, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveSpintax, substituteTokens } from "@/lib/content-preview";
+import { SequenceStepsDisplay } from "@/components/portal/sequence-steps-display";
+import type { SequenceStep } from "@/lib/emailbison/types";
 
 interface EmailStep {
   position: number;
@@ -34,6 +36,7 @@ interface Props {
   contentApproved: boolean;
   contentFeedback: string | null;
   isPending: boolean;
+  ebSequenceSteps?: SequenceStep[];
 }
 
 /**
@@ -106,6 +109,7 @@ export function CampaignApprovalContent({
   contentApproved,
   contentFeedback,
   isPending,
+  ebSequenceSteps = [],
 }: Props) {
   const router = useRouter();
   const [openStep, setOpenStep] = useState<number>(0); // First step open by default
@@ -119,6 +123,7 @@ export function CampaignApprovalContent({
   const emailSteps = (emailSequence ?? []) as EmailStep[];
   const linkedinSteps = (linkedinSequence ?? []) as LinkedInStep[];
 
+  const hasEbSteps = ebSequenceSteps.length > 0;
   const hasEmail = channels.includes("email") && emailSteps.length > 0;
   const hasLinkedIn = channels.includes("linkedin") && linkedinSteps.length > 0;
 
@@ -190,23 +195,30 @@ export function CampaignApprovalContent({
           </div>
         )}
 
-        {!hasEmail && !hasLinkedIn ? (
+        {!hasEbSteps && !hasEmail && !hasLinkedIn ? (
           <p className="text-center py-8 text-muted-foreground">
             No content has been added to this campaign yet.
           </p>
         ) : (
           <div className="space-y-6">
-            {/* Spintax explanation banner */}
-            <div className="flex items-start gap-2.5 bg-muted/50 border border-border rounded-md p-3">
-              <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Email content uses dynamic variations — different recipients may see
-                slightly different wording. The preview below shows one possible version.
-              </p>
-            </div>
+            {/* EB Sequence Steps (live data from EmailBison) */}
+            {hasEbSteps && (
+              <SequenceStepsDisplay steps={ebSequenceSteps} />
+            )}
 
-            {/* Email Sequence Accordion */}
-            {hasEmail && (
+            {/* Spintax explanation banner — only show for local email/linkedin content */}
+            {(hasEmail || hasLinkedIn) && !hasEbSteps && (
+              <div className="flex items-start gap-2.5 bg-muted/50 border border-border rounded-md p-3">
+                <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Email content uses dynamic variations — different recipients may see
+                  slightly different wording. The preview below shows one possible version.
+                </p>
+              </div>
+            )}
+
+            {/* Local Email Sequence Accordion (fallback when no EB steps) */}
+            {hasEmail && !hasEbSteps && (
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
                   <Mail className="h-4 w-4" /> Email Sequence
@@ -294,7 +306,7 @@ export function CampaignApprovalContent({
         )}
 
         {/* Approval buttons */}
-        {canAct && (hasEmail || hasLinkedIn) && (
+        {canAct && (hasEbSteps || hasEmail || hasLinkedIn) && (
           <div className="mt-6 space-y-3">
             {error && (
               <p className="text-sm text-red-600">{error}</p>

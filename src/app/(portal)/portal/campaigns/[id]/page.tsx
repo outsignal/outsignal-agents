@@ -3,15 +3,19 @@ import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, getCampaignLeadSample } from "@/lib/campaigns/operations";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
-import type { Campaign as EBCampaign } from "@/lib/emailbison/types";
+import type { Campaign as EBCampaign, SequenceStep } from "@/lib/emailbison/types";
 import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
 import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
+import { CampaignLeadsTable } from "@/components/portal/campaign-leads-table";
 import { MetricCard } from "@/components/dashboard/metric-card";
+import { EmailActivityChart, EmailActivityChartLegend } from "@/components/charts/email-activity-chart";
+import type { EmailActivityPoint } from "@/components/charts/email-activity-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Mail, Linkedin, Clock, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { prisma } from "@/lib/db";
 
 export default async function PortalCampaignDetailPage({
   params,
@@ -42,19 +46,85 @@ export default async function PortalCampaignDetailPage({
     );
   }
 
-  // Fetch EmailBison campaign stats if campaign has been deployed
+  // Fetch EmailBison campaign stats + sequence steps if campaign has been deployed
   let ebCampaign: EBCampaign | null = null;
+  let sequenceSteps: SequenceStep[] = [];
   const hasPerformanceData = ["active", "paused", "completed"].includes(campaign.status);
   if (hasPerformanceData && campaign.emailBisonCampaignId) {
     try {
       const workspace = await getWorkspaceBySlug(workspaceSlug);
       if (workspace?.apiToken) {
         const client = new EmailBisonClient(workspace.apiToken);
-        const allCampaigns = await client.getCampaigns();
-        ebCampaign = allCampaigns.find((c) => c.id === campaign.emailBisonCampaignId) ?? null;
+        ebCampaign = await client.getCampaignById(campaign.emailBisonCampaignId);
+
+        if (ebCampaign) {
+          try {
+            sequenceSteps = await client.getSequenceSteps(ebCampaign.id);
+          } catch {
+            // ignore — steps might not be available
+          }
+        }
       }
     } catch {
       // Silently fail — stats are non-critical
+    }
+  }
+
+  // Fetch chart data from WebhookEvent table (last 30 days, filtered by campaign)
+  let chartData: EmailActivityPoint[] = [];
+  if (hasPerformanceData && campaign.emailBisonCampaignId) {
+    try {
+      const sinceDate = new Date();
+      sinceDate.setDate(sinceDate.getDate() - 30);
+
+      const chartEvents = await prisma.webhookEvent.findMany({
+        where: {
+          workspace: workspaceSlug,
+          campaignId: String(campaign.emailBisonCampaignId),
+          receivedAt: { gte: sinceDate },
+          eventType: {
+            in: [
+              "EMAIL_SENT",
+              "LEAD_REPLIED",
+              "LEAD_INTERESTED",
+              "EMAIL_BOUNCED",
+              "LEAD_UNSUBSCRIBED",
+            ],
+          },
+          isAutomated: false,
+        },
+        select: { receivedAt: true, eventType: true },
+        orderBy: { receivedAt: "asc" },
+      });
+
+      const buckets = new Map<string, EmailActivityPoint>();
+      for (const evt of chartEvents) {
+        const dateKey = evt.receivedAt.toISOString().slice(0, 10);
+        if (!buckets.has(dateKey)) {
+          buckets.set(dateKey, { date: dateKey, sent: 0, replied: 0, bounced: 0, interested: 0, unsubscribed: 0 });
+        }
+        const bucket = buckets.get(dateKey)!;
+        switch (evt.eventType) {
+          case "EMAIL_SENT":
+            bucket.sent = (bucket.sent ?? 0) + 1;
+            break;
+          case "LEAD_REPLIED":
+            bucket.replied = (bucket.replied ?? 0) + 1;
+            break;
+          case "EMAIL_BOUNCED":
+            bucket.bounced = (bucket.bounced ?? 0) + 1;
+            break;
+          case "LEAD_INTERESTED":
+            bucket.interested = (bucket.interested ?? 0) + 1;
+            break;
+          case "LEAD_UNSUBSCRIBED":
+            bucket.unsubscribed = (bucket.unsubscribed ?? 0) + 1;
+            break;
+        }
+      }
+      chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
+    } catch {
+      // Silently fail — chart is non-critical
     }
   }
 
@@ -83,6 +153,9 @@ export default async function PortalCampaignDetailPage({
 
   const formatDateTime = (date: Date) =>
     `${formatDate(date)} at ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+
+  const pct = (numerator: number, denominator: number) =>
+    denominator > 0 ? ((numerator / denominator) * 100).toFixed(1) : "0.0";
 
   return (
     <div className="p-6 space-y-6">
@@ -140,49 +213,70 @@ export default async function PortalCampaignDetailPage({
         </Card>
       </div>
 
-      {/* Performance Stats */}
+      {/* Performance Stats — 8 KPI cards in 2 rows */}
       {ebCampaign && (
         (() => {
-          const openRate = ebCampaign.emails_sent > 0
-            ? (ebCampaign.unique_opens / ebCampaign.emails_sent) * 100
-            : 0;
-          const replyRate = ebCampaign.emails_sent > 0
-            ? (ebCampaign.replied / ebCampaign.emails_sent) * 100
-            : 0;
-          const bounceRate = ebCampaign.emails_sent > 0
-            ? (ebCampaign.bounced / ebCampaign.emails_sent) * 100
-            : 0;
+          const sent = ebCampaign.emails_sent;
+          const trackingOff = !ebCampaign.open_tracking;
+          const bounceRate = sent > 0 ? (ebCampaign.bounced / sent) * 100 : 0;
+          const interestedRate = sent > 0 ? (ebCampaign.interested / sent) * 100 : 0;
 
           return (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-heading">Campaign Performance</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <CardContent className="space-y-3">
+                {/* Row 1: High-volume metrics */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <MetricCard
                     label="Emails Sent"
-                    value={ebCampaign.emails_sent.toLocaleString()}
+                    value={sent.toLocaleString()}
                     density="compact"
                   />
                   <MetricCard
-                    label="Opens"
-                    value={ebCampaign.unique_opens.toLocaleString()}
-                    detail={`${openRate.toFixed(1)}% open rate`}
+                    label="People Contacted"
+                    value={ebCampaign.total_leads_contacted.toLocaleString()}
                     density="compact"
                   />
                   <MetricCard
-                    label="Replies"
-                    value={ebCampaign.replied.toLocaleString()}
-                    detail={`${replyRate.toFixed(1)}% reply rate`}
-                    trend={replyRate > 3 ? "up" : undefined}
+                    label="Total Opens"
+                    value={trackingOff ? "N/A" : ebCampaign.opened.toLocaleString()}
                     density="compact"
                   />
                   <MetricCard
-                    label="Bounces"
+                    label="Unique Opens"
+                    value={trackingOff ? "N/A" : ebCampaign.unique_opens.toLocaleString()}
+                    detail={trackingOff ? "Tracking off" : `${pct(ebCampaign.unique_opens, sent)}% of sent`}
+                    density="compact"
+                  />
+                </div>
+                {/* Row 2: Outcome metrics */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <MetricCard
+                    label="Unique Replies"
+                    value={ebCampaign.unique_replies.toLocaleString()}
+                    detail={`${pct(ebCampaign.unique_replies, sent)}% of sent`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Unsubscribed"
+                    value={ebCampaign.unsubscribed.toLocaleString()}
+                    detail={`${pct(ebCampaign.unsubscribed, sent)}% of sent`}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Bounced"
                     value={ebCampaign.bounced.toLocaleString()}
-                    detail={`${bounceRate.toFixed(1)}% bounce rate`}
+                    detail={`${pct(ebCampaign.bounced, sent)}% of sent`}
                     trend={bounceRate > 5 ? "warning" : undefined}
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Interested"
+                    value={ebCampaign.interested.toLocaleString()}
+                    detail={`${pct(ebCampaign.interested, sent)}% of sent`}
+                    trend={interestedRate > 0 ? "up" : undefined}
                     density="compact"
                   />
                 </div>
@@ -190,6 +284,70 @@ export default async function PortalCampaignDetailPage({
             </Card>
           );
         })()
+      )}
+
+      {/* Email Activity Chart */}
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-heading">Email Activity (Last 30 Days)</CardTitle>
+              <EmailActivityChartLegend keys={["sent", "replied", "bounced", "interested", "unsubscribed"]} />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <EmailActivityChart data={chartData} height={260} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Email Sequence Steps */}
+      {sequenceSteps.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-heading">Email Sequence</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 pr-4 font-medium w-16">Step</th>
+                    <th className="pb-2 pr-4 font-medium">Subject</th>
+                    <th className="pb-2 font-medium w-24 text-right">Delay</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sequenceSteps
+                    .sort((a, b) => a.position - b.position)
+                    .map((step) => (
+                      <tr key={step.id} className="border-b last:border-0">
+                        <td className="py-2.5 pr-4 text-muted-foreground">{step.position}</td>
+                        <td className="py-2.5 pr-4 font-medium">
+                          {step.subject || <span className="text-muted-foreground italic">No subject</span>}
+                        </td>
+                        <td className="py-2.5 text-right text-muted-foreground">
+                          {step.delay_days != null
+                            ? step.delay_days === 0
+                              ? "Immediate"
+                              : `${step.delay_days}d`
+                            : "\u2014"}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Campaign Leads from EmailBison — shown for active/paused/completed campaigns */}
+      {hasPerformanceData && campaign.emailBisonCampaignId && (
+        <CampaignLeadsTable
+          campaignId={campaign.id}
+          ebCampaignId={campaign.emailBisonCampaignId}
+        />
       )}
 
       {/* Leads Section */}
@@ -211,6 +369,7 @@ export default async function PortalCampaignDetailPage({
         contentApproved={campaign.contentApproved}
         contentFeedback={campaign.contentFeedback}
         isPending={campaign.status === "pending_approval"}
+        ebSequenceSteps={sequenceSteps}
       />
     </div>
   );
