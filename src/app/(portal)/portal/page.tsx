@@ -125,7 +125,7 @@ export default async function PortalDashboardPage() {
       workspace: workspaceSlug,
       receivedAt: { gte: sinceDate },
       eventType: {
-        in: ["EMAIL_SENT", "LEAD_REPLIED", "LEAD_INTERESTED"],
+        in: ["EMAIL_SENT", "LEAD_REPLIED", "LEAD_INTERESTED", "EMAIL_BOUNCED", "LEAD_UNSUBSCRIBED"],
       },
       isAutomated: false,
     },
@@ -136,15 +136,28 @@ export default async function PortalDashboardPage() {
     orderBy: { receivedAt: "asc" },
   });
 
+  const emptyDay = (date: string): PerformanceDayPoint => ({
+    date,
+    sent: 0,
+    replied: 0,
+    bounced: 0,
+    interested: 0,
+    unsubscribed: 0,
+  });
+
   const timeSeriesMap: Record<string, PerformanceDayPoint> = {};
   for (const event of webhookEvents) {
     const dateStr = event.receivedAt.toISOString().slice(0, 10);
     if (!timeSeriesMap[dateStr]) {
-      timeSeriesMap[dateStr] = { date: dateStr, sent: 0, replied: 0 };
+      timeSeriesMap[dateStr] = emptyDay(dateStr);
     }
-    if (event.eventType === "EMAIL_SENT") timeSeriesMap[dateStr].sent++;
-    else if (event.eventType === "LEAD_REPLIED" || event.eventType === "LEAD_INTERESTED") {
-      timeSeriesMap[dateStr].replied++;
+    const day = timeSeriesMap[dateStr];
+    switch (event.eventType) {
+      case "EMAIL_SENT": day.sent++; break;
+      case "LEAD_REPLIED": day.replied++; break;
+      case "LEAD_INTERESTED": day.interested++; break;
+      case "EMAIL_BOUNCED": day.bounced++; break;
+      case "LEAD_UNSUBSCRIBED": day.unsubscribed++; break;
     }
   }
 
@@ -155,7 +168,7 @@ export default async function PortalDashboardPage() {
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
     performanceTimeSeries.push(
-      timeSeriesMap[dateStr] ?? { date: dateStr, sent: 0, replied: 0 }
+      timeSeriesMap[dateStr] ?? emptyDay(dateStr)
     );
   }
 
@@ -265,7 +278,7 @@ export default async function PortalDashboardPage() {
       </div>
 
       {/* Campaign Performance Chart */}
-      {performanceTimeSeries.some((d) => d.sent > 0 || d.replied > 0) && (
+      {performanceTimeSeries.some((d) => d.sent > 0 || d.replied > 0 || d.bounced > 0 || d.interested > 0 || d.unsubscribed > 0) && (
         <Card density="compact">
           <CardHeader>
             <div className="flex items-center justify-between">
