@@ -98,6 +98,7 @@ export async function evaluateSender(params: {
   sender: SenderSnapshot;
   bounceRate: number | null;
   isBlacklisted: boolean;
+  workspaceApiToken: string | null;
 }): Promise<{
   transitioned: boolean;
   from?: string;
@@ -106,7 +107,7 @@ export async function evaluateSender(params: {
   action?: string;
   bouncePct?: number | null;
 }> {
-  const { sender, bounceRate, isBlacklisted } = params;
+  const { sender, bounceRate, isBlacklisted, workspaceApiToken } = params;
 
   // 1. Classify
   const newStatus = computeEmailBounceStatus(bounceRate, isBlacklisted);
@@ -136,8 +137,11 @@ export async function evaluateSender(params: {
     } else if (sender.emailBisonSenderId === null) {
       console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no emailBisonSenderId — skipping ${newStatus} remediation`);
       action = "skipped_no_sender_id";
+    } else if (!workspaceApiToken) {
+      console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no workspace API token — skipping ${newStatus} EB remediation`);
+      action = "skipped_no_workspace_token";
     } else {
-      const ebClient = new EmailBisonClient(process.env.EMAILBISON_ADMIN_TOKEN ?? "");
+      const ebClient = new EmailBisonClient(workspaceApiToken);
 
       if (newStatus === "warning") {
         // Reduce daily limit by 50%
@@ -280,9 +284,12 @@ export async function evaluateSender(params: {
       } else if (currentStatus === "warning" && sender.emailBisonSenderId === null) {
         console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no emailBisonSenderId — skipping daily limit restore on step-down from warning`);
         action = "skipped_no_sender_id";
+      } else if (currentStatus === "warning" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId !== null && !workspaceApiToken) {
+        console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no workspace API token — skipping daily limit restore on step-down from warning`);
+        action = "skipped_no_workspace_token";
       } else if (currentStatus === "warning" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId !== null && sender.originalDailyLimit !== null) {
         try {
-          const ebClient = new EmailBisonClient(process.env.EMAILBISON_ADMIN_TOKEN ?? "");
+          const ebClient = new EmailBisonClient(workspaceApiToken!);
           await ebClient.patchSenderEmail(sender.emailBisonSenderId, { daily_limit: sender.originalDailyLimit });
           action = "daily_limit_restored";
           console.log(`${LOG_PREFIX} ${sender.emailAddress}: restored daily limit to ${sender.originalDailyLimit}`);
@@ -298,9 +305,12 @@ export async function evaluateSender(params: {
       } else if (currentStatus === "critical" && sender.emailBisonSenderId === null) {
         console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no emailBisonSenderId — skipping critical recovery`);
         action = "skipped_no_sender_id";
+      } else if (currentStatus === "critical" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId !== null && !workspaceApiToken) {
+        console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no workspace API token — skipping critical recovery`);
+        action = "skipped_no_workspace_token";
       } else if (currentStatus === "critical" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId !== null) {
         try {
-          const ebClient = new EmailBisonClient(process.env.EMAILBISON_ADMIN_TOKEN ?? "");
+          const ebClient = new EmailBisonClient(workspaceApiToken!);
           // Restore daily_limit
           const restoreLimit = sender.originalDailyLimit ?? 100;
           // Restore warmup
@@ -409,6 +419,17 @@ export async function runBounceMonitor(): Promise<{
 
   console.log(`${LOG_PREFIX} Found ${senders.length} senders to evaluate`);
 
+  // Batch-fetch workspace API tokens
+  const workspaceSlugs = [...new Set(senders.map(s => s.workspaceSlug))];
+  const workspaces = await prisma.workspace.findMany({
+    where: { slug: { in: workspaceSlugs } },
+    select: { slug: true, apiToken: true },
+  });
+  const workspaceTokenBySlug = new Map<string, string>();
+  for (const ws of workspaces) {
+    if (ws.apiToken) workspaceTokenBySlug.set(ws.slug, ws.apiToken);
+  }
+
   // 2. Batch-fetch latest bounce snapshots and domain health records
   const senderEmails = senders.map(s => s.emailAddress as string);
   const senderDomains = [...new Set(senders.map(s => (s.emailAddress as string).split("@")[1] ?? ""))];
@@ -461,6 +482,7 @@ export async function runBounceMonitor(): Promise<{
         sender: { ...sender, emailAddress: email },
         bounceRate,
         isBlacklisted,
+        workspaceApiToken: workspaceTokenBySlug.get(sender.workspaceSlug) ?? null,
       });
 
       evaluated++;
