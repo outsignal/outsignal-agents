@@ -5,7 +5,8 @@ import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
-import { Check, ExternalLink } from "lucide-react";
+import { Check, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { formatGBP } from "@/lib/format";
 
 // ---- Types ------------------------------------------------------------------
 
@@ -41,10 +42,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 const CATEGORY_ORDER = ["tools", "api", "email", "infrastructure"];
 
 type ViewMode = "category" | "client";
-
-function fmtGbp(amount: number): string {
-  return `\u00A3${amount.toFixed(2)}`;
-}
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -184,7 +181,7 @@ function EditableCell({
       onClick={() => setEditing(true)}
       className="cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5 -mx-1 transition-colors inline-flex items-center gap-1"
     >
-      {displayValue !== undefined ? displayValue : type === "number" ? fmtGbp(parseFloat(value) || 0) : value || "-"}
+      {displayValue !== undefined ? displayValue : type === "number" ? formatGBP(parseFloat(value) || 0) : value || "-"}
       {saved && (
         <Check className="h-3.5 w-3.5 text-emerald-500 animate-in fade-in duration-300" />
       )}
@@ -199,11 +196,13 @@ function ServiceRow({
   showClient,
   showCategory,
   onSave,
+  onDelete,
 }: {
   row: PlatformCostRecord;
   showClient: boolean;
   showCategory: boolean;
   onSave: (id: string, field: "monthlyCost" | "notes" | "billingDay", value: string) => Promise<void>;
+  onDelete?: (id: string, label: string) => void;
 }) {
   return (
     <tr className="border-b border-border/50 hover:bg-muted/30">
@@ -268,6 +267,17 @@ function ServiceRow({
           onSave={(v) => onSave(row.id, "notes", v)}
         />
       </td>
+      {onDelete && (
+        <td className="px-2 py-3">
+          <button
+            onClick={() => onDelete(row.id, row.label)}
+            className="text-muted-foreground hover:text-red-500 transition-colors p-1 rounded"
+            title="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </td>
+      )}
     </tr>
   );
 }
@@ -305,9 +315,11 @@ function ViewTabs({
 function CategoryView({
   data,
   onSave,
+  onDelete,
 }: {
   data: CostData;
   onSave: (id: string, field: "monthlyCost" | "notes" | "billingDay", value: string) => Promise<void>;
+  onDelete: (id: string, label: string) => void;
 }) {
   const grouped = useMemo(() => {
     const result: Array<{
@@ -352,7 +364,7 @@ function CategoryView({
             <CardTitle className="text-sm flex items-center justify-between">
               <span>{capitalize(group.category)}</span>
               <span className="text-muted-foreground font-normal">
-                {fmtGbp(group.subtotal)}
+                {formatGBP(group.subtotal)}
               </span>
             </CardTitle>
           </CardHeader>
@@ -382,6 +394,7 @@ function CategoryView({
                     showClient
                     showCategory={false}
                     onSave={onSave}
+                    onDelete={onDelete}
                   />
                 ))}
               </tbody>
@@ -398,9 +411,11 @@ function CategoryView({
 function ClientView({
   data,
   onSave,
+  onDelete,
 }: {
   data: CostData;
   onSave: (id: string, field: "monthlyCost" | "notes" | "billingDay", value: string) => Promise<void>;
+  onDelete: (id: string, label: string) => void;
 }) {
   const grouped = useMemo(() => {
     const byClient: Record<string, PlatformCostRecord[]> = {};
@@ -444,7 +459,7 @@ function ClientView({
                 )}
               </span>
               <span className="text-muted-foreground font-normal">
-                {fmtGbp(group.subtotal)}
+                {formatGBP(group.subtotal)}
               </span>
             </CardTitle>
           </CardHeader>
@@ -472,6 +487,7 @@ function ClientView({
                     showClient={false}
                     showCategory
                     onSave={onSave}
+                    onDelete={onDelete}
                   />
                 ))}
               </tbody>
@@ -570,6 +586,54 @@ export default function PlatformCostsPage() {
     });
   };
 
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const handleCreate = async (formData: FormData) => {
+    setAddError(null);
+    const service = formData.get("service") as string;
+    const label = formData.get("label") as string;
+    const monthlyCost = parseFloat(formData.get("monthlyCost") as string);
+    const category = formData.get("category") as string;
+    const client = (formData.get("client") as string) || null;
+
+    if (!service || !label || isNaN(monthlyCost) || !category) {
+      setAddError("Service, label, cost, and category are required");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/platform-costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service, label, monthlyCost, category, client }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setShowAddForm(false);
+      void fetchData();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Failed to create");
+    }
+  };
+
+  const handleDelete = async (id: string, label: string) => {
+    if (!confirm(`Delete "${label}"?`)) return;
+    try {
+      const res = await fetch("/api/platform-costs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      void fetchData();
+    } catch {
+      alert("Failed to delete cost record");
+    }
+  };
+
   const serviceCount = data?.services.length ?? 0;
 
   return (
@@ -602,7 +666,7 @@ export default function PlatformCostsPage() {
             <>
               <SummaryCard
                 label="Total Monthly Burn"
-                value={fmtGbp(data.totalMonthly)}
+                value={formatGBP(data.totalMonthly)}
                 detail={`${serviceCount} services`}
                 accent
                 wide
@@ -611,7 +675,7 @@ export default function PlatformCostsPage() {
                 <SummaryCard
                   key={cat}
                   label={capitalize(cat)}
-                  value={fmtGbp(data.byCategory[cat] ?? 0)}
+                  value={formatGBP(data.byCategory[cat] ?? 0)}
                   detail={`${data.services.filter((s) => s.category === cat).length} services`}
                 />
               ))}
@@ -630,9 +694,52 @@ export default function PlatformCostsPage() {
             </div>
 
             {viewMode === "category" ? (
-              <CategoryView data={data} onSave={handleSave} />
+              <CategoryView data={data} onSave={handleSave} onDelete={handleDelete} />
             ) : (
-              <ClientView data={data} onSave={handleSave} />
+              <ClientView data={data} onSave={handleSave} onDelete={handleDelete} />
+            )}
+
+            {/* Add Service Form */}
+            {showAddForm ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Add Service</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleCreate(new FormData(e.currentTarget));
+                    }}
+                    className="grid grid-cols-2 md:grid-cols-5 gap-3"
+                  >
+                    <Input name="service" placeholder="Service key" required />
+                    <Input name="label" placeholder="Display label" required />
+                    <Input name="monthlyCost" type="number" step="0.01" min="0" placeholder="Monthly cost" required />
+                    <select name="category" className="rounded-md border border-input bg-background px-3 py-2 text-sm" required>
+                      <option value="">Category</option>
+                      {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{capitalize(c)}</option>)}
+                    </select>
+                    <Input name="client" placeholder="Client slug (optional)" />
+                    <div className="col-span-2 md:col-span-5 flex gap-2">
+                      <button type="submit" className="px-4 py-2 text-sm bg-foreground text-background rounded-md hover:opacity-90">
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setShowAddForm(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
+                        Cancel
+                      </button>
+                      {addError && <span className="text-sm text-red-500 self-center">{addError}</span>}
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            ) : (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Plus className="h-4 w-4" /> Add service
+              </button>
             )}
           </div>
         )}

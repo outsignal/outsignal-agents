@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RevenueChart } from "@/components/financials/revenue-chart";
+import { ErrorBanner } from "@/components/ui/error-banner";
 import { formatGBP } from "@/lib/invoices/format";
 import type { RevenueResponse } from "@/app/api/revenue/route";
 
@@ -59,6 +60,11 @@ export default function RevenuePage() {
       />
 
       <div className="p-6 space-y-6">
+        {/* Error banner */}
+        {error && !loading && (
+          <ErrorBanner message={`Failed to load revenue data: ${error}`} />
+        )}
+
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {loading ? (

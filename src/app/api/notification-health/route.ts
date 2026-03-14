@@ -2,24 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { prisma } from "@/lib/db";
 
+// expectedFrequencyHours: how often we expect each type to fire.
+// Types that fire less frequently shouldn't be flagged unhealthy in short time ranges.
 const ALL_NOTIFICATION_TYPES = [
-  { key: "reply", label: "Reply Received", channels: "Slack + Email", audience: "Client + Admin" },
-  { key: "approval", label: "Campaign Approval", channels: "Slack + Email", audience: "Client" },
-  { key: "deploy", label: "Campaign Deploy", channels: "Slack + Email", audience: "Admin" },
-  { key: "campaign_live", label: "Campaign Live", channels: "Slack + Email", audience: "Client + Admin" },
-  { key: "inbox_disconnect", label: "Inbox Disconnect", channels: "Email + Slack", audience: "Admin" },
-  { key: "sender_health", label: "Sender Health", channels: "Slack + Email", audience: "Admin" },
-  { key: "sender_health_digest", label: "Sender Health Digest", channels: "Slack + Email", audience: "Admin" },
-  { key: "invoice", label: "Invoice Sent", channels: "Email", audience: "Client" },
-  { key: "overdue_reminder", label: "Overdue Reminder", channels: "Email + Slack", audience: "Client + Admin" },
-  { key: "onboarding_invite", label: "Onboarding Invite", channels: "Email", audience: "Client" },
-  { key: "magic_link", label: "Portal Login", channels: "Email", audience: "Client" },
-  { key: "proposal", label: "Proposal Ready", channels: "Email", audience: "Client" },
-  { key: "payment_received", label: "Payment Received", channels: "Email", audience: "Client" },
-  { key: "overdue_invoice_alert", label: "Overdue Invoice Alert", channels: "Slack", audience: "Admin" },
-  { key: "unpaid_renewal_alert", label: "Unpaid Renewal Alert", channels: "Slack", audience: "Admin" },
-  { key: "system", label: "System Events", channels: "Slack", audience: "Admin" },
-  { key: "deliverability_digest", label: "Deliverability Digest", channels: "Slack + Email", audience: "Admin" },
+  { key: "reply", label: "Reply Received", channels: "Slack + Email", audience: "Client + Admin", expectedFrequencyHours: 24 },
+  { key: "approval", label: "Campaign Approval", channels: "Slack + Email", audience: "Client", expectedFrequencyHours: 168 },
+  { key: "deploy", label: "Campaign Deploy", channels: "Slack + Email", audience: "Admin", expectedFrequencyHours: 168 },
+  { key: "campaign_live", label: "Campaign Live", channels: "Slack + Email", audience: "Client + Admin", expectedFrequencyHours: 168 },
+  { key: "inbox_disconnect", label: "Inbox Disconnect", channels: "Email + Slack", audience: "Admin", expectedFrequencyHours: 168 },
+  { key: "sender_health", label: "Sender Health", channels: "Slack + Email", audience: "Admin", expectedFrequencyHours: 24 },
+  { key: "sender_health_digest", label: "Sender Health Digest", channels: "Slack + Email", audience: "Admin", expectedFrequencyHours: 168 },
+  { key: "invoice", label: "Invoice Sent", channels: "Email", audience: "Client", expectedFrequencyHours: 720 },
+  { key: "overdue_reminder", label: "Overdue Reminder", channels: "Email + Slack", audience: "Client + Admin", expectedFrequencyHours: 720 },
+  { key: "onboarding_invite", label: "Onboarding Invite", channels: "Email", audience: "Client", expectedFrequencyHours: 720 },
+  { key: "magic_link", label: "Portal Login", channels: "Email", audience: "Client", expectedFrequencyHours: 168 },
+  { key: "proposal", label: "Proposal Ready", channels: "Email", audience: "Client", expectedFrequencyHours: 720 },
+  { key: "payment_received", label: "Payment Received", channels: "Email", audience: "Client", expectedFrequencyHours: 720 },
+  { key: "overdue_invoice_alert", label: "Overdue Invoice Alert", channels: "Slack", audience: "Admin", expectedFrequencyHours: 720 },
+  { key: "unpaid_renewal_alert", label: "Unpaid Renewal Alert", channels: "Slack", audience: "Admin", expectedFrequencyHours: 720 },
+  { key: "system", label: "System Events", channels: "Slack", audience: "Admin", expectedFrequencyHours: 24 },
+  { key: "deliverability_digest", label: "Deliverability Digest", channels: "Slack + Email", audience: "Admin", expectedFrequencyHours: 168 },
 ] as const;
 
 // GET /api/notification-health?range=24h|7d|30d
@@ -91,11 +93,14 @@ export async function GET(request: NextRequest) {
       ? (Date.now() - new Date(audit.lastFiredAt).getTime()) / (1000 * 60 * 60)
       : Infinity;
 
+    // Use frequency-aware thresholds: only flag as unhealthy if silent longer
+    // than expected frequency + buffer (1.5x for amber, 2x for red)
+    const expectedHours = nt.expectedFrequencyHours;
     let status: "green" | "amber" | "red" | "neutral" = "neutral";
     if (t > 0) {
       status = "green";
-      if (rate > 0.2 || hoursSinceLastFired > 24) status = "red";
-      else if (rate > 0.05 || hoursSinceLastFired > 12) status = "amber";
+      if (rate > 0.2 || hoursSinceLastFired > expectedHours * 2) status = "red";
+      else if (rate > 0.05 || hoursSinceLastFired > expectedHours * 1.5) status = "amber";
     }
 
     return {

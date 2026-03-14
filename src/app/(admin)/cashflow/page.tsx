@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatGBP } from "@/lib/format";
 import type { RevenueResponse } from "@/app/api/revenue/route";
 import {
   ComposedChart,
@@ -50,13 +51,6 @@ interface ClientRow {
 }
 
 // ---- Helpers ----------------------------------------------------------------
-
-function fmtGbp(amount: number): string {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(amount);
-}
 
 function fmtPct(value: number): string {
   if (!isFinite(value)) return "-";
@@ -208,23 +202,31 @@ export default function CashflowPage() {
       }
     }
 
-    // Costs without a billing day: distribute evenly on day 1
+    // Costs without a billing day: spread evenly across the month
     const unscheduledCost = costs.services
       .filter((s) => s.billingDay == null)
       .reduce((sum, s) => sum + s.monthlyCost, 0);
     if (unscheduledCost > 0) {
-      costsByDay[1] = (costsByDay[1] ?? 0) + unscheduledCost;
+      const dailyShare = unscheduledCost / daysInMonth;
+      for (let d = 1; d <= daysInMonth; d++) {
+        costsByDay[d] = (costsByDay[d] ?? 0) + dailyShare;
+      }
     }
 
     let cumCosts = 0;
     const days = [];
     for (let day = 1; day <= daysInMonth; day++) {
       cumCosts += costsByDay[day] ?? 0;
+      // Prorate MRR: only show confirmed revenue up to today, full MRR for future days
+      const proratedRevenue = day <= todayDay
+        ? Math.round((mrrVal * day / daysInMonth) * 100) / 100
+        : null;
       const balance = mrrVal - cumCosts;
       days.push({
         day,
         cumulativeCosts: Math.round(cumCosts * 100) / 100,
         revenue: Math.round(mrrVal * 100) / 100,
+        proratedRevenue,
         balance: Math.round(balance * 100) / 100,
         balancePositive: balance >= 0 ? Math.round(balance * 100) / 100 : 0,
         balanceNegative: balance < 0 ? Math.round(balance * 100) / 100 : 0,
@@ -258,21 +260,21 @@ export default function CashflowPage() {
             <>
               <MetricCard
                 label="Monthly Revenue (MRR)"
-                value={fmtGbp(mrrGbp)}
+                value={formatGBP(mrrGbp)}
                 trend={mrrGbp > 0 ? "up" : "neutral"}
                 detail="3-month average"
                 density="compact"
               />
               <MetricCard
                 label="Monthly Costs"
-                value={fmtGbp(totalCostsGbp)}
+                value={formatGBP(totalCostsGbp)}
                 trend="neutral"
                 detail={`${costs?.services.length ?? 0} services`}
                 density="compact"
               />
               <MetricCard
                 label="Net Monthly Cashflow"
-                value={fmtGbp(netMonthly)}
+                value={formatGBP(netMonthly)}
                 trend={netMonthly > 0 ? "up" : netMonthly < 0 ? "down" : "neutral"}
                 detail={netMonthly >= 0 ? "Profitable" : "Loss-making"}
                 density="compact"
@@ -337,7 +339,7 @@ export default function CashflowPage() {
                     }}
                     labelFormatter={(day) => `Day ${day}`}
                     formatter={(value, name) => [
-                      fmtGbp(Number(value)),
+                      formatGBP(Number(value)),
                       name === "cumulativeCosts"
                         ? "Cumulative Costs"
                         : name === "revenue"
@@ -448,7 +450,7 @@ export default function CashflowPage() {
                   <thead>
                     <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
                       <th className="text-left px-4 py-3">Client</th>
-                      <th className="text-right px-4 py-3">Monthly Revenue</th>
+                      <th className="text-right px-4 py-3">Avg Invoice Value</th>
                       <th className="text-right px-4 py-3">Monthly Costs</th>
                       <th className="text-right px-4 py-3">Net</th>
                       <th className="text-right px-4 py-3">Margin</th>
@@ -471,10 +473,10 @@ export default function CashflowPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right font-medium tabular-nums">
-                          {fmtGbp(row.monthlyRevenue)}
+                          {formatGBP(row.monthlyRevenue)}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                          {fmtGbp(row.monthlyCosts)}
+                          {formatGBP(row.monthlyCosts)}
                         </td>
                         <td
                           className={`px-4 py-3 text-right font-medium tabular-nums ${
@@ -485,7 +487,7 @@ export default function CashflowPage() {
                               : ""
                           }`}
                         >
-                          {fmtGbp(row.net)}
+                          {formatGBP(row.net)}
                         </td>
                         <td
                           className={`px-4 py-3 text-right tabular-nums ${
@@ -504,10 +506,10 @@ export default function CashflowPage() {
                     <tr className="border-t-2 border-border font-medium bg-muted/30">
                       <td className="px-4 py-3 text-sm font-semibold">Total</td>
                       <td className="px-4 py-3 text-right tabular-nums">
-                        {fmtGbp(mrrGbp)}
+                        {formatGBP(mrrGbp)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                        {fmtGbp(totalCostsGbp)}
+                        {formatGBP(totalCostsGbp)}
                       </td>
                       <td
                         className={`px-4 py-3 text-right tabular-nums ${
@@ -518,7 +520,7 @@ export default function CashflowPage() {
                             : ""
                         }`}
                       >
-                        {fmtGbp(netMonthly)}
+                        {formatGBP(netMonthly)}
                       </td>
                       <td
                         className={`px-4 py-3 text-right tabular-nums ${
@@ -552,13 +554,13 @@ export default function CashflowPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Annual Revenue</span>
                     <span className="text-lg font-semibold tabular-nums">
-                      {fmtGbp(mrrGbp * 12)}
+                      {formatGBP(mrrGbp * 12)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Annual Costs</span>
                     <span className="text-lg font-semibold tabular-nums text-muted-foreground">
-                      {fmtGbp(totalCostsGbp * 12)}
+                      {formatGBP(totalCostsGbp * 12)}
                     </span>
                   </div>
                   <div className="border-t border-border pt-4 flex items-center justify-between">
@@ -572,7 +574,7 @@ export default function CashflowPage() {
                           : ""
                       }`}
                     >
-                      {fmtGbp(netMonthly * 12)}
+                      {formatGBP(netMonthly * 12)}
                     </span>
                   </div>
                 </div>
@@ -606,7 +608,7 @@ export default function CashflowPage() {
                               {fmtPct(pct)}
                             </span>
                             <span className="text-sm font-medium tabular-nums w-20 text-right">
-                              {fmtGbp(amount)}
+                              {formatGBP(amount)}
                             </span>
                           </div>
                         </div>
@@ -639,7 +641,7 @@ export default function CashflowPage() {
                                 {fmtPct(pct)}
                               </span>
                               <span className="text-sm font-medium tabular-nums w-20 text-right">
-                                {fmtGbp(amount)}
+                                {formatGBP(amount)}
                               </span>
                             </div>
                           </div>

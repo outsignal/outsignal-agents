@@ -26,7 +26,7 @@ const SEED_DATA: Array<{
 }> = [
   // TOOLS
   { service: "slack", label: "Slack", monthlyCost: 8.40, category: "tools", billingDay: 1 },
-  { service: "google-workspace", label: "Google Workspace (Melhu)", monthlyCost: 14.00, category: "tools", client: "melhu", billingDay: 1 },
+  { service: "google-workspace", label: "Google Workspace (Personal)", monthlyCost: 14.00, category: "tools", billingDay: 1 },
   { service: "google-workspace", label: "Google Workspace (Outsignal)", monthlyCost: 28.00, category: "tools", client: "outsignal", billingDay: 1 },
   { service: "claude-ai", label: "Claude AI", monthlyCost: 18.00, category: "tools", notes: "Pro plan", billingDay: 3 },
   { service: "framer", label: "Framer", monthlyCost: 18.00, category: "tools", notes: "Website builder", billingDay: 3 },
@@ -44,7 +44,7 @@ const SEED_DATA: Array<{
   // EMAIL
   { service: "cheapinboxes", label: "CheapInboxes (YoopKnows)", monthlyCost: 34.37, category: "email", client: "yoopknows", billingDay: 2 },
   { service: "cheapinboxes", label: "CheapInboxes (Rise)", monthlyCost: 52.03, category: "email", client: "rise", notes: "4 charges combined", billingDay: 16 },
-  { service: "cheapinboxes", label: "CheapInboxes (StingBox)", monthlyCost: 52.94, category: "email", client: "stingbox", billingDay: 21 },
+  { service: "cheapinboxes", label: "CheapInboxes (1210 Solutions)", monthlyCost: 52.94, category: "email", client: "1210-solutions", billingDay: 21 },
   { service: "cheapinboxes", label: "CheapInboxes (Lime)", monthlyCost: 51.11, category: "email", client: "lime-recruitment", billingDay: 28 },
   { service: "cheapinboxes", label: "CheapInboxes (MyAcq)", monthlyCost: 51.11, category: "email", client: "myacq", billingDay: 28 },
   { service: "cheapinboxes", label: "CheapInboxes (Outsignal)", monthlyCost: 68.15, category: "email", client: "outsignal", billingDay: 28 },
@@ -182,6 +182,95 @@ export async function PUT(request: NextRequest) {
     console.error("[platform-costs] Failed to update:", error);
     return NextResponse.json(
       { error: "Failed to update platform cost" },
+      { status: 500 }
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST — create a new cost record
+// ---------------------------------------------------------------------------
+
+export async function POST(request: NextRequest) {
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { service, label, monthlyCost, category, client, notes, url, billingDay } = body as {
+      service: string;
+      label: string;
+      monthlyCost: number;
+      category: string;
+      client?: string | null;
+      notes?: string | null;
+      url?: string | null;
+      billingDay?: number | null;
+    };
+
+    if (!service || !label || monthlyCost == null || !category) {
+      return NextResponse.json(
+        { error: "service, label, monthlyCost, and category are required" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof monthlyCost !== "number" || monthlyCost < 0) {
+      return NextResponse.json(
+        { error: "monthlyCost must be a non-negative number" },
+        { status: 400 }
+      );
+    }
+
+    const created = await prisma.platformCost.create({
+      data: {
+        service,
+        label,
+        monthlyCost,
+        category,
+        client: client ?? null,
+        notes: notes ?? null,
+        url: url ?? null,
+        billingDay: billingDay ?? null,
+      },
+    });
+
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    console.error("[platform-costs] Failed to create:", error);
+    return NextResponse.json(
+      { error: "Failed to create platform cost" },
+      { status: 500 }
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE — remove a cost record
+// ---------------------------------------------------------------------------
+
+export async function DELETE(request: NextRequest) {
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id } = (await request.json()) as { id: string };
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
+
+    await prisma.platformCost.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[platform-costs] Failed to delete:", error);
+    return NextResponse.json(
+      { error: "Failed to delete platform cost" },
       { status: 500 }
     );
   }
