@@ -34,6 +34,10 @@ export default function RevenuePage() {
       setError(null);
       try {
         const res = await fetch("/api/revenue?months=12");
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as RevenueResponse;
         setData(json);

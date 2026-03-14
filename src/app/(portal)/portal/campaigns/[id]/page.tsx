@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, getCampaignLeadSample } from "@/lib/campaigns/operations";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
@@ -19,7 +19,13 @@ export default async function PortalCampaignDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
 
   const campaign = await getCampaign(id);
   if (!campaign || campaign.workspaceSlug !== workspaceSlug) {

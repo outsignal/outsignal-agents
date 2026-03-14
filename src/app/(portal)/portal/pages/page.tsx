@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,13 @@ function formatDate(date: Date): string {
 }
 
 export default async function PortalPagesPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
 
   // Find the Client linked to this workspace
   const client = await prisma.client.findFirst({

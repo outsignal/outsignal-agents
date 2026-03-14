@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
@@ -90,7 +91,13 @@ function recentEventToNote(reason: string): string {
 }
 
 export default async function PortalEmailHealthPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
   const workspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!workspace) {

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +47,13 @@ export default async function PortalRepliesPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
   const { page } = await searchParams;
   const currentPage = Math.max(1, parseInt(page ?? "1", 10) || 1);
   const skip = (currentPage - 1) * PAGE_SIZE;

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { listCampaigns } from "@/lib/campaigns/operations";
 import { CampaignCard } from "@/components/portal/campaign-card";
@@ -6,7 +7,13 @@ import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
 import { Megaphone, Clock } from "lucide-react";
 
 export default async function PortalCampaignsPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
   const campaigns = await listCampaigns(workspaceSlug);
 
   // Sort: pending_approval with unapproved items first, then rest by updatedAt desc

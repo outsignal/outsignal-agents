@@ -330,6 +330,10 @@ export default function IntegrationsPage() {
     setError(null);
     try {
       const res = await fetch("/api/integrations/status");
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
     } catch (err) {

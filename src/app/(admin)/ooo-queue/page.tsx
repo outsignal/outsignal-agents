@@ -272,6 +272,10 @@ export default function OooQueuePage() {
       if (statusFilter !== "all") params.set("status", statusFilter);
 
       const res = await fetch(`/api/ooo?${params.toString()}`);
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as OooData;
       setData(json);

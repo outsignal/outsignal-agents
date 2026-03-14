@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { formatGBP, formatInvoiceDate } from "@/lib/invoices/format";
@@ -20,7 +21,13 @@ const statusColors: Record<string, string> = {
 };
 
 export default async function PortalBillingPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
 
   const invoices = await prisma.invoice.findMany({
     where: {

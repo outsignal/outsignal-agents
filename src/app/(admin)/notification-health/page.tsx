@@ -153,6 +153,10 @@ export default function NotificationHealthPage() {
 
       fetch(`/api/notification-health?range=${range}`)
         .then(async (res) => {
+          if (res.status === 401) {
+            window.location.href = "/login";
+            return;
+          }
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })

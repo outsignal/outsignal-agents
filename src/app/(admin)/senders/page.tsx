@@ -80,6 +80,10 @@ export default function SendersPage() {
       const params =
         filterWorkspace !== "all" ? `?workspace=${filterWorkspace}` : "";
       const res = await fetch(`/api/senders${params}`);
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const fetchedSenders: SenderWithWorkspace[] = data.senders ?? [];

@@ -129,6 +129,10 @@ export default function DashboardPage() {
         fetch(`/api/dashboard/stats?${params.toString()}`),
         fetch(`/api/signals?workspace=${workspace}&limit=20`),
       ]);
+      if (statsRes.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       if (!statsRes.ok) throw new Error(`HTTP ${statsRes.status}`);
       const statsJson = (await statsRes.json()) as DashboardStatsResponse;
       setData(statsJson);

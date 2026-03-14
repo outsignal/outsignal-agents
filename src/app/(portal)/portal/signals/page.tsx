@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -44,7 +45,13 @@ function formatRelativeTime(date: Date): string {
 }
 
 export default async function PortalSignalsPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
 
   // Last 30 days
   const since30d = new Date();

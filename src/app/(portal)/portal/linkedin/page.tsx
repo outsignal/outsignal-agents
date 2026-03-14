@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,13 @@ import { HealthStatusBadge } from "@/components/portal/health-status-badge";
 import { LinkedinIcon, Clock } from "lucide-react";
 
 export default async function PortalLinkedInPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
 
   const senders = await prisma.sender.findMany({
     where: { workspaceSlug },

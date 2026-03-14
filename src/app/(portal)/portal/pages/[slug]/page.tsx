@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
@@ -20,7 +21,13 @@ export default async function PortalPageDetailPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
   const { slug } = await params;
 
   // Find the Client linked to this workspace

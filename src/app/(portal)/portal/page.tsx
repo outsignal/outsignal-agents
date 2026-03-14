@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
@@ -26,7 +27,13 @@ import Link from "next/link";
 import type { Campaign } from "@/lib/emailbison/types";
 
 export default async function PortalDashboardPage() {
-  const { workspaceSlug } = await getPortalSession();
+  let session;
+  try {
+    session = await getPortalSession();
+  } catch {
+    redirect("/portal/login");
+  }
+  const { workspaceSlug } = session;
   const workspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!workspace) {

@@ -211,11 +211,15 @@ export default function BackgroundTasksPage() {
 
     fetch(`/api/background-tasks?${params.toString()}`)
       .then(async (res) => {
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<BackgroundTasksData>;
       })
       .then((json) => {
-        if (active) setData(json);
+        if (json && active) setData(json);
       })
       .catch((err: Error) => {
         if (active) setError(err.message ?? "Failed to load data");
