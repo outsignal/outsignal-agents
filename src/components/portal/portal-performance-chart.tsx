@@ -73,7 +73,7 @@ const colors = {
 
 export function PortalPerformanceChart({ data }: Props) {
   return (
-    <ResponsiveContainer width="100%" height="100%" className="h-[200px] md:h-[280px]">
+    <ResponsiveContainer width="100%" height={280}>
       <AreaChart
         data={data}
         margin={{ top: 4, right: 4, left: -12, bottom: 0 }}

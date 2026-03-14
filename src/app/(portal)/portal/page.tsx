@@ -78,6 +78,7 @@ export default async function PortalDashboardPage() {
   const totalOpens = campaigns.reduce((sum, c) => sum + (c.unique_opens ?? 0), 0);
   const totalReplies = campaigns.reduce((sum, c) => sum + (c.replied ?? 0), 0);
   const totalBounces = campaigns.reduce((sum, c) => sum + (c.bounced ?? 0), 0);
+  const hasOpenTracking = campaigns.some((c) => c.open_tracking);
 
   // LinkedIn summary
   const todayStart = new Date();
@@ -241,7 +242,8 @@ export default async function PortalDashboardPage() {
         />
         <MetricCard
           label="Open Rate"
-          value={`${totalSent > 0 ? ((totalOpens / totalSent) * 100).toFixed(1) : 0}%`}
+          value={hasOpenTracking ? `${totalSent > 0 ? ((totalOpens / totalSent) * 100).toFixed(1) : 0}%` : "N/A"}
+          detail={hasOpenTracking ? undefined : "Tracking disabled"}
           density="compact"
         />
         <MetricCard
