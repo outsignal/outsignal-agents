@@ -22,15 +22,12 @@ import {
 import {
   ChevronDown,
   ChevronUp,
-  Copy,
-  Check,
   MoreHorizontal,
   Pause,
   Play,
   RefreshCw,
   Pencil,
   Trash2,
-  Key,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DailyLimitsBar } from "./daily-limits-bar";
@@ -38,9 +35,23 @@ import { SenderFormModal } from "./sender-form-modal";
 import { SenderHealthPanel } from "./sender-health-panel";
 import type { SenderWithWorkspace } from "./types";
 
+interface BudgetMetric {
+  sent: number;
+  limit: number;
+  remaining: number;
+}
+
+interface Budget {
+  connections: BudgetMetric;
+  messages: BudgetMetric;
+  profileViews: BudgetMetric;
+}
+
 interface SenderCardProps {
   sender: SenderWithWorkspace;
   workspaces: Array<{ slug: string; name: string }>;
+  initialBudget?: Budget | null;
+  onMutate?: () => void;
 }
 
 const STATUS_VARIANT: Record<string, "secondary" | "success" | "warning" | "destructive"> = {
@@ -75,8 +86,9 @@ function formatTimeAgo(date: Date | string): string {
   return `${Math.floor(diffHr / 24)}d ago`;
 }
 
-export function SenderCard({ sender, workspaces }: SenderCardProps) {
+export function SenderCard({ sender, workspaces, initialBudget, onMutate }: SenderCardProps) {
   const router = useRouter();
+  const refreshUI = onMutate ?? (() => router.refresh());
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -84,8 +96,6 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
   const [toggling, setToggling] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [reactivating, setReactivating] = useState(false);
-  const [tokenCopied, setTokenCopied] = useState(false);
-
   const isPaused = sender.status === "paused";
   const isHardFlagged =
     sender.healthStatus === "blocked" || sender.healthStatus === "session_expired";
@@ -102,7 +112,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
         const data = await res.json();
         console.error("Toggle pause failed:", data.error);
       } else {
-        router.refresh();
+        refreshUI();
       }
     } finally {
       setToggling(false);
@@ -126,7 +136,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
         return;
       }
       setDeleteOpen(false);
-      router.refresh();
+      refreshUI();
     } finally {
       setDeleting(false);
     }
@@ -142,18 +152,11 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
         const data = await res.json();
         console.error("Reactivate failed:", data.error);
       } else {
-        router.refresh();
+        refreshUI();
       }
     } finally {
       setReactivating(false);
     }
-  }
-
-  async function handleCopyToken() {
-    if (!sender.inviteToken) return;
-    await navigator.clipboard.writeText(sender.inviteToken);
-    setTokenCopied(true);
-    setTimeout(() => setTokenCopied(false), 2000);
   }
 
   const proxyDisplay = sender.proxyUrl
@@ -197,7 +200,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
           </div>
 
           {/* Daily limits */}
-          <DailyLimitsBar senderId={sender.id} />
+          <DailyLimitsBar senderId={sender.id} initialBudget={initialBudget} />
 
           {/* LinkedIn tier */}
           <div className="flex items-start gap-2">
@@ -303,16 +306,6 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
                   {reactivating ? "Reactivating..." : "Reactivate"}
                 </DropdownMenuItem>
               )}
-              {sender.inviteToken && (
-                <DropdownMenuItem onClick={handleCopyToken}>
-                  {tokenCopied ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
-                  ) : (
-                    <Key className="h-4 w-4" />
-                  )}
-                  {tokenCopied ? "Token Copied!" : "Copy Invite Token"}
-                </DropdownMenuItem>
-              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
@@ -332,6 +325,7 @@ export function SenderCard({ sender, workspaces }: SenderCardProps) {
         onOpenChange={setEditOpen}
         sender={sender}
         workspaces={workspaces}
+        onSaved={refreshUI}
       />
 
       {/* Delete confirmation dialog */}

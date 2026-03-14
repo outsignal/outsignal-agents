@@ -12,7 +12,24 @@ export async function GET(request: NextRequest) {
   try {
     const workspace = request.nextUrl.searchParams.get("workspace");
 
+    // When workspace is specified, only return domains used by that workspace's senders
+    let domainFilter: string[] | null = null;
+    if (workspace) {
+      const wsSenders = await prisma.sender.findMany({
+        where: { workspaceSlug: workspace, emailAddress: { not: null } },
+        select: { emailAddress: true },
+      });
+      const wsDomains = new Set<string>();
+      for (const s of wsSenders) {
+        if (!s.emailAddress) continue;
+        const atIdx = s.emailAddress.lastIndexOf("@");
+        if (atIdx !== -1) wsDomains.add(s.emailAddress.slice(atIdx + 1));
+      }
+      domainFilter = [...wsDomains];
+    }
+
     const domains = await prisma.domainHealth.findMany({
+      where: domainFilter ? { domain: { in: domainFilter } } : undefined,
       orderBy: { domain: "asc" },
     });
 

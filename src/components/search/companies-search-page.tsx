@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useQueryStates, parseAsString, parseAsInteger, parseAsArrayOf } from "nuqs";
 import { useDebounce } from "use-debounce";
 import {
@@ -306,7 +307,9 @@ export function CompaniesSearchPage() {
                           className="border-border hover:bg-muted/50"
                         >
                           <TableCell className="font-medium text-foreground text-sm">
-                            {company.name}
+                            <Link href={`/companies/${company.id}`} className="hover:underline">
+                              {company.name}
+                            </Link>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {company.website ? (

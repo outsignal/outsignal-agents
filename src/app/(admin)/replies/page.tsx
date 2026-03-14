@@ -80,15 +80,8 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
 // Constants
 // ---------------------------------------------------------------------------
 
-const WORKSPACES = [
-  "rise",
-  "lime-recruitment",
-  "yoopknows",
-  "outsignal",
-  "myacq",
-  "1210-solutions",
-  "lab522",
-];
+// Fetched dynamically in the component via /api/workspaces
+// (was previously hardcoded with stale slugs)
 
 const DATE_RANGES = [
   { label: "24h", value: "24h" },
@@ -114,6 +107,15 @@ export default function RepliesPage() {
     range: parseAsString.withDefault("all"),
     page: parseAsInteger.withDefault(1),
   });
+
+  // Dynamic workspace list for filter dropdown
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/workspaces")
+      .then((r) => r.ok ? r.json() : Promise.resolve([]))
+      .then((data: Array<{ slug: string }>) => setWorkspaces(data.map((w) => w.slug)))
+      .catch(() => setWorkspaces([]));
+  }, []);
 
   // Distinct campaigns for filter dropdown (filtered by workspace when selected)
   const [campaigns, setCampaigns] = useState<{ campaignId: string; campaignName: string }[]>([]);
@@ -279,7 +281,7 @@ export default function RepliesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All workspaces</SelectItem>
-              {WORKSPACES.map((slug) => (
+              {workspaces.map((slug) => (
                 <SelectItem key={slug} value={slug}>
                   {slug}
                 </SelectItem>

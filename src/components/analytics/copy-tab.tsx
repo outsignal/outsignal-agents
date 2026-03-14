@@ -143,6 +143,7 @@ export function CopyTab({ workspace, period, vertical }: CopyTabProps) {
     const sp = new URLSearchParams();
     if (workspace) sp.set("workspace", workspace);
     if (vertical) sp.set("vertical", vertical);
+    if (period) sp.set("period", period);
     if (extra) {
       for (const [k, v] of Object.entries(extra)) sp.set(k, v);
     }
