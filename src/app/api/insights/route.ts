@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateInsights } from "@/lib/insights/generate";
+import { requireAdminAuth } from "@/lib/require-admin-auth";
 
 /**
  * GET /api/insights?workspace=<slug>&status=<status>&category=<category>
@@ -9,6 +10,10 @@ import { generateInsights } from "@/lib/insights/generate";
  * For status "active": also includes snoozed insights whose snoozedUntil has expired.
  */
 export async function GET(request: Request) {
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const url = new URL(request.url);
   const workspace = url.searchParams.get("workspace");
   const status = url.searchParams.get("status") ?? "active";
@@ -99,6 +104,11 @@ export async function GET(request: Request) {
  * Manual refresh - triggers insight generation for the given workspace.
  */
 export async function POST(request: Request) {
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { workspaceSlug } = body;

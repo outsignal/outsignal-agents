@@ -18,28 +18,7 @@ export function DomainStep({
   selectedDomains,
   onChange,
 }: DomainStepProps) {
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<DomainSuggestion[]>([]);
-  const [searched, setSearched] = useState(false);
-
-  async function handleSuggest() {
-    if (!website) return;
-    setLoading(true);
-    try {
-      const res = await fetch("/api/domains/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ website }),
-      });
-      const data = await res.json();
-      setSuggestions(data.suggestions || []);
-      setSearched(true);
-    } catch {
-      setSuggestions([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [suggestions] = useState<DomainSuggestion[]>([]);
 
   function toggleDomain(domain: string) {
     if (selectedDomains.includes(domain)) {
@@ -52,18 +31,9 @@ export function DomainStep({
   return (
     <div className="space-y-4">
       {website ? (
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
-            Based on: <span className="font-medium text-gray-700">{website}</span>
-          </span>
-          <button
-            onClick={handleSuggest}
-            disabled={loading}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          >
-            {loading ? "Checking..." : searched ? "Refresh" : "Suggest Domains"}
-          </button>
-        </div>
+        <p className="text-sm text-gray-500">
+          Based on: <span className="font-medium text-gray-700">{website}</span>
+        </p>
       ) : (
         <p className="text-sm text-gray-500">
           Go back and enter your website URL first to get domain suggestions.
@@ -121,11 +91,9 @@ export function DomainStep({
         </div>
       )}
 
-      {searched && suggestions.length === 0 && !loading && (
-        <p className="text-sm text-gray-500">
-          No suggestions found. You can skip this step.
-        </p>
-      )}
+      <p className="text-sm text-gray-500">
+        Domain suggestions coming soon. You can skip this step for now.
+      </p>
     </div>
   );
 }
