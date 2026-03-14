@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { requireAdminAuth } from "@/lib/require-admin-auth";
 
 function buildWhereClause(params: URLSearchParams): Prisma.ReplyWhereInput {
   const conditions: Prisma.ReplyWhereInput[] = [];
@@ -87,6 +88,7 @@ function buildSqlWhereClause(params: URLSearchParams): {
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAdminAuth();
     const params = request.nextUrl.searchParams;
     const where = buildWhereClause(params);
     const sqlWhere = buildSqlWhereClause(params);

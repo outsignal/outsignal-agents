@@ -120,9 +120,11 @@ export async function PATCH(
     });
 
     return NextResponse.json({
-      ...updated,
-      effectiveIntent: updated.overrideIntent ?? updated.intent,
-      effectiveSentiment: updated.overrideSentiment ?? updated.sentiment,
+      reply: {
+        ...updated,
+        effectiveIntent: updated.overrideIntent ?? updated.intent,
+        effectiveSentiment: updated.overrideSentiment ?? updated.sentiment,
+      },
     });
   } catch (error) {
     console.error("[PATCH /api/replies/:id] Error:", error);

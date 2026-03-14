@@ -56,6 +56,9 @@ export interface ClientSummary {
   contactEmail: string | null;
   contactPhone: string | null;
   contactName: string | null;
+  website: string | null;
+  companyOverview: string | null;
+  notes: string | null;
   stageProgress: StageProgress[];
   outstandingTasks: number;
   overdueTasks: number;
@@ -388,6 +391,9 @@ export async function listClients(
     contactEmail: c.contactEmail,
     contactPhone: c.contactPhone,
     contactName: c.contactName,
+    website: c.website,
+    companyOverview: c.companyOverview,
+    notes: c.notes,
     stageProgress: computeStageProgress(c.tasks),
     outstandingTasks: c.tasks.filter((t) => t.status !== "complete").length,
     overdueTasks: c.tasks.filter(

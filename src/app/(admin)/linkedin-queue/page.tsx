@@ -61,6 +61,7 @@ export default function LinkedInQueuePage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [senders, setSenders] = useState<Array<{ id: string; name: string }>>([]);
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
 
   // URL-persisted filters
   const [statusFilter, setStatusFilter] = useQueryState("status", {
@@ -102,13 +103,22 @@ export default function LinkedInQueuePage() {
           });
           setSenders(Array.from(seen.entries()).map(([id, name]) => ({ id, name })));
         }
+
+        // Extract unique workspaces from actions
+        if (workspaces.length === 0) {
+          const wsSeen = new Set<string>();
+          json.actions.forEach((a: LinkedInQueueAction) => {
+            if (a.workspaceSlug) wsSeen.add(a.workspaceSlug);
+          });
+          setWorkspaces(Array.from(wsSeen).sort());
+        }
       } catch {
         // Silently fail on auto-refresh
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [statusFilter, actionTypeFilter, workspaceFilter, senderFilter, page, senders.length]
+    [statusFilter, actionTypeFilter, workspaceFilter, senderFilter, page, senders.length, workspaces.length]
   );
 
   // Reset page when filters change
@@ -217,7 +227,11 @@ export default function LinkedInQueuePage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">All Workspaces</SelectItem>
-              {/* Workspaces will be populated from data */}
+              {workspaces.map((ws) => (
+                <SelectItem key={ws} value={ws} className="text-xs">
+                  {ws}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

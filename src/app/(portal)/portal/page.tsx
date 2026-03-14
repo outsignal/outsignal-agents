@@ -73,18 +73,39 @@ export default async function PortalDashboardPage() {
   const totalBounces = campaigns.reduce((sum, c) => sum + (c.bounced ?? 0), 0);
 
   // LinkedIn summary
-  const senderCount = await prisma.sender.count({
-    where: { workspaceSlug, sessionStatus: "active" },
-  });
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const todayActions = await prisma.linkedInAction.count({
-    where: {
-      workspaceSlug,
-      status: "complete",
-      completedAt: { gte: todayStart },
-    },
-  });
+  const sevenDaysAgoLI = new Date();
+  sevenDaysAgoLI.setDate(sevenDaysAgoLI.getDate() - 7);
+
+  const [senderCount, totalSenderCount, todayActions, weekActions, pendingActions] = await Promise.all([
+    prisma.sender.count({
+      where: { workspaceSlug, sessionStatus: "active" },
+    }),
+    prisma.sender.count({
+      where: { workspaceSlug },
+    }),
+    prisma.linkedInAction.count({
+      where: {
+        workspaceSlug,
+        status: "complete",
+        completedAt: { gte: todayStart },
+      },
+    }),
+    prisma.linkedInAction.count({
+      where: {
+        workspaceSlug,
+        status: "complete",
+        completedAt: { gte: sevenDaysAgoLI },
+      },
+    }),
+    prisma.linkedInAction.count({
+      where: {
+        workspaceSlug,
+        status: "pending",
+      },
+    }),
+  ]);
 
   // Time-series data from WebhookEvent for the last 14 days
   const timeSeriesDays = 14;
@@ -137,10 +158,57 @@ export default async function PortalDashboardPage() {
     completed: "bg-blue-100 text-blue-800",
   };
 
+  // Pending approval campaigns count
+  const pendingApprovalCount = await prisma.campaign.count({
+    where: { workspaceSlug, status: "pending_approval" },
+  });
+
+  // Recent inbound replies
+  const recentReplies = await prisma.reply.findMany({
+    where: { workspaceSlug, direction: "inbound" },
+    orderBy: { receivedAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      leadEmail: true,
+      subject: true,
+      receivedAt: true,
+      intent: true,
+      sentiment: true,
+    },
+  });
+
   const now = new Date();
+
+  const intentColors: Record<string, string> = {
+    interested: "bg-emerald-100 text-emerald-800",
+    meeting_request: "bg-emerald-100 text-emerald-800",
+    positive: "bg-emerald-100 text-emerald-800",
+    not_interested: "bg-red-100 text-red-800",
+    objection: "bg-amber-100 text-amber-800",
+    out_of_office: "bg-gray-100 text-gray-800",
+    referral: "bg-blue-100 text-blue-800",
+    unsubscribe: "bg-red-100 text-red-800",
+    neutral: "bg-gray-100 text-gray-800",
+  };
 
   return (
     <div className="p-6 space-y-6">
+      {/* Pending Approval Banner */}
+      {pendingApprovalCount > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm font-medium text-amber-800">
+            {pendingApprovalCount} campaign{pendingApprovalCount !== 1 ? "s" : ""} awaiting your approval
+          </p>
+          <Link
+            href="/portal/campaigns"
+            className="text-sm font-medium text-amber-900 underline hover:no-underline"
+          >
+            Review campaigns
+          </Link>
+        </div>
+      )}
+
       {/* Header with refresh */}
       <div className="flex items-start justify-between">
         <div>
@@ -207,14 +275,27 @@ export default async function PortalDashboardPage() {
       {/* LinkedIn Summary */}
       <Card density="compact">
         <CardContent className="pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Linkedin className="h-4 w-4 text-muted-foreground" />
-            <p className="text-sm font-medium">LinkedIn Overview</p>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Linkedin className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium">LinkedIn Overview</p>
+            </div>
+            <Link
+              href="/portal/linkedin"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              View details
+            </Link>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <p className="text-2xl font-heading font-semibold tabular-nums">
                 {senderCount}
+                {totalSenderCount > senderCount && (
+                  <span className="text-sm text-muted-foreground font-normal">
+                    /{totalSenderCount}
+                  </span>
+                )}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Active sender{senderCount !== 1 ? "s" : ""}
@@ -226,6 +307,22 @@ export default async function PortalDashboardPage() {
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Action{todayActions !== 1 ? "s" : ""} today
+              </p>
+            </div>
+            <div>
+              <p className="text-2xl font-heading font-semibold tabular-nums">
+                {weekActions}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Last 7 days
+              </p>
+            </div>
+            <div>
+              <p className="text-2xl font-heading font-semibold tabular-nums">
+                {pendingActions}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pending
               </p>
             </div>
           </div>
@@ -317,6 +414,82 @@ export default async function PortalDashboardPage() {
                     </TableRow>
                   );
                 })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent Replies */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-heading">Recent Replies</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {recentReplies.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                <svg
+                  className="h-6 w-6 text-muted-foreground"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-medium">No replies yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Replies to your campaigns will appear here.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>From</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Intent</TableHead>
+                  <TableHead className="text-right">Received</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentReplies.map((reply) => (
+                  <TableRow key={reply.id}>
+                    <TableCell className="font-medium text-sm">
+                      {reply.leadEmail}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
+                      {reply.subject ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      {reply.intent ? (
+                        <Badge
+                          className={`text-xs ${intentColors[reply.intent] ?? "bg-gray-100 text-gray-800"}`}
+                        >
+                          {reply.intent.replace(/_/g, " ")}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
+                      {reply.receivedAt
+                        ? new Date(reply.receivedAt).toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}
