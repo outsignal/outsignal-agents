@@ -192,6 +192,7 @@ export default async function PersonDetailPage({
         jobTitle={person.jobTitle}
         location={person.location}
         linkedinUrl={person.linkedinUrl}
+        phone={person.phone}
         status={person.status ?? "new"}
         workspaces={person.workspaces.map((pw) => ({
           workspace: pw.workspace,

@@ -47,7 +47,14 @@ export default async function CampaignDetailPage({
   params,
 }: CampaignDetailPageProps) {
   const { id } = await params;
-  const campaign = await getCampaign(id);
+
+  // Fetch campaign and signal lead count in parallel
+  const [campaign, signalLeadCount] = await Promise.all([
+    getCampaign(id),
+    prisma.signalCampaignLead
+      .count({ where: { campaignId: id, outcome: "added" } })
+      .catch(() => 0),
+  ]);
 
   if (!campaign) notFound();
 
@@ -60,14 +67,6 @@ export default async function CampaignDetailPage({
     : 0;
 
   const leadCount = campaign.targetListPeopleCount ?? 0;
-
-  // Signal campaign: count leads added via signal matching
-  const signalLeadCount =
-    campaign.type === "signal"
-      ? await prisma.signalCampaignLead.count({
-          where: { campaignId: campaign.id, outcome: "added" },
-        })
-      : 0;
 
   return (
     <div>

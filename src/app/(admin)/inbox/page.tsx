@@ -171,19 +171,14 @@ export default function AdminInboxPage() {
     };
   }, [fetchThreads, fetchLinkedinConversations]);
 
-  // Mark all as read handler
-  const handleMarkAllRead = useCallback(async () => {
+  // Refresh all threads
+  const handleRefresh = useCallback(async () => {
     try {
-      // Use portal endpoint scoped to specific workspace if filter is active
-      if (workspaceFilter) {
-        // Mark all for this workspace via portal-like approach
-        // Admin can't use portal session — just refresh threads
-      }
       await fetchThreads();
     } catch {
       // Silently fail
     }
-  }, [fetchThreads, workspaceFilter]);
+  }, [fetchThreads]);
 
   // Cross-channel navigation handlers
   const handleSwitchToLinkedIn = useCallback((conversationId: string) => {
@@ -251,7 +246,7 @@ export default function AdminInboxPage() {
           <h1 className="text-xl font-heading font-bold">Inbox</h1>
           {(activeChannel === "email" || activeChannel === "all") && (
             <button
-              onClick={handleMarkAllRead}
+              onClick={handleRefresh}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Refresh

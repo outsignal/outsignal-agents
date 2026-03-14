@@ -41,15 +41,23 @@ function MiniBar({ label, sent, limit }: { label: string; sent: number; limit: n
   );
 }
 
-export function DailyLimitsBar({ senderId }: { senderId: string }) {
-  const [budget, setBudget] = useState<Budget | null>(null);
+export function DailyLimitsBar({
+  senderId,
+  initialBudget,
+}: {
+  senderId: string;
+  initialBudget?: Budget | null;
+}) {
+  const [budget, setBudget] = useState<Budget | null>(initialBudget ?? null);
 
   useEffect(() => {
+    // Skip fetch if budget was provided via props (batch mode)
+    if (initialBudget !== undefined) return;
     fetch(`/api/senders/${senderId}/budget`)
       .then((r) => (r.ok ? r.json() : null))
       .then(setBudget)
       .catch(() => {});
-  }, [senderId]);
+  }, [senderId, initialBudget]);
 
   if (!budget) {
     return (

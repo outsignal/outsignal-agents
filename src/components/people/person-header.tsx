@@ -18,6 +18,7 @@ export interface PersonHeaderProps {
   jobTitle: string | null;
   location: string | null;
   linkedinUrl: string | null;
+  phone: string | null;
   status: string;
   workspaces: WorkspaceScore[];
 }
@@ -87,6 +88,7 @@ export function PersonHeader({
   jobTitle,
   location,
   linkedinUrl,
+  phone,
   status,
   workspaces,
 }: PersonHeaderProps) {
@@ -122,6 +124,19 @@ export function PersonHeader({
       <div className="flex flex-wrap items-center gap-2 mt-3">
         {/* Email */}
         <span className="text-sm text-muted-foreground font-mono">{email}</span>
+
+        {/* Phone */}
+        {phone && (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <a
+              href={`tel:${phone}`}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {phone}
+            </a>
+          </>
+        )}
 
         {/* Location */}
         {location && (

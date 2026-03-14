@@ -144,34 +144,44 @@ export default function NotificationHealthPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
 
-    fetch(`/api/notification-health?range=${range}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((json: HealthData) => {
-        if (active) {
-          // Sort byType: red first, then amber, then green
-          json.byType.sort(
-            (a, b) =>
-              (STATUS_SORT_ORDER[a.status] ?? 3) -
-              (STATUS_SORT_ORDER[b.status] ?? 3),
-          );
-          setData(json);
-        }
-      })
-      .catch((err) => {
-        if (active) setError(err.message ?? "Failed to load data");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    function fetchData(showLoading = true) {
+      if (showLoading) {
+        setLoading(true);
+        setError(null);
+      }
+
+      fetch(`/api/notification-health?range=${range}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((json: HealthData) => {
+          if (active) {
+            json.byType.sort(
+              (a, b) =>
+                (STATUS_SORT_ORDER[a.status] ?? 3) -
+                (STATUS_SORT_ORDER[b.status] ?? 3),
+            );
+            setData(json);
+            setError(null);
+          }
+        })
+        .catch((err) => {
+          if (active) setError(err.message ?? "Failed to load data");
+        })
+        .finally(() => {
+          if (active && showLoading) setLoading(false);
+        });
+    }
+
+    fetchData(true);
+
+    const interval = setInterval(() => fetchData(false), 60_000);
 
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, [range]);
 
@@ -204,8 +214,8 @@ export default function NotificationHealthPage() {
       <div className="p-6 space-y-6">
         {/* Error state */}
         {error && (
-          <div className="rounded-lg border border-red-300 bg-red-50 p-4">
-            <p className="text-sm text-red-800">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+            <p className="text-sm text-destructive">
               Failed to load notification health data: {error}
             </p>
           </div>
@@ -342,7 +352,7 @@ export default function NotificationHealthPage() {
                           {row.recipient ?? "-"}
                         </TableCell>
                         <TableCell
-                          className="text-sm text-red-600 max-w-[240px] truncate"
+                          className="text-sm text-destructive max-w-[240px] truncate"
                           title={row.errorMessage ?? ""}
                         >
                           {row.errorMessage ?? "-"}
