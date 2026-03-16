@@ -1,5 +1,6 @@
 import { Sidebar } from "./sidebar";
 import { MobileMenuButton } from "./mobile-menu-button";
+import { PageTransition } from "./page-transition";
 import { getAllWorkspaces } from "@/lib/workspaces";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { CommandPalette } from "@/components/ui/command-palette";
@@ -34,7 +35,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       <MobileMenuButton workspaces={workspaceItems} />
 
       <ChatPanel>
-        <main id="main-content" className="flex-1 overflow-auto pl-14 md:pl-0">{children}</main>
+        <main id="main-content" className="flex-1 overflow-auto pl-14 md:pl-0">
+          <PageTransition>{children}</PageTransition>
+        </main>
       </ChatPanel>
     </div>
   );

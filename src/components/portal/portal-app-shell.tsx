@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { PortalMobileMenu } from "@/components/portal/portal-mobile-menu";
+import { PageTransition } from "@/components/layout/page-transition";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 interface PortalAppShellProps {
@@ -35,7 +36,7 @@ export async function PortalAppShell({ workspaceSlug, children }: PortalAppShell
           workspaceName={workspace?.name ?? workspaceSlug}
         />
         <main id="main-content" className="flex-1 overflow-auto">
-          {children}
+          <PageTransition>{children}</PageTransition>
         </main>
       </div>
     </TooltipProvider>
