@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { formatGBP, formatInvoiceDate } from "@/lib/invoices/format";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,13 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Receipt } from "lucide-react";
-
-const statusColors: Record<string, string> = {
-  sent: "bg-blue-100 text-blue-800",
-  paid: "bg-emerald-100 text-emerald-800",
-  overdue: "bg-red-100 text-red-800",
-};
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { FileText } from "lucide-react";
 
 export default async function PortalBillingPage() {
   let session;
@@ -41,8 +36,8 @@ export default async function PortalBillingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold">Billing</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-semibold text-stone-900">Billing</h1>
+        <p className="text-sm text-stone-500 mt-1">
           Your invoice history and payment records
         </p>
       </div>
@@ -57,19 +52,19 @@ export default async function PortalBillingPage() {
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Outstanding</p>
-                  <p className="text-2xl font-heading font-semibold tabular-nums mt-1">
+                  <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Total Outstanding</p>
+                  <p className="text-2xl font-mono font-semibold tabular-nums mt-1">
                     {formatGBP(totalOutstanding)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Overdue Invoices</p>
-                  <p className={`text-2xl font-heading font-semibold tabular-nums mt-1 ${overdueCount > 0 ? "text-red-600" : ""}`}>
+                  <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Overdue Invoices</p>
+                  <p className={`text-2xl font-mono font-semibold tabular-nums mt-1 ${overdueCount > 0 ? "text-red-600" : ""}`}>
                     {overdueCount}
                   </p>
                 </div>
                 <div className="flex items-end">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-stone-500">
                     For payment inquiries, contact your Outsignal account manager.
                   </p>
                 </div>
@@ -86,19 +81,16 @@ export default async function PortalBillingPage() {
         </CardHeader>
         <CardContent>
           {invoices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Receipt className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No invoices yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Your invoices will appear here once they are issued.
-              </p>
-            </div>
+            <EmptyState
+              icon={FileText}
+              title="No invoices"
+              description="Your invoices will appear here once they are issued."
+              variant="compact"
+            />
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-stone-50">
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Due Date</TableHead>
@@ -109,25 +101,21 @@ export default async function PortalBillingPage() {
               </TableHeader>
               <TableBody>
                 {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">
+                  <TableRow key={invoice.id} className="hover:bg-stone-50 border-stone-100">
+                    <TableCell className="font-medium font-mono">
                       {invoice.invoiceNumber}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground tabular-nums">
+                    <TableCell className="text-sm font-mono text-stone-500 tabular-nums">
                       {formatInvoiceDate(invoice.issueDate)}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground tabular-nums">
+                    <TableCell className="text-sm font-mono text-stone-500 tabular-nums">
                       {formatInvoiceDate(invoice.dueDate)}
                     </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
+                    <TableCell className="text-right font-medium font-mono tabular-nums">
                       {formatGBP(invoice.totalPence)}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        className={`text-xs capitalize ${statusColors[invoice.status] ?? "bg-gray-100 text-gray-800"}`}
-                      >
-                        {invoice.status}
-                      </Badge>
+                      <StatusBadge status={invoice.status} type="invoice" />
                     </TableCell>
                     <TableCell>
                       {invoice.viewToken ? (
@@ -135,12 +123,12 @@ export default async function PortalBillingPage() {
                           href={`/api/invoices/${invoice.id}/pdf?token=${invoice.viewToken}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                          className="text-sm text-[#635BFF] hover:text-[#4b44cc] hover:underline transition-colors"
                         >
                           Download PDF
                         </a>
                       ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
+                        <span className="text-sm text-stone-500">\u2014</span>
                       )}
                     </TableCell>
                   </TableRow>

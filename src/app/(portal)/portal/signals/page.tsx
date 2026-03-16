@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Zap } from "lucide-react";
 
 const SIGNAL_TYPE_LABELS: Record<string, string> = {
@@ -82,11 +83,22 @@ export default async function PortalSignalsPage() {
   const highIntentCount = signals7d.filter((s) => s.isHighIntent).length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="relative min-h-screen p-6 space-y-6">
+      {/* Coming Soon overlay */}
+      <div className="absolute inset-0 bg-gray-100/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
+        <div className="h-14 w-14 rounded-full bg-white shadow-sm flex items-center justify-center mb-4">
+          <Zap className="h-7 w-7 text-stone-400" />
+        </div>
+        <h2 className="text-xl font-semibold text-stone-900">Coming Soon</h2>
+        <p className="text-sm text-stone-500 mt-1">
+          Signal-based outreach is on the way
+        </p>
+      </div>
+
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold">Signal Activity</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-semibold text-stone-900">Signal Activity</h1>
+        <p className="text-sm text-stone-500 mt-1">
           Intent signals detected for your accounts in the last 30 days
         </p>
       </div>
@@ -96,17 +108,20 @@ export default async function PortalSignalsPage() {
         <MetricCard
           label="Signals (7d)"
           value={signals7d.length.toLocaleString()}
+          icon={Zap}
           trend={signals7d.length > 0 ? "up" : "neutral"}
           density="compact"
         />
         <MetricCard
           label="Signals Today"
           value={signalsToday.length.toLocaleString()}
+          icon={Zap}
           density="compact"
         />
         <MetricCard
           label="High Intent (7d)"
           value={highIntentCount.toLocaleString()}
+          icon={Zap}
           trend={highIntentCount > 0 ? "up" : "neutral"}
           detail={
             highIntentCount > 0
@@ -124,20 +139,16 @@ export default async function PortalSignalsPage() {
         </CardHeader>
         <CardContent>
           {signals.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Zap className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No signals detected yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Signal intelligence will appear here once monitoring is
-                configured for your workspace.
-              </p>
-            </div>
+            <EmptyState
+              icon={Zap}
+              title="No signals detected"
+              description="Signal intelligence will appear here once monitoring is configured for your workspace."
+              variant="compact"
+            />
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-stone-50">
                   <TableHead>Time</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Signal Type</TableHead>
@@ -152,8 +163,8 @@ export default async function PortalSignalsPage() {
                   const typeLabel =
                     SIGNAL_TYPE_LABELS[signal.signalType] ?? signal.signalType;
                   return (
-                    <TableRow key={signal.id}>
-                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap tabular-nums">
+                    <TableRow key={signal.id} className="hover:bg-stone-50 border-stone-100">
+                      <TableCell className="text-sm font-mono text-stone-500 whitespace-nowrap tabular-nums">
                         {formatRelativeTime(signal.detectedAt)}
                       </TableCell>
                       <TableCell>
@@ -161,7 +172,7 @@ export default async function PortalSignalsPage() {
                           {signal.companyName ?? signal.companyDomain}
                         </div>
                         {signal.companyName && (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-stone-500">
                             {signal.companyDomain}
                           </div>
                         )}
@@ -176,7 +187,7 @@ export default async function PortalSignalsPage() {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-md truncate">
+                      <TableCell className="text-sm text-stone-500 max-w-md truncate">
                         {signal.title ?? signal.summary ?? "\u2014"}
                       </TableCell>
                     </TableRow>

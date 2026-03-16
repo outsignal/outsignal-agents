@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Circle, AlertCircle, Clock } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { CheckCircle2, CheckCircle, Circle, AlertCircle, Clock } from "lucide-react";
 
 const STAGE_LABELS: Record<string, string> = {
   onboarding: "Onboarding",
@@ -45,24 +46,16 @@ export default async function PortalOnboardingPage() {
     return (
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-2xl font-heading font-bold">Onboarding Progress</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-semibold text-stone-900">Onboarding Progress</h1>
+          <p className="text-sm text-stone-500 mt-1">
             Track your onboarding and campaign setup progress
           </p>
         </div>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Circle className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No onboarding data yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Your onboarding tasks will appear here once your account is set up.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Circle}
+          title="No onboarding data yet"
+          description="Your onboarding tasks will appear here once your account is set up."
+        />
       </div>
     );
   }
@@ -83,6 +76,7 @@ export default async function PortalOnboardingPage() {
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === "complete").length;
   const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const allComplete = totalTasks > 0 && completedTasks === totalTasks;
 
   // Group by stage
   const stageMap = new Map<string, typeof tasks>();
@@ -96,104 +90,115 @@ export default async function PortalOnboardingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold">Onboarding Progress</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-semibold text-stone-900">Onboarding Progress</h1>
+        <p className="text-sm text-stone-500 mt-1">
           Track your onboarding and campaign setup progress
         </p>
       </div>
 
-      {/* Overall Progress */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Overall Progress</p>
-              <p className="text-sm text-muted-foreground tabular-nums">
-                {completedTasks} / {totalTasks} tasks completed
-              </p>
-            </div>
-            <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground text-right tabular-nums">
-              {progressPct}%
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stage Cards */}
-      <div className="grid gap-4">
-        {STAGE_ORDER.filter((s) => stageMap.has(s)).map((stage) => {
-          const stageTasks = stageMap.get(stage)!;
-          const stageCompleted = stageTasks.filter((t) => t.status === "complete").length;
-          const stageTotal = stageTasks.length;
-
-          return (
-            <Card key={stage}>
-              <CardHeader className="pb-3">
+      {/* All tasks complete */}
+      {allComplete ? (
+        <EmptyState
+          icon={CheckCircle}
+          title="All tasks complete"
+          description="Your onboarding is fully complete. Your campaigns are live."
+        />
+      ) : (
+        <>
+          {/* Overall Progress */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="font-heading text-lg">
-                    {STAGE_LABELS[stage] ?? stage}
-                  </CardTitle>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {stageCompleted} / {stageTotal}
-                  </span>
+                  <p className="text-sm font-medium">Overall Progress</p>
+                  <p className="text-sm font-mono text-stone-500 tabular-nums">
+                    {completedTasks} / {totalTasks} tasks completed
+                  </p>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3">
-                  {stageTasks.map((task) => {
-                    const completed = task.status === "complete";
-                    const inProgress = task.status === "in_progress";
-                    const overdue = !completed && !inProgress && isOverdue(task.dueDate);
-                    const dueDateStr = formatDate(task.dueDate);
+                <div className="h-3 w-full rounded-full bg-stone-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <p className="text-xs font-mono text-stone-500 text-right tabular-nums">
+                  {progressPct}%
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-                    return (
-                      <li key={task.id} className="flex items-start gap-3">
-                        {completed ? (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5 shrink-0" />
-                        ) : inProgress ? (
-                          <Clock className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
-                        ) : overdue ? (
-                          <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-                        ) : (
-                          <Circle className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm ${
-                              completed
-                                ? "text-muted-foreground line-through"
-                                : inProgress
-                                  ? "text-amber-700 font-medium"
-                                  : "text-foreground"
-                            }`}
-                          >
-                            {task.title}
-                          </p>
-                          {dueDateStr && (
-                            <p
-                              className={`text-xs mt-0.5 ${
-                                overdue ? "text-red-500 font-medium" : "text-muted-foreground"
-                              }`}
-                            >
-                              {overdue ? "Overdue" : "Due"}: {dueDateStr}
-                            </p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+          {/* Stage Cards */}
+          <div className="grid gap-4">
+            {STAGE_ORDER.filter((s) => stageMap.has(s)).map((stage) => {
+              const stageTasks = stageMap.get(stage)!;
+              const stageCompleted = stageTasks.filter((t) => t.status === "complete").length;
+              const stageTotal = stageTasks.length;
+
+              return (
+                <Card key={stage}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="font-heading text-lg">
+                        {STAGE_LABELS[stage] ?? stage}
+                      </CardTitle>
+                      <span className="text-xs font-mono text-stone-500 tabular-nums">
+                        {stageCompleted} / {stageTotal}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-3">
+                      {stageTasks.map((task) => {
+                        const completed = task.status === "complete";
+                        const inProgress = task.status === "in_progress";
+                        const overdue = !completed && !inProgress && isOverdue(task.dueDate);
+                        const dueDateStr = formatDate(task.dueDate);
+
+                        return (
+                          <li key={task.id} className="flex items-start gap-3">
+                            {completed ? (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5 shrink-0" />
+                            ) : inProgress ? (
+                              <Clock className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+                            ) : overdue ? (
+                              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                            ) : (
+                              <Circle className="h-5 w-5 text-stone-400 mt-0.5 shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p
+                                className={`text-sm ${
+                                  completed
+                                    ? "text-stone-400 line-through"
+                                    : inProgress
+                                      ? "text-amber-700 font-medium"
+                                      : "text-stone-900"
+                                }`}
+                              >
+                                {task.title}
+                              </p>
+                              {dueDateStr && (
+                                <p
+                                  className={`text-xs font-mono mt-0.5 ${
+                                    overdue ? "text-red-500 font-medium" : "text-stone-500"
+                                  }`}
+                                >
+                                  {overdue ? "Overdue" : "Due"}: {dueDateStr}
+                                </p>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

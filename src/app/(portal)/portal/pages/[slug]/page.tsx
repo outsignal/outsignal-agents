@@ -55,21 +55,21 @@ export default async function PortalPageDetailPage({
       <div className="flex items-center gap-2 text-sm">
         <Link
           href="/portal/pages"
-          className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
+          className="text-stone-500 hover:text-stone-900 transition-colors inline-flex items-center gap-1"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Pages
         </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="text-foreground font-medium truncate max-w-[300px]">
+        <span className="text-stone-400">/</span>
+        <span className="text-stone-900 font-medium truncate max-w-[300px]">
           {page.title}
         </span>
       </div>
 
       {/* Title + meta */}
       <div>
-        <h1 className="text-2xl font-heading font-bold">{page.title}</h1>
-        <p className="text-xs text-muted-foreground mt-1">
+        <h1 className="text-2xl font-semibold text-stone-900">{page.title}</h1>
+        <p className="text-xs font-mono text-stone-500 mt-1">
           Last updated: {formatDate(page.updatedAt)}
         </p>
       </div>
@@ -84,7 +84,7 @@ export default async function PortalPageDetailPage({
               </ReactMarkdown>
             </div>
           ) : (
-            <p className="text-muted-foreground italic text-sm">
+            <p className="text-stone-500 italic text-sm">
               This page has no content yet.
             </p>
           )}

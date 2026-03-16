@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -32,7 +31,7 @@ export default async function PortalLinkedInPage() {
   const { workspaceSlug } = session;
 
   const senders = await prisma.sender.findMany({
-    where: { workspaceSlug },
+    where: { workspaceSlug, linkedinProfileUrl: { not: null } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -94,14 +93,6 @@ export default async function PortalLinkedInPage() {
     (d) => d.connections > 0 || d.messages > 0 || d.views > 0,
   );
 
-  const healthColors: Record<string, string> = {
-    healthy: "bg-emerald-100 text-emerald-800",
-    warning: "bg-yellow-100 text-yellow-800",
-    paused: "bg-orange-100 text-orange-800",
-    blocked: "bg-red-100 text-red-800",
-    session_expired: "bg-red-100 text-red-800",
-  };
-
   const now = new Date();
 
   return (
@@ -109,13 +100,13 @@ export default async function PortalLinkedInPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold">LinkedIn</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-semibold text-stone-900">LinkedIn</h1>
+          <p className="text-sm text-stone-500 mt-1">
             Manage your LinkedIn senders and connections
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-stone-500">
             <Clock className="h-3 w-3" />
             Updated{" "}
             {now.toLocaleTimeString("en-US", {
@@ -130,8 +121,8 @@ export default async function PortalLinkedInPage() {
       {senders.length === 0 ? (
         <EmptyState
           icon={LinkedinIcon}
-          title="No LinkedIn senders"
-          description="LinkedIn senders will appear here once they are configured for your workspace."
+          title="No LinkedIn accounts connected"
+          description="To add LinkedIn senders to your account, please contact your account manager."
         />
       ) : (
         <>
@@ -149,7 +140,7 @@ export default async function PortalLinkedInPage() {
               {hasChartData ? (
                 <LinkedInActivityChart data={chartData} />
               ) : (
-                <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                <div className="flex items-center justify-center py-8 text-sm text-stone-500">
                   No LinkedIn activity in the last 7 days.
                 </div>
               )}
@@ -165,7 +156,7 @@ export default async function PortalLinkedInPage() {
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-stone-50">
                     <TableHead>Name</TableHead>
                     <TableHead>Health</TableHead>
                     <TableHead className="text-right">Connections</TableHead>
@@ -178,7 +169,7 @@ export default async function PortalLinkedInPage() {
                   {senders.map((sender) => {
                     const usage = usageMap.get(sender.id);
                     return (
-                      <TableRow key={sender.id}>
+                      <TableRow key={sender.id} className="hover:bg-stone-50 border-stone-100">
                         <TableCell className="font-medium">
                           {sender.name}
                           {sender.linkedinProfileUrl && (
@@ -186,7 +177,7 @@ export default async function PortalLinkedInPage() {
                               href={sender.linkedinProfileUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="ml-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              className="ml-2 text-xs text-stone-500 hover:text-stone-900 transition-colors"
                             >
                               Profile
                             </a>
@@ -195,44 +186,43 @@ export default async function PortalLinkedInPage() {
                         <TableCell>
                           <HealthStatusBadge
                             status={sender.healthStatus}
-                            className={healthColors[sender.healthStatus] ?? ""}
                           />
                         </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
+                        <TableCell className="text-right text-sm font-mono tabular-nums">
                           <span className={
                             (usage?.connectionsSent ?? 0) >= sender.dailyConnectionLimit
                               ? "text-red-500"
                               : (usage?.connectionsSent ?? 0) >= sender.dailyConnectionLimit * 0.8
                                 ? "text-amber-500"
-                                : "text-muted-foreground"
+                                : "text-stone-500"
                           }>
                             {usage?.connectionsSent ?? 0}
                           </span>
-                          <span className="text-muted-foreground/50">/{sender.dailyConnectionLimit}</span>
+                          <span className="text-stone-400">/{sender.dailyConnectionLimit}</span>
                         </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
+                        <TableCell className="text-right text-sm font-mono tabular-nums">
                           <span className={
                             (usage?.messagesSent ?? 0) >= sender.dailyMessageLimit
                               ? "text-red-500"
                               : (usage?.messagesSent ?? 0) >= sender.dailyMessageLimit * 0.8
                                 ? "text-amber-500"
-                                : "text-muted-foreground"
+                                : "text-stone-500"
                           }>
                             {usage?.messagesSent ?? 0}
                           </span>
-                          <span className="text-muted-foreground/50">/{sender.dailyMessageLimit}</span>
+                          <span className="text-stone-400">/{sender.dailyMessageLimit}</span>
                         </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
+                        <TableCell className="text-right text-sm font-mono tabular-nums">
                           <span className={
                             (usage?.profileViews ?? 0) >= sender.dailyProfileViewLimit
                               ? "text-red-500"
                               : (usage?.profileViews ?? 0) >= sender.dailyProfileViewLimit * 0.8
                                 ? "text-amber-500"
-                                : "text-muted-foreground"
+                                : "text-stone-500"
                           }>
                             {usage?.profileViews ?? 0}
                           </span>
-                          <span className="text-muted-foreground/50">/{sender.dailyProfileViewLimit}</span>
+                          <span className="text-stone-400">/{sender.dailyProfileViewLimit}</span>
                         </TableCell>
                         <TableCell>
                           <ConnectButton

@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Users, Building2, ExternalLink } from "lucide-react";
 
 function maskEmail(email: string): string {
@@ -78,8 +79,8 @@ export default async function PortalDataPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold">Enrichment Data</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-semibold text-stone-900">Enrichment Data</h1>
+        <p className="text-sm text-stone-500 mt-1">
           A preview of contacts and companies discovered for your campaigns
         </p>
       </div>
@@ -93,7 +94,7 @@ export default async function PortalDataPage() {
               People
             </CardTitle>
             {totalPeople > 0 && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs font-mono">
                 Showing {Math.min(personWorkspaces.length, 50)} of{" "}
                 {totalPeople.toLocaleString()} contacts
               </Badge>
@@ -102,21 +103,17 @@ export default async function PortalDataPage() {
         </CardHeader>
         <CardContent>
           {personWorkspaces.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Users className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No contacts yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Contact data will appear here as your campaigns are set up and
-                prospects are discovered.
-              </p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No contacts yet"
+              description="Contact data will appear here as your campaigns are set up and prospects are discovered."
+              variant="compact"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-stone-50">
                     <TableHead>Name</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead>Company</TableHead>
@@ -129,19 +126,19 @@ export default async function PortalDataPage() {
                     const p = pw.person;
                     const name =
                       [p.firstName, p.lastName].filter(Boolean).join(" ") ||
-                      "—";
+                      "\u2014";
                     return (
-                      <TableRow key={pw.id}>
+                      <TableRow key={pw.id} className="hover:bg-stone-50 border-stone-100">
                         <TableCell className="font-medium text-sm">
                           {name}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {p.jobTitle || "—"}
+                        <TableCell className="text-sm text-stone-500">
+                          {p.jobTitle || "\u2014"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {p.company || "—"}
+                        <TableCell className="text-sm text-stone-500">
+                          {p.company || "\u2014"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground font-mono">
+                        <TableCell className="text-sm text-stone-500 font-mono">
                           {maskEmail(p.email)}
                         </TableCell>
                         <TableCell>
@@ -150,12 +147,12 @@ export default async function PortalDataPage() {
                               href={p.linkedinUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-muted-foreground hover:text-foreground transition-colors"
+                              className="text-stone-500 hover:text-stone-900 transition-colors"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-stone-400">\u2014</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -177,7 +174,7 @@ export default async function PortalDataPage() {
               Companies
             </CardTitle>
             {totalCompanies > 0 && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs font-mono">
                 Showing {companies.length} of{" "}
                 {totalCompanies.toLocaleString()} companies
               </Badge>
@@ -186,21 +183,17 @@ export default async function PortalDataPage() {
         </CardHeader>
         <CardContent>
           {companies.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Building2 className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No company data yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Company enrichment data will appear here as prospects are
-                discovered and enriched.
-              </p>
-            </div>
+            <EmptyState
+              icon={Building2}
+              title="No company data yet"
+              description="Company enrichment data will appear here as prospects are discovered and enriched."
+              variant="compact"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-stone-50">
                     <TableHead>Company Name</TableHead>
                     <TableHead>Domain</TableHead>
                     <TableHead>Industry</TableHead>
@@ -209,18 +202,18 @@ export default async function PortalDataPage() {
                 </TableHeader>
                 <TableBody>
                   {companies.map((c) => (
-                    <TableRow key={c.id}>
+                    <TableRow key={c.id} className="hover:bg-stone-50 border-stone-100">
                       <TableCell className="font-medium text-sm">
                         {c.name}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm font-mono text-stone-500">
                         {c.domain}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {c.industry || "—"}
+                      <TableCell className="text-sm text-stone-500">
+                        {c.industry || "\u2014"}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground tabular-nums">
-                        {c.headcount?.toLocaleString() || "—"}
+                      <TableCell className="text-right text-sm font-mono text-stone-500 tabular-nums">
+                        {c.headcount?.toLocaleString() || "\u2014"}
                       </TableCell>
                     </TableRow>
                   ))}

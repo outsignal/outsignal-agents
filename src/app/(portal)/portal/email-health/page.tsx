@@ -14,7 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Mail } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Mail, ShieldCheck, Activity } from "lucide-react";
 import type { SenderEmail } from "@/lib/emailbison/types";
 
 interface SenderHealthRow {
@@ -103,7 +105,7 @@ export default async function PortalEmailHealthPage() {
   if (!workspace) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-12 text-stone-500">
           Your workspace is being set up. Check back soon.
         </div>
       </div>
@@ -210,21 +212,6 @@ export default async function PortalEmailHealthPage() {
   const bounceTrend: "up" | "warning" | "down" =
     avgBounceRate > 5 ? "down" : avgBounceRate > 3 ? "warning" : "up";
 
-  const healthBadgeStyles = {
-    healthy: "bg-emerald-100 text-emerald-800",
-    elevated: "bg-blue-100 text-blue-800",
-    warning: "bg-yellow-100 text-yellow-800",
-    critical: "bg-red-100 text-red-800",
-  };
-
-  // DB bounce status badge styles (includes "elevated" from DB model)
-  const emailBounceStatusStyles: Record<string, string> = {
-    healthy: "bg-emerald-100 text-emerald-800",
-    elevated: "bg-blue-100 text-blue-800",
-    warning: "bg-yellow-100 text-yellow-800",
-    critical: "bg-red-100 text-red-800",
-  };
-
   function dnsBadgeStyle(status: string | null, type: "spf" | "dkim" | "dmarc") {
     if (!status || status === "missing" || status === "fail")
       return "bg-red-100 text-red-800";
@@ -243,8 +230,8 @@ export default async function PortalEmailHealthPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold">Email Health</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-semibold text-stone-900">Email Health</h1>
+        <p className="text-sm text-stone-500 mt-1">
           Sender inbox health and deliverability metrics
         </p>
       </div>
@@ -259,7 +246,7 @@ export default async function PortalEmailHealthPage() {
       {/* Disconnected inboxes alert */}
       {disconnected.length > 0 && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-4">
-          <h3 className="font-heading font-bold text-red-900">
+          <h3 className="font-semibold text-red-900">
             {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""}{" "}
             disconnected
           </h3>
@@ -283,6 +270,7 @@ export default async function PortalEmailHealthPage() {
           <MetricCard
             label="Connected Inboxes"
             value={`${connected}/${totalSenders}`}
+            icon={Mail}
             trend={disconnected.length > 0 ? "down" : "up"}
             detail={
               disconnected.length > 0
@@ -293,7 +281,9 @@ export default async function PortalEmailHealthPage() {
           />
           <MetricCard
             label="Avg Bounce Rate"
-            value={`${avgBounceRate.toFixed(2)}%`}
+            value={avgBounceRate.toFixed(2)}
+            suffix="%"
+            icon={Activity}
             trend={bounceTrend}
             detail={
               bounceTrend === "up"
@@ -306,7 +296,9 @@ export default async function PortalEmailHealthPage() {
           />
           <MetricCard
             label="Avg Reply Rate"
-            value={`${avgReplyRate.toFixed(2)}%`}
+            value={avgReplyRate.toFixed(2)}
+            suffix="%"
+            icon={Mail}
             trend={avgReplyRate > 1 ? "up" : "neutral"}
             density="compact"
           />
@@ -320,19 +312,16 @@ export default async function PortalEmailHealthPage() {
         </CardHeader>
         <CardContent>
           {domainHealthRows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Mail className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No domain health data</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Domain DNS health records will appear here once your sending domains are checked.
-              </p>
-            </div>
+            <EmptyState
+              icon={ShieldCheck}
+              title="No domain health data"
+              description="Domain DNS health records will appear here once your sending domains are checked."
+              variant="compact"
+            />
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-stone-50">
                   <TableHead>Domain</TableHead>
                   <TableHead>SPF</TableHead>
                   <TableHead>DKIM</TableHead>
@@ -342,7 +331,7 @@ export default async function PortalEmailHealthPage() {
               </TableHeader>
               <TableBody>
                 {domainHealthRows.map((row) => (
-                  <TableRow key={row.domain}>
+                  <TableRow key={row.domain} className="hover:bg-stone-50 border-stone-100">
                     <TableCell className="font-mono text-sm font-medium">
                       {row.domain}
                     </TableCell>
@@ -368,19 +357,7 @@ export default async function PortalEmailHealthPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        className={`text-xs ${
-                          row.overallHealth === "healthy"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : row.overallHealth === "warning"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : row.overallHealth === "critical"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {row.overallHealth}
-                      </Badge>
+                      <StatusBadge status={row.overallHealth} type="health" />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -397,20 +374,16 @@ export default async function PortalEmailHealthPage() {
         </CardHeader>
         <CardContent>
           {senders.length === 0 && !error ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Mail className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium">No senders configured</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Sender inboxes will appear here once they are connected to your
-                workspace.
-              </p>
-            </div>
+            <EmptyState
+              icon={ShieldCheck}
+              title="No senders configured"
+              description="Sender inboxes will appear here once they are connected to your workspace."
+              variant="compact"
+            />
           ) : senders.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-stone-50">
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Sent</TableHead>
@@ -429,29 +402,23 @@ export default async function PortalEmailHealthPage() {
                   const dbData = dbSenderMap.get(sender.email.toLowerCase());
                   const emailBounceStatus = dbData?.emailBounceStatus ?? null;
                   return (
-                    <TableRow key={sender.email}>
+                    <TableRow key={sender.email} className="hover:bg-stone-50 border-stone-100">
                       <TableCell className="font-medium text-sm">
                         {sender.email}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs ${
-                            sender.status === "Connected"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {sender.status}
-                        </Badge>
+                        <StatusBadge
+                          status={sender.status === "Connected" ? "healthy" : "critical"}
+                          type="health"
+                        />
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {sender.emailsSent.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {sender.bounced.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-mono tabular-nums">
                         <span
                           className={
                             sender.healthStatus === "critical"
@@ -464,44 +431,36 @@ export default async function PortalEmailHealthPage() {
                           {sender.bounceRate.toFixed(1)}%
                         </span>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {sender.replies.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {sender.replyRate.toFixed(1)}%
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          className={`text-xs ${healthBadgeStyles[sender.healthStatus]}`}
-                        >
-                          {sender.healthStatus}
-                        </Badge>
+                        <StatusBadge status={sender.healthStatus} type="health" />
                       </TableCell>
                       <TableCell>
                         {emailBounceStatus ? (
-                          <Badge
-                            className={`text-xs ${emailBounceStatusStyles[emailBounceStatus] ?? "bg-gray-100 text-gray-600"}`}
-                          >
-                            {emailBounceStatus}
-                          </Badge>
+                          <StatusBadge status={emailBounceStatus} type="health" />
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-stone-500">—</span>
                         )}
                       </TableCell>
                       <TableCell>
                         {dbData?.recentEventNote ? (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-xs text-stone-500">
                             {dbData.recentEventNote}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-stone-500">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {dbData?.warmupDay != null ? (
                           <span className="text-xs">{dbData.warmupDay}</span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-stone-500">—</span>
                         )}
                       </TableCell>
                     </TableRow>
