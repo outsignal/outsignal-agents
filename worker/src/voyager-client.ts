@@ -80,11 +80,12 @@ export class VoyagerClient {
 
   constructor(liAt: string, jsessionId: string, proxyUrl?: string) {
     this.liAt = liAt;
-    // Strip surrounding quotes from JSESSIONID for CSRF token derivation
-    // JSESSIONID stored form: "ajax:3972979001005769271"
-    // CSRF token required form: ajax:3972979001005769271
-    this.jsessionId = jsessionId;
-    this.csrfToken = jsessionId.replace(/"/g, "");
+    // Normalize JSESSIONID — strip surrounding quotes if present.
+    // Browser CDP may return "ajax:1234" (with quotes) or ajax:1234 (without).
+    // We store the unquoted value and add quotes in the Cookie header.
+    const cleanJsession = jsessionId.replace(/^"|"$/g, "");
+    this.jsessionId = cleanJsession;
+    this.csrfToken = cleanJsession;
 
     // Create proxy dispatcher — supports both HTTP(S) and SOCKS5 URLs
     if (proxyUrl) {
@@ -154,20 +155,36 @@ export class VoyagerClient {
   /**
    * Lightweight session health check.
    * Fetches /me (own mini-profile) — zero side effects, no rate limit pressure.
-   * Returns true if cookies + proxy are working, false on any error.
+   *
+   * Returns:
+   *   "ok"             — session is valid
+   *   "expired"        — 401/403 (genuine auth failure)
+   *   "rate_limited"   — 429 (session may be fine, back off)
+   *   "checkpoint"     — account under verification
+   *   "network_error"  — transient failure (don't mark expired)
    */
-  async testSession(): Promise<boolean> {
+  async testSession(): Promise<"ok" | "expired" | "rate_limited" | "checkpoint" | "network_error"> {
     try {
       const response = await this.request("/me");
       if (
         response.url.includes("/checkpoint/") ||
         response.url.includes("/challenge/")
       ) {
-        return false;
+        console.log("[VoyagerClient] testSession: checkpoint/challenge redirect detected");
+        return "checkpoint";
       }
-      return true;
-    } catch {
-      return false;
+      return "ok";
+    } catch (err) {
+      if (err instanceof VoyagerError) {
+        console.log(`[VoyagerClient] testSession failed: HTTP ${err.status} — ${err.body.slice(0, 200)}`);
+        if (err.status === 401 || err.status === 403) return "expired";
+        if (err.status === 429) return "rate_limited";
+        // Other HTTP errors (5xx, etc.) — treat as transient
+        return "network_error";
+      }
+      // Non-HTTP errors (DNS, timeout, connection refused)
+      console.log(`[VoyagerClient] testSession network error: ${err instanceof Error ? err.message : String(err)}`);
+      return "network_error";
     }
   }
 

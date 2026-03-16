@@ -13,6 +13,7 @@
 import { ApiClient } from "./api-client.js";
 import { VoyagerClient } from "./voyager-client.js";
 import type { ActionResult, ConnectionStatus } from "./voyager-client.js";
+import { LinkedInBrowser } from "./linkedin-browser.js";
 import {
   isWithinBusinessHours,
   msUntilBusinessHours,
@@ -56,7 +57,10 @@ export class Worker {
   private activeClients: Map<string, VoyagerClient> = new Map();
   /** Last successful session test per sender (epoch ms). */
   private lastSessionCheck: Map<string, number> = new Map();
+  /** Auto-re-login attempt count per sender per day (reset daily). */
+  private reloginAttempts: Map<string, { count: number; date: string }> = new Map();
   private static readonly SESSION_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+  private static readonly MAX_RELOGIN_PER_DAY = 2;
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -284,25 +288,50 @@ export class Worker {
     const now = Date.now();
     if (now - lastCheck > Worker.SESSION_CHECK_INTERVAL_MS) {
       console.log(`[Worker] Testing session health for ${sender.name}...`);
-      const sessionValid = await client.testSession();
+      const sessionResult = await client.testSession();
 
-      if (!sessionValid) {
-        console.warn(
-          `[Worker] Session health check FAILED for ${sender.name} — marking session_expired`,
-        );
+      if (sessionResult === "ok") {
+        console.log(`[Worker] Session OK for ${sender.name}`);
+        this.lastSessionCheck.set(sender.id, now);
+      } else if (sessionResult === "rate_limited") {
+        // Session might be fine — just back off, don't mark expired
+        console.warn(`[Worker] Rate limited during health check for ${sender.name} — skipping this tick`);
+        return;
+      } else if (sessionResult === "network_error") {
+        // Transient failure — don't mark expired, retry next tick
+        console.warn(`[Worker] Network error during health check for ${sender.name} — will retry next tick`);
+        return;
+      } else {
+        // "expired" or "checkpoint" — genuine session failure
+        console.warn(`[Worker] Session health check: ${sessionResult} for ${sender.name}`);
         this.activeClients.delete(sender.id);
         this.lastSessionCheck.delete(sender.id);
-        await this.api.updateSenderHealth(sender.id, "session_expired").catch((err) =>
-          console.error(`[Worker] Failed to update sender health:`, err),
-        );
-        for (const action of actions) {
-          await this.safeMarkFailed(action.id, "session_expired");
-        }
-        return;
-      }
 
-      console.log(`[Worker] Session OK for ${sender.name}`);
-      this.lastSessionCheck.set(sender.id, now);
+        // Attempt auto-re-login if credentials are available
+        const reloginSuccess = await this.attemptAutoRelogin(sender);
+
+        if (reloginSuccess) {
+          // Re-create client with fresh cookies
+          try {
+            client = await this.getOrCreateVoyagerClient(sender);
+          } catch (error) {
+            console.error(`[Worker] Failed to create client after re-login for ${sender.name}:`, error);
+            for (const action of actions) {
+              await this.safeMarkFailed(action.id, "session_expired");
+            }
+            return;
+          }
+        } else {
+          // Re-login failed or not available — mark expired
+          await this.api.updateSenderHealth(sender.id, "session_expired").catch((err) =>
+            console.error(`[Worker] Failed to update sender health:`, err),
+          );
+          for (const action of actions) {
+            await this.safeMarkFailed(action.id, "session_expired");
+          }
+          return;
+        }
+      }
     }
 
     // Execute each action with delays between them
@@ -330,6 +359,77 @@ export class Worker {
         console.log(`[Worker] Waiting ${Math.round(delay / 1000)}s before next action`);
         await sleep(delay);
       }
+    }
+  }
+
+  /**
+   * Attempt automatic re-login for a sender whose session has expired.
+   * Uses stored credentials (linkedinEmail + encrypted password + optional TOTP).
+   * Rate-limited to MAX_RELOGIN_PER_DAY attempts per sender per calendar day.
+   *
+   * Returns true if re-login succeeded and fresh cookies are available.
+   */
+  private async attemptAutoRelogin(sender: SenderConfig): Promise<boolean> {
+    // Check daily re-login budget
+    const today = new Date().toISOString().slice(0, 10);
+    const attempts = this.reloginAttempts.get(sender.id);
+    if (attempts && attempts.date === today && attempts.count >= Worker.MAX_RELOGIN_PER_DAY) {
+      console.warn(`[Worker] Auto-re-login budget exhausted for ${sender.name} (${attempts.count}/${Worker.MAX_RELOGIN_PER_DAY} today)`);
+      return false;
+    }
+
+    // Fetch decrypted credentials from API
+    const creds = await this.api.getSenderCredentials(sender.id);
+    if (!creds) {
+      console.warn(`[Worker] No stored credentials for ${sender.name} — cannot auto-re-login`);
+      return false;
+    }
+
+    // Track attempt
+    const currentAttempts = attempts?.date === today ? attempts.count : 0;
+    this.reloginAttempts.set(sender.id, { count: currentAttempts + 1, date: today });
+
+    console.log(`[Worker] Session expired, attempting auto-re-login for ${sender.name} (attempt ${currentAttempts + 1}/${Worker.MAX_RELOGIN_PER_DAY})`);
+
+    try {
+      // Create browser and perform headless login
+      const browser = new LinkedInBrowser([], sender.proxyUrl ?? undefined);
+      browser.setSenderId(sender.id);
+
+      const success = await browser.login(creds.email, creds.password, creds.totpSecret);
+
+      if (success) {
+        console.log(`[Worker] Auto-re-login successful for ${sender.name}`);
+
+        // Extract and save Voyager cookies
+        const voyagerCookies = browser.getVoyagerCookies();
+        if (voyagerCookies) {
+          await this.api.saveVoyagerCookies(sender.id, voyagerCookies);
+          console.log(`[Worker] Saved fresh Voyager cookies for ${sender.name}`);
+        } else {
+          console.warn(`[Worker] Re-login succeeded but no Voyager cookies extracted for ${sender.name}`);
+          await browser.close();
+          return false;
+        }
+
+        // Reset health to healthy
+        await this.api.updateSenderHealth(sender.id, "healthy").catch((err) =>
+          console.error(`[Worker] Failed to reset sender health after re-login:`, err),
+        );
+
+        await browser.close();
+        return true;
+      } else {
+        console.error(`[Worker] Auto-re-login failed for ${sender.name} — login returned false`);
+        await browser.close();
+        return false;
+      }
+    } catch (error) {
+      console.error(
+        `[Worker] Auto-re-login error for ${sender.name}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      return false;
     }
   }
 

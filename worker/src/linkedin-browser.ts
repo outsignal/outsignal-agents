@@ -1378,7 +1378,11 @@ export class LinkedInBrowser {
         this.log(`Missing cookies — li_at: ${!!liAtCookie}, JSESSIONID: ${!!jsessionCookie}`);
         return null;
       }
-      return { liAt: liAtCookie.value, jsessionId: jsessionCookie.value };
+      // Strip surrounding quotes from JSESSIONID — browser CDP may return
+      // "ajax:1234" (with quotes). VoyagerClient adds its own quotes in the
+      // Cookie header, so double-quoting breaks authentication.
+      const cleanJsession = jsessionCookie.value.replace(/^"|"$/g, "");
+      return { liAt: liAtCookie.value, jsessionId: cleanJsession };
     } catch (err) {
       this.log(`extractCookiesViaCDP error: ${err}`);
       return null;
