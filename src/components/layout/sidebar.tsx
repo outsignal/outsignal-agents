@@ -33,6 +33,7 @@ import {
   FileText,
   TrendingUp,
   BookOpen,
+  MessageCircle,
   MessageSquareText,
   Brain,
   ShieldCheck,
@@ -45,6 +46,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Tooltip,
   TooltipTrigger,
@@ -98,6 +100,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
       { href: "/pipeline", label: "Pipeline", icon: Target },
       { href: "/inbox", label: "Inbox", icon: Inbox },
+      { href: "/support", label: "Support", icon: MessageCircle },
     ],
   },
   {
@@ -235,7 +238,7 @@ function CollapsibleGroup({
       {/* Group header */}
       <button
         onClick={onToggle}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 group cursor-pointer"
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 mt-2 group cursor-pointer"
       >
         <ChevronRight
           className={cn(
@@ -270,6 +273,7 @@ function CollapsibleGroup({
 export function Sidebar({ workspaces }: SidebarProps) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -354,6 +358,24 @@ export function Sidebar({ workspaces }: SidebarProps) {
     };
   }, []);
 
+  // Fetch support unread count
+  useEffect(() => {
+    let active = true;
+    async function fetchSupportUnread() {
+      try {
+        const res = await fetch("/api/support/unread-count");
+        const json = await res.json();
+        if (active) setSupportUnreadCount(json.count ?? 0);
+      } catch {}
+    }
+    fetchSupportUnread();
+    const interval = setInterval(fetchSupportUnread, 30_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // Prevent layout shift: render expanded width until client hydration completes
   const isCollapsed = mounted ? collapsed : false;
 
@@ -367,6 +389,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
         : pathname === item.href || pathname.startsWith(item.href + "/");
 
     const isNotification = item.href === "/notifications";
+    const isSupport = item.href === "/support";
 
     const linkContent = (
       <Link
@@ -404,6 +427,16 @@ export function Sidebar({ workspaces }: SidebarProps) {
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
+        {isSupport && supportUnreadCount > 0 && (
+          <span
+            className={cn(
+              "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white leading-none",
+              isCollapsed ? "absolute -top-1 -right-1" : "ml-auto",
+            )}
+          >
+            {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
+          </span>
+        )}
       </Link>
     );
 
@@ -417,6 +450,9 @@ export function Sidebar({ workspaces }: SidebarProps) {
             {item.label}
             {isNotification && unreadCount > 0 && (
               <span className="ml-1.5 text-red-400">({unreadCount})</span>
+            )}
+            {isSupport && supportUnreadCount > 0 && (
+              <span className="ml-1.5 text-red-400">({supportUnreadCount})</span>
             )}
           </TooltipContent>
         </Tooltip>
@@ -467,7 +503,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
 
       {/* Scrollable nav */}
       <ScrollArea className={cn("flex-1 py-3", isCollapsed ? "px-1.5" : "px-2.5")}>
-        <nav aria-label="Main navigation" className="space-y-4">
+        <nav aria-label="Main navigation" className="space-y-1">
           {navGroups.map((group) => {
             const isGroupOpen = !collapsedGroups[group.key];
             return (
