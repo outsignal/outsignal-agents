@@ -144,7 +144,7 @@ export default function SendersPage() {
         {/* Workspace filter */}
         {workspaces.length > 1 && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Filter by workspace:</span>
+            <span className="text-xs text-stone-500">Workspace:</span>
             <Select value={filterWorkspace} onValueChange={setFilterWorkspace}>
               <SelectTrigger className="w-48 h-8 text-sm">
                 <SelectValue />

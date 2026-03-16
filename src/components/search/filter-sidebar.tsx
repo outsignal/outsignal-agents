@@ -2,7 +2,7 @@
 
 import { useDebouncedCallback } from "use-debounce";
 import { useState } from "react";
-import { SlidersHorizontal, X } from "lucide-react";
+import { SlidersHorizontal, X, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface FilterSidebarProps {
   verticals: string[];
@@ -15,6 +15,7 @@ interface FilterSidebarProps {
   onEnrichmentChange: (value: string) => void;
   onWorkspaceChange: (value: string) => void;
   onCompanyChange: (value: string) => void;
+  onClearAll?: () => void;
 }
 
 const ENRICHMENT_OPTIONS = [
@@ -41,9 +42,11 @@ export function FilterSidebar({
   onEnrichmentChange,
   onWorkspaceChange,
   onCompanyChange,
+  onClearAll,
 }: FilterSidebarProps) {
   const [companyInput, setCompanyInput] = useState(companyFilter);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const debouncedCompanyChange = useDebouncedCallback((value: string) => {
     onCompanyChange(value);
@@ -55,15 +58,61 @@ export function FilterSidebar({
     (selectedWorkspace ? 1 : 0) +
     (companyFilter ? 1 : 0);
 
+  // Quick-select pills for collapsed mode
+  const quickPills: Array<{ label: string; active: boolean; onToggle: () => void }> = [];
+
+  // Add enrichment pills
+  (["full", "partial", "missing"] as const).forEach((status) => {
+    const labels: Record<string, string> = { full: "Enriched", partial: "Partial", missing: "Missing" };
+    quickPills.push({
+      label: labels[status],
+      active: selectedEnrichment === status,
+      onToggle: () => onEnrichmentChange(selectedEnrichment === status ? "" : status),
+    });
+  });
+
+  // Add top workspace pills
+  workspaces.slice(0, 4).forEach((ws) => {
+    quickPills.push({
+      label: ws,
+      active: selectedWorkspace === ws,
+      onToggle: () => onWorkspaceChange(selectedWorkspace === ws ? "" : ws),
+    });
+  });
+
+  // Add top vertical pills
+  verticals.slice(0, 4).forEach((v) => {
+    quickPills.push({
+      label: v,
+      active: selectedVerticals.includes(v),
+      onToggle: () => onVerticalToggle(v),
+    });
+  });
+
   const filterContent = (
     <>
+      {/* Clear all link */}
+      {activeFilterCount > 0 && onClearAll && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {activeFilterCount} active filter{activeFilterCount !== 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={onClearAll}
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
       {/* Vertical filter */}
       {verticals.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
             Vertical
           </h3>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {verticals.map((vertical) => {
               const checked = selectedVerticals.includes(vertical);
               return (
@@ -95,10 +144,10 @@ export function FilterSidebar({
 
       {/* Enrichment status filter */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
           Enrichment
         </h3>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {ENRICHMENT_OPTIONS.map((opt) => {
             const isSelected = selectedEnrichment === opt.value;
             return (
@@ -140,7 +189,7 @@ export function FilterSidebar({
       {/* Workspace filter */}
       {workspaces.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
             Workspace
           </h3>
           <select
@@ -162,7 +211,7 @@ export function FilterSidebar({
 
       {/* Company sub-filter */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
           Company
         </h3>
         <input
@@ -181,10 +230,60 @@ export function FilterSidebar({
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:block w-60 flex-shrink-0 space-y-6">
-        {filterContent}
-      </aside>
+      {/* Desktop: collapsible sidebar */}
+      <div className="hidden md:block flex-shrink-0">
+        {/* Toggle button */}
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border border-border rounded-md bg-secondary text-foreground hover:bg-muted transition-colors mb-3"
+        >
+          {expanded ? (
+            <ChevronLeft className="w-3.5 h-3.5" />
+          ) : (
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+          )}
+          {expanded ? "Hide filters" : "Filters"}
+          {activeFilterCount > 0 && (
+            <span className="ml-0.5 inline-flex items-center justify-center min-w-[16px] h-4 rounded-full bg-brand text-white text-[10px] font-bold px-1">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+
+        {/* Expanded sidebar */}
+        {expanded && (
+          <aside className="w-[280px] space-y-5 animate-fade-in">
+            {filterContent}
+          </aside>
+        )}
+
+        {/* Collapsed: horizontal pill bar */}
+        {!expanded && (
+          <div className="flex flex-wrap gap-1.5 animate-fade-in">
+            {quickPills.map((pill) => (
+              <button
+                key={pill.label}
+                onClick={pill.onToggle}
+                className={`inline-flex items-center px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                  pill.active
+                    ? "bg-brand/10 border-brand/30 text-brand-strong font-medium"
+                    : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-stone-300"
+                }`}
+              >
+                {pill.label}
+              </button>
+            ))}
+            {activeFilterCount > 0 && onClearAll && (
+              <button
+                onClick={onClearAll}
+                className="inline-flex items-center px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Mobile filter toggle button */}
       <div className="md:hidden flex-shrink-0">
@@ -199,7 +298,7 @@ export function FilterSidebar({
           )}
           Filters
           {activeFilterCount > 0 && (
-            <span className="ml-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand text-brand-foreground text-[10px] font-bold">
+            <span className="ml-0.5 inline-flex items-center justify-center min-w-[16px] h-4 rounded-full bg-brand text-white text-[10px] font-bold px-1">
               {activeFilterCount}
             </span>
           )}
@@ -207,7 +306,7 @@ export function FilterSidebar({
 
         {/* Mobile expandable filter panel */}
         {mobileOpen && (
-          <div className="mt-3 p-4 border border-border rounded-lg bg-card space-y-6">
+          <div className="mt-3 p-4 border border-border rounded-lg bg-card space-y-5 animate-fade-in">
             {filterContent}
           </div>
         )}

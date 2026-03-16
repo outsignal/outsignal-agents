@@ -163,16 +163,17 @@ export default function DeliverabilityPage() {
 
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Workspace filter */}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-xs text-stone-500">Workspace:</span>
           <Select
             value={workspace || "all"}
             onValueChange={handleWorkspaceChange}
           >
             <SelectTrigger className="w-48">
-              <SelectValue placeholder="All Workspaces" />
+              <SelectValue placeholder="All workspaces" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Workspaces</SelectItem>
+              <SelectItem value="all">All workspaces</SelectItem>
               {workspaceOptions.map((slug) => (
                 <SelectItem key={slug} value={slug}>
                   {slug}

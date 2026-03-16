@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { MetricCard } from "@/components/dashboard/metric-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -230,11 +229,9 @@ export default async function EmailHealthPage({
         </div>
 
         {/* Sender Health table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading">Sender Health</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div>
+          <h2 className="text-base font-semibold text-stone-900 mb-3">Sender Health</h2>
+          <div className="rounded-lg border border-stone-200 overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -271,13 +268,13 @@ export default async function EmailHealthPage({
                         {sender.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {sender.emailsSent.toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {sender.bounced.toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       <span
                         className={
                           sender.healthStatus === "critical"
@@ -290,10 +287,10 @@ export default async function EmailHealthPage({
                         {sender.bounceRate.toFixed(1)}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {sender.replies.toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {sender.replyRate.toFixed(1)}%
                     </TableCell>
                     <TableCell>
@@ -317,14 +314,14 @@ export default async function EmailHealthPage({
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalSenders)} of {totalSenders} senders
+            <p className="text-sm text-stone-500">
+              Showing <span className="font-mono">{(currentPage - 1) * PAGE_SIZE + 1}</span>–<span className="font-mono">{Math.min(currentPage * PAGE_SIZE, totalSenders)}</span> of <span className="font-mono">{totalSenders}</span> senders
             </p>
             <div className="flex items-center gap-2">
               {currentPage > 1 && (

@@ -12,8 +12,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FilterSidebar } from "./filter-sidebar";
 import { EnrichmentBadge } from "./enrichment-badge";
 import { BulkActionBar } from "./bulk-action-bar";
@@ -54,25 +56,25 @@ function SkeletonRows() {
       {Array.from({ length: 8 }).map((_, i) => (
         <TableRow key={i} className="border-border">
           <TableCell className="w-10">
-            <div className="h-4 w-4 bg-muted rounded animate-pulse" />
+            <Skeleton className="h-4 w-4 rounded" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-28" />
+            <Skeleton className="h-4 w-28 rounded" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-40" />
+            <Skeleton className="h-4 w-40 rounded" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-32" />
+            <Skeleton className="h-4 w-32 rounded" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-28" />
+            <Skeleton className="h-4 w-28 rounded" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-20" />
+            <Skeleton className="h-4 w-20 rounded" />
           </TableCell>
           <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-16" />
+            <Skeleton className="h-4 w-16 rounded" />
           </TableCell>
         </TableRow>
       ))}
@@ -133,6 +135,19 @@ export function PeopleSearchPage() {
 
   // Track if we've loaded filter options at least once
   const filterOptionsLoaded = useRef(false);
+
+  // ─── Sort state ─────────────────────────────────────────────────────────────
+  const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+
+  const handleSort = useCallback((key: string) => {
+    setSort((prev) => {
+      if (prev?.key === key) {
+        if (prev.direction === "asc") return { key, direction: "desc" };
+        return null;
+      }
+      return { key, direction: "asc" };
+    });
+  }, []);
 
   // ─── Selection state (ephemeral UI state, not in URL) ─────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -250,6 +265,17 @@ export function PeopleSearchPage() {
     handleClearSelection();
   };
 
+  const handleClearAllFilters = () => {
+    void setParams({
+      q: "",
+      vertical: [],
+      enrichment: "",
+      workspace: "",
+      company: "",
+      page: 1,
+    });
+  };
+
   // Current filter params for "select all matching" mode
   const currentFilterParams: Record<string, unknown> = {};
   if (params.q) currentFilterParams.q = params.q;
@@ -292,6 +318,33 @@ export function PeopleSearchPage() {
 
   const showBulkBar = selectedIds.size > 0 || selectAllMatching;
 
+  // Client-side sort for current page data
+  const sortedPeople = (() => {
+    if (!data || !sort) return data?.people ?? [];
+    return [...data.people].sort((a, b) => {
+      let aVal: string | null = null;
+      let bVal: string | null = null;
+
+      if (sort.key === "name") {
+        aVal = [a.firstName, a.lastName].filter(Boolean).join(" ") || null;
+        bVal = [b.firstName, b.lastName].filter(Boolean).join(" ") || null;
+      } else if (sort.key === "email") {
+        aVal = a.email;
+        bVal = b.email;
+      } else if (sort.key === "vertical") {
+        aVal = a.vertical;
+        bVal = b.vertical;
+      }
+
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+
+      const cmp = aVal.localeCompare(bVal);
+      return sort.direction === "asc" ? cmp : -cmp;
+    });
+  })();
+
   return (
     <div>
       {/* Header */}
@@ -300,259 +353,266 @@ export function PeopleSearchPage() {
           <h1 className="text-xl font-semibold text-foreground">People</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {data
-              ? `${data.total.toLocaleString()} people${loading ? " (refreshing…)" : ""}`
+              ? `${data.total.toLocaleString()} people${loading ? " (refreshing...)" : ""}`
               : loading
-              ? "Loading…"
+              ? "Loading..."
               : "Search and filter your lead database"}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 md:gap-6 p-4 sm:p-6">
-        {/* Left sidebar */}
-        <FilterSidebar
-          verticals={filterOptions.verticals}
-          workspaces={filterOptions.workspaces}
-          selectedVerticals={params.vertical}
-          selectedEnrichment={params.enrichment}
-          selectedWorkspace={params.workspace}
-          companyFilter={params.company}
-          onVerticalToggle={(v) => {
-            const next = params.vertical.includes(v)
-              ? params.vertical.filter((x) => x !== v)
-              : [...params.vertical, v];
-            void setParams({ vertical: next, page: 1 });
-          }}
-          onEnrichmentChange={(v) => void setParams({ enrichment: v, page: 1 })}
-          onWorkspaceChange={(v) => void setParams({ workspace: v, page: 1 })}
-          onCompanyChange={(v) => void setParams({ company: v, page: 1 })}
-        />
+      <div className="p-4 sm:p-6 space-y-4">
+        {/* Filter sidebar / pill bar */}
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+          <FilterSidebar
+            verticals={filterOptions.verticals}
+            workspaces={filterOptions.workspaces}
+            selectedVerticals={params.vertical}
+            selectedEnrichment={params.enrichment}
+            selectedWorkspace={params.workspace}
+            companyFilter={params.company}
+            onVerticalToggle={(v) => {
+              const next = params.vertical.includes(v)
+                ? params.vertical.filter((x) => x !== v)
+                : [...params.vertical, v];
+              void setParams({ vertical: next, page: 1 });
+            }}
+            onEnrichmentChange={(v) => void setParams({ enrichment: v, page: 1 })}
+            onWorkspaceChange={(v) => void setParams({ workspace: v, page: 1 })}
+            onCompanyChange={(v) => void setParams({ company: v, page: 1 })}
+            onClearAll={handleClearAllFilters}
+          />
 
-        {/* Main content */}
-        <div className="flex-1 min-w-0 space-y-4">
-          {/* Search input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
-            <input
-              type="text"
-              placeholder="Search name, email, company, title…"
-              defaultValue={params.q}
-              onChange={(e) => debouncedSetQ(e.target.value)}
-              className="w-full border border-border text-sm text-foreground placeholder-muted-foreground rounded-md pl-9 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-brand"
-            />
-          </div>
-
-          {/* Active filter chips */}
-          {activeChips.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {activeChips.map((chip) => (
-                <FilterChip
-                  key={chip.label}
-                  label={chip.label}
-                  onRemove={chip.onRemove}
-                />
-              ))}
-              <button
-                onClick={() =>
-                  void setParams({
-                    q: "",
-                    vertical: [],
-                    enrichment: "",
-                    workspace: "",
-                    company: "",
-                    page: 1,
-                  })
-                }
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 px-1"
-              >
-                Clear all
-              </button>
+          {/* Main content */}
+          <div className="flex-1 min-w-0 space-y-4">
+            {/* Search input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
+              <input
+                type="text"
+                placeholder="Search name, email, company, title..."
+                defaultValue={params.q}
+                onChange={(e) => debouncedSetQ(e.target.value)}
+                className="w-full border border-border text-sm text-foreground placeholder-muted-foreground rounded-md pl-9 pr-4 py-2 focus:outline-none focus:ring-1 focus:ring-brand"
+              />
             </div>
-          )}
 
-          {/* Error state */}
-          {error && (
-            <ErrorBanner message={`Failed to load people: ${error}`} onRetry={() => void fetchData()} />
-          )}
-
-          {/* Select all matching banner */}
-          {allCurrentPageSelected && !selectAllMatching && data && data.total > (data.pageSize) && (
-            <div className="bg-muted border border-border rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
-              <span className="text-foreground">
-                All {currentPageIds.length} people on this page are selected.
-              </span>
-              <button
-                onClick={() => setSelectAllMatching(true)}
-                className="text-brand-strong hover:text-foreground font-medium ml-3 whitespace-nowrap"
-              >
-                Select all {data.total.toLocaleString()} matching people
-              </button>
-            </div>
-          )}
-
-          {/* "All matching selected" confirmation banner */}
-          {selectAllMatching && data && (
-            <div className="bg-brand/10 border border-brand/30 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
-              <span className="text-brand-strong">
-                All {data.total.toLocaleString()} matching people are selected.
-              </span>
-              <button
-                onClick={handleClearSelection}
-                className="text-muted-foreground hover:text-foreground underline underline-offset-2 ml-3"
-              >
-                Clear selection
-              </button>
-            </div>
-          )}
-
-          {/* Results table */}
-          <div className="bg-card rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="w-10 py-3">
-                    <Checkbox
-                      checked={selectAllMatching || (allCurrentPageSelected && currentPageIds.length > 0)}
-                      data-state={someCurrentPageSelected ? "indeterminate" : undefined}
-                      onCheckedChange={(checked) => handleHeaderCheckbox(!!checked)}
-                      aria-label="Select all on page"
-                      className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-brand-foreground"
-                    />
-                  </TableHead>
-                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
-                    Name
-                  </TableHead>
-                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
-                    Email
-                  </TableHead>
-                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
-                    Company
-                  </TableHead>
-                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
-                    Title
-                  </TableHead>
-                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
-                    Vertical
-                  </TableHead>
-                  <TableHead className="text-xs text-muted-foreground uppercase tracking-wide font-medium py-3">
-                    Enrichment
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <SkeletonRows />
-                ) : !data || data.people.length === 0 ? (
-                  <TableRow className="border-border">
-                    <TableCell
-                      colSpan={7}
-                      className="text-center py-16"
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        <Users className="h-12 w-12 text-muted-foreground/50" aria-hidden="true" />
-                        <p className="text-lg font-medium text-foreground">
-                          No people found
-                        </p>
-                        <p className="text-sm text-muted-foreground max-w-sm">
-                          {params.q || activeChips.length > 0
-                            ? "Try adjusting your search or filters to find what you're looking for."
-                            : "People will appear here once they're imported or synced from your campaigns."}
-                        </p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  data.people.map((person) => {
-                    const isSelected = selectAllMatching || selectedIds.has(person.id);
-                    return (
-                      <TableRow
-                        key={person.id}
-                        className={`border-border hover:bg-muted/50 cursor-pointer ${isSelected ? "bg-muted/30" : ""}`}
-                        onClick={() => handleRowCheckbox(person.id, !isSelected)}
-                      >
-                        <TableCell
-                          className="py-2 w-10"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(checked) =>
-                              handleRowCheckbox(person.id, !!checked)
-                            }
-                            aria-label={`Select ${person.email}`}
-                            className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-brand-foreground"
-                          />
-                        </TableCell>
-                        <TableCell className="py-2 font-medium text-sm text-foreground">
-                          <Link
-                            href={`/people/${person.id}`}
-                            className="hover:underline underline-offset-2"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {[person.firstName, person.lastName]
-                              .filter(Boolean)
-                              .join(" ") || (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="py-2 text-sm text-muted-foreground">
-                          {person.email}
-                        </TableCell>
-                        <TableCell className="py-2 text-sm text-muted-foreground">
-                          {person.company ?? (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="py-2 text-sm text-muted-foreground">
-                          {person.jobTitle ?? (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="py-2 text-sm text-muted-foreground">
-                          {person.vertical ?? (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <EnrichmentBadge person={person} />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          {!loading && data && data.total > 0 && (
-            <div className="flex items-center justify-between text-sm">
-              <p className="text-muted-foreground text-xs">
-                Showing {startRow.toLocaleString()}–{endRow.toLocaleString()} of{" "}
-                {data.total.toLocaleString()} results
-              </p>
-              <div className="flex items-center gap-2">
+            {/* Active filter chips */}
+            {activeChips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {activeChips.map((chip) => (
+                  <FilterChip
+                    key={chip.label}
+                    label={chip.label}
+                    onRemove={chip.onRemove}
+                  />
+                ))}
                 <button
-                  onClick={() => void setParams({ page: params.page - 1 })}
-                  disabled={params.page <= 1}
-                  className="px-3 py-1.5 text-xs rounded border border-border bg-secondary text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={handleClearAllFilters}
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 px-1"
                 >
-                  Previous
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  Page {params.page} of {totalPages}
-                </span>
-                <button
-                  onClick={() => void setParams({ page: params.page + 1 })}
-                  disabled={params.page >= totalPages}
-                  className="px-3 py-1.5 text-xs rounded border border-border bg-secondary text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Next
+                  Clear all
                 </button>
               </div>
+            )}
+
+            {/* Error state */}
+            {error && (
+              <ErrorBanner message={`Failed to load people: ${error}`} onRetry={() => void fetchData()} />
+            )}
+
+            {/* Select all matching banner */}
+            {allCurrentPageSelected && !selectAllMatching && data && data.total > (data.pageSize) && (
+              <div className="bg-muted border border-border rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+                <span className="text-foreground">
+                  All {currentPageIds.length} people on this page are selected.
+                </span>
+                <button
+                  onClick={() => setSelectAllMatching(true)}
+                  className="text-brand-strong hover:text-foreground font-medium ml-3 whitespace-nowrap"
+                >
+                  Select all {data.total.toLocaleString()} matching people
+                </button>
+              </div>
+            )}
+
+            {/* "All matching selected" confirmation banner */}
+            {selectAllMatching && data && (
+              <div className="bg-brand/10 border border-brand/30 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+                <span className="text-brand-strong">
+                  All {data.total.toLocaleString()} matching people are selected.
+                </span>
+                <button
+                  onClick={handleClearSelection}
+                  className="text-muted-foreground hover:text-foreground underline underline-offset-2 ml-3"
+                >
+                  Clear selection
+                </button>
+              </div>
+            )}
+
+            {/* Results table */}
+            <div className="bg-card rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="w-10 py-3">
+                      <Checkbox
+                        checked={selectAllMatching || (allCurrentPageSelected && currentPageIds.length > 0)}
+                        data-state={someCurrentPageSelected ? "indeterminate" : undefined}
+                        onCheckedChange={(checked) => handleHeaderCheckbox(!!checked)}
+                        aria-label="Select all on page"
+                        className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-brand-foreground"
+                      />
+                    </TableHead>
+                    <SortableTableHead
+                      sortKey="name"
+                      currentSort={sort}
+                      onSort={handleSort}
+                    >
+                      Name
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sortKey="email"
+                      currentSort={sort}
+                      onSort={handleSort}
+                    >
+                      Email
+                    </SortableTableHead>
+                    <TableHead>
+                      Company
+                    </TableHead>
+                    <TableHead>
+                      Title
+                    </TableHead>
+                    <SortableTableHead
+                      sortKey="vertical"
+                      currentSort={sort}
+                      onSort={handleSort}
+                    >
+                      Vertical
+                    </SortableTableHead>
+                    <TableHead>
+                      Enrichment
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <SkeletonRows />
+                  ) : !data || data.people.length === 0 ? (
+                    <TableRow className="border-border hover:bg-transparent">
+                      <TableCell
+                        colSpan={7}
+                        className="text-center py-16"
+                      >
+                        <div className="flex flex-col items-center gap-2 animate-fade-in">
+                          <div className="h-14 w-14 rounded-full bg-stone-100 flex items-center justify-center mb-1">
+                            <Users className="h-6 w-6 text-stone-400" aria-hidden="true" />
+                          </div>
+                          <p className="text-lg font-semibold text-foreground">
+                            No people found
+                          </p>
+                          <p className="text-sm text-muted-foreground max-w-sm">
+                            {params.q || activeChips.length > 0
+                              ? "Try adjusting your search or filters to find what you're looking for."
+                              : "People will appear here once they're imported or synced from your campaigns."}
+                          </p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedPeople.map((person) => {
+                      const isSelected = selectAllMatching || selectedIds.has(person.id);
+                      return (
+                        <TableRow
+                          key={person.id}
+                          className={`border-border cursor-pointer ${isSelected ? "bg-brand/5" : ""}`}
+                        >
+                          <TableCell
+                            className="py-2 w-10"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) =>
+                                handleRowCheckbox(person.id, !!checked)
+                              }
+                              aria-label={`Select ${person.email}`}
+                              className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand data-[state=checked]:text-brand-foreground"
+                            />
+                          </TableCell>
+                          <TableCell className="py-2 font-medium text-sm text-foreground">
+                            <Link
+                              href={`/people/${person.id}`}
+                              className="hover:underline underline-offset-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {[person.firstName, person.lastName]
+                                .filter(Boolean)
+                                .join(" ") || (
+                                <span className="text-muted-foreground">--</span>
+                              )}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="py-2 text-sm text-muted-foreground font-mono">
+                            {person.email}
+                          </TableCell>
+                          <TableCell className="py-2 text-sm text-muted-foreground">
+                            {person.company ?? (
+                              <span className="text-muted-foreground">--</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 text-sm text-muted-foreground">
+                            {person.jobTitle ?? (
+                              <span className="text-muted-foreground">--</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 text-sm text-muted-foreground">
+                            {person.vertical ?? (
+                              <span className="text-muted-foreground">--</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2">
+                            <EnrichmentBadge person={person} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
             </div>
-          )}
+
+            {/* Pagination */}
+            {!loading && data && data.total > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <p className="text-muted-foreground text-xs">
+                  Showing {startRow.toLocaleString()}--{endRow.toLocaleString()} of{" "}
+                  {data.total.toLocaleString()} results
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void setParams({ page: params.page - 1 })}
+                    disabled={params.page <= 1}
+                    className="px-3 py-1.5 text-xs rounded border border-border bg-secondary text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    Page {params.page} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => void setParams({ page: params.page + 1 })}
+                    disabled={params.page >= totalPages}
+                    className="px-3 py-1.5 text-xs rounded border border-border bg-secondary text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
