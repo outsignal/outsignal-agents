@@ -184,9 +184,6 @@ export function CampaignDetailTabs({
                       keys={[
                         "sent",
                         "replied",
-                        "bounced",
-                        "interested",
-                        "unsubscribed",
                       ]}
                     />
                   </div>

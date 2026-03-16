@@ -39,7 +39,7 @@ export function PortalPerformanceChart({ data }: Props) {
 export function PerformanceChartLegend() {
   return (
     <EmailActivityChartLegend
-      keys={["sent", "replied", "bounced", "interested", "unsubscribed"]}
+      keys={["sent", "replied"]}
     />
   );
 }
