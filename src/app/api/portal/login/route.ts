@@ -70,6 +70,13 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // HTML-escape workspace name to prevent XSS in email
+  const safeName = match.name
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
   // Build magic link URL
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -83,7 +90,7 @@ export async function POST(req: NextRequest) {
     { notificationType: "magic_link", channel: "email", recipient: normalizedEmail, workspaceSlug: match.slug },
     () => sendNotificationEmail({
       to: [normalizedEmail],
-      subject: `Your login link for ${match.name} — Outsignal`,
+      subject: `Your login link for ${safeName} — Outsignal`,
       html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
@@ -106,7 +113,7 @@ export async function POST(req: NextRequest) {
                 <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Sign In to Your Dashboard</td>
               </tr>
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${match.name}</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${safeName}</td>
               </tr>
               <tr>
                 <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;padding-bottom:24px;line-height:1.7;">Click the button below to sign in to your Outsignal dashboard.</td>
