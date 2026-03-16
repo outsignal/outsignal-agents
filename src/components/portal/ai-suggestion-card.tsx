@@ -9,9 +9,24 @@ interface AISuggestionCardProps {
   onUse: (text: string) => void;
 }
 
+function parseReplyBody(raw: string): string {
+  // Strip reasoning after --- separator
+  const parts = raw.split(/\n---\n/);
+  const main = parts[0];
+  // Extract body text after **Body:** marker
+  const bodyMatch = main.match(/\*\*Body:\*\*\s*([\s\S]*)/i);
+  if (bodyMatch) return bodyMatch[1].trim();
+  // Fallback: strip preamble before "Subject:" if present
+  const subjectMatch = main.match(/\*\*Subject:\*\*.*?\n\s*([\s\S]*)/i);
+  if (subjectMatch) return subjectMatch[1].trim();
+  // Last resort: return first part as-is
+  return main.trim();
+}
+
 export function AISuggestionCard({ suggestion, onUse }: AISuggestionCardProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const cleanBody = parseReplyBody(suggestion);
 
   if (dismissed) return null;
 
@@ -29,25 +44,25 @@ export function AISuggestionCard({ suggestion, onUse }: AISuggestionCardProps) {
           </span>
         </div>
         {expanded ? (
-          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
         )}
       </button>
 
       {/* Body */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-3">
-          <div className="border-l-2 border-border pl-3 py-1">
+        <div className="px-4 pb-3 space-y-0">
+          <div className="rounded-md bg-white dark:bg-card border-l-2 border-brand/30 p-3">
             <p className="text-[15px] leading-relaxed text-foreground whitespace-pre-wrap">
-              {suggestion}
+              {cleanBody}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 border-t border-border pt-3 mt-3">
             <Button
               size="sm"
               variant="brand"
-              onClick={() => onUse(suggestion)}
+              onClick={() => onUse(cleanBody)}
               className="text-xs gap-1.5"
             >
               <Check className="h-3.5 w-3.5" />
@@ -56,7 +71,7 @@ export function AISuggestionCard({ suggestion, onUse }: AISuggestionCardProps) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => onUse(suggestion)}
+              onClick={() => onUse(cleanBody)}
               className="text-xs gap-1.5"
             >
               <Pencil className="h-3.5 w-3.5" />

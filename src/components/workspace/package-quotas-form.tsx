@@ -158,7 +158,7 @@ export function PackageQuotasForm({ data }: { data: PackageData }) {
       <CardContent className="space-y-6">
         {/* Current Usage */}
         <div className="space-y-4">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          <p className="text-sm font-medium text-muted-foreground">
             Current Period Usage
           </p>
           <div className="text-xs text-muted-foreground mb-2">
@@ -199,7 +199,7 @@ export function PackageQuotasForm({ data }: { data: PackageData }) {
 
         {/* Enabled Modules */}
         <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          <p className="text-sm font-medium text-muted-foreground">
             Enabled Modules
           </p>
           <div className="grid grid-cols-2 gap-3">
@@ -226,7 +226,7 @@ export function PackageQuotasForm({ data }: { data: PackageData }) {
 
         {/* Quota Configuration */}
         <div className="space-y-4">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          <p className="text-sm font-medium text-muted-foreground">
             Quota Configuration
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

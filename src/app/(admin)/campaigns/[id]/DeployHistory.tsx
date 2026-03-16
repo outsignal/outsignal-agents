@@ -148,7 +148,7 @@ export function DeployHistory({ campaignId }: DeployHistoryProps) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-zinc-800 text-xs text-zinc-400 uppercase tracking-wide">
+          <tr className="bg-zinc-800 text-xs text-zinc-400">
             <th className="px-4 py-3 text-left font-medium">Timestamp</th>
             <th className="px-4 py-3 text-left font-medium">Status</th>
             <th className="px-4 py-3 text-left font-medium">Channels</th>

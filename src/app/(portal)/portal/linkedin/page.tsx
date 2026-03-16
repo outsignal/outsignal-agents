@@ -14,10 +14,7 @@ import { PortalConnectButton } from "@/components/portal/linkedin-connect-button
 import { AddAccountButton } from "@/components/linkedin/add-account-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
-import {
-  LinkedInActivityChart,
-  LinkedInChartLegend,
-} from "@/components/portal/linkedin-activity-chart";
+import { MetricCard } from "@/components/dashboard/metric-card";
 import { HealthStatusBadge } from "@/components/portal/health-status-badge";
 import { LinkedinIcon, Clock, AlertTriangle } from "lucide-react";
 
@@ -89,9 +86,13 @@ export default async function PortalLinkedInPage() {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, vals]) => ({ date, ...vals }));
 
-  const hasChartData = chartData.some(
-    (d) => d.connections > 0 || d.messages > 0 || d.views > 0,
-  );
+  const connectionsSparkline = chartData.map(d => d.connections);
+  const messagesSparkline = chartData.map(d => d.messages);
+  const viewsSparkline = chartData.map(d => d.views);
+
+  const totalConnections = chartData.reduce((sum, d) => sum + d.connections, 0);
+  const totalMessages = chartData.reduce((sum, d) => sum + d.messages, 0);
+  const totalViews = chartData.reduce((sum, d) => sum + d.views, 0);
 
   const now = new Date();
 
@@ -100,7 +101,7 @@ export default async function PortalLinkedInPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">LinkedIn</h1>
+          <h1 className="text-xl font-medium text-foreground">LinkedIn</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage your LinkedIn senders and connections
           </p>
@@ -135,26 +136,15 @@ export default async function PortalLinkedInPage() {
         />
       ) : (
         <>
-          {/* 7-Day Activity Trend */}
-          <Card density="compact">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="font-heading text-base">
-                  7-Day Activity
-                </CardTitle>
-                <LinkedInChartLegend />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {hasChartData ? (
-                <LinkedInActivityChart data={chartData} />
-              ) : (
-                <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                  No LinkedIn activity in the last 7 days.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* 7-Day Activity */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">7-Day Activity</p>
+            <div className="grid grid-cols-3 gap-4">
+              <MetricCard label="Connections Sent" value={totalConnections.toLocaleString()} sparklineData={connectionsSparkline} sparklineColor="#635BFF" density="compact" icon="UserPlus" />
+              <MetricCard label="Messages Sent" value={totalMessages.toLocaleString()} sparklineData={messagesSparkline} sparklineColor="#635BFF" density="compact" icon="MessageSquare" />
+              <MetricCard label="Profile Views" value={totalViews.toLocaleString()} sparklineData={viewsSparkline} sparklineColor="#635BFF" density="compact" icon="Eye" />
+            </div>
+          </div>
 
           {/* Senders Table */}
           <Card>

@@ -14,7 +14,7 @@ export default function CampaignDetailError({
     <div className="p-6 flex items-center justify-center min-h-[50vh]">
       <Card className="max-w-md w-full">
         <CardContent className="pt-6 text-center space-y-4">
-          <h2 className="text-lg font-heading font-bold">
+          <h2 className="text-lg font-medium">
             Something went wrong loading this page
           </h2>
           <p className="text-sm text-muted-foreground">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Mail, Linkedin, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SkeletonListItem } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -227,15 +228,16 @@ export default function PortalInboxPage() {
       {/* Page header with channel tabs */}
       <div className="px-5 py-4 border-b border-border shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-heading font-bold">Inbox</h1>
+          <h1 className="text-xl font-medium">Inbox</h1>
           {/* Mark all as read — only shown on email/all tabs */}
           {(activeChannel === "email" || activeChannel === "all") && (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleMarkAllRead}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Mark all as read
-            </button>
+            </Button>
           )}
         </div>
 

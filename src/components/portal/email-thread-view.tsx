@@ -103,14 +103,14 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
       <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0 space-y-1">
           {msg.isOutboundContext && (
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Original Campaign Email
             </p>
           )}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{displayName}</span>
             {isOutbound && !msg.isOutboundContext && (
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
+              <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
                 Sent
               </span>
             )}

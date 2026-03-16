@@ -36,7 +36,7 @@ export default async function PortalBillingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Billing</h1>
+        <h1 className="text-xl font-medium text-foreground">Billing</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Your invoice history and payment records
         </p>
@@ -52,13 +52,13 @@ export default async function PortalBillingPage() {
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Total Outstanding</p>
+                  <p className="text-xs text-muted-foreground font-medium">Total Outstanding</p>
                   <p className="text-2xl font-mono font-semibold tabular-nums mt-1">
                     {formatGBP(totalOutstanding)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Overdue Invoices</p>
+                  <p className="text-xs text-muted-foreground font-medium">Overdue Invoices</p>
                   <p className={`text-2xl font-mono font-semibold tabular-nums mt-1 ${overdueCount > 0 ? "text-red-600" : ""}`}>
                     {overdueCount}
                   </p>

@@ -149,13 +149,10 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Campaign</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Leads</TableHead>
                       <TableHead className="text-right">Sent</TableHead>
-                      <TableHead className="text-right">Opens</TableHead>
                       <TableHead className="text-right">Replies</TableHead>
-                      <TableHead className="text-right">Bounces</TableHead>
                       <TableHead className="text-right">Reply Rate</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -185,19 +182,10 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            {campaign.total_leads.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
                             {sent.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right">
-                            {campaign.unique_opens.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
                             {campaign.replied.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.bounced.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right">
                             {rRate}%
@@ -208,7 +196,7 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
                     {campaigns.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={5}
                           className="text-center py-8 text-muted-foreground"
                         >
                           No campaigns found

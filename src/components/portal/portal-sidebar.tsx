@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { WorkspaceSwitcher } from "@/components/portal/workspace-switcher";
 import {
   Tooltip,
   TooltipTrigger,
@@ -79,7 +80,7 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
+export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -142,7 +143,7 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
     const isInbox = item.href === "/portal/inbox";
 
     const sharedClasses = cn(
-      "flex items-center rounded-lg text-sm transition-colors duration-150",
+      "flex items-center rounded-lg text-sm transition-colors duration-150 cursor-pointer",
       isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
       isActive
         ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary"
@@ -156,7 +157,7 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
           <>
             <span>{item.label}</span>
             {isInbox && unreadCount > 0 && (
-              <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold px-1">
+              <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand text-white text-[10px] font-semibold px-1">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -184,7 +185,7 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
             <div className="relative">
               {element}
               {isInbox && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-0.5">
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand text-white text-[9px] font-bold px-0.5">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
@@ -224,16 +225,9 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
         )}
       </div>
 
-      {/* Workspace name */}
+      {/* Workspace switcher */}
       {!isCollapsed && (
-        <div className="px-6 py-3 border-b border-sidebar-border/50">
-          <p className="text-xs font-medium text-sidebar-foreground/50">
-            Client Portal
-          </p>
-          <p className="text-sm font-medium text-sidebar-foreground truncate mt-0.5">
-            {workspaceName}
-          </p>
-        </div>
+        <WorkspaceSwitcher currentSlug={workspaceSlug} currentName={workspaceName} />
       )}
 
       {/* Navigation */}

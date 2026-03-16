@@ -163,7 +163,7 @@ export function SignalEffectivenessSection({
               <div className="grid grid-cols-2 gap-4">
                 {/* Signal column */}
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <p className="text-xs font-medium text-muted-foreground">
                     Signal Campaigns
                   </p>
                   <p className="text-sm tabular-nums">
@@ -185,7 +185,7 @@ export function SignalEffectivenessSection({
 
                 {/* Static column */}
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <p className="text-xs font-medium text-muted-foreground">
                     Static Campaigns
                   </p>
                   <p className="text-sm tabular-nums">

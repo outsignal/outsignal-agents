@@ -81,7 +81,7 @@ export default async function PortalRepliesPage({
       {/* Header */}
       <div className="flex items-center gap-3">
         <div>
-          <h1 className="text-2xl font-heading font-bold">Replies</h1>
+          <h1 className="text-xl font-medium">Replies</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Recent replies from your campaigns
           </p>
@@ -104,10 +104,10 @@ export default async function PortalRepliesPage({
         <div className="rounded-lg border border-border overflow-hidden">
           {/* Table header */}
           <div className="hidden md:grid md:grid-cols-[1fr_auto_auto_auto] gap-4 px-4 py-2.5 bg-muted border-b border-border">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">From</span>
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Intent</span>
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sentiment</span>
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Received</span>
+            <span className="text-xs font-medium text-muted-foreground">From</span>
+            <span className="text-xs font-medium text-muted-foreground">Intent</span>
+            <span className="text-xs font-medium text-muted-foreground">Sentiment</span>
+            <span className="text-xs font-medium text-muted-foreground">Received</span>
           </div>
 
           {/* Rows */}

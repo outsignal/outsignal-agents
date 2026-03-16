@@ -267,22 +267,22 @@ export function WebhookLogTable({ events, loading = false }: WebhookLogTableProp
           <TableRow className="border-border hover:bg-transparent">
             {/* Expand toggle column */}
             <TableHead className="w-6 py-2 px-2" />
-            <TableHead className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium py-2 px-2 whitespace-nowrap">
+            <TableHead className="text-xs text-muted-foreground font-medium py-2 px-2 whitespace-nowrap">
               Time
             </TableHead>
-            <TableHead className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium py-2 px-2 whitespace-nowrap">
+            <TableHead className="text-xs text-muted-foreground font-medium py-2 px-2 whitespace-nowrap">
               Event
             </TableHead>
-            <TableHead className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium py-2 px-2 whitespace-nowrap">
+            <TableHead className="text-xs text-muted-foreground font-medium py-2 px-2 whitespace-nowrap">
               Lead Email
             </TableHead>
-            <TableHead className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium py-2 px-2 whitespace-nowrap">
+            <TableHead className="text-xs text-muted-foreground font-medium py-2 px-2 whitespace-nowrap">
               Sender Email
             </TableHead>
-            <TableHead className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium py-2 px-2 whitespace-nowrap">
+            <TableHead className="text-xs text-muted-foreground font-medium py-2 px-2 whitespace-nowrap">
               Workspace
             </TableHead>
-            <TableHead className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium py-2 px-2 whitespace-nowrap">
+            <TableHead className="text-xs text-muted-foreground font-medium py-2 px-2 whitespace-nowrap">
               Campaign ID
             </TableHead>
           </TableRow>

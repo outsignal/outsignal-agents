@@ -3,13 +3,18 @@ import { getPortalSession } from "@/lib/portal-session";
 import { listCampaigns } from "@/lib/campaigns/operations";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
-import { CampaignListTable, type MergedCampaign } from "@/components/portal/campaign-list-table";
+import { type MergedCampaign } from "@/components/portal/campaign-list-table";
+import { CampaignChannelTabs } from "@/components/portal/campaign-channel-tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
 import { Clock, Megaphone } from "lucide-react";
 import type { Campaign as EBCampaign } from "@/lib/emailbison/types";
 
-export default async function PortalCampaignsPage() {
+export default async function PortalCampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ channel?: string }>;
+}) {
   let session;
   try {
     session = await getPortalSession();
@@ -17,6 +22,7 @@ export default async function PortalCampaignsPage() {
     redirect("/portal/login");
   }
   const { workspaceSlug } = session;
+  const { channel } = await searchParams;
 
   const [internalCampaigns, workspace] = await Promise.all([
     listCampaigns(workspaceSlug),
@@ -113,7 +119,11 @@ export default async function PortalCampaignsPage() {
           description="Your campaigns will appear here once they are ready for review. We'll notify you when there's something to approve."
         />
       ) : (
-        <CampaignListTable campaigns={merged} />
+        <CampaignChannelTabs
+          campaigns={merged}
+          workspacePackage={workspace?.package ?? "email"}
+          initialChannel={channel}
+        />
       )}
     </div>
   );

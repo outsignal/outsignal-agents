@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   actions?: React.ReactNode;
 }
 
@@ -11,11 +11,11 @@ export function Header({ title, description, actions }: HeaderProps) {
   return (
     <header className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-5">
       <div className="min-w-0">
-        <h1 className="text-xl font-heading font-semibold tracking-tight truncate">
+        <h1 className="text-lg font-medium truncate">
           {title}
         </h1>
         {description && (
-          <p className="text-sm text-muted-foreground mt-0.5 truncate">{description}</p>
+          <div className="text-sm text-muted-foreground mt-0.5">{description}</div>
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">{actions}</div>

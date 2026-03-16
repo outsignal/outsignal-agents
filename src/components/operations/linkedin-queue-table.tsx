@@ -190,14 +190,14 @@ export function QueueTableSkeleton() {
       <Table>
         <TableHeader>
           <TableRow className="border-border hover:bg-transparent">
-            <TableHead className="w-8 py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">P</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Type</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Person</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Sender</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Workspace</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Scheduled</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Status</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Attempts</TableHead>
+            <TableHead className="w-8 py-2 text-xs text-muted-foreground font-medium">P</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Type</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Person</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Sender</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Workspace</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Scheduled</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Status</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Attempts</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -251,14 +251,14 @@ export function LinkedInQueueTable({ actions }: LinkedInQueueTableProps) {
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="w-8 py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">P</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Type</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Person</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Sender</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Workspace</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Scheduled</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Status</TableHead>
-              <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Attempts</TableHead>
+              <TableHead className="w-8 py-2 text-xs text-muted-foreground font-medium">P</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Type</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Person</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Sender</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Workspace</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Scheduled</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Status</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Attempts</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -281,14 +281,14 @@ export function LinkedInQueueTable({ actions }: LinkedInQueueTableProps) {
       <Table>
         <TableHeader>
           <TableRow className="border-border hover:bg-transparent">
-            <TableHead className="w-8 py-2 px-3 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">P</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Type</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Person</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Sender</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Workspace</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Scheduled</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Status</TableHead>
-            <TableHead className="py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Attempts</TableHead>
+            <TableHead className="w-8 py-2 px-3 text-xs text-muted-foreground font-medium">P</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Type</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Person</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Sender</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Workspace</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Scheduled</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Status</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Attempts</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

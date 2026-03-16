@@ -131,7 +131,7 @@ export function SenderHealthPanel({ senderId, isExpanded }: SenderHealthPanelPro
     <div className="border-t border-border/50 px-4 pt-3 pb-2 space-y-3">
       {/* Sparkline */}
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+        <p className="text-xs text-muted-foreground mb-1">
           30-day health trend
         </p>
         {sparkline.length > 0 ? (
@@ -181,7 +181,7 @@ export function SenderHealthPanel({ senderId, isExpanded }: SenderHealthPanelPro
         <p className="text-xs text-muted-foreground">No health events recorded</p>
       ) : (
         <div className="space-y-1">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Recent events
           </p>
           {events.map((event) => (

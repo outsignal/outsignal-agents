@@ -143,7 +143,7 @@ export default function FaqManagementPage() {
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-heading font-bold">FAQ Management</h1>
+        <h1 className="text-xl font-medium">FAQ Management</h1>
         <Button onClick={openNew} size="sm">
           <Plus className="h-4 w-4 mr-1" />
           Add Article

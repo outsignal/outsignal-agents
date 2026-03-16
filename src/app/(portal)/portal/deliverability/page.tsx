@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ShieldCheck, Mail, AlertTriangle, Activity } from "lucide-react";
+import { ShieldCheck, Activity } from "lucide-react";
 
 export default async function PortalDeliverabilityPage() {
   let session;
@@ -119,7 +119,7 @@ export default async function PortalDeliverabilityPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Deliverability</h1>
+        <h1 className="text-xl font-medium text-foreground">Deliverability</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Email deliverability health, DNS authentication, and blacklist monitoring
         </p>
@@ -138,13 +138,13 @@ export default async function PortalDeliverabilityPage() {
             <MetricCard
               label="Sending Domains"
               value={totalDomains.toString()}
-              icon={Mail}
+              icon="Mail"
               density="compact"
             />
             <MetricCard
               label="Healthy Domains"
               value={`${healthyDomains}/${totalDomains}`}
-              icon={ShieldCheck}
+              icon="ShieldCheck"
               trend={healthyDomains === totalDomains ? "up" : "warning"}
               detail={healthyDomains === totalDomains ? "All healthy" : `${criticalDomains} need attention`}
               density="compact"
@@ -152,13 +152,13 @@ export default async function PortalDeliverabilityPage() {
             <MetricCard
               label="DNS Authentication"
               value={domainHealthRecords.length > 0 ? `${domainHealthRecords.length} checked` : "Pending"}
-              icon={Activity}
+              icon="Activity"
               density="compact"
             />
             <MetricCard
               label="Blacklist Status"
               value={blacklistedDomains === 0 ? "Clear" : `${blacklistedDomains} listed`}
-              icon={AlertTriangle}
+              icon="AlertTriangle"
               trend={blacklistedDomains === 0 ? "up" : "down"}
               detail={blacklistedDomains === 0 ? "No listings" : "Action needed"}
               density="compact"

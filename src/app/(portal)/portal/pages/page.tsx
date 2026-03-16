@@ -46,7 +46,7 @@ export default async function PortalPagesPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Pages</h1>
+        <h1 className="text-xl font-medium text-foreground">Pages</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Documents and resources shared with you
         </p>

@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/table";
 import { getAllWorkspaces, getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
-import { prisma } from "@/lib/db";
 import { ApiTokenForm } from "@/components/settings/api-token-form";
 
 async function getWorkspaceStatuses() {
@@ -39,15 +38,6 @@ async function getWorkspaceStatuses() {
 
 export default async function SettingsPage() {
   const workspaces = await getWorkspaceStatuses();
-  const dbWorkspaces = await prisma.workspace.findMany({
-    select: {
-      slug: true,
-      slackChannelId: true,
-      notificationEmails: true,
-    },
-  });
-  const dbMap = new Map(dbWorkspaces.map((w) => [w.slug, w]));
-
   return (
     <div>
       <Header
@@ -63,52 +53,18 @@ export default async function SettingsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Workspace</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Slug</TableHead>
-                  <TableHead>Vertical</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>API Token</TableHead>
-                  <TableHead>Connection</TableHead>
-                  <TableHead>Slack</TableHead>
-                  <TableHead>Email Notifications</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {workspaces.map((ws) => {
-                  const dbInfo = dbMap.get(ws.slug);
-                  const notifEmails = dbInfo?.notificationEmails
-                    ? JSON.parse(dbInfo.notificationEmails)
-                    : [];
-                  return (
+                {workspaces.map((ws) => (
                     <TableRow key={ws.slug}>
                       <TableCell className="font-medium">{ws.name}</TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-muted-foreground font-mono text-sm">
                         {ws.slug}
-                      </TableCell>
-                      <TableCell>
-                        {ws.vertical ? (
-                          <Badge variant="secondary" className="text-xs">
-                            {ws.vertical}
-                          </Badge>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs">
-                          db
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {ws.hasApiToken ? (
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {"apiTokenPreview" in ws
-                              ? (ws as Record<string, unknown>).apiTokenPreview as string
-                              : "***"}
-                          </span>
-                        ) : (
-                          <ApiTokenForm slug={ws.slug} />
-                        )}
                       </TableCell>
                       <TableCell>
                         {ws.connected ? (
@@ -128,35 +84,18 @@ export default async function SettingsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {dbInfo?.slackChannelId ? (
-                          <Badge variant="success" className="text-xs">
-                            Connected
-                          </Badge>
+                        {!ws.hasApiToken ? (
+                          <ApiTokenForm slug={ws.slug} />
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            Not set up
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {notifEmails.length > 0 ? (
-                          <span className="text-xs text-muted-foreground">
-                            {notifEmails.length} recipient
-                            {notifEmails.length !== 1 ? "s" : ""}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            None
-                          </span>
+                          <span className="text-xs text-muted-foreground">Configured</span>
                         )}
                       </TableCell>
                     </TableRow>
-                  );
-                })}
+                ))}
                 {workspaces.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={4}
                       className="text-center py-8 text-muted-foreground"
                     >
                       No workspaces configured. Use the Onboard Client page to

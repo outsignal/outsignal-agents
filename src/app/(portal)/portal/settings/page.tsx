@@ -52,7 +52,7 @@ export default async function PortalSettingsPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Settings</h1>
+        <h1 className="text-xl font-medium text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Your workspace configuration and account details
         </p>
@@ -69,7 +69,7 @@ export default async function PortalSettingsPage() {
         <CardContent>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
             <div>
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              <dt className="text-xs text-muted-foreground font-medium">
                 Workspace Name
               </dt>
               <dd className="text-sm text-foreground mt-1 font-medium">
@@ -77,7 +77,7 @@ export default async function PortalSettingsPage() {
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              <dt className="text-xs text-muted-foreground font-medium">
                 Workspace ID
               </dt>
               <dd className="text-sm text-muted-foreground mt-1 font-mono">
@@ -86,7 +86,7 @@ export default async function PortalSettingsPage() {
             </div>
             {workspace.vertical && (
               <div>
-                <dt className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                <dt className="text-xs text-muted-foreground font-medium">
                   Industry Vertical
                 </dt>
                 <dd className="text-sm text-foreground mt-1">
@@ -96,7 +96,7 @@ export default async function PortalSettingsPage() {
             )}
             {workspace.package && (
               <div>
-                <dt className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                <dt className="text-xs text-muted-foreground font-medium">
                   Package
                 </dt>
                 <dd className="mt-1">
@@ -107,7 +107,7 @@ export default async function PortalSettingsPage() {
               </div>
             )}
             <div>
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              <dt className="text-xs text-muted-foreground font-medium">
                 Member Since
               </dt>
               <dd className="text-sm text-muted-foreground mt-1 font-mono tabular-nums">
@@ -134,7 +134,7 @@ export default async function PortalSettingsPage() {
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
             {workspace.clientEmails && (
               <div>
-                <dt className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                <dt className="text-xs text-muted-foreground font-medium">
                   Contact Email
                 </dt>
                 <dd className="text-sm text-muted-foreground mt-1 font-mono">

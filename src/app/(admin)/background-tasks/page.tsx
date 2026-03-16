@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Header } from "@/components/layout/header";
-import { MetricCard } from "@/components/dashboard/metric-card";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,13 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -169,21 +160,6 @@ const PERIODS: { value: Period; label: string }[] = [
   { value: "30d", label: "30d" },
 ];
 
-// Extract workspace tags from runs (exclude run IDs and empty values)
-function extractWorkspaceTags(runs: TriggerRun[]): string[] {
-  const tags = new Set<string>();
-  for (const run of runs) {
-    if (run.tags) {
-      for (const tag of run.tags) {
-        if (tag && !tag.startsWith("run_")) {
-          tags.add(tag);
-        }
-      }
-    }
-  }
-  return Array.from(tags).sort();
-}
-
 // Get first non-run_ tag as workspace label
 function getWorkspaceTag(run: TriggerRun): string {
   return run.tags?.find((t) => t && !t.startsWith("run_")) ?? "-";
@@ -195,7 +171,6 @@ function getWorkspaceTag(run: TriggerRun): string {
 
 export default function BackgroundTasksPage() {
   const [period, setPeriod] = useState<Period>("1d");
-  const [workspace, setWorkspace] = useState<string>("all");
   const [data, setData] = useState<BackgroundTasksData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,7 +182,6 @@ export default function BackgroundTasksPage() {
     setError(null);
 
     const params = new URLSearchParams({ period });
-    if (workspace !== "all") params.set("workspace", workspace);
 
     fetch(`/api/background-tasks?${params.toString()}`)
       .then(async (res) => {
@@ -231,7 +205,7 @@ export default function BackgroundTasksPage() {
     return () => {
       active = false;
     };
-  }, [period, workspace]);
+  }, [period]);
 
   // Auto-refresh: 10s if any task is running, otherwise 30s
   useEffect(() => {
@@ -244,7 +218,6 @@ export default function BackgroundTasksPage() {
     const interval = hasRunning ? 10_000 : 30_000;
 
     const params = new URLSearchParams({ period });
-    if (workspace !== "all") params.set("workspace", workspace);
 
     autoRefreshRef.current = setInterval(() => {
       fetch(`/api/background-tasks?${params.toString()}`)
@@ -265,10 +238,9 @@ export default function BackgroundTasksPage() {
         clearInterval(autoRefreshRef.current);
       }
     };
-  }, [data?.summary.running, period, workspace]);
+  }, [data?.summary.running, period]);
 
   const allRuns = data?.runs ?? [];
-  const workspaceTags = data ? extractWorkspaceTags(data.runs) : [];
 
   return (
     <div>
@@ -276,22 +248,38 @@ export default function BackgroundTasksPage() {
         title="Background Tasks"
         description="Monitor Trigger.dev task runs and schedules"
         actions={
-          <div className="flex items-center rounded-lg border border-border bg-muted/30 p-0.5">
-            {PERIODS.map((p) => (
-              <Button
-                key={p.value}
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                  period === p.value &&
-                    "bg-background shadow-sm text-foreground",
+          <div className="flex items-center gap-2">
+            {data && (
+              <>
+                {data.summary.running > 0 && (
+                  <Badge variant="warning" size="xs">
+                    Auto-refreshing every 10s
+                  </Badge>
                 )}
-                onClick={() => setPeriod(p.value)}
-              >
-                {p.label}
-              </Button>
-            ))}
+                {data.summary.running === 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    Auto-refreshing every 30s
+                  </span>
+                )}
+              </>
+            )}
+            <div className="flex items-center rounded-lg border border-border bg-muted/30 p-0.5">
+              {PERIODS.map((p) => (
+                <Button
+                  key={p.value}
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                    period === p.value &&
+                      "bg-background shadow-sm text-foreground",
+                  )}
+                  onClick={() => setPeriod(p.value)}
+                >
+                  {p.label}
+                </Button>
+              ))}
+            </div>
           </div>
         }
       />
@@ -309,11 +297,6 @@ export default function BackgroundTasksPage() {
         {/* Loading state */}
         {loading && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-lg" />
-              ))}
-            </div>
             <Skeleton className="h-64 rounded-lg" />
             <Skeleton className="h-48 rounded-lg" />
           </>
@@ -321,147 +304,94 @@ export default function BackgroundTasksPage() {
 
         {/* Loaded state */}
         {!loading && data && (
-          <>
-            {/* Summary metric cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard
-                label="Total Runs"
-                value={data.summary.total.toLocaleString()}
-              />
-              <MetricCard
-                label="Succeeded"
-                value={data.summary.succeeded.toLocaleString()}
-                trend={data.summary.succeeded > 0 ? "up" : "neutral"}
-              />
-              <MetricCard
-                label="Failed"
-                value={data.summary.failed.toLocaleString()}
-                trend={data.summary.failed > 0 ? "down" : "neutral"}
-              />
-              <MetricCard
-                label="Active Schedules"
-                value={data.summary.activeSchedules.toLocaleString()}
-              />
-            </div>
+          <Tabs defaultValue="runs">
+            <TabsList>
+              <TabsTrigger value="runs">
+                Recent Runs ({data.summary.total})
+              </TabsTrigger>
+              <TabsTrigger value="schedules">
+                Active Schedules ({data.summary.activeSchedules})
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Workspace filter */}
-            <div className="flex items-center gap-3">
-              {workspaceTags.length > 0 && (
-                <Select value={workspace} onValueChange={setWorkspace}>
-                  <SelectTrigger className="h-8 text-xs w-[200px]" aria-label="Filter by workspace">
-                    <SelectValue placeholder="All Workspaces" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-xs">
-                      All Workspaces
-                    </SelectItem>
-                    {workspaceTags.map((tag) => (
-                      <SelectItem key={tag} value={tag} className="text-xs font-mono">
-                        {tag}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Note: Scheduled tasks run globally and don&apos;t have a workspace tag.
-              </p>
-              {data.summary.running > 0 && (
-                <Badge variant="warning" size="xs" className="ml-auto">
-                  Auto-refreshing every 10s
-                </Badge>
-              )}
-              {data.summary.running === 0 && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  Auto-refreshing every 30s
-                </span>
-              )}
-            </div>
-
-            {/* Task runs table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Runs</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[220px]">Task</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Workspace</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Started</TableHead>
-                      <TableHead>Finished</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allRuns.length === 0 && (
+            <TabsContent value="runs">
+              <Card>
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center py-8 text-muted-foreground"
-                        >
-                          No runs in this time range
-                        </TableCell>
+                        <TableHead className="w-[220px]">Task</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Workspace</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Started</TableHead>
+                        <TableHead>Finished</TableHead>
                       </TableRow>
-                    )}
-                    {allRuns.map((run) => {
-                      const isFailed = FAILED_STATUSES.has(run.status);
-                      const errorMsg =
-                        run.error?.message ?? run.error?.name ?? null;
-                      return (
-                        <>
-                          <TableRow key={run.id}>
-                            <TableCell className="font-mono text-xs font-medium">
-                              {run.taskIdentifier}
-                            </TableCell>
-                            <TableCell>
-                              <StatusBadge status={run.status} />
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground font-mono">
-                              {getWorkspaceTag(run)}
-                            </TableCell>
-                            <TableCell className="text-sm tabular-nums text-muted-foreground">
-                              {formatDuration(run.durationMs)}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                              {formatRelativeTime(run.createdAt)}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                              {formatRelativeTime(run.finishedAt)}
-                            </TableCell>
-                          </TableRow>
-                          {isFailed && errorMsg && (
-                            <TableRow key={`${run.id}-error`}>
-                              <TableCell
-                                colSpan={6}
-                                className="bg-red-50 py-2 px-4 border-b border-red-100"
-                              >
-                                <p className="text-xs text-red-700 font-mono">
-                                  <span className="font-semibold text-red-600 mr-1">
-                                    Error:
-                                  </span>
-                                  {errorMsg}
-                                </p>
+                    </TableHeader>
+                    <TableBody>
+                      {allRuns.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center py-8 text-muted-foreground"
+                          >
+                            No runs in this time range
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {allRuns.map((run) => {
+                        const isFailed = FAILED_STATUSES.has(run.status);
+                        const errorMsg =
+                          run.error?.message ?? run.error?.name ?? null;
+                        return (
+                          <React.Fragment key={run.id}>
+                            <TableRow>
+                              <TableCell className="font-mono text-xs font-medium">
+                                {run.taskIdentifier}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={run.status} />
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground font-mono">
+                                {getWorkspaceTag(run)}
+                              </TableCell>
+                              <TableCell className="text-sm tabular-nums text-muted-foreground">
+                                {formatDuration(run.durationMs)}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                {formatRelativeTime(run.createdAt)}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                {formatRelativeTime(run.finishedAt)}
                               </TableCell>
                             </TableRow>
-                          )}
-                        </>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                            {isFailed && errorMsg && (
+                              <TableRow key={`${run.id}-error`}>
+                                <TableCell
+                                  colSpan={6}
+                                  className="bg-red-50 py-2 px-4 border-b border-red-100"
+                                >
+                                  <p className="text-xs text-red-700 font-mono">
+                                    <span className="font-semibold text-red-600 mr-1">
+                                      Error:
+                                    </span>
+                                    {errorMsg}
+                                  </p>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-            {/* Schedules section */}
-            {data.schedules.length > 0 && (
+            <TabsContent value="schedules">
               <Card>
-                <CardHeader>
-                  <CardTitle>Active Schedules</CardTitle>
-                </CardHeader>
-                <CardContent>
+                <CardContent className="pt-6">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -471,6 +401,16 @@ export default function BackgroundTasksPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
+                      {data.schedules.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={3}
+                            className="text-center py-8 text-muted-foreground"
+                          >
+                            No active schedules
+                          </TableCell>
+                        </TableRow>
+                      )}
                       {data.schedules.map((schedule) => (
                         <TableRow key={schedule.id}>
                           <TableCell className="font-mono text-xs font-medium">
@@ -488,8 +428,8 @@ export default function BackgroundTasksPage() {
                   </Table>
                 </CardContent>
               </Card>
-            )}
-          </>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </div>

@@ -132,7 +132,7 @@ export function SubjectLineRankings({
                   <th
                     key={col.key}
                     className={cn(
-                      "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground",
+                      "px-4 py-3 text-left text-xs font-medium text-muted-foreground",
                       col.sortable &&
                         "cursor-pointer select-none hover:text-foreground",
                     )}

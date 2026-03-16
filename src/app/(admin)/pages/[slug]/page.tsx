@@ -281,7 +281,7 @@ export default function PageDetailPage() {
                 <div className="space-y-2">
                   <label
                     htmlFor="edit-title"
-                    className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                    className="text-xs font-medium text-muted-foreground"
                   >
                     Title
                   </label>
@@ -295,7 +295,7 @@ export default function PageDetailPage() {
                 <div className="space-y-2">
                   <label
                     htmlFor="edit-content"
-                    className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                    className="text-xs font-medium text-muted-foreground"
                   >
                     Content (Markdown)
                   </label>

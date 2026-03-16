@@ -83,8 +83,7 @@ export function EmailReplyComposer({
           onChange={(e) => onComposerTextChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={sending}
-          rows={3}
-          className="resize-none text-sm"
+          className="resize-y text-sm min-h-[80px] max-h-[300px]"
         />
         {error && (
           <p className="text-xs text-destructive">{error}</p>

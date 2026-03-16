@@ -196,7 +196,7 @@ function ExpandedDetail({ run }: { run: AgentRun }) {
     <div className="px-4 py-3 bg-muted/20 border-t border-border/50 grid grid-cols-2 gap-4">
       {/* Input */}
       <div>
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+        <h4 className="text-xs font-medium text-muted-foreground mb-1.5">
           Input
         </h4>
         <JsonBlock value={input} />
@@ -204,7 +204,7 @@ function ExpandedDetail({ run }: { run: AgentRun }) {
 
       {/* Output */}
       <div>
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+        <h4 className="text-xs font-medium text-muted-foreground mb-1.5">
           Output
         </h4>
         {output !== null ? (
@@ -216,7 +216,7 @@ function ExpandedDetail({ run }: { run: AgentRun }) {
 
       {/* Steps */}
       <div className="col-span-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+        <h4 className="text-xs font-medium text-muted-foreground mb-1.5">
           Steps
         </h4>
         <StepsList stepsJson={run.steps} />
@@ -225,7 +225,7 @@ function ExpandedDetail({ run }: { run: AgentRun }) {
       {/* Error */}
       {run.error && (
         <div className="col-span-2">
-          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">
+          <h4 className="text-xs font-medium text-red-500 mb-1.5">
             Error
           </h4>
           <pre className="text-[11px] font-mono bg-red-50 border border-red-200 text-red-800 rounded p-2 overflow-auto max-h-32 whitespace-pre-wrap break-all">

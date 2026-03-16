@@ -145,7 +145,7 @@ export default async function InboxHealthPage({
 
         {critical > 0 && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4">
-            <h3 className="font-heading font-bold text-red-900">
+            <h3 className="font-medium text-red-900">
               Action Required
             </h3>
             <p className="text-sm text-red-800 mt-1">

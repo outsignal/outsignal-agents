@@ -398,7 +398,7 @@ export default function ClientDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Pipeline status with dropdown */}
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+                    <p className="text-xs text-muted-foreground mb-1.5 font-medium">
                       Pipeline Status
                     </p>
                     <DropdownMenu>
@@ -441,7 +441,7 @@ export default function ClientDetailPage() {
 
                   {/* Campaign type */}
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+                    <p className="text-xs text-muted-foreground mb-1.5 font-medium">
                       Campaign Type
                     </p>
                     <Badge variant="secondary" className="text-xs">
@@ -451,7 +451,7 @@ export default function ClientDetailPage() {
 
                   {/* Workspace link */}
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+                    <p className="text-xs text-muted-foreground mb-1.5 font-medium">
                       Workspace
                     </p>
                     {client.workspaceSlug ? (
@@ -471,7 +471,7 @@ export default function ClientDetailPage() {
 
                   {/* Contact info */}
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+                    <p className="text-xs text-muted-foreground mb-1.5 font-medium">
                       Contact
                     </p>
                     <div className="space-y-1">
@@ -513,7 +513,7 @@ export default function ClientDetailPage() {
                 {/* Second row: started date + website */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 pt-4 border-t border-border/50">
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">
+                    <p className="text-xs text-muted-foreground mb-1 font-medium">
                       Started
                     </p>
                     <div className="flex items-center gap-1.5 text-sm">
@@ -526,7 +526,7 @@ export default function ClientDetailPage() {
 
                   {client.website && (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">
+                      <p className="text-xs text-muted-foreground mb-1 font-medium">
                         Website
                       </p>
                       <a
@@ -549,7 +549,7 @@ export default function ClientDetailPage() {
                 {/* Links */}
                 <div className="mt-4 pt-4 border-t border-border/50">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                    <p className="text-xs text-muted-foreground font-medium">
                       Links
                     </p>
                     <Button
@@ -639,7 +639,7 @@ export default function ClientDetailPage() {
                 {/* Pages */}
                 <div className="mt-4 pt-4 border-t border-border/50">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Pages</p>
+                    <p className="text-xs text-muted-foreground font-medium">Pages</p>
                     <Button variant="ghost" size="xs" onClick={handleCreatePage} className="h-6 px-2 text-xs">
                       <Plus className="h-3 w-3 mr-1" />
                       New Page
@@ -668,7 +668,7 @@ export default function ClientDetailPage() {
                       variant="ghost"
                       size="xs"
                       onClick={() => setNotesExpanded(!notesExpanded)}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium uppercase tracking-wider hover:text-foreground px-0"
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium hover:text-foreground px-0"
                     >
                       Notes
                       {notesExpanded ? (
@@ -746,7 +746,7 @@ export default function ClientDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <Card>
                     <CardContent className="pt-4 pb-4">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
+                      <p className="text-xs text-muted-foreground font-medium mb-1">
                         Total Invoiced
                       </p>
                       <p className="text-xl font-semibold tabular-nums">
@@ -756,7 +756,7 @@ export default function ClientDetailPage() {
                   </Card>
                   <Card>
                     <CardContent className="pt-4 pb-4">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
+                      <p className="text-xs text-muted-foreground font-medium mb-1">
                         Total Paid
                       </p>
                       <p className="text-xl font-semibold tabular-nums text-emerald-500">
@@ -766,7 +766,7 @@ export default function ClientDetailPage() {
                   </Card>
                   <Card>
                     <CardContent className="pt-4 pb-4">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
+                      <p className="text-xs text-muted-foreground font-medium mb-1">
                         Outstanding
                       </p>
                       <p className={cn(

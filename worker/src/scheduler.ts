@@ -28,6 +28,9 @@ const DEFAULT_CONFIG: ScheduleConfig = {
  * Check if we're currently within business hours.
  */
 export function isWithinBusinessHours(config: Partial<ScheduleConfig> = {}): boolean {
+  // Allow 24/7 override for testing via env var
+  if (process.env.SCHEDULE_OVERRIDE === "always") return true;
+
   const { timezone, startHour, endHour, activeDays } = {
     ...DEFAULT_CONFIG,
     ...config,

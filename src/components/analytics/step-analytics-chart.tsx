@@ -118,7 +118,7 @@ export function StepAnalyticsChart({
 
   return (
     <div className="space-y-4 py-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      <p className="text-xs font-medium text-muted-foreground">
         Sequence Steps &mdash; {campaignName}
       </p>
 

@@ -36,11 +36,11 @@ export async function PortalAppShell({ workspaceSlug, children }: PortalAppShell
           workspaceSlug={workspaceSlug}
           workspaceName={workspace?.name ?? workspaceSlug}
         />
-        <main id="main-content" className="flex-1 overflow-auto">
+        <main id="main-content" className="flex-1 overflow-auto min-w-0">
           <PageTransition>{children}</PageTransition>
         </main>
+        <SupportWidget />
       </div>
-      <SupportWidget />
     </TooltipProvider>
   );
 }

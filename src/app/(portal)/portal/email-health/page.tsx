@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Mail, ShieldCheck, Activity } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import type { SenderEmail } from "@/lib/emailbison/types";
 
 interface SenderHealthRow {
@@ -29,14 +29,6 @@ interface SenderHealthRow {
   replies: number;
   replyRate: number;
   healthStatus: "healthy" | "warning" | "critical";
-}
-
-// DB-sourced sender data enrichment
-interface DbSenderData {
-  emailBounceStatus: string;
-  emailBounceStatusAt: Date | null;
-  warmupDay: number | null;
-  recentEventNote: string | null;
 }
 
 // Domain DNS health data
@@ -77,20 +69,6 @@ function extractDomain(email: string): string {
   return parts.length === 2 ? parts[1].toLowerCase() : "";
 }
 
-function recentEventToNote(reason: string): string {
-  switch (reason) {
-    case "manual":
-      return "Daily limit reduced";
-    case "bounce_rate":
-      return "Status elevated";
-    case "step_down":
-      return "Recovering";
-    case "blacklist":
-      return "Blacklist detected";
-    default:
-      return "Status updated";
-  }
-}
 
 export default async function PortalEmailHealthPage() {
   let session;
@@ -130,52 +108,6 @@ export default async function PortalEmailHealthPage() {
     });
   } catch (err) {
     error = err instanceof Error ? err.message : "Failed to fetch sender data";
-  }
-
-  // ---- DB enrichment: sender health status + recent events ----
-  const dbSenders = await prisma.sender.findMany({
-    where: {
-      workspaceSlug,
-      emailAddress: { not: null },
-    },
-    select: {
-      emailAddress: true,
-      emailBounceStatus: true,
-      emailBounceStatusAt: true,
-      warmupDay: true,
-    },
-  });
-
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const recentEvents = await prisma.emailHealthEvent.findMany({
-    where: { workspaceSlug },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-
-  // Group recent events by senderEmail (most recent per sender)
-  const eventBySender = new Map<string, { reason: string; createdAt: Date }>();
-  for (const evt of recentEvents) {
-    if (!eventBySender.has(evt.senderEmail)) {
-      eventBySender.set(evt.senderEmail, {
-        reason: evt.reason,
-        createdAt: evt.createdAt,
-      });
-    }
-  }
-
-  // Build DB sender lookup
-  const dbSenderMap = new Map<string, DbSenderData>();
-  for (const s of dbSenders) {
-    if (!s.emailAddress) continue;
-    const evt = eventBySender.get(s.emailAddress);
-    const isRecent = evt && evt.createdAt >= sevenDaysAgo;
-    dbSenderMap.set(s.emailAddress.toLowerCase(), {
-      emailBounceStatus: s.emailBounceStatus,
-      emailBounceStatusAt: s.emailBounceStatusAt,
-      warmupDay: s.warmupDay,
-      recentEventNote: isRecent ? recentEventToNote(evt.reason) : null,
-    });
   }
 
   // ---- DB enrichment: domain DNS health ----
@@ -230,7 +162,7 @@ export default async function PortalEmailHealthPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Email Health</h1>
+        <h1 className="text-xl font-medium text-foreground">Email Health</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Sender inbox health and deliverability metrics
         </p>
@@ -245,22 +177,10 @@ export default async function PortalEmailHealthPage() {
 
       {/* Disconnected inboxes alert */}
       {disconnected.length > 0 && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-4">
-          <h3 className="font-semibold text-red-900">
-            {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""}{" "}
-            disconnected
-          </h3>
-          <p className="text-sm text-red-800 mt-1">
-            These inboxes are no longer connected and cannot send emails.
-            Contact your Outsignal account manager to reconnect them.
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3">
+          <p className="text-sm font-medium text-red-800">
+            {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""} disconnected — contact your account manager to reconnect.
           </p>
-          <ul className="mt-2 space-y-1">
-            {disconnected.map((s) => (
-              <li key={s.email} className="text-sm text-red-700 font-medium">
-                {s.email}
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
@@ -270,7 +190,7 @@ export default async function PortalEmailHealthPage() {
           <MetricCard
             label="Connected Inboxes"
             value={`${connected}/${totalSenders}`}
-            icon={Mail}
+            icon="Mail"
             trend={disconnected.length > 0 ? "down" : "up"}
             detail={
               disconnected.length > 0
@@ -283,7 +203,7 @@ export default async function PortalEmailHealthPage() {
             label="Avg Bounce Rate"
             value={avgBounceRate.toFixed(2)}
             suffix="%"
-            icon={Activity}
+            icon="Activity"
             trend={bounceTrend}
             detail={
               bounceTrend === "up"
@@ -298,7 +218,7 @@ export default async function PortalEmailHealthPage() {
             label="Avg Reply Rate"
             value={avgReplyRate.toFixed(2)}
             suffix="%"
-            icon={Mail}
+            icon="Mail"
             trend={avgReplyRate > 1 ? "up" : "neutral"}
             density="compact"
           />
@@ -308,7 +228,7 @@ export default async function PortalEmailHealthPage() {
       {/* Domain Health (DNS badges) */}
       <Card>
         <CardHeader>
-          <CardTitle className="font-heading">Domain Health</CardTitle>
+          <CardTitle className="">Domain Health</CardTitle>
         </CardHeader>
         <CardContent>
           {domainHealthRows.length === 0 ? (
@@ -370,7 +290,7 @@ export default async function PortalEmailHealthPage() {
       {/* Sender Health Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="font-heading">Sender Health</CardTitle>
+          <CardTitle className="">Sender Health</CardTitle>
         </CardHeader>
         <CardContent>
           {senders.length === 0 && !error ? (
@@ -387,21 +307,13 @@ export default async function PortalEmailHealthPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Sent</TableHead>
-                  <TableHead className="text-right">Bounces</TableHead>
                   <TableHead className="text-right">Bounce %</TableHead>
-                  <TableHead className="text-right">Replies</TableHead>
                   <TableHead className="text-right">Reply %</TableHead>
                   <TableHead>Health</TableHead>
-                  <TableHead>Bounce Status</TableHead>
-                  <TableHead>Recent</TableHead>
-                  <TableHead className="text-right">Warmup Day</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {senders.map((sender) => {
-                  const dbData = dbSenderMap.get(sender.email.toLowerCase());
-                  const emailBounceStatus = dbData?.emailBounceStatus ?? null;
-                  return (
+                {senders.map((sender) => (
                     <TableRow key={sender.email} className="hover:bg-muted border-border">
                       <TableCell className="font-medium text-sm">
                         {sender.email}
@@ -414,9 +326,6 @@ export default async function PortalEmailHealthPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
                         {sender.emailsSent.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {sender.bounced.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
                         <span
@@ -432,40 +341,13 @@ export default async function PortalEmailHealthPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
-                        {sender.replies.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
                         {sender.replyRate.toFixed(1)}%
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={sender.healthStatus} type="health" />
                       </TableCell>
-                      <TableCell>
-                        {emailBounceStatus ? (
-                          <StatusBadge status={emailBounceStatus} type="health" />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {dbData?.recentEventNote ? (
-                          <span className="text-xs text-muted-foreground">
-                            {dbData.recentEventNote}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {dbData?.warmupDay != null ? (
-                          <span className="text-xs">{dbData.warmupDay}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
                     </TableRow>
-                  );
-                })}
+                ))}
               </TableBody>
             </Table>
           ) : null}

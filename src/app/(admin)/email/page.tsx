@@ -154,44 +154,18 @@ export default async function EmailHealthPage({
 
         {/* Alert banners */}
         {disconnected.length > 0 && (
-          <div className="rounded-lg border border-red-300 bg-red-50 p-4">
-            <h3 className="font-heading font-bold text-red-800">
-              {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""} disconnected
-            </h3>
-            <p className="text-sm text-red-600 mt-1">
-              These inboxes are no longer connected and cannot send emails. Reconnect them immediately.
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-red-800">
+              {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""} disconnected — reconnect immediately
             </p>
-            <ul className="mt-2 space-y-1">
-              {disconnected.map((s) => (
-                <li key={`${s.workspaceSlug}-${s.email}`} className="text-sm text-red-600 font-medium">
-                  {s.email}{" "}
-                  <Link
-                    href={`/workspace/${s.workspaceSlug}/inbox-health`}
-                    className="underline text-red-600 hover:text-red-800"
-                  >
-                    ({s.workspaceName})
-                  </Link>
-                </li>
-              ))}
-            </ul>
           </div>
         )}
 
         {highBounce.length > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-            <h3 className="font-heading font-bold text-amber-800">
-              {highBounce.length} sender{highBounce.length !== 1 ? "s" : ""} with high bounce rates
-            </h3>
-            <p className="text-sm text-amber-600 mt-1">
-              These senders have bounce rates above 5%. Consider removing them from active campaigns.
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-amber-800">
+              {highBounce.length} sender{highBounce.length !== 1 ? "s" : ""} with bounce rates above 5%
             </p>
-            <ul className="mt-2 space-y-1">
-              {highBounce.map((s) => (
-                <li key={`${s.workspaceSlug}-${s.email}`} className="text-sm text-amber-600 font-medium">
-                  {s.email} — {s.bounceRate.toFixed(1)}% bounce rate ({s.workspaceName})
-                </li>
-              ))}
-            </ul>
           </div>
         )}
 
@@ -239,10 +213,7 @@ export default async function EmailHealthPage({
                   <TableHead>Workspace</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Sent</TableHead>
-                  <TableHead className="text-right">Bounces</TableHead>
                   <TableHead className="text-right">Bounce %</TableHead>
-                  <TableHead className="text-right">Replies</TableHead>
-                  <TableHead className="text-right">Reply %</TableHead>
                   <TableHead>Health</TableHead>
                 </TableRow>
               </TableHeader>
@@ -272,9 +243,6 @@ export default async function EmailHealthPage({
                       {sender.emailsSent.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {sender.bounced.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
                       <span
                         className={
                           sender.healthStatus === "critical"
@@ -286,12 +254,6 @@ export default async function EmailHealthPage({
                       >
                         {sender.bounceRate.toFixed(1)}%
                       </span>
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      {sender.replies.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      {sender.replyRate.toFixed(1)}%
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -306,7 +268,7 @@ export default async function EmailHealthPage({
                 {allSenders.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={6}
                       className="text-center py-8 text-muted-foreground"
                     >
                       No sender emails found across active workspaces

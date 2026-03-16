@@ -1,33 +1,29 @@
 import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
-import { EmailBisonClient } from "@/lib/emailbison/client";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorBanner } from "@/components/ui/error-banner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
-import {
-  PortalPerformanceChart,
-  PerformanceChartLegend,
-  type PerformanceDayPoint,
-} from "@/components/portal/portal-performance-chart";
+import { type PerformanceDayPoint } from "@/components/portal/portal-performance-chart";
 import { RelativeTimestamp } from "@/components/portal/relative-timestamp";
+import { PeriodSelector } from "@/components/portal/period-selector";
+import { Mail } from "lucide-react";
 
 import Link from "next/link";
-import type { Campaign } from "@/lib/emailbison/types";
 
-export default async function PortalDashboardPage() {
+
+const VALID_PERIODS = [7, 14, 30, 90] as const;
+
+export default async function PortalDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  const { period: periodParam } = await searchParams;
+  const timeSeriesDays = VALID_PERIODS.includes(Number(periodParam) as (typeof VALID_PERIODS)[number])
+    ? Number(periodParam)
+    : 14;
   let session;
   try {
     session = await getPortalSession();
@@ -47,41 +43,28 @@ export default async function PortalDashboardPage() {
     );
   }
 
-  const client = new EmailBisonClient(workspace.apiToken);
-
-  let campaigns: Campaign[] = [];
-  let error: string | null = null;
-
-  try {
-    campaigns = await client.getCampaigns();
-  } catch (err) {
-    error = err instanceof Error ? err.message : "Failed to fetch campaigns";
-  }
-
-  // Build a mapping from EmailBison campaign ID to internal campaign ID
-  const ebCampaignIds = campaigns.map((c) => c.id).filter(Boolean);
-  const internalCampaigns = ebCampaignIds.length > 0
-    ? await prisma.campaign.findMany({
-        where: {
-          workspaceSlug,
-          emailBisonCampaignId: { in: ebCampaignIds },
-        },
-        select: { id: true, emailBisonCampaignId: true },
-      })
-    : [];
-  const ebToInternalId = new Map(
-    internalCampaigns
-      .filter((c) => c.emailBisonCampaignId !== null)
-      .map((c) => [c.emailBisonCampaignId!, c.id]),
-  );
-
-  const totalSent = campaigns.reduce((sum, c) => sum + (c.emails_sent ?? 0), 0);
-  const totalReplies = campaigns.reduce((sum, c) => sum + (c.replied ?? 0), 0);
-
-  // Time-series data from WebhookEvent for the last 14 days
-  const timeSeriesDays = 14;
+  // Time-series data for the selected period
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - timeSeriesDays);
+
+  // LinkedIn actions for the same period
+  const linkedInActions = await prisma.linkedInAction.findMany({
+    where: {
+      workspaceSlug,
+      createdAt: { gte: sinceDate },
+      status: "complete",
+    },
+    select: {
+      createdAt: true,
+      actionType: true,
+    },
+  });
+
+  const linkedInTotals = {
+    connections: linkedInActions.filter((a) => a.actionType === "connect").length,
+    messages: linkedInActions.filter((a) => a.actionType === "message").length,
+    profileViews: linkedInActions.filter((a) => a.actionType === "profile_view").length,
+  };
 
   const webhookEvents = await prisma.webhookEvent.findMany({
     where: {
@@ -135,6 +118,36 @@ export default async function PortalDashboardPage() {
     );
   }
 
+  // Reply counts from Reply model (more complete than webhook events — includes poll-replies cron)
+  const periodRepliesRaw = await prisma.reply.findMany({
+    where: {
+      workspaceSlug,
+      direction: "inbound",
+      receivedAt: { gte: sinceDate },
+    },
+    select: { receivedAt: true },
+  });
+
+  const replyDayMap = new Map<string, number>();
+  for (const r of periodRepliesRaw) {
+    const key = r.receivedAt.toISOString().slice(0, 10);
+    replyDayMap.set(key, (replyDayMap.get(key) ?? 0) + 1);
+  }
+
+  const periodReplyCount = periodRepliesRaw.length;
+
+  const replySparklineFromDb: number[] = [];
+  for (let i = timeSeriesDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    replySparklineFromDb.push(replyDayMap.get(dateStr) ?? 0);
+  }
+
+  // Period-scoped totals
+  const periodSent = performanceTimeSeries.reduce((sum, d) => sum + d.sent, 0);
+  const periodReplyRate = periodSent > 0 ? (periodReplyCount / periodSent) * 100 : 0;
+
   // Pending approval campaigns count
   const pendingApprovalCount = await prisma.campaign.count({
     where: { workspaceSlug, status: "pending_approval" },
@@ -142,12 +155,61 @@ export default async function PortalDashboardPage() {
 
   const now = new Date();
 
-  // Computed rates
-  const replyRate = totalSent > 0 ? ((totalReplies / totalSent) * 100) : 0;
+  // LinkedIn connects sparkline: daily connect counts over the same period
+  const linkedInConnectsSparkline: number[] = [];
+  for (let i = timeSeriesDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const count = linkedInActions.filter(
+      (a) => a.actionType === "connect" && a.createdAt.toISOString().slice(0, 10) === dateStr
+    ).length;
+    linkedInConnectsSparkline.push(count);
+  }
+
+  // LinkedIn messages sparkline: daily message counts over the same period
+  const linkedInMessagesSparkline: number[] = [];
+  for (let i = timeSeriesDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const count = linkedInActions.filter(
+      (a) => a.actionType === "message" && a.createdAt.toISOString().slice(0, 10) === dateStr
+    ).length;
+    linkedInMessagesSparkline.push(count);
+  }
+
+  // LinkedIn worker online status
+  const linkedInSender = await prisma.sender.findFirst({
+    where: { workspaceSlug, linkedinProfileUrl: { not: null } },
+    select: { lastPolledAt: true },
+  });
+  const linkedInWorkerOnline =
+    linkedInSender?.lastPolledAt &&
+    now.getTime() - linkedInSender.lastPolledAt.getTime() < 10 * 60 * 1000;
 
   // Build sparkline arrays from time series
   const sentSparkline = performanceTimeSeries.map((d) => d.sent);
-  const repliesSparkline = performanceTimeSeries.map((d) => d.replied);
+
+  // Recent replies
+  const recentReplies = await prisma.reply.findMany({
+    where: {
+      workspaceSlug,
+      direction: "inbound",
+    },
+    select: {
+      id: true,
+      senderName: true,
+      senderEmail: true,
+      subject: true,
+      bodyText: true,
+      receivedAt: true,
+      campaignName: true,
+      intent: true,
+    },
+    orderBy: { receivedAt: "desc" },
+    take: 5,
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -171,134 +233,123 @@ export default async function PortalDashboardPage() {
         <div>
           <h1 className="text-xl font-medium text-foreground">{workspace.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Campaign performance overview · <Link href="/portal/email-health" className="text-brand hover:underline">Email health</Link> · <Link href="/portal/linkedin" className="text-brand hover:underline">LinkedIn</Link> · <Link href="/portal/replies" className="text-brand hover:underline">Replies</Link>
+            Campaign performance overview · <Link href="/portal/email-health" className="text-brand hover:underline">Email health</Link> · <Link href="/portal/linkedin" className="text-brand hover:underline">LinkedIn</Link> · <Link href="/portal/inbox" className="text-brand hover:underline">Replies</Link>
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <PeriodSelector />
           <RelativeTimestamp timestamp={now.toISOString()} />
           <PortalRefreshButton />
         </div>
       </div>
 
-      {error && <ErrorBanner message={error} />}
-
-      {/* Hero Metric Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <MetricCard
-            label="Total Replies"
-            value={totalReplies.toLocaleString()}
-            sparklineData={repliesSparkline}
-            sparklineColor="#635BFF"
-            density="compact"
-          />
-          <MetricCard
-            label="Emails Sent"
-            value={totalSent.toLocaleString()}
-            sparklineData={sentSparkline}
-            sparklineColor="var(--muted-foreground)"
-            density="compact"
-          />
-          <MetricCard
-            label="Reply Rate"
-            value={replyRate.toFixed(1)}
-            suffix="%"
-            sparklineData={performanceTimeSeries.map((d) => d.sent > 0 ? (d.replied / d.sent) * 100 : 0)}
-            sparklineColor="#10B981"
-            density="compact"
-          />
+      {/* Email */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</p>
+        <div className="grid grid-cols-3 gap-4">
+          <MetricCard label="Replies" value={periodReplyCount.toLocaleString()} sparklineData={replySparklineFromDb} sparklineColor="#635BFF" density="compact" icon="MessageSquareText" />
+          <MetricCard label="Sent" value={periodSent.toLocaleString()} sparklineData={sentSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
+          <MetricCard label="Reply Rate" value={periodReplyRate.toFixed(1)} suffix="%" sparklineData={sentSparkline.map((sent, i) => sent > 0 ? (replySparklineFromDb[i] / sent) * 100 : 0)} sparklineColor="#635BFF" density="compact" icon="TrendingUp" />
+        </div>
       </div>
 
-      {/* Campaign Performance Chart */}
-      {performanceTimeSeries.some((d) => d.sent > 0 || d.replied > 0 || d.bounced > 0 || d.interested > 0 || d.unsubscribed > 0) && (
-          <Card density="compact">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base text-foreground">
-                  Email Activity
-                </CardTitle>
-                <PerformanceChartLegend />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <PortalPerformanceChart data={performanceTimeSeries} />
-            </CardContent>
-          </Card>
-      )}
-
-      {/* Campaigns Table */}
-      <div>
-        <Card>
-          <CardContent className="p-0">
-            {campaigns.length === 0 ? (
-              <EmptyState
-                title="No campaigns yet"
-                description="Your campaigns will appear here once they are set up."
-                variant="compact"
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border">
-                    <TableHead className="text-muted-foreground">Campaign</TableHead>
-                    <TableHead className="text-muted-foreground">Status</TableHead>
-                    <TableHead className="text-right text-muted-foreground">Leads</TableHead>
-                    <TableHead className="text-right text-muted-foreground">Sent</TableHead>
-                    <TableHead className="text-right text-muted-foreground">Replies</TableHead>
-                    <TableHead className="text-right text-muted-foreground">Reply Rate</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {campaigns.map((campaign) => {
-                    const sent = campaign.emails_sent ?? 0;
-                    const rRate =
-                      sent > 0
-                        ? ((campaign.replied / sent) * 100).toFixed(1)
-                        : "0.0";
-                    const internalId = ebToInternalId.get(campaign.id);
-                    return (
-                      <TableRow
-                        key={campaign.id}
-                        className={`border-border ${internalId ? "hover:bg-muted cursor-pointer group" : ""}`}
-                      >
-                        <TableCell className="font-medium text-foreground">
-                          {internalId ? (
-                            <Link
-                              href={`/portal/campaigns/${internalId}`}
-                              className="group-hover:underline"
-                            >
-                              {campaign.name}
-                            </Link>
-                          ) : (
-                            campaign.name
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge
-                            status={campaign.status}
-                            type="campaign"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-foreground">
-                          {campaign.total_leads.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-foreground">
-                          {sent.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-foreground">
-                          {campaign.replied.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-foreground">
-                          {rRate}%
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+      {/* LinkedIn */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">LinkedIn</p>
+        <div className="grid grid-cols-3 gap-4">
+          <MetricCard label="Requests Sent" value={linkedInTotals.connections.toLocaleString()} sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
+          <MetricCard label="Connections Made" value={linkedInTotals.connections.toLocaleString()} detail="Accepted connections" sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
+          <MetricCard label="Messages Sent" value={linkedInTotals.messages.toLocaleString()} sparklineData={linkedInMessagesSparkline} sparklineColor="#635BFF" density="compact" icon="MessageSquare" />
+        </div>
       </div>
+
+      {/* Worker Status */}
+      <div className={`rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm ${
+        linkedInWorkerOnline
+          ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+          : "bg-red-50 border border-red-200 text-red-700"
+      }`}>
+        {linkedInWorkerOnline ? (
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+        ) : (
+          <span className="inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+        )}
+        <span className="font-medium">{linkedInWorkerOnline ? "LinkedIn Worker Online" : "LinkedIn Worker Offline"}</span>
+        <span className="text-xs opacity-70">
+          {(() => {
+            if (!linkedInSender?.lastPolledAt) return "";
+            const mins = Math.floor((now.getTime() - linkedInSender.lastPolledAt.getTime()) / 60000);
+            if (mins < 1) return "· just now";
+            if (mins < 60) return `· ${mins}m ago`;
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return `· ${hours}h ago`;
+            return `· ${Math.floor(hours / 24)}d ago`;
+          })()}
+        </span>
+      </div>
+
+      {/* Recent Replies */}
+      <Card density="compact">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base text-foreground">Recent Replies</CardTitle>
+            <Link href="/portal/inbox" className="text-xs font-medium text-brand hover:underline">
+              View all
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recentReplies.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No replies yet</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {recentReplies.map((reply) => (
+                <Link
+                  key={reply.id}
+                  href="/portal/inbox"
+                  className="flex items-center gap-3 py-2.5 hover:bg-muted/50 -mx-2 px-2 rounded transition-colors"
+                >
+                  <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {reply.senderName || reply.senderEmail}
+                      </span>
+                      {reply.intent && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          reply.intent === "interested" || reply.intent === "meeting_booked"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : reply.intent === "objection" || reply.intent === "unsubscribe"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-stone-100 text-stone-600"
+                        }`}>
+                          {reply.intent.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {reply.subject || reply.bodyText?.slice(0, 80) || "No subject"}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                    {(() => {
+                      const mins = Math.floor((now.getTime() - reply.receivedAt.getTime()) / 60000);
+                      if (mins < 1) return "now";
+                      if (mins < 60) return `${mins}m`;
+                      const hours = Math.floor(mins / 60);
+                      if (hours < 24) return `${hours}h`;
+                      return `${Math.floor(hours / 24)}d`;
+                    })()}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
     </div>
   );

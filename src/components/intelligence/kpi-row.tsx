@@ -92,7 +92,7 @@ export function KpiRow(props: KpiRowProps) {
           >
             <div className="flex items-center gap-2">
               <Icon className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+              <span className="text-xs text-muted-foreground font-medium">
                 {card.label}
               </span>
             </div>

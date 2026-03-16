@@ -95,7 +95,7 @@ export async function getNextBatch(
   for (const action of actions) {
     if (result.length >= limit) break;
 
-    const budget = await checkBudget(senderId, action.actionType as LinkedInActionType);
+    const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
     if (budget.allowed) {
       result.push(action);
     }

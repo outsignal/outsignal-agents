@@ -300,7 +300,7 @@ export function CompaniesSearchPage() {
 
                 {/* Enrichment status filter */}
                 <div>
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                  <h3 className="text-xs font-medium text-muted-foreground mb-3">
                     Enrichment
                   </h3>
                   <div className="space-y-1">
@@ -329,7 +329,7 @@ export function CompaniesSearchPage() {
                 {/* Vertical / Industry filter */}
                 {allIndustries.length > 0 && (
                   <div>
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                    <h3 className="text-xs font-medium text-muted-foreground mb-3">
                       Vertical
                     </h3>
                     <div className="space-y-1 max-h-80 overflow-y-auto">

@@ -61,7 +61,7 @@ export default async function PortalKnowledgePage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">Knowledge Base</h1>
+          <h1 className="text-xl font-medium text-foreground">Knowledge Base</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Resources and guides to help you get the most from your campaigns
           </p>

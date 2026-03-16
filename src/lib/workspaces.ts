@@ -9,6 +9,7 @@ export interface WorkspaceConfig {
   vertical?: string;
   source: "db";
   status: string;
+  package?: string;
 }
 
 export interface WorkspaceListItem {
@@ -52,6 +53,7 @@ export async function getWorkspaceBySlug(
     vertical: dbWs.vertical ?? undefined,
     source: "db",
     status: dbWs.status,
+    package: dbWs.package ?? undefined,
   };
 }
 

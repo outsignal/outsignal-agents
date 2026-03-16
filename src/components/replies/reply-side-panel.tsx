@@ -106,7 +106,7 @@ export function ReplySidePanel({
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
               {/* Classification section */}
               <section>
-                <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                <h3 className="text-xs font-medium text-muted-foreground mb-2">
                   Classification
                 </h3>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -145,7 +145,7 @@ export function ReplySidePanel({
 
               {/* Reply content */}
               <section>
-                <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                <h3 className="text-xs font-medium text-muted-foreground mb-2">
                   Reply
                 </h3>
                 {reply.subject && (
@@ -161,7 +161,7 @@ export function ReplySidePanel({
                 <section>
                   <button
                     onClick={() => setShowOutbound(!showOutbound)}
-                    className="flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Original Outbound
                     {showOutbound ? (
@@ -190,7 +190,7 @@ export function ReplySidePanel({
               {/* Campaign info */}
               {(reply.campaignName || reply.sequenceStep != null) && (
                 <section>
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                  <h3 className="text-xs font-medium text-muted-foreground mb-2">
                     Campaign
                   </h3>
                   <div className="space-y-1 text-sm">

@@ -4,12 +4,62 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  BookOpen,
+  Building2,
+  CheckCircle,
+  Circle,
+  Eye,
+  FileText,
+  LinkedinIcon,
+  Mail,
+  Megaphone,
+  MessageSquare,
+  MessageSquareText,
+  Send,
+  ShieldCheck,
+  Star,
+  TrendingUp,
+  UserPlus,
+  Users,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
+import { useId } from "react";
 import {
   Area,
   AreaChart,
   ResponsiveContainer,
+  Tooltip,
+  YAxis,
 } from "recharts";
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  BookOpen,
+  Building2,
+  CheckCircle,
+  Circle,
+  Eye,
+  FileText,
+  LinkedinIcon,
+  Mail,
+  Megaphone,
+  MessageSquare,
+  MessageSquareText,
+  Send,
+  ShieldCheck,
+  Star,
+  TrendingUp,
+  UserPlus,
+  Users,
+  Zap,
+};
 
 interface MetricCardProps {
   label: string;
@@ -17,38 +67,21 @@ interface MetricCardProps {
   trend?: "up" | "down" | "warning" | "neutral";
   detail?: string;
   density?: "default" | "compact";
-  /** When true, renders the value larger and the card with a subtle highlight */
   featured?: boolean;
-  /** Card size variant — hero renders larger values and taller card */
   variant?: "default" | "hero";
-  /** Tiny sparkline rendered at the bottom of the card */
   sparklineData?: number[];
-  /** Sparkline stroke/fill colour (defaults to brand purple #635BFF) */
   sparklineColor?: string;
-  /** Prefix shown before the value, e.g. "£" */
   prefix?: string;
-  /** Suffix shown after the value in lighter weight, e.g. "%" */
   suffix?: string;
-  /** Show skeleton loading state */
   loading?: boolean;
-  /** Makes the entire card a clickable link */
   href?: string;
-  /** Optional icon shown next to the label */
-  icon?: LucideIcon;
+  icon?: string;
   className?: string;
 }
-
-const trendPill: Record<string, { text: string; bg: string }> = {
-  up: { text: "text-green-600", bg: "bg-green-50" },
-  down: { text: "text-red-600", bg: "bg-red-50" },
-  warning: { text: "text-amber-600", bg: "bg-amber-50" },
-  neutral: { text: "text-muted-foreground", bg: "bg-muted" },
-};
 
 export function MetricCard({
   label,
   value,
-  trend,
   detail,
   density = "default",
   featured,
@@ -59,14 +92,25 @@ export function MetricCard({
   suffix,
   loading = false,
   href,
-  icon: Icon,
+  icon,
   className,
 }: MetricCardProps) {
-  // Map featured → hero for backward compat
+  const IconComponent = icon ? ICON_MAP[icon] : undefined;
   const variant = variantProp ?? (featured ? "hero" : "default");
   const isHero = variant === "hero";
+  const sparklineHeight = isHero ? 96 : 80;
+  const hasSparkline = sparklineData && sparklineData.length > 1;
+  const gradId = useId().replace(/:/g, "");
 
-  const sparklineHeight = isHero ? 56 : 40;
+  // Y domain: centre the data in the middle of the chart with equal
+  // padding above and below so the line never clips at troughs.
+  let yDomain: [number, number] = [0, 1];
+  if (hasSparkline) {
+    const min = Math.min(...sparklineData);
+    const max = Math.max(...sparklineData);
+    const range = max - min || 1;
+    yDomain = [min - range * 0.15, max + range * 0.15];
+  }
 
   const cardContent = (
     <Card
@@ -78,62 +122,40 @@ export function MetricCard({
       )}
     >
       <CardContent className={cn(density === "compact" ? "pt-3" : "pt-6", "pb-0")}>
-        {/* Label row */}
         <div className="flex items-center gap-1.5">
-          {Icon && !loading && (
-            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+          {IconComponent && !loading && (
+            <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />
           )}
           {loading ? (
             <Skeleton className="h-3 w-24" />
           ) : (
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               {label}
             </p>
           )}
         </div>
 
-        {/* Value row */}
         <div className="flex items-baseline gap-2 mt-1.5">
           {loading ? (
             <Skeleton className={cn("h-8", isHero ? "w-40" : "w-32")} />
           ) : (
-            <>
-              <p
-                className={cn(
-                  "font-mono font-semibold tabular-nums tracking-tight text-foreground",
-                  isHero ? "text-5xl font-bold" : "text-3xl",
-                )}
-              >
-                {prefix && (
-                  <span className="font-mono">{prefix}</span>
-                )}
-                {value}
-                {suffix && (
-                  <span className="font-mono font-normal text-muted-foreground ml-0.5">
-                    {suffix}
-                  </span>
-                )}
-              </p>
-
-              {/* Trend pill */}
-              {trend && trend !== "neutral" && (
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium",
-                    trendPill[trend]?.text,
-                    trendPill[trend]?.bg,
-                  )}
-                >
-                  {trend === "up" && "↑"}
-                  {trend === "down" && "↓"}
-                  {trend === "warning" && "⚠"}
+            <p
+              className={cn(
+                "font-mono font-semibold tabular-nums tracking-tight text-foreground",
+                isHero ? "text-4xl font-semibold" : "text-2xl",
+              )}
+            >
+              {prefix && <span className="font-mono">{prefix}</span>}
+              {value}
+              {suffix && (
+                <span className="font-mono font-normal text-muted-foreground ml-0.5">
+                  {suffix}
                 </span>
               )}
-            </>
+            </p>
           )}
         </div>
 
-        {/* Detail text */}
         {loading ? (
           <Skeleton className="h-3.5 w-28 mt-1.5" />
         ) : (
@@ -142,41 +164,59 @@ export function MetricCard({
           )
         )}
 
-        {/* Spacer for sparkline or bottom padding */}
-        <div className={cn(
-          sparklineData && sparklineData.length > 1 ? "mt-3" : (density === "compact" ? "pb-3" : "pb-5"),
-        )} />
+        {/* Bottom spacer — provides spacing when no sparkline, or
+            reserves vertical space for the absolutely-positioned chart */}
+        <div style={{ height: hasSparkline ? sparklineHeight : undefined }}
+          className={cn(!hasSparkline && (density === "compact" ? "pb-3" : "pb-4"))}
+        />
       </CardContent>
 
-      {/* Sparkline */}
+      {/* Sparkline — absolutely positioned to card bottom edge.
+          Bypasses all card padding / gap issues entirely. */}
       {loading && sparklineData ? (
         <div className="px-6">
           <Skeleton className="w-full h-10 mb-0 rounded-b-lg rounded-t-none" />
         </div>
       ) : (
-        sparklineData &&
-        sparklineData.length > 1 && (
-          <div className="-mb-[1px]">
+        hasSparkline && (
+          <div className="absolute bottom-0 left-0 right-0">
             <ResponsiveContainer width="100%" height={sparklineHeight}>
               <AreaChart
                 data={sparklineData.map((v) => ({ v }))}
                 margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
               >
                 <defs>
-                  <linearGradient id={`sparkGrad-${label.replace(/\s+/g, "")}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={sparklineColor} stopOpacity={0.1} />
-                    <stop offset="100%" stopColor={sparklineColor} stopOpacity={0} />
+                  <linearGradient id={`sparkGrad-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={sparklineColor} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={sparklineColor} stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
+                <YAxis domain={yDomain} hide />
+                <Tooltip
+                  cursor={{ stroke: sparklineColor, strokeOpacity: 0.3, strokeWidth: 1 }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const val = payload[0].value as number;
+                    return (
+                      <div className="rounded-md bg-popover px-2.5 py-1.5 text-xs font-mono tabular-nums text-popover-foreground shadow-md border border-border">
+                        {suffix === "%" ? `${val.toFixed(1)}%` : val.toLocaleString()}
+                      </div>
+                    );
+                  }}
+                  isAnimationActive={false}
+                />
                 <Area
                   type="monotone"
                   dataKey="v"
                   stroke={sparklineColor}
-                  strokeWidth={1.5}
-                  strokeOpacity={0.6}
-                  fill={`url(#sparkGrad-${label.replace(/\s+/g, "")})`}
+                  strokeWidth={2}
+                  strokeOpacity={1}
+                  fill={`url(#sparkGrad-${gradId})`}
                   dot={false}
+                  activeDot={{ r: 3, fill: sparklineColor, stroke: "#fff", strokeWidth: 1.5 }}
                   isAnimationActive={false}
+                  baseValue={yDomain[0]}
+                  fillOpacity={1}
                 />
               </AreaChart>
             </ResponsiveContainer>

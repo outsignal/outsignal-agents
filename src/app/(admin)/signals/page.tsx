@@ -239,7 +239,7 @@ export default function SignalsDashboardPage() {
                 <CardContent>
                   <div className="flex items-center gap-2 mb-1">
                     <Zap className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    <p className="text-xs text-muted-foreground">
                       Total Signals (7d)
                     </p>
                   </div>
@@ -254,7 +254,7 @@ export default function SignalsDashboardPage() {
                 <CardContent>
                   <div className="flex items-center gap-2 mb-1">
                     <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    <p className="text-xs text-muted-foreground">
                       Daily Cost
                     </p>
                   </div>
@@ -274,7 +274,7 @@ export default function SignalsDashboardPage() {
                 <CardContent>
                   <div className="flex items-center gap-2 mb-1">
                     <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    <p className="text-xs text-muted-foreground">
                       Weekly Cost
                     </p>
                   </div>
@@ -358,7 +358,7 @@ export default function SignalsDashboardPage() {
             ) : sortedPerWorkspace.length > 0 ? (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                  <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="text-left px-4 py-2">Workspace</th>
                     <th className="text-right px-4 py-2">Signals</th>
                     <th className="text-right px-4 py-2">Leads</th>
@@ -424,7 +424,7 @@ export default function SignalsDashboardPage() {
             ) : data && data.feed.length > 0 ? (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                  <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="text-left px-4 py-2">Time</th>
                     <th className="text-left px-4 py-2">Company</th>
                     <th className="text-left px-4 py-2">Signal Type</th>

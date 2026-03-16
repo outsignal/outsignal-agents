@@ -55,7 +55,7 @@ export function CampaignSummary({ campaigns, loading }: CampaignSummaryProps) {
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-muted-foreground uppercase tracking-wider">
+            <tr className="text-xs text-muted-foreground">
               <th className="text-left pb-2 font-medium">#</th>
               <th className="text-left pb-2 font-medium">Campaign</th>
               <th className="text-right pb-2 font-medium">Reply %</th>

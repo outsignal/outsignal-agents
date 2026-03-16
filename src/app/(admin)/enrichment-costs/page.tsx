@@ -80,7 +80,7 @@ function SummaryCard({
   return (
     <Card density="compact">
       <CardContent>
-        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
+        <p className="text-xs text-muted-foreground mb-1">{label}</p>
         <p
           className={`text-2xl font-bold ${accent ? "text-brand-strong" : ""}`}
         >
@@ -149,7 +149,7 @@ export default function EnrichmentCostsPage() {
         description="API spend by provider and workspace"
         actions={
           <div className="flex items-center gap-3">
-            <label className="text-xs text-muted-foreground uppercase tracking-wide">From</label>
+            <label className="text-xs text-muted-foreground">From</label>
             <Input
               type="date"
               value={from}
@@ -157,7 +157,7 @@ export default function EnrichmentCostsPage() {
               onChange={(e) => setFrom(e.target.value)}
               className="w-auto"
             />
-            <label className="text-xs text-muted-foreground uppercase tracking-wide">To</label>
+            <label className="text-xs text-muted-foreground">To</label>
             <Input
               type="date"
               value={to}
@@ -190,7 +190,7 @@ export default function EnrichmentCostsPage() {
               {/* Today's spend with cap */}
               <Card density="compact" className="col-span-2 lg:col-span-1">
                 <CardContent>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  <p className="text-xs text-muted-foreground mb-1">
                     Today&apos;s Spend
                   </p>
                   <p className={`text-2xl font-bold ${data.capHit ? "text-destructive" : "text-brand-strong"}`}>
@@ -222,7 +222,7 @@ export default function EnrichmentCostsPage() {
               />
               <Card density="compact">
                 <CardContent>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  <p className="text-xs text-muted-foreground mb-1">
                     Cap Status
                   </p>
                   <p
@@ -422,7 +422,7 @@ export default function EnrichmentCostsPage() {
             <CardContent className="!px-0">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                  <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="text-left px-4 py-2">Provider</th>
                     <th className="text-right px-4 py-2">Calls</th>
                     <th className="text-right px-4 py-2">Total Spend</th>

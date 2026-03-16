@@ -448,7 +448,7 @@ export default function CashflowPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                    <tr className="border-b border-border text-xs text-muted-foreground">
                       <th className="text-left px-4 py-3">Client</th>
                       <th className="text-right px-4 py-3">Avg Invoice Value</th>
                       <th className="text-right px-4 py-3">Monthly Costs</th>

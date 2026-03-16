@@ -35,30 +35,23 @@ interface Props {
 // ---------------------------------------------------------------------------
 
 const COLORS = {
-  // High-volume (left axis)
-  sent: "#635BFF",              // brand purple
-  opens: "oklch(0.7 0 0)",           // medium gray (unchanged)
-  uniqueOpens: "oklch(0.6 0.05 250)", // slate blue (unchanged)
-  // Low-volume (right axis)
-  replied: "#10B981",           // green
-  bounced: "#EF4444",           // red
-  interested: "#F59E0B",        // amber
-  unsubscribed: "#6B7280",      // gray
+  sent: "#635BFF",     // brand purple
+  replied: "#9B8AFB",  // lighter purple
 } as const;
 
 type SeriesKey = keyof typeof COLORS;
 
-const LEFT_AXIS_KEYS: SeriesKey[] = ["sent", "opens", "uniqueOpens"];
-const RIGHT_AXIS_KEYS: SeriesKey[] = ["replied", "bounced", "interested", "unsubscribed"];
+const STROKE_STYLES: Record<SeriesKey, { strokeDasharray?: string; strokeOpacity?: number; strokeWidth?: number }> = {
+  sent:    { strokeWidth: 2 },
+  replied: { strokeWidth: 2 },
+};
+
+const LEFT_AXIS_KEYS: SeriesKey[] = ["sent"];
+const RIGHT_AXIS_KEYS: SeriesKey[] = ["replied"];
 
 const LABELS: Record<SeriesKey, string> = {
   sent: "Sent",
-  opens: "Opens",
-  uniqueOpens: "Unique Opens",
   replied: "Replied",
-  bounced: "Bounced",
-  interested: "Interested",
-  unsubscribed: "Unsub",
 };
 
 // ---------------------------------------------------------------------------
@@ -121,12 +114,7 @@ function activeSeries(data: EmailActivityPoint[]): Set<SeriesKey> {
   const active = new Set<SeriesKey>();
   for (const d of data) {
     if ((d.sent ?? 0) > 0) active.add("sent");
-    if ((d.opens ?? 0) > 0) active.add("opens");
-    if ((d.uniqueOpens ?? 0) > 0) active.add("uniqueOpens");
     if ((d.replied ?? 0) > 0) active.add("replied");
-    if ((d.bounced ?? 0) > 0) active.add("bounced");
-    if ((d.interested ?? 0) > 0) active.add("interested");
-    if ((d.unsubscribed ?? 0) > 0) active.add("unsubscribed");
   }
   return active;
 }
@@ -146,12 +134,14 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
         margin={{ top: 4, right: hasRight ? 4 : 4, left: -12, bottom: 0 }}
       >
         <defs>
-          {(Object.keys(COLORS) as SeriesKey[]).map((key) => (
-            <linearGradient key={key} id={`emailGrad_${key}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={COLORS[key]} stopOpacity={LEFT_AXIS_KEYS.includes(key) ? 0.08 : 0.15} />
-              <stop offset="95%" stopColor={COLORS[key]} stopOpacity={0} />
-            </linearGradient>
-          ))}
+          <linearGradient id="emailGrad_sent" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#635BFF" stopOpacity={0.1} />
+            <stop offset="95%" stopColor="#635BFF" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="emailGrad_replied" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#9B8AFB" stopOpacity={0.08} />
+            <stop offset="95%" stopColor="#9B8AFB" stopOpacity={0} />
+          </linearGradient>
         </defs>
         <CartesianGrid
           strokeDasharray="3 3"
@@ -167,7 +157,7 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
           tick={{ fill: "#a8a29e" }}
           interval="preserveStartEnd"
         />
-        {/* Left Y-axis: high-volume (Sent, Opens) */}
+        {/* Left Y-axis: Sent */}
         <YAxis
           yAxisId="left"
           fontSize={11}
@@ -201,7 +191,9 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
             dataKey={key}
             name={LABELS[key]}
             stroke={COLORS[key]}
-            strokeWidth={key === "sent" ? 1.5 : 1.5}
+            strokeWidth={STROKE_STYLES[key].strokeWidth ?? 1.5}
+            strokeDasharray={STROKE_STYLES[key].strokeDasharray}
+            strokeOpacity={STROKE_STYLES[key].strokeOpacity ?? 1}
             fill={`url(#emailGrad_${key})`}
             dot={false}
             activeDot={{ r: 3, strokeWidth: 0 }}
@@ -217,8 +209,10 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
             dataKey={key}
             name={LABELS[key]}
             stroke={COLORS[key]}
-            strokeWidth={key === "replied" ? 2 : 1.5}
-            fill={key === "replied" ? `url(#emailGrad_${key})` : "transparent"}
+            strokeWidth={STROKE_STYLES[key].strokeWidth ?? 1.5}
+            strokeDasharray={STROKE_STYLES[key].strokeDasharray}
+            strokeOpacity={STROKE_STYLES[key].strokeOpacity ?? 1}
+            fill={`url(#emailGrad_${key})`}
             dot={false}
             activeDot={{ r: 3, strokeWidth: 0 }}
           />

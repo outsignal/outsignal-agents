@@ -100,7 +100,7 @@ export default function PortalLoginPage() {
               className="h-8 w-auto text-foreground mx-auto"
               iconColor="currentColor"
             />
-            <h1 className="mt-6 text-2xl font-heading font-bold tracking-tight">
+            <h1 className="mt-6 text-xl font-medium tracking-tight">
               Client Portal
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">

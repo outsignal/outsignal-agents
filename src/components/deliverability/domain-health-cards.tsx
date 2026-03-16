@@ -100,7 +100,7 @@ function DomainCard({ domain }: { domain: DomainData }) {
         <div className="flex flex-wrap gap-1.5">
           <span
             className={cn(
-              "rounded border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+              "rounded border px-2 py-0.5 text-xs font-medium",
               getDnsBadgeClass(domain.spfStatus),
             )}
           >
@@ -108,7 +108,7 @@ function DomainCard({ domain }: { domain: DomainData }) {
           </span>
           <span
             className={cn(
-              "rounded border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+              "rounded border px-2 py-0.5 text-xs font-medium",
               getDnsBadgeClass(domain.dkimStatus),
             )}
           >
@@ -116,7 +116,7 @@ function DomainCard({ domain }: { domain: DomainData }) {
           </span>
           <span
             className={cn(
-              "rounded border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+              "rounded border px-2 py-0.5 text-xs font-medium",
               getDnsBadgeClass(domain.dmarcStatus),
             )}
           >

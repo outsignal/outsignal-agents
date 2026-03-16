@@ -8,7 +8,7 @@ const cardVariants = cva(
   {
     variants: {
       density: {
-        default: "gap-5 py-5",
+        default: "gap-4 py-4",
         compact: "gap-3 py-3",
       },
     },
@@ -21,13 +21,16 @@ const cardVariants = cva(
 function Card({
   className,
   density = "default",
+  noPadBottom,
+  style,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
+}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants> & { noPadBottom?: boolean }) {
   return (
     <div
       data-slot="card"
       data-density={density}
       className={cn(cardVariants({ density }), className)}
+      style={noPadBottom ? { ...style, paddingBottom: 0, gap: 0 } : style}
       {...props}
     />
   )
@@ -50,7 +53,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-title"
-      className={cn("text-sm font-semibold uppercase tracking-wide leading-none", className)}
+      className={cn("text-sm font-medium leading-none", className)}
       {...props}
     />
   )

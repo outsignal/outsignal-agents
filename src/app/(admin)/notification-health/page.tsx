@@ -2,14 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
-import { MetricCard } from "@/components/dashboard/metric-card";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -228,11 +226,6 @@ export default function NotificationHealthPage() {
         {/* Loading state */}
         {loading && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-lg" />
-              ))}
-            </div>
             <Skeleton className="h-64 rounded-lg" />
             <Skeleton className="h-64 rounded-lg" />
           </>
@@ -240,147 +233,123 @@ export default function NotificationHealthPage() {
 
         {/* Loaded state */}
         {!loading && data && (
-          <>
-            {/* Summary metric cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard
-                label="Total Sent"
-                value={data.summary.sent.toLocaleString()}
-                trend={data.summary.sent > 0 ? "up" : "neutral"}
-              />
-              <MetricCard
-                label="Failed"
-                value={data.summary.failed.toLocaleString()}
-                trend={data.summary.failed > 0 ? "down" : "neutral"}
-              />
-              <MetricCard
-                label="Failure Rate"
-                value={`${data.summary.failureRate}%`}
-                trend={
-                  data.summary.failureRate > 20
-                    ? "down"
-                    : data.summary.failureRate > 5
-                      ? "warning"
-                      : "neutral"
-                }
-              />
-              <MetricCard
-                label="Skipped"
-                value={data.summary.skipped.toLocaleString()}
-              />
-            </div>
+          <Tabs defaultValue="types">
+            <TabsList>
+              <TabsTrigger value="types">
+                Notification Types ({data.byType.length})
+              </TabsTrigger>
+              <TabsTrigger value="failures">
+                Recent Failures ({data.recentFailures.length})
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Status by Type table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Notification Types</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[220px]">Type</TableHead>
-                      <TableHead>Channels</TableHead>
-                      <TableHead>Audience</TableHead>
-                      <TableHead>Last Fired</TableHead>
-                      <TableHead className="text-right">Sent</TableHead>
-                      <TableHead className="text-right">Failed</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.byType.map((row) => (
-                      <TableRow key={row.notificationType}>
-                        <TableCell className="font-medium text-sm">
-                          <div className="flex items-center gap-2.5">
-                            <StatusDot status={row.status} />
-                            {row.label}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.channels}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.audience}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.lastFiredAt ? timeAgo(row.lastFiredAt) : "—"}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {row.sent.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {row.failed.toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            {/* Recent Failures table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Failures</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Channel</TableHead>
-                      <TableHead>Recipient</TableHead>
-                      <TableHead>Error</TableHead>
-                      <TableHead>Workspace</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.recentFailures.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                          {timeAgo(row.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {formatType(row.notificationType)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" size="xs">
-                            {row.channel}
-                          </Badge>
-                        </TableCell>
-                        <TableCell
-                          className="text-sm max-w-[160px] truncate"
-                          title={row.recipient ?? ""}
-                        >
-                          {row.recipient ?? "-"}
-                        </TableCell>
-                        <TableCell
-                          className="text-sm text-destructive max-w-[240px] truncate"
-                          title={row.errorMessage ?? ""}
-                        >
-                          {row.errorMessage ?? "-"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.workspaceSlug ?? "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {data.recentFailures.length === 0 && (
+            <TabsContent value="types">
+              <Card>
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center py-8 text-muted-foreground"
-                        >
-                          No failures in this time range
-                        </TableCell>
+                        <TableHead className="w-[220px]">Type</TableHead>
+                        <TableHead>Channels</TableHead>
+                        <TableHead>Audience</TableHead>
+                        <TableHead>Last Fired</TableHead>
+                        <TableHead className="text-right">Sent</TableHead>
+                        <TableHead className="text-right">Failed</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </>
+                    </TableHeader>
+                    <TableBody>
+                      {data.byType.map((row) => (
+                        <TableRow key={row.notificationType}>
+                          <TableCell className="font-medium text-sm">
+                            <div className="flex items-center gap-2.5">
+                              <StatusDot status={row.status} />
+                              {row.label}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.channels}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.audience}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.lastFiredAt ? timeAgo(row.lastFiredAt) : "\u2014"}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.sent.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.failed.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="failures">
+              <Card>
+                <CardContent className="pt-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Channel</TableHead>
+                        <TableHead>Recipient</TableHead>
+                        <TableHead>Error</TableHead>
+                        <TableHead>Workspace</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.recentFailures.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {timeAgo(row.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {formatType(row.notificationType)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" size="xs">
+                              {row.channel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell
+                            className="text-sm max-w-[160px] truncate"
+                            title={row.recipient ?? ""}
+                          >
+                            {row.recipient ?? "-"}
+                          </TableCell>
+                          <TableCell
+                            className="text-sm text-destructive max-w-[240px] truncate"
+                            title={row.errorMessage ?? ""}
+                          >
+                            {row.errorMessage ?? "-"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.workspaceSlug ?? "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {data.recentFailures.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center py-8 text-muted-foreground"
+                          >
+                            No failures in this time range
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </div>

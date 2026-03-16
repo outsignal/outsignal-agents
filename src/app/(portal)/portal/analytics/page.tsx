@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { BarChart3, Send, MessageSquareText, Star, TrendingUp } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 
 export default async function PortalAnalyticsPage() {
   let session;
@@ -50,7 +50,7 @@ export default async function PortalAnalyticsPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Analytics</h1>
+        <h1 className="text-xl font-medium text-foreground">Analytics</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Campaign performance and engagement metrics
         </p>
@@ -69,27 +69,27 @@ export default async function PortalAnalyticsPage() {
             <MetricCard
               label="Total Prospects"
               value={totalPeople.toLocaleString()}
-              icon={Send}
+              icon="Send"
               density="compact"
             />
             <MetricCard
               label="Total Replies"
               value={totalReplies.toLocaleString()}
-              icon={MessageSquareText}
+              icon="MessageSquareText"
               trend={totalReplies > 0 ? "up" : "neutral"}
               density="compact"
             />
             <MetricCard
               label="Interested Replies"
               value={interestedReplies.toLocaleString()}
-              icon={Star}
+              icon="Star"
               trend={interestedReplies > 0 ? "up" : "neutral"}
               density="compact"
             />
             <MetricCard
               label="Active Campaigns"
               value={totalCampaigns.toLocaleString()}
-              icon={TrendingUp}
+              icon="TrendingUp"
               density="compact"
             />
           </div>

@@ -101,7 +101,7 @@ export function TemplateDetailPanel({
 
             {/* Subject line */}
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+              <p className="text-xs font-medium text-muted-foreground mb-1">
                 Subject Line
               </p>
               <p className="text-sm font-medium">{template.subjectLine}</p>
@@ -109,7 +109,7 @@ export function TemplateDetailPanel({
 
             {/* Email body */}
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+              <p className="text-xs font-medium text-muted-foreground mb-1">
                 Email Body
               </p>
               <div className="rounded-lg border border-border bg-muted/20 p-4 max-h-80 overflow-y-auto">
@@ -121,7 +121,7 @@ export function TemplateDetailPanel({
 
             {/* Element tags */}
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+              <p className="text-xs font-medium text-muted-foreground mb-2">
                 Structural Elements
               </p>
               <div className="flex flex-wrap gap-2">
@@ -152,7 +152,7 @@ export function TemplateDetailPanel({
 
             {/* Performance metrics */}
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+              <p className="text-xs font-medium text-muted-foreground mb-2">
                 Performance
               </p>
               <div className="grid grid-cols-2 gap-3">

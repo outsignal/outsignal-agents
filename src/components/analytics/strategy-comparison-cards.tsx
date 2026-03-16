@@ -75,7 +75,7 @@ export function StrategyComparisonCards({
               {formatStrategyName(s.strategy)}
             </h4>
             {s.isBest && (
-              <span className="inline-flex items-center rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold text-brand-foreground uppercase tracking-wider">
+              <span className="inline-flex items-center rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-brand-foreground">
                 Top Performer
               </span>
             )}

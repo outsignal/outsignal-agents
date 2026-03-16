@@ -44,7 +44,7 @@ export function AlertsSection({ alerts }: AlertsSectionProps) {
               <div className="flex items-center gap-2">
                 <span
                   className={cn(
-                    "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
+                    "text-xs font-medium rounded px-1.5 py-0.5",
                     isError
                       ? "bg-red-100 text-red-700"
                       : "bg-amber-100 text-amber-700"

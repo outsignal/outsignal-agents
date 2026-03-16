@@ -474,7 +474,7 @@ export default function IntegrationsPage() {
           {/* Provider sections by category */}
           {grouped.map((group) => (
             <div key={group.category}>
-              <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
+              <h2 className="text-xs font-medium text-muted-foreground mb-3">
                 {group.label}
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -488,7 +488,7 @@ export default function IntegrationsPage() {
           {/* Webhook Health */}
           {data.webhooks.length > 0 && (
             <div>
-              <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
+              <h2 className="text-xs font-medium text-muted-foreground mb-3">
                 Webhook Health
               </h2>
               <Card density="compact">

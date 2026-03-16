@@ -160,7 +160,7 @@ export default async function CompanyDetailPage({ params }: Props) {
             <CardContent className="space-y-4">
               {techStack.length > 0 && (
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Tech Stack
                   </p>
                   <div className="flex flex-wrap gap-1.5">
@@ -175,7 +175,7 @@ export default async function CompanyDetailPage({ params }: Props) {
 
               {Object.keys(enrichmentData).length > 0 && (
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Additional Fields
                   </p>
                   <div className="space-y-1.5">

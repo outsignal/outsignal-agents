@@ -2,11 +2,11 @@ interface OutsignalLogoProps {
   /** Show just the icon mark, or icon + wordmark */
   variant?: "full" | "mark";
   className?: string;
-  /** Color for the icon mark. Defaults to brand lime (#F0FF7A). Use "currentColor" to inherit text color. */
+  /** Color for the icon mark. Defaults to brand lime (#635BFF). Use "currentColor" to inherit text color. */
   iconColor?: string;
 }
 
-function LogoMark({ className, iconColor = "#F0FF7A" }: { className?: string; iconColor?: string }) {
+function LogoMark({ className, iconColor = "#635BFF" }: { className?: string; iconColor?: string }) {
   return (
     <svg
       viewBox="0 0 92 92"
@@ -23,7 +23,7 @@ function LogoMark({ className, iconColor = "#F0FF7A" }: { className?: string; ic
 }
 
 /** Full logo: icon mark + "Outsignal" wordmark. Text uses currentColor so wrap in a text color class. */
-function FullLogo({ className, iconColor = "#F0FF7A" }: { className?: string; iconColor?: string }) {
+function FullLogo({ className, iconColor = "#635BFF" }: { className?: string; iconColor?: string }) {
   return (
     <svg
       viewBox="0 0 628 126"

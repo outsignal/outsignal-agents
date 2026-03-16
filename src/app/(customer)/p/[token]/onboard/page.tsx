@@ -42,7 +42,7 @@ export default async function CustomerOnboardPage({
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-heading font-bold text-gray-900">
+        <h1 className="text-xl font-medium text-gray-900">
           Onboarding already complete
         </h1>
         <p className="mt-2 text-gray-600">

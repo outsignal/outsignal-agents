@@ -97,7 +97,7 @@ export default async function PortalSignalsPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-heading font-bold text-foreground">Signal Activity</h1>
+        <h1 className="text-xl font-medium text-foreground">Signal Activity</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Intent signals detected for your accounts in the last 30 days
         </p>
@@ -108,20 +108,20 @@ export default async function PortalSignalsPage() {
         <MetricCard
           label="Signals (7d)"
           value={signals7d.length.toLocaleString()}
-          icon={Zap}
+          icon="Zap"
           trend={signals7d.length > 0 ? "up" : "neutral"}
           density="compact"
         />
         <MetricCard
           label="Signals Today"
           value={signalsToday.length.toLocaleString()}
-          icon={Zap}
+          icon="Zap"
           density="compact"
         />
         <MetricCard
           label="High Intent (7d)"
           value={highIntentCount.toLocaleString()}
-          icon={Zap}
+          icon="Zap"
           trend={highIntentCount > 0 ? "up" : "neutral"}
           detail={
             highIntentCount > 0

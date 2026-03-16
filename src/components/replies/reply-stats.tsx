@@ -93,7 +93,7 @@ export function ReplyStats({ stats, loading }: ReplyStatsProps) {
     <div className="grid gap-4 lg:grid-cols-3">
       {/* Total count card */}
       <div className="rounded-lg border p-4">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground mb-2">
           Replies
         </h3>
         <p className="text-2xl font-bold tabular-nums">
@@ -125,7 +125,7 @@ export function ReplyStats({ stats, loading }: ReplyStatsProps) {
 
       {/* Intent distribution chart */}
       <div className="rounded-lg border p-4">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground mb-2">
           Intent Distribution
         </h3>
         {stats.intentDistribution.length === 0 ? (
@@ -170,7 +170,7 @@ export function ReplyStats({ stats, loading }: ReplyStatsProps) {
 
       {/* Sentiment bar */}
       <div className="rounded-lg border p-4">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground mb-2">
           Sentiment
         </h3>
         {sentimentTotal === 0 ? (

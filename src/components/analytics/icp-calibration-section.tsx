@@ -166,7 +166,7 @@ export function IcpCalibrationSection({
                 </h4>
                 <span
                   className={cn(
-                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+                    "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
                     CONFIDENCE_STYLES[data.recommendation.confidence],
                   )}
                 >

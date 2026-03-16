@@ -478,11 +478,11 @@ function ArchiveTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Contact</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</th>
-            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider w-10"></th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Name</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Contact</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Status</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Date</th>
+            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground w-10"></th>
           </tr>
         </thead>
         <tbody>

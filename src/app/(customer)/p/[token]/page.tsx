@@ -42,7 +42,7 @@ export default async function ProposalPage({
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-heading font-bold text-gray-900">All done!</h1>
+        <h1 className="text-xl font-medium text-gray-900">All done!</h1>
         <p className="mt-2 text-gray-600">
           Your onboarding is complete. We&apos;ll be in touch shortly to get
           your campaigns started.

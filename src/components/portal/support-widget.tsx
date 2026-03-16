@@ -95,12 +95,8 @@ export function SupportWidget() {
   const [loading, setLoading] = useState(false);
   const [faqLoading, setFaqLoading] = useState(true);
 
-  // Unread
-  const [unreadCount, setUnreadCount] = useState(0);
-
   // Polling refs
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const unreadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // -----------------------------------------------------------------------
   // FAQ fetch
@@ -232,15 +228,12 @@ export function SupportWidget() {
   }, [chatInput, conversation, sending]);
 
   // -----------------------------------------------------------------------
-  // Polling — chat messages (10s) or unread count (60s)
+  // Polling — chat messages (10s)
   // -----------------------------------------------------------------------
 
   useEffect(() => {
-    // Clear previous intervals
     if (chatPollRef.current) clearInterval(chatPollRef.current);
-    if (unreadPollRef.current) clearInterval(unreadPollRef.current);
     chatPollRef.current = null;
-    unreadPollRef.current = null;
 
     const isVisible = () => document.visibilityState === "visible";
 
@@ -258,28 +251,18 @@ export function SupportWidget() {
           )
           .catch(() => {});
       }, 10_000);
-    } else {
-      unreadPollRef.current = setInterval(() => {
-        if (!isVisible()) return;
-        fetch("/api/portal/support/unread-count")
-          .then((r) => r.json())
-          .then((data: { count: number }) => setUnreadCount(data.count))
-          .catch(() => {});
-      }, 60_000);
     }
 
     return () => {
       if (chatPollRef.current) clearInterval(chatPollRef.current);
-      if (unreadPollRef.current) clearInterval(unreadPollRef.current);
     };
   }, [open, view, conversation]);
 
-  // Initial unread fetch
+  // Listen for sidebar "open-support-widget" custom event
   useEffect(() => {
-    fetch("/api/portal/support/unread-count")
-      .then((r) => r.json())
-      .then((data: { count: number }) => setUnreadCount(data.count))
-      .catch(() => {});
+    const handler = () => setOpen((prev) => !prev);
+    window.addEventListener("open-support-widget", handler);
+    return () => window.removeEventListener("open-support-widget", handler);
   }, []);
 
   // -----------------------------------------------------------------------
@@ -374,28 +357,12 @@ export function SupportWidget() {
   // -----------------------------------------------------------------------
 
   return (
-    <>
-      {/* Floating button */}
-      <button
-        type="button"
-        onClick={() => setOpen((p) => !p)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg transition-colors hover:bg-brand-strong"
-      >
-        <MessageCircle className="h-6 w-6" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-red-500" />
-        )}
-      </button>
-
-      {/* Popup panel */}
-      <div
-        className={cn(
-          "fixed bottom-20 right-4 sm:bottom-24 sm:right-6 z-50 flex h-[calc(100vh-8rem)] sm:h-[550px] max-h-[600px] w-[calc(100vw-2rem)] sm:w-[400px] flex-col overflow-hidden rounded-2xl bg-card shadow-2xl transition-all duration-200",
-          open
-            ? "pointer-events-auto translate-y-0 opacity-100"
-            : "pointer-events-none translate-y-4 opacity-0",
-        )}
-      >
+    <div
+      className={cn(
+        "flex flex-col border-l border-border bg-card overflow-hidden transition-all duration-200",
+        open ? "w-[400px] shrink-0" : "w-0 border-l-0",
+      )}
+    >
         {/* ---- Home View ---- */}
         {view === "home" && (
           <>
@@ -491,7 +458,7 @@ export function SupportWidget() {
                 <div className="p-4">
                   {searchResults.faq.length > 0 && (
                     <div className="mb-4">
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <h3 className="mb-2 text-xs font-medium text-muted-foreground">
                         FAQ
                       </h3>
                       <div className="rounded-lg border border-border">
@@ -501,7 +468,7 @@ export function SupportWidget() {
                   )}
                   {searchResults.kb.length > 0 && (
                     <div>
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <h3 className="mb-2 text-xs font-medium text-muted-foreground">
                         Knowledge Base
                       </h3>
                       <div className="space-y-2">
@@ -633,7 +600,6 @@ export function SupportWidget() {
             </div>
           </>
         )}
-      </div>
-    </>
+    </div>
   );
 }

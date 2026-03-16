@@ -202,7 +202,7 @@ export function ObjectionClusters({ workspace }: ObjectionClustersProps) {
 
       {/* AI Commentary */}
       <div className="border-t border-border pt-3">
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+        <h4 className="text-xs font-medium text-muted-foreground mb-1">
           AI Commentary
         </h4>
         <p className="text-sm text-foreground">

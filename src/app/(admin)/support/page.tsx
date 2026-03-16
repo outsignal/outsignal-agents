@@ -173,7 +173,7 @@ export default function SupportPage() {
       <div className="w-80 border-r flex flex-col">
         {/* Header */}
         <div className="shrink-0 border-b px-4 py-3">
-          <h1 className="text-2xl font-heading font-bold mb-2">Support</h1>
+          <h1 className="text-xl font-medium mb-2">Support</h1>
           <div className="flex gap-1">
             {(["ALL", "OPEN", "CLOSED"] as const).map((f) => (
               <button

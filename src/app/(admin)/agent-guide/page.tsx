@@ -196,7 +196,7 @@ export default function AgentGuidePage() {
                 )}
 
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60 mb-2">
+                  <p className="text-xs font-medium text-muted-foreground/60 mb-2">
                     How to call
                   </p>
                   <p className="text-sm text-muted-foreground">
@@ -205,7 +205,7 @@ export default function AgentGuidePage() {
                 </div>
 
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60 mb-2">
+                  <p className="text-xs font-medium text-muted-foreground/60 mb-2">
                     Example prompts
                   </p>
                   <div className="space-y-1.5">

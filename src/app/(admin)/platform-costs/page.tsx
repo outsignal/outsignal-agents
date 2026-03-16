@@ -71,7 +71,7 @@ function SummaryCard({
   return (
     <Card density="compact" className={wide ? "col-span-2 lg:col-span-1" : ""}>
       <CardContent>
-        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+        <p className="text-xs text-muted-foreground mb-1">
           {label}
         </p>
         <p className={`text-2xl font-bold ${accent ? "text-brand-strong" : ""}`}>
@@ -239,7 +239,7 @@ function ServiceRow({
               {row.client}
             </span>
           ) : (
-            <span className="inline-flex items-center rounded-full bg-muted/50 border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="inline-flex items-center rounded-full bg-muted/50 border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
               Shared
             </span>
           )}
@@ -378,7 +378,7 @@ function CategoryView({
                 <col className="w-[20%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="text-left px-4 py-2">Service</th>
                   <th className="text-left px-4 py-2">Client</th>
                   <th className="text-center px-4 py-2">Bills On</th>
@@ -450,7 +450,7 @@ function ClientView({
                 {group.client === "shared" ? (
                   <span className="inline-flex items-center gap-2">
                     Shared
-                    <span className="inline-flex items-center rounded-full bg-muted/50 border border-border px-2 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                    <span className="inline-flex items-center rounded-full bg-muted/50 border border-border px-2 py-0.5 text-xs font-normal text-muted-foreground">
                       Not client-specific
                     </span>
                   </span>
@@ -472,7 +472,7 @@ function ClientView({
                 <col className="w-[20%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="text-left px-4 py-2">Service</th>
                   <th className="text-center px-4 py-2">Bills On</th>
                   <th className="text-right px-4 py-2">Monthly Cost</th>
@@ -653,12 +653,9 @@ export default function PlatformCostsPage() {
         )}
 
         {/* Summary cards — 2 rows on mobile, single row on desktop */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           {loading ? (
             <>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
             </>
@@ -671,14 +668,11 @@ export default function PlatformCostsPage() {
                 accent
                 wide
               />
-              {CATEGORY_ORDER.map((cat) => (
-                <SummaryCard
-                  key={cat}
-                  label={capitalize(cat)}
-                  value={formatGBP(data.byCategory[cat] ?? 0)}
-                  detail={`${data.services.filter((s) => s.category === cat).length} services`}
-                />
-              ))}
+              <SummaryCard
+                label="Services"
+                value={String(serviceCount)}
+                detail={CATEGORY_ORDER.map((cat) => `${data.services.filter((s) => s.category === cat).length} ${cat}`).join(" · ")}
+              />
             </>
           ) : null}
         </div>

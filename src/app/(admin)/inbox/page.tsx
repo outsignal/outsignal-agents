@@ -440,7 +440,7 @@ export default function AdminInboxPage() {
       <div className="px-5 py-3 border-b border-border shrink-0 bg-background">
         <div className="flex items-center gap-4">
           {/* Page title */}
-          <h1 className="text-2xl font-heading font-bold text-foreground shrink-0">
+          <h1 className="text-xl font-medium text-foreground shrink-0">
             Inbox
           </h1>
 
