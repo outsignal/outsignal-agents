@@ -2,6 +2,7 @@ import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/db";
 import { searchKnowledge } from "@/lib/knowledge/store";
+import { notifyAdminOfEscalation } from "@/lib/push";
 
 interface AutoResponseResult {
   message: string;
@@ -13,6 +14,12 @@ export async function generateAutoResponse(
   conversationId: string,
   clientMessage: string,
 ): Promise<AutoResponseResult> {
+  // Get workspace slug for escalation notifications
+  const conversation = await prisma.supportConversation.findUnique({
+    where: { id: conversationId },
+    select: { workspaceSlug: true },
+  });
+
   // 1. Search knowledge base
   const kbResults = await searchKnowledge(clientMessage, { limit: 5 });
 
@@ -109,6 +116,13 @@ ${faqResults.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")}`,
         lastMessageAt: new Date(),
       },
     });
+
+    // Notify admins via push, email, and Slack
+    try {
+      await notifyAdminOfEscalation(conversation?.workspaceSlug ?? "unknown", clientMessage);
+    } catch (err) {
+      console.error("[auto-respond] Failed to notify admins:", err instanceof Error ? err.message : err);
+    }
 
     return { message: escalationMessage, escalated: true, confidence: null };
   }

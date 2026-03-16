@@ -4,6 +4,7 @@ import { PageTransition } from "./page-transition";
 import { getAllWorkspaces } from "@/lib/workspaces";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { CommandPalette } from "@/components/ui/command-palette";
+import { PushNotificationPrompt } from "@/components/push-notification-prompt";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const workspaces = await getAllWorkspaces();
@@ -19,6 +20,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <CommandPalette />
+      <PushNotificationPrompt vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""} />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-4 focus:left-4 focus:bg-white focus:text-black focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg focus:text-sm focus:font-medium"
