@@ -63,6 +63,9 @@ export default function SupportPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sendError, setSendError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch conversations
@@ -72,7 +75,10 @@ export default function SupportPage() {
       const res = await fetch(`/api/support/conversations${q}`);
       const json = await res.json();
       setConversations(json.conversations ?? []);
-    } catch {}
+    } catch {
+    } finally {
+      setLoadingConversations(false);
+    }
   }, [filter]);
 
   useEffect(() => {
@@ -82,17 +88,21 @@ export default function SupportPage() {
   }, [fetchConversations]);
 
   // Fetch messages for selected conversation
-  const fetchMessages = useCallback(async (id: string) => {
+  const fetchMessages = useCallback(async (id: string, showLoading = false) => {
+    if (showLoading) setLoadingMessages(true);
     try {
       const res = await fetch(`/api/support/conversations/${id}/messages`);
       const json = await res.json();
       setMessages(json.messages ?? []);
-    } catch {}
+    } catch {
+    } finally {
+      setLoadingMessages(false);
+    }
   }, []);
 
   useEffect(() => {
     if (!selectedId) return;
-    fetchMessages(selectedId);
+    fetchMessages(selectedId, true);
     // Mark as read
     fetch(`/api/support/conversations/${selectedId}/read`, {
       method: "POST",
@@ -134,7 +144,10 @@ export default function SupportPage() {
       });
       // Refresh messages to get real ID
       fetchMessages(selectedId);
-    } catch {}
+    } catch {
+      setSendError(true);
+      setTimeout(() => setSendError(false), 3000);
+    }
     setSending(false);
   }
 
@@ -180,7 +193,12 @@ export default function SupportPage() {
         </div>
         {/* List */}
         <ScrollArea className="flex-1">
-          {conversations.length === 0 && (
+          {loadingConversations && (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
+          {!loadingConversations && conversations.length === 0 && (
             <div className="p-4 text-sm text-muted-foreground text-center">
               No conversations
             </div>
@@ -192,6 +210,7 @@ export default function SupportPage() {
               className={cn(
                 "w-full text-left px-4 py-3 border-b transition-colors",
                 selectedId === conv.id ? "bg-accent" : "hover:bg-muted/50",
+                conv.status === "CLOSED" && "opacity-60",
               )}
             >
               <div className="flex items-center gap-2">
@@ -206,6 +225,11 @@ export default function SupportPage() {
                 >
                   {conv.workspaceName}
                 </span>
+                {conv.status === "CLOSED" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium shrink-0">
+                    Closed
+                  </span>
+                )}
                 <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
                   {relativeTime(conv.lastMessageAt)}
                 </span>
@@ -254,6 +278,11 @@ export default function SupportPage() {
 
             {/* Messages */}
             <ScrollArea className="flex-1 px-4 py-3">
+              {loadingMessages && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              )}
               <div className="space-y-3 max-w-2xl mx-auto">
                 {messages.map((msg) => {
                   const isAdmin = msg.role === "ADMIN";
@@ -306,28 +335,39 @@ export default function SupportPage() {
 
             {/* Reply input */}
             <div className="shrink-0 border-t px-4 py-3">
-              <div className="flex gap-2 max-w-2xl mx-auto">
-                <textarea
-                  value={reply}
-                  onChange={(e) => setReply(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Type a reply..."
-                  rows={1}
-                  className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={!reply.trim() || sending}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
+              {selected.status === "CLOSED" ? (
+                <p className="text-sm text-muted-foreground text-center py-1">
+                  This conversation is closed.
+                </p>
+              ) : (
+                <>
+                  {sendError && (
+                    <p className="text-xs text-red-500 px-4 mb-1 max-w-2xl mx-auto">Failed to send. Please try again.</p>
+                  )}
+                  <div className="flex gap-2 max-w-2xl mx-auto">
+                    <textarea
+                      value={reply}
+                      onChange={(e) => setReply(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder="Type a reply..."
+                      rows={1}
+                      className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                    <Button
+                      size="icon"
+                      onClick={handleSend}
+                      disabled={!reply.trim() || sending}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}

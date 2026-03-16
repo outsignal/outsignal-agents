@@ -91,6 +91,10 @@ export function SupportWidget() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Loading states
+  const [loading, setLoading] = useState(false);
+  const [faqLoading, setFaqLoading] = useState(true);
+
   // Unread
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -113,7 +117,8 @@ export function SupportWidget() {
         }
         setFaqCategories(grouped);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setFaqLoading(false));
   }, []);
 
   // -----------------------------------------------------------------------
@@ -149,6 +154,7 @@ export function SupportWidget() {
   // -----------------------------------------------------------------------
 
   const loadChat = useCallback(async () => {
+    setLoading(true);
     try {
       const convRes = await fetch("/api/portal/support/conversation");
       const conv: Conversation = await convRes.json();
@@ -161,6 +167,8 @@ export function SupportWidget() {
       setMessages(msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
     } catch {
       // fail silently
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -216,7 +224,8 @@ export function SupportWidget() {
         );
       });
     } catch {
-      // keep optimistic message on error
+      // Remove optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
     } finally {
       setSending(false);
     }
@@ -381,7 +390,7 @@ export function SupportWidget() {
       {/* Popup panel */}
       <div
         className={cn(
-          "fixed bottom-24 right-6 z-50 flex h-[550px] w-[400px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl transition-all duration-200",
+          "fixed bottom-20 right-4 sm:bottom-24 sm:right-6 z-50 flex h-[calc(100vh-8rem)] sm:h-[550px] max-h-[600px] w-[calc(100vw-2rem)] sm:w-[400px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl transition-all duration-200",
           open
             ? "pointer-events-auto translate-y-0 opacity-100"
             : "pointer-events-none translate-y-4 opacity-0",
@@ -407,6 +416,11 @@ export function SupportWidget() {
 
               {/* FAQ categories */}
               <div className="p-4">
+                {faqLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#635BFF] border-t-transparent" />
+                  </div>
+                )}
                 {Object.entries(faqCategories).map(([category, articles]) => (
                   <div key={category} className="mb-3">
                     <button
@@ -531,6 +545,18 @@ export function SupportWidget() {
             {/* Messages */}
             <ScrollArea className="flex-1 px-4 py-3">
               <div className="space-y-3">
+                {loading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#635BFF] border-t-transparent" />
+                  </div>
+                )}
+                {messages.length === 0 && !loading && (
+                  <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                    <MessageCircle className="h-10 w-10 text-[#635BFF]/30 mb-3" />
+                    <p className="text-sm font-medium text-gray-700">Welcome to Outsignal Support</p>
+                    <p className="text-xs text-gray-500 mt-1">Send a message and we&apos;ll get back to you.</p>
+                  </div>
+                )}
                 {messages.map((msg) => {
                   const isClient = msg.role === "client";
                   return (
