@@ -27,5 +27,5 @@ export function ActivityChart({ data }: ActivityChartProps) {
 }
 
 export function ActivityChartLegend() {
-  return <EmailActivityChartLegend keys={["sent", "opens", "replied", "bounced"]} />;
+  return <EmailActivityChartLegend keys={["sent", "replied"]} />;
 }
