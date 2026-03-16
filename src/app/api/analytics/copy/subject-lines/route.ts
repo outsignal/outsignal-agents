@@ -29,7 +29,10 @@ interface SubjectLineEntry {
 }
 
 export async function GET(request: NextRequest) {
-  await requireAdminAuth();
+  const session = await requireAdminAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { searchParams } = request.nextUrl;
   const workspace = searchParams.get("workspace") || undefined;

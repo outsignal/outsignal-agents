@@ -88,7 +88,10 @@ function buildSqlWhereClause(params: URLSearchParams): {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminAuth();
+    const session = await requireAdminAuth();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const params = request.nextUrl.searchParams;
     const where = buildWhereClause(params);
     const sqlWhere = buildSqlWhereClause(params);

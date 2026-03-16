@@ -5,7 +5,10 @@ import { requireAdminAuth } from "@/lib/require-admin-auth";
 // GET /api/replies/campaigns?workspace=slug — distinct campaigns from replies
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminAuth();
+    const session = await requireAdminAuth();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const workspace = request.nextUrl.searchParams.get("workspace");
 
     const where = workspace ? { workspaceSlug: workspace } : {};
