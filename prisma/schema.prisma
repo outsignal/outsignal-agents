@@ -749,6 +749,7 @@ model Campaign {
   @@index([workspaceSlug])
   @@index([status])
   @@index([type, status])
+  @@index([emailBisonCampaignId])
 }
 
 model CampaignDeploy {
