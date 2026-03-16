@@ -5,6 +5,7 @@ import {
   orchestratorConfig,
 } from "@/lib/agents/orchestrator";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { sanitizePromptInput } from "@/lib/agents/utils";
 
 export const maxDuration = 300; // 5 minutes — Leads Agent scoring can take 60-300s for large lists
 
@@ -42,7 +43,36 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { messages, context } = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { messages, context } = body as { messages?: unknown; context?: unknown };
+
+  // Structural validation
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return Response.json({ error: "messages must be a non-empty array" }, { status: 400 });
+  }
+  for (const msg of messages) {
+    if (typeof msg !== "object" || msg === null || !("role" in msg) || !("content" in msg)) {
+      return Response.json({ error: "Each message must have role and content" }, { status: 400 });
+    }
+  }
+
+  // Sanitize user message content to prevent prompt injection
+  for (const msg of messages) {
+    if (msg.role === "user" && typeof msg.content === "string") {
+      msg.content = sanitizePromptInput(msg.content);
+    }
+  }
+
+  const safeContext: ChatContext = {
+    pathname: typeof (context as ChatContext)?.pathname === "string" ? (context as ChatContext).pathname : undefined,
+    workspaceSlug: typeof (context as ChatContext)?.workspaceSlug === "string" ? (context as ChatContext).workspaceSlug : undefined,
+  };
 
   const modelMessages = await convertToModelMessages(messages, {
     tools: orchestratorTools,
@@ -50,7 +80,7 @@ export async function POST(request: Request) {
 
   const result = streamText({
     model: anthropic(orchestratorConfig.model),
-    system: buildSystemPrompt(context ?? {}),
+    system: buildSystemPrompt(safeContext),
     messages: trimMessages(modelMessages),
     tools: orchestratorTools,
     stopWhen: stepCountIs(12),
