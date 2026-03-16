@@ -65,7 +65,7 @@ function SecondaryActionLink({ action }: { action: EmptyStateAction }) {
     return (
       <Link
         href={action.href}
-        className="text-sm text-stone-500 hover:text-stone-700 underline underline-offset-2 transition-colors"
+        className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
       >
         {action.label}
       </Link>
@@ -75,7 +75,7 @@ function SecondaryActionLink({ action }: { action: EmptyStateAction }) {
     <button
       type="button"
       onClick={action.onClick}
-      className="text-sm text-stone-500 hover:text-stone-700 underline underline-offset-2 transition-colors"
+      className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
     >
       {action.label}
     </button>
@@ -107,17 +107,17 @@ export function EmptyState({
         ) : Icon ? (
           <div
             className={cn(
-              "rounded-full bg-stone-100 flex items-center justify-center mb-5",
+              "rounded-full bg-muted flex items-center justify-center mb-5",
               styles.iconContainer,
             )}
           >
-            <Icon className={cn("text-stone-400", styles.icon)} aria-hidden="true" />
+            <Icon className={cn("text-muted-foreground", styles.icon)} aria-hidden="true" />
           </div>
         ) : null}
 
-        <h3 className={cn(styles.title, "text-stone-900 mb-1")}>{title}</h3>
+        <h3 className={cn(styles.title, "text-foreground mb-1")}>{title}</h3>
 
-        <p className="text-sm text-stone-500 text-center max-w-sm">
+        <p className="text-sm text-muted-foreground text-center max-w-sm">
           {description}
         </p>
 

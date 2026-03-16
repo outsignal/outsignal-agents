@@ -46,8 +46,8 @@ export default async function PortalPagesPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-stone-900">Pages</h1>
-        <p className="text-sm text-stone-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Pages</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Documents and resources shared with you
         </p>
       </div>
@@ -66,14 +66,14 @@ export default async function PortalPagesPage() {
               <Card className="hover:border-primary/40 transition-colors cursor-pointer h-full">
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-md bg-stone-100 flex items-center justify-center shrink-0">
-                      <FileText className="h-4 w-4 text-stone-400" />
+                    <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center shrink-0">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">
                         {page.title}
                       </p>
-                      <p className="text-xs font-mono text-stone-500 mt-1">
+                      <p className="text-xs font-mono text-muted-foreground mt-1">
                         Updated {formatDate(page.updatedAt)}
                       </p>
                     </div>

@@ -67,12 +67,12 @@ export function EmailReplyComposer({
   };
 
   return (
-    <div className="sticky bottom-0 border-t border-stone-200 bg-white">
+    <div className="sticky bottom-0 border-t border-border bg-background">
       {/* Subject line (read-only) */}
       {subject && (
-        <div className="px-4 py-2 border-b border-stone-100 text-sm">
-          <span className="text-stone-400">Subject:</span>{" "}
-          <span className="text-stone-700">Re: {subject}</span>
+        <div className="px-4 py-2 border-b border-border text-sm">
+          <span className="text-muted-foreground">Subject:</span>{" "}
+          <span className="text-foreground">Re: {subject}</span>
         </div>
       )}
 
@@ -94,7 +94,7 @@ export function EmailReplyComposer({
             onClick={handleSend}
             disabled={!composerText.trim() || sending}
             size="sm"
-            className="bg-[#635BFF] hover:bg-[#635BFF]/90 text-white"
+            className="bg-brand hover:bg-brand/90 text-white"
           >
             {sending ? (
               <>

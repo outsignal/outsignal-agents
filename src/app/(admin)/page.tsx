@@ -86,7 +86,7 @@ function buildWorkspaceSummaries(
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-xs font-medium uppercase tracking-wider text-stone-400 pt-6 pb-2">
+    <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground pt-6 pb-2">
       {children}
     </h2>
   );
@@ -101,7 +101,7 @@ function DashboardSkeleton() {
     <div className="space-y-6">
       {/* Hero metric row */}
       <div>
-        <div className="h-4 w-24 bg-stone-100 rounded animate-pulse mb-2 mt-6" />
+        <div className="h-4 w-24 bg-muted rounded animate-pulse mb-2 mt-6" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="col-span-2">
             <Skeleton className="h-[140px] rounded-lg" />
@@ -120,10 +120,10 @@ function DashboardSkeleton() {
 
       {/* Activity section */}
       <div>
-        <div className="h-4 w-20 bg-stone-100 rounded animate-pulse mb-2 mt-6" />
+        <div className="h-4 w-20 bg-muted rounded animate-pulse mb-2 mt-6" />
         <Card>
           <CardHeader>
-            <div className="h-4 w-32 bg-stone-100 rounded animate-pulse" />
+            <div className="h-4 w-32 bg-muted rounded animate-pulse" />
           </CardHeader>
           <CardContent>
             <Skeleton className="h-[280px] rounded-lg" />
@@ -359,7 +359,7 @@ export default function DashboardPage() {
                     />
                     <CardContent className="pt-3 pb-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium uppercase tracking-wider text-stone-500">Worker</p>
+                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Worker</p>
                         <span className="relative flex h-2.5 w-2.5">
                           {kpis.workerStatus === "online" && (
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -376,7 +376,7 @@ export default function DashboardPage() {
                       <p className="mt-1.5 font-mono text-3xl font-semibold tabular-nums tracking-tight">
                         {kpis.workerStatus === "online" ? "Online" : kpis.workerStatus === "paused" ? "Paused" : "Offline"}
                       </p>
-                      <p className="text-sm text-stone-500 mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         {workerDetail}{kpis.workerStatus === "paused" ? " \u00b7 Outside business hours" : ""}
                       </p>
                     </CardContent>
@@ -397,7 +397,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {timeSeries.length === 0 && linkedInTimeSeries.length === 0 ? (
-                  <div className="h-[280px] flex items-center justify-center text-sm text-stone-400">
+                  <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
                     No activity data for this period
                   </div>
                 ) : (
@@ -416,7 +416,7 @@ export default function DashboardPage() {
               id="email"
               title="Email"
               collapsedSummary={
-                <span className="text-xs text-stone-400">
+                <span className="text-xs text-muted-foreground">
                   {kpis.emailSent.toLocaleString()} sent \u00b7 {replyRate === "\u2014" ? "\u2014" : `${replyRate}%`} reply rate
                 </span>
               }
@@ -459,7 +459,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 {timeSeries.length === 0 ? (
-                  <div className="h-[280px] flex items-center justify-center text-sm text-stone-400">
+                  <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
                     No email activity for this period
                   </div>
                 ) : (
@@ -473,7 +473,7 @@ export default function DashboardPage() {
               id="linkedin"
               title="LinkedIn"
               collapsedSummary={
-                <span className="text-xs text-stone-400">
+                <span className="text-xs text-muted-foreground">
                   {(kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView).toLocaleString()} actions \u00b7 {kpis.linkedinConnect.toLocaleString()} connections
                 </span>
               }
@@ -508,7 +508,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 {linkedInTimeSeries.length === 0 ? (
-                  <div className="h-[280px] flex items-center justify-center text-sm text-stone-400">
+                  <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
                     No LinkedIn activity for this period
                   </div>
                 ) : (
@@ -528,7 +528,7 @@ export default function DashboardPage() {
               title="Signals"
               collapsedSummary={
                 signalsData ? (
-                  <span className="text-xs text-stone-400">
+                  <span className="text-xs text-muted-foreground">
                     {signalsData.summary?.totalSignals ?? 0} signals (7d) \u00b7 ${(signalsData.summary?.totalWeeklyUsd ?? 0).toFixed(2)} spend
                   </span>
                 ) : null
@@ -562,7 +562,7 @@ export default function DashboardPage() {
               title="Client Overview"
               defaultCollapsed
               collapsedSummary={
-                <span className="text-xs text-stone-400">
+                <span className="text-xs text-muted-foreground">
                   {workspaces.length} workspaces
                 </span>
               }

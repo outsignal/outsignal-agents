@@ -90,7 +90,7 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload || payload.length === 0) return null;
 
   return (
-    <div className="bg-white border border-stone-200 rounded-lg shadow-lg p-3 text-sm">
+    <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
       <p className="font-medium text-popover-foreground mb-2">
         {formatDate(String(label ?? ""))}
       </p>

@@ -42,7 +42,7 @@ const trendPill: Record<string, { text: string; bg: string }> = {
   up: { text: "text-green-600", bg: "bg-green-50" },
   down: { text: "text-red-600", bg: "bg-red-50" },
   warning: { text: "text-amber-600", bg: "bg-amber-50" },
-  neutral: { text: "text-stone-600", bg: "bg-stone-100" },
+  neutral: { text: "text-muted-foreground", bg: "bg-muted" },
 };
 
 export function MetricCard({
@@ -81,12 +81,12 @@ export function MetricCard({
         {/* Label row */}
         <div className="flex items-center gap-1.5">
           {Icon && !loading && (
-            <Icon className="h-3.5 w-3.5 text-stone-400" />
+            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
           )}
           {loading ? (
             <Skeleton className="h-3 w-24" />
           ) : (
-            <p className="text-xs font-medium uppercase tracking-wider text-stone-500">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {label}
             </p>
           )}
@@ -109,7 +109,7 @@ export function MetricCard({
                 )}
                 {value}
                 {suffix && (
-                  <span className="font-mono font-normal text-stone-400 ml-0.5">
+                  <span className="font-mono font-normal text-muted-foreground ml-0.5">
                     {suffix}
                   </span>
                 )}
@@ -138,7 +138,7 @@ export function MetricCard({
           <Skeleton className="h-3.5 w-28 mt-1.5" />
         ) : (
           detail && (
-            <p className="text-sm text-stone-500 mt-1">{detail}</p>
+            <p className="text-sm text-muted-foreground mt-1">{detail}</p>
           )
         )}
 

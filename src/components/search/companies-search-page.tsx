@@ -300,7 +300,7 @@ export function CompaniesSearchPage() {
 
                 {/* Enrichment status filter */}
                 <div>
-                  <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                     Enrichment
                   </h3>
                   <div className="space-y-1">
@@ -329,7 +329,7 @@ export function CompaniesSearchPage() {
                 {/* Vertical / Industry filter */}
                 {allIndustries.length > 0 && (
                   <div>
-                    <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
+                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                       Vertical
                     </h3>
                     <div className="space-y-1 max-h-80 overflow-y-auto">
@@ -369,7 +369,7 @@ export function CompaniesSearchPage() {
                     className={`inline-flex items-center px-2.5 py-1 text-xs rounded-full border transition-colors ${
                       pill.active
                         ? "bg-brand/10 border-brand/30 text-brand-strong font-medium"
-                        : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-stone-300"
+                        : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-border"
                     }`}
                   >
                     {pill.label}
@@ -472,8 +472,8 @@ export function CompaniesSearchPage() {
                         className="text-center py-16"
                       >
                         <div className="flex flex-col items-center gap-2 animate-fade-in">
-                          <div className="h-14 w-14 rounded-full bg-stone-100 flex items-center justify-center mb-1">
-                            <Building2 className="h-6 w-6 text-stone-400" aria-hidden="true" />
+                          <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-1">
+                            <Building2 className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
                           </div>
                           <p className="text-lg font-semibold text-foreground">
                             No companies found

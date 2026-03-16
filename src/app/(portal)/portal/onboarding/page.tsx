@@ -46,8 +46,8 @@ export default async function PortalOnboardingPage() {
     return (
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold text-stone-900">Onboarding Progress</h1>
-          <p className="text-sm text-stone-500 mt-1">
+          <h1 className="text-2xl font-semibold text-foreground">Onboarding Progress</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Track your onboarding and campaign setup progress
           </p>
         </div>
@@ -90,8 +90,8 @@ export default async function PortalOnboardingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-stone-900">Onboarding Progress</h1>
-        <p className="text-sm text-stone-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Onboarding Progress</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Track your onboarding and campaign setup progress
         </p>
       </div>
@@ -111,17 +111,17 @@ export default async function PortalOnboardingPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">Overall Progress</p>
-                  <p className="text-sm font-mono text-stone-500 tabular-nums">
+                  <p className="text-sm font-mono text-muted-foreground tabular-nums">
                     {completedTasks} / {totalTasks} tasks completed
                   </p>
                 </div>
-                <div className="h-3 w-full rounded-full bg-stone-100 overflow-hidden">
+                <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
                   <div
                     className="h-full rounded-full bg-emerald-500 transition-all duration-500"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
-                <p className="text-xs font-mono text-stone-500 text-right tabular-nums">
+                <p className="text-xs font-mono text-muted-foreground text-right tabular-nums">
                   {progressPct}%
                 </p>
               </div>
@@ -142,7 +142,7 @@ export default async function PortalOnboardingPage() {
                       <CardTitle className="font-heading text-lg">
                         {STAGE_LABELS[stage] ?? stage}
                       </CardTitle>
-                      <span className="text-xs font-mono text-stone-500 tabular-nums">
+                      <span className="text-xs font-mono text-muted-foreground tabular-nums">
                         {stageCompleted} / {stageTotal}
                       </span>
                     </div>
@@ -164,16 +164,16 @@ export default async function PortalOnboardingPage() {
                             ) : overdue ? (
                               <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
                             ) : (
-                              <Circle className="h-5 w-5 text-stone-400 mt-0.5 shrink-0" />
+                              <Circle className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
                             )}
                             <div className="flex-1 min-w-0">
                               <p
                                 className={`text-sm ${
                                   completed
-                                    ? "text-stone-400 line-through"
+                                    ? "text-muted-foreground line-through"
                                     : inProgress
                                       ? "text-amber-700 font-medium"
-                                      : "text-stone-900"
+                                      : "text-foreground"
                                 }`}
                               >
                                 {task.title}
@@ -181,7 +181,7 @@ export default async function PortalOnboardingPage() {
                               {dueDateStr && (
                                 <p
                                   className={`text-xs font-mono mt-0.5 ${
-                                    overdue ? "text-red-500 font-medium" : "text-stone-500"
+                                    overdue ? "text-red-500 font-medium" : "text-muted-foreground"
                                   }`}
                                 >
                                   {overdue ? "Overdue" : "Due"}: {dueDateStr}

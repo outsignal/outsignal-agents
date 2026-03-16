@@ -242,11 +242,11 @@ function CollapsibleGroup({
       >
         <ChevronRight
           className={cn(
-            "h-3 w-3 text-[var(--stone-400)] transition-transform duration-150 ease-out",
+            "h-3 w-3 text-muted-foreground transition-transform duration-150 ease-out",
             isGroupOpen && "rotate-90",
           )}
         />
-        <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--stone-400)] font-medium select-none">
+        <span className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground font-medium select-none">
           {group.label}
         </span>
       </button>
@@ -402,7 +402,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
             ? "bg-[color:oklch(0.55_0.25_275_/_0.08)] text-[color:var(--brand)] border-l-2 border-[color:var(--brand)]"
             : cn(
                 "border-l-2 border-transparent",
-                "text-[var(--stone-600)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-900)]",
+                "text-muted-foreground hover:bg-muted hover:text-foreground",
               ),
         )}
       >
@@ -411,7 +411,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
             "shrink-0 h-4 w-4 transition-colors duration-150",
             isActive
               ? "text-[color:var(--brand)]"
-              : "text-[var(--stone-400)] group-hover/item:text-[var(--stone-600)]",
+              : "text-muted-foreground group-hover/item:text-foreground",
           )}
         />
         {!isCollapsed && (
@@ -465,23 +465,9 @@ export function Sidebar({ workspaces }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col bg-white border-r border-[var(--sidebar-border)] transition-all duration-200 ease-out",
+        "flex h-screen flex-col bg-[var(--sidebar)] border-r border-[var(--sidebar-border)] transition-all duration-200 ease-out",
         isCollapsed ? "w-16" : "w-64",
       )}
-      style={{
-        // CSS custom properties for stone palette (warm neutrals matching the brand)
-        // These map to the warm-stone system from globals.css
-        ["--stone-50" as string]: "oklch(0.985 0.002 90)",
-        ["--stone-100" as string]: "oklch(0.97 0.002 90)",
-        ["--stone-200" as string]: "oklch(0.93 0.002 90)",
-        ["--stone-300" as string]: "oklch(0.87 0.003 90)",
-        ["--stone-400" as string]: "oklch(0.65 0.005 60)",
-        ["--stone-500" as string]: "oklch(0.55 0.005 60)",
-        ["--stone-600" as string]: "oklch(0.45 0.005 60)",
-        ["--stone-700" as string]: "oklch(0.35 0.005 60)",
-        ["--stone-800" as string]: "oklch(0.25 0.005 60)",
-        ["--stone-900" as string]: "oklch(0.145 0.005 60)",
-      }}
     >
       {/* Logo header */}
       <div
@@ -534,7 +520,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
                 "text-[13px]",
                 isSettingsActive
                   ? "bg-[color:oklch(0.55_0.25_275_/_0.08)] text-[color:var(--brand)]"
-                  : "text-[var(--stone-500)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-700)]",
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               <Settings
@@ -542,7 +528,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
                   "shrink-0 h-4 w-4 transition-colors duration-150",
                   isSettingsActive
                     ? "text-[color:var(--brand)]"
-                    : "text-[var(--stone-400)] group-hover/item:text-[var(--stone-500)]",
+                    : "text-muted-foreground group-hover/item:text-foreground",
                 )}
               />
               {!isCollapsed && <span>Settings</span>}
@@ -571,14 +557,14 @@ export function Sidebar({ workspaces }: SidebarProps) {
               className={cn(
                 "flex w-full items-center rounded-md transition-all duration-150 ease-out cursor-pointer",
                 isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
-                "text-[13px] text-[var(--stone-400)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-600)]",
+                "text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               <Search className="shrink-0 h-4 w-4" />
               {!isCollapsed && (
                 <>
                   <span>Search</span>
-                  <kbd className="ml-auto inline-flex items-center gap-0.5 rounded border border-[var(--stone-200)] bg-[var(--stone-50)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--stone-400)] font-mono">
+                  <kbd className="ml-auto inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground font-mono">
                     <span className="text-[11px]">&#8984;</span>K
                   </kbd>
                 </>
@@ -600,6 +586,9 @@ export function Sidebar({ workspaces }: SidebarProps) {
           return cmdKContent;
         })()}
 
+        {/* Theme toggle */}
+        <ThemeToggle collapsed={isCollapsed} />
+
         {/* Collapse/expand toggle */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -608,7 +597,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
               aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               className={cn(
                 "flex w-full items-center rounded-md py-2 text-[13px] transition-all duration-150 ease-out cursor-pointer",
-                "text-[var(--stone-400)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-600)]",
+                "text-muted-foreground hover:bg-muted hover:text-foreground",
                 isCollapsed ? "justify-center px-2" : "gap-3 px-3",
               )}
             >

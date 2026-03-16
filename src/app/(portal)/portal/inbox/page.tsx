@@ -241,15 +241,15 @@ export default function PortalInboxPage() {
 
         {/* Channel tabs — pill/segment toggle */}
         {channels.length > 1 && (
-          <div className="inline-flex items-center gap-0.5 mt-3 p-0.5 rounded-lg bg-stone-100">
+          <div className="inline-flex items-center gap-0.5 mt-3 p-0.5 rounded-lg bg-muted">
             {showAllTab && (
               <button
                 onClick={() => setActiveChannel("all")}
                 className={cn(
                   "px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                   activeChannel === "all"
-                    ? "bg-white text-stone-900 font-medium shadow-sm"
-                    : "text-stone-500 hover:text-stone-700"
+                    ? "bg-background text-foreground font-medium shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 All
@@ -260,8 +260,8 @@ export default function PortalInboxPage() {
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                 activeChannel === "email"
-                  ? "bg-white text-stone-900 font-medium shadow-sm"
-                  : "text-stone-500 hover:text-stone-700"
+                  ? "bg-background text-foreground font-medium shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               <Mail className="h-3.5 w-3.5" />
@@ -277,8 +277,8 @@ export default function PortalInboxPage() {
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                 activeChannel === "linkedin"
-                  ? "bg-white text-stone-900 font-medium shadow-sm"
-                  : "text-stone-500 hover:text-stone-700"
+                  ? "bg-background text-foreground font-medium shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               <Linkedin className="h-3.5 w-3.5" />

@@ -134,7 +134,7 @@ function getStatusConfig(status: string) {
 
 /** Map pipeline status values to Tailwind classes for badge + dot styling */
 const STATUS_BADGE_CLASSES: Record<string, { badge: string; dot: string }> = {
-  new_lead:     { badge: "bg-stone-100 text-stone-600",    dot: "bg-stone-400" },
+  new_lead:     { badge: "bg-muted text-muted-foreground",    dot: "bg-muted-foreground" },
   contacted:    { badge: "bg-indigo-50 text-indigo-600",   dot: "bg-indigo-500" },
   qualified:    { badge: "bg-indigo-50 text-indigo-600",   dot: "bg-indigo-500" },
   demo:         { badge: "bg-violet-50 text-violet-600",   dot: "bg-violet-500" },
@@ -142,11 +142,11 @@ const STATUS_BADGE_CLASSES: Record<string, { badge: string; dot: string }> = {
   negotiation:  { badge: "bg-orange-50 text-orange-600",   dot: "bg-orange-500" },
   closed_won:   { badge: "bg-green-50 text-green-700",     dot: "bg-green-500" },
   closed_lost:  { badge: "bg-red-50 text-red-700",         dot: "bg-red-500" },
-  unqualified:  { badge: "bg-stone-50 text-stone-500",     dot: "bg-stone-400" },
+  unqualified:  { badge: "bg-muted text-muted-foreground",     dot: "bg-muted-foreground" },
   churned:      { badge: "bg-rose-50 text-rose-700",       dot: "bg-rose-500" },
 };
 
-const FALLBACK_BADGE_CLASSES = { badge: "bg-stone-100 text-stone-600", dot: "bg-stone-400" };
+const FALLBACK_BADGE_CLASSES = { badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground" };
 
 function getStatusClasses(status: string) {
   return STATUS_BADGE_CLASSES[status] ?? FALLBACK_BADGE_CLASSES;
@@ -159,16 +159,16 @@ function DragGrip({ className }: { className?: string }) {
     <div className={cn("flex flex-col gap-[2px] opacity-0 group-hover:opacity-40 transition-opacity", className)}>
       {/* 6-dot grip pattern (3 rows x 2 cols) */}
       <div className="flex gap-[2px]">
-        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
-        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
       </div>
       <div className="flex gap-[2px]">
-        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
-        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
       </div>
       <div className="flex gap-[2px]">
-        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
-        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
       </div>
     </div>
   );
@@ -249,7 +249,7 @@ function ProspectCard({
     <div
       ref={isDragOverlay ? undefined : setNodeRef}
       className={cn(
-        "group flex items-stretch rounded-xl border border-stone-200 bg-white shadow-sm transition-all hover:shadow-md cursor-pointer",
+        "group flex items-stretch rounded-xl border border-border bg-background shadow-sm transition-all hover:shadow-md cursor-pointer",
         isDragging && "opacity-40",
         isDragOverlay && "shadow-lg ring-2 ring-[#635BFF]/20 rotate-[2deg]",
       )}
@@ -273,13 +273,13 @@ function ProspectCard({
             {prospect.pipelineStatus === "closed_won" ? (
               <a
                 href={`/clients/${prospect.id}`}
-                className="text-sm font-semibold leading-tight text-stone-900 hover:underline block truncate"
+                className="text-sm font-semibold leading-tight text-foreground hover:underline block truncate"
                 onClick={(e) => e.stopPropagation()}
               >
                 {prospect.name}
               </a>
             ) : (
-              <p className="text-sm font-semibold leading-tight text-stone-900 truncate">
+              <p className="text-sm font-semibold leading-tight text-foreground truncate">
                 {prospect.name}
               </p>
             )}
@@ -318,25 +318,25 @@ function ProspectCard({
         {/* Details */}
         <div className="space-y-0.5 mb-2">
           {prospect.contactName && (
-            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <User className="h-3 w-3 shrink-0" />
               <span className="truncate">{prospect.contactName}</span>
             </div>
           )}
           {prospect.contactEmail && (
-            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Mail className="h-3 w-3 shrink-0" />
               <span className="truncate">{prospect.contactEmail}</span>
             </div>
           )}
           {domain && (
-            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Globe className="h-3 w-3 shrink-0" />
               <a
                 href={prospect.website!}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="truncate hover:underline hover:text-stone-700"
+                className="truncate hover:underline hover:text-foreground"
                 onClick={(e) => e.stopPropagation()}
               >
                 {domain}
@@ -349,7 +349,7 @@ function ProspectCard({
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
           <StatusBadge status={prospect.pipelineStatus} onStatusChange={onStatusChange} />
-          <span className="flex items-center gap-1 text-[10px] text-stone-400 shrink-0">
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
             <Clock className="h-2.5 w-2.5" />
             {relativeTime(prospect.createdAt)}
           </span>
@@ -367,14 +367,14 @@ function SkeletonColumn() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
-          className="rounded-xl border border-stone-200 bg-white p-3 space-y-2"
+          className="rounded-xl border border-border bg-background p-3 space-y-2"
         >
-          <div className="h-4 bg-stone-100 rounded animate-pulse w-3/4" />
-          <div className="h-3 bg-stone-100 rounded animate-pulse w-1/2" />
-          <div className="h-3 bg-stone-100 rounded animate-pulse w-2/3" />
+          <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
+          <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+          <div className="h-3 bg-muted rounded animate-pulse w-2/3" />
           <div className="flex items-center justify-between pt-1">
-            <div className="h-5 bg-stone-100 rounded-full animate-pulse w-20" />
-            <div className="h-3 bg-stone-100 rounded animate-pulse w-12" />
+            <div className="h-5 bg-muted rounded-full animate-pulse w-20" />
+            <div className="h-3 bg-muted rounded animate-pulse w-12" />
           </div>
         </div>
       ))}
@@ -410,10 +410,10 @@ function KanbanColumn({
         <span
           className={cn("h-2 w-2 rounded-full shrink-0", getStatusClasses(status.value).dot)}
         />
-        <h3 className="text-sm font-semibold text-stone-700 tracking-tight truncate">
+        <h3 className="text-sm font-semibold text-foreground tracking-tight truncate">
           {status.label}
         </h3>
-        <span className="text-xs font-mono text-stone-400 shrink-0">
+        <span className="text-xs font-mono text-muted-foreground shrink-0">
           {prospects.length}
         </span>
       </div>
@@ -441,8 +441,8 @@ function KanbanColumn({
         </div>
 
         {prospects.length === 0 && (
-          <div className="flex items-center justify-center h-full min-h-[80px] border-2 border-dashed border-stone-200 rounded-lg">
-            <p className="text-xs text-stone-400">No deals</p>
+          <div className="flex items-center justify-center h-full min-h-[80px] border-2 border-dashed border-border rounded-lg">
+            <p className="text-xs text-muted-foreground">No deals</p>
           </div>
         )}
       </div>
@@ -467,7 +467,7 @@ function ArchiveTable({
 }) {
   if (prospects.length === 0) {
     return (
-      <p className="text-sm text-stone-400 text-center py-8">
+      <p className="text-sm text-muted-foreground text-center py-8">
         No archived deals yet.
       </p>
     );
@@ -477,12 +477,12 @@ function ArchiveTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-stone-200">
-            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Name</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Contact</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Status</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Date</th>
-            <th className="text-right py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider w-10"></th>
+          <tr className="border-b border-border">
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Contact</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</th>
+            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider w-10"></th>
           </tr>
         </thead>
         <tbody>
@@ -492,25 +492,25 @@ function ArchiveTable({
             return (
               <tr
                 key={p.id}
-                className="border-b border-stone-100 hover:bg-stone-50 transition-colors cursor-pointer"
+                className="border-b border-border hover:bg-muted transition-colors cursor-pointer"
                 onClick={() => onEdit(p)}
               >
-                <td className="py-2.5 px-3 text-stone-500 font-medium">{p.name}</td>
-                <td className="py-2.5 px-3 text-stone-400">{p.contactName || p.contactEmail || "—"}</td>
+                <td className="py-2.5 px-3 text-muted-foreground font-medium">{p.name}</td>
+                <td className="py-2.5 px-3 text-muted-foreground">{p.contactName || p.contactEmail || "—"}</td>
                 <td className="py-2.5 px-3">
                   {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                   <span onClick={(e) => e.stopPropagation()}>
                     <StatusBadge status={p.pipelineStatus} onStatusChange={(ns) => onStatusChange(p.id, ns)} />
                   </span>
                 </td>
-                <td className="py-2.5 px-3 text-stone-400 text-xs font-mono">{formatDate(p.createdAt)}</td>
+                <td className="py-2.5 px-3 text-muted-foreground text-xs font-mono">{formatDate(p.createdAt)}</td>
                 <td className="py-2.5 px-3 text-right">
                   {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                   <span onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                          <MoreHorizontal className="h-3.5 w-3.5 text-stone-400" />
+                          <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -904,7 +904,7 @@ export default function PipelinePage() {
         {/* Search + count */}
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <Input
               placeholder="Search prospects..."
               value={search}
@@ -914,7 +914,7 @@ export default function PipelinePage() {
           </div>
 
           {!loading && (
-            <span className="text-xs text-stone-400 ml-auto font-mono">
+            <span className="text-xs text-muted-foreground ml-auto font-mono">
               {filtered.length} prospect{filtered.length !== 1 ? "s" : ""}
             </span>
           )}
@@ -923,11 +923,11 @@ export default function PipelinePage() {
         {/* Kanban board */}
         {!loading && prospects.length === 0 && !search ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Building2 className="h-12 w-12 text-stone-300 mb-4" aria-hidden="true" />
-            <h3 className="text-lg font-medium text-stone-900 mb-1">
+            <Building2 className="h-12 w-12 text-muted-foreground/30 mb-4" aria-hidden="true" />
+            <h3 className="text-lg font-medium text-foreground mb-1">
               No pipeline deals
             </h3>
-            <p className="text-sm text-stone-500 text-center max-w-sm mb-5">
+            <p className="text-sm text-muted-foreground text-center max-w-sm mb-5">
               Add your first prospect to start tracking deals through the sales pipeline.
             </p>
             <Button size="sm" onClick={() => setDialogOpen(true)}>
@@ -942,27 +942,27 @@ export default function PipelinePage() {
               {ACTIVE_STATUSES.map((status) => (
                 <div
                   key={status.value}
-                  className="min-w-[280px] flex-1 rounded-xl bg-stone-50 p-3"
+                  className="min-w-[280px] flex-1 rounded-xl bg-muted p-3"
                 >
                   <div className="mb-3 flex items-center gap-2 px-1">
                     <span
                       className={cn("h-2 w-2 rounded-full shrink-0", getStatusClasses(status.value).dot)}
                     />
-                    <div className="h-4 bg-stone-200 rounded animate-pulse w-24" />
+                    <div className="h-4 bg-muted rounded animate-pulse w-24" />
                   </div>
                   <SkeletonColumn />
                 </div>
               ))}
             </div>
             {/* Mobile skeleton */}
-            <div className="lg:hidden rounded-xl bg-stone-50 p-3">
+            <div className="lg:hidden rounded-xl bg-muted p-3">
               <SkeletonColumn />
             </div>
           </>
         ) : filtered.length === 0 && search ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <Building2 className="h-8 w-8 text-stone-300 mb-2" aria-hidden="true" />
-            <p className="text-sm text-stone-400">No prospects match your search.</p>
+            <Building2 className="h-8 w-8 text-muted-foreground/30 mb-2" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">No prospects match your search.</p>
           </div>
         ) : (
           <>
@@ -978,7 +978,7 @@ export default function PipelinePage() {
                 {ACTIVE_STATUSES.map((status) => (
                   <div
                     key={status.value}
-                    className="min-w-[280px] flex-1 rounded-xl bg-stone-50 p-3 snap-start"
+                    className="min-w-[280px] flex-1 rounded-xl bg-muted p-3 snap-start"
                   >
                     <KanbanColumn
                       status={status}
@@ -1026,7 +1026,7 @@ export default function PipelinePage() {
                         />
                         {status.label}
                         {count > 0 && (
-                          <span className="ml-1 text-[10px] text-stone-400">
+                          <span className="ml-1 text-[10px] text-muted-foreground">
                             {count}
                           </span>
                         )}
@@ -1037,7 +1037,7 @@ export default function PipelinePage() {
 
                 {ACTIVE_STATUSES.map((status) => (
                   <TabsContent key={status.value} value={status.value}>
-                    <div className="rounded-xl bg-stone-50 p-3">
+                    <div className="rounded-xl bg-muted p-3">
                       <KanbanColumn
                         status={status}
                         prospects={prospectsByStatus[status.value] ?? []}
@@ -1064,7 +1064,7 @@ export default function PipelinePage() {
                   </span>
                 }
                 actions={
-                  <Archive className="h-4 w-4 text-stone-400" />
+                  <Archive className="h-4 w-4 text-muted-foreground" />
                 }
               >
                 <ArchiveTable

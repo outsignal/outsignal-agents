@@ -105,7 +105,7 @@ export default async function PortalEmailHealthPage() {
   if (!workspace) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-stone-500">
+        <div className="text-center py-12 text-muted-foreground">
           Your workspace is being set up. Check back soon.
         </div>
       </div>
@@ -230,8 +230,8 @@ export default async function PortalEmailHealthPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-stone-900">Email Health</h1>
-        <p className="text-sm text-stone-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Email Health</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Sender inbox health and deliverability metrics
         </p>
       </div>
@@ -321,7 +321,7 @@ export default async function PortalEmailHealthPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="bg-stone-50">
+                <TableRow className="bg-muted">
                   <TableHead>Domain</TableHead>
                   <TableHead>SPF</TableHead>
                   <TableHead>DKIM</TableHead>
@@ -331,7 +331,7 @@ export default async function PortalEmailHealthPage() {
               </TableHeader>
               <TableBody>
                 {domainHealthRows.map((row) => (
-                  <TableRow key={row.domain} className="hover:bg-stone-50 border-stone-100">
+                  <TableRow key={row.domain} className="hover:bg-muted border-border">
                     <TableCell className="font-mono text-sm font-medium">
                       {row.domain}
                     </TableCell>
@@ -383,7 +383,7 @@ export default async function PortalEmailHealthPage() {
           ) : senders.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow className="bg-stone-50">
+                <TableRow className="bg-muted">
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Sent</TableHead>
@@ -402,7 +402,7 @@ export default async function PortalEmailHealthPage() {
                   const dbData = dbSenderMap.get(sender.email.toLowerCase());
                   const emailBounceStatus = dbData?.emailBounceStatus ?? null;
                   return (
-                    <TableRow key={sender.email} className="hover:bg-stone-50 border-stone-100">
+                    <TableRow key={sender.email} className="hover:bg-muted border-border">
                       <TableCell className="font-medium text-sm">
                         {sender.email}
                       </TableCell>
@@ -444,23 +444,23 @@ export default async function PortalEmailHealthPage() {
                         {emailBounceStatus ? (
                           <StatusBadge status={emailBounceStatus} type="health" />
                         ) : (
-                          <span className="text-xs text-stone-500">—</span>
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell>
                         {dbData?.recentEventNote ? (
-                          <span className="text-xs text-stone-500">
+                          <span className="text-xs text-muted-foreground">
                             {dbData.recentEventNote}
                           </span>
                         ) : (
-                          <span className="text-xs text-stone-500">—</span>
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
                         {dbData?.warmupDay != null ? (
                           <span className="text-xs">{dbData.warmupDay}</span>
                         ) : (
-                          <span className="text-xs text-stone-500">—</span>
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                     </TableRow>

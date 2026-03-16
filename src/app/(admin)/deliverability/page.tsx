@@ -164,7 +164,7 @@ export default function DeliverabilityPage() {
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Workspace filter */}
         <div className="flex items-center justify-end gap-2">
-          <span className="text-xs text-stone-500">Workspace:</span>
+          <span className="text-xs text-muted-foreground">Workspace:</span>
           <Select
             value={workspace || "all"}
             onValueChange={handleWorkspaceChange}

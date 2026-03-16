@@ -148,7 +148,7 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
 
   return (
     <div className="space-y-4 rounded-lg border p-6">
-      <h3 className="text-lg font-semibold text-gray-900">
+      <h3 className="text-lg font-semibold text-foreground">
         Accept &amp; Sign
       </h3>
 
@@ -159,8 +159,8 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
           onClick={() => setMode("draw")}
           className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
             mode === "draw"
-              ? "bg-gray-900 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              ? "bg-foreground text-background"
+              : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
           Draw Signature
@@ -170,8 +170,8 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
           onClick={() => setMode("type")}
           className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
             mode === "type"
-              ? "bg-gray-900 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              ? "bg-foreground text-background"
+              : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
           Type Signature
@@ -181,7 +181,7 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
       {/* Signature area */}
       {mode === "draw" ? (
         <div className="space-y-2">
-          <div className="relative rounded-lg border-2 border-dashed border-gray-300 bg-white">
+          <div className="relative rounded-lg border-2 border-dashed border-border bg-background">
             <canvas
               ref={canvasRef}
               className="h-32 w-full cursor-crosshair touch-none"
@@ -193,14 +193,14 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
               onTouchMove={draw}
               onTouchEnd={endDraw}
             />
-            <p className="absolute bottom-2 left-3 text-xs text-gray-400">
+            <p className="absolute bottom-2 left-3 text-xs text-muted-foreground">
               Draw your signature above
             </p>
           </div>
           <button
             type="button"
             onClick={clearCanvas}
-            className="text-xs text-gray-500 hover:text-gray-700"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             Clear
           </button>
@@ -214,9 +214,9 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
             className="text-lg"
           />
           {typedName && (
-            <div className="mt-3 rounded-lg border bg-white p-4">
+            <div className="mt-3 rounded-lg border bg-card p-4">
               <p
-                className="text-2xl text-gray-900"
+                className="text-2xl text-foreground"
                 style={{ fontFamily: "Georgia, serif", fontStyle: "italic" }}
               >
                 {typedName}
@@ -232,9 +232,9 @@ export function ESignature({ proposalId, onSigned }: ESignatureProps) {
           type="checkbox"
           checked={accepted}
           onChange={(e) => setAccepted(e.target.checked)}
-          className="mt-1 h-4 w-4 rounded border-gray-300"
+          className="mt-1 h-4 w-4 rounded border-border"
         />
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-muted-foreground">
           I accept the terms of this proposal and agree to the payment schedule
           outlined above.
         </span>

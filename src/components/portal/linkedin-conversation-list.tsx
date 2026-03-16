@@ -58,11 +58,11 @@ export function LinkedInConversationList({
   if (conversations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
-        <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
-          <Linkedin className="h-6 w-6 text-stone-400" />
+        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+          <Linkedin className="h-6 w-6 text-muted-foreground" />
         </div>
-        <p className="text-sm font-medium text-stone-900">All caught up</p>
-        <p className="text-xs text-stone-500 mt-1">
+        <p className="text-sm font-medium text-foreground">All caught up</p>
+        <p className="text-xs text-muted-foreground mt-1">
           No LinkedIn conversations to review right now.
         </p>
       </div>
@@ -85,17 +85,17 @@ export function LinkedInConversationList({
             className={cn(
               "w-full text-left px-4 py-3 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring relative",
               // Unread: purple left border
-              isUnread && "border-l-2 border-l-[#635BFF]",
+              isUnread && "border-l-2 border-l-brand",
               !isUnread && "border-l-2 border-l-transparent",
               // Selected state
-              isSelected && "bg-stone-50",
+              isSelected && "bg-muted",
               // Hover state
-              !isSelected && "hover:bg-stone-50"
+              !isSelected && "hover:bg-muted"
             )}
           >
             <div className="flex items-start gap-2.5">
               {/* LinkedIn icon */}
-              <Linkedin className="mt-1 h-3.5 w-3.5 text-stone-400 shrink-0" />
+              <Linkedin className="mt-1 h-3.5 w-3.5 text-muted-foreground shrink-0" />
 
               <div className="flex-1 min-w-0">
                 {/* Top row: name + timestamp */}
@@ -104,27 +104,27 @@ export function LinkedInConversationList({
                     className={cn(
                       "text-sm truncate",
                       isUnread
-                        ? "font-semibold text-stone-900"
-                        : "font-normal text-stone-700"
+                        ? "font-semibold text-foreground"
+                        : "font-normal text-foreground"
                     )}
                   >
                     {displayName}
                   </span>
-                  <span className="text-[11px] font-mono text-stone-400 whitespace-nowrap shrink-0 tabular-nums">
+                  <span className="text-[11px] font-mono text-muted-foreground whitespace-nowrap shrink-0 tabular-nums">
                     {timeAgo(convo.lastActivityAt)}
                   </span>
                 </div>
 
                 {/* Job Title @ Company subtitle */}
                 {subtitle && (
-                  <p className="text-xs text-stone-500 truncate mt-0.5">
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
                     {subtitle}
                   </p>
                 )}
 
                 {/* Snippet */}
                 {snippet && (
-                  <p className="text-xs text-stone-400 truncate mt-0.5">
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
                     {snippet}
                   </p>
                 )}
@@ -132,7 +132,7 @@ export function LinkedInConversationList({
                 {/* Workspace badge — admin mode */}
                 {convo.workspaceName && (
                   <div className="mt-1.5">
-                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-stone-100 text-stone-500 border border-stone-200">
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                       {convo.workspaceName}
                     </span>
                   </div>

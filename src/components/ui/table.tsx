@@ -30,7 +30,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("bg-stone-50 sticky top-0 z-10", className)}
+      className={cn("bg-muted sticky top-0 z-10", className)}
       {...props}
     />
   )
@@ -51,7 +51,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "bg-stone-50 border-t border-stone-100 font-medium [&>tr]:last:border-b-0",
+        "bg-muted border-t border-border font-medium [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -64,7 +64,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "group border-b border-stone-100 transition-colors duration-150 hover:bg-stone-50 data-[state=selected]:bg-[oklch(0.55_0.25_275/0.05)]",
+        "group border-b border-border transition-colors duration-150 hover:bg-muted data-[state=selected]:bg-[oklch(0.55_0.25_275/0.05)]",
         className
       )}
       {...props}
@@ -77,7 +77,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-4 text-left align-middle text-[11px] font-medium uppercase tracking-wider text-stone-500 whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "h-10 px-4 text-left align-middle text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}
@@ -90,7 +90,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "px-4 py-3 align-middle text-sm text-stone-700 whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "px-4 py-3 align-middle text-sm text-foreground whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}
@@ -105,7 +105,7 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("text-stone-500 mt-4 text-sm", className)}
+      className={cn("text-muted-foreground mt-4 text-sm", className)}
       {...props}
     />
   )
@@ -134,7 +134,7 @@ function SortableTableHead({
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-4 text-left align-middle text-[11px] font-medium uppercase tracking-wider text-stone-500 whitespace-nowrap cursor-pointer select-none [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "h-10 px-4 text-left align-middle text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap cursor-pointer select-none [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       onClick={() => onSort(sortKey)}
@@ -143,11 +143,11 @@ function SortableTableHead({
       <span className="inline-flex items-center gap-1">
         {children}
         {direction === "asc" ? (
-          <ChevronUpIcon className="size-3.5 text-stone-900" />
+          <ChevronUpIcon className="size-3.5 text-foreground" />
         ) : direction === "desc" ? (
-          <ChevronDownIcon className="size-3.5 text-stone-900" />
+          <ChevronDownIcon className="size-3.5 text-foreground" />
         ) : (
-          <ChevronsUpDownIcon className="size-3.5 text-stone-400" />
+          <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
         )}
       </span>
     </th>
@@ -173,7 +173,7 @@ function TableRowActions({ actions }: TableRowActionsProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="inline-flex size-8 items-center justify-center rounded-md text-stone-500 hover:bg-stone-100 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Row actions"
           >
             <MoreHorizontalIcon className="size-4" />

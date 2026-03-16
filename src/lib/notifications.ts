@@ -136,7 +136,7 @@ export async function notifyApproval(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -205,8 +205,8 @@ ${
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Campaign</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Campaign</a>
                       </td>
                     </tr>
                   </table>
@@ -385,7 +385,7 @@ export async function notifyReply(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -450,7 +450,7 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
                         <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Suggested Response</p>
                         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                           <tr>
-                            <td style="background-color:#fafafa;border-left:3px solid #F0FF7A;padding:14px 18px;border-radius:0 6px 6px 0;">
+                            <td style="background-color:#fafafa;border-left:3px solid #635BFF;padding:14px 18px;border-radius:0 6px 6px 0;">
                               <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0;color:#374151;">${params.suggestedResponse}</p>
                             </td>
                           </tr>
@@ -465,8 +465,8 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${outsignalInboxUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">Reply in Outsignal</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${outsignalInboxUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Reply in Outsignal</a>
                       </td>
                     </tr>
                   </table>
@@ -733,7 +733,7 @@ export async function notifyDeploy(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -780,8 +780,8 @@ ${errorSection}
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Campaign</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Campaign</a>
                       </td>
                     </tr>
                   </table>
@@ -900,7 +900,7 @@ export async function notifyCampaignLive(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -936,8 +936,8 @@ export async function notifyCampaignLive(params: {
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Campaign</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Campaign</a>
                       </td>
                     </tr>
                   </table>
@@ -1166,7 +1166,7 @@ export async function notifyInboxDisconnect(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -1219,8 +1219,8 @@ ${reconnectionsHtml}
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${inboxHealthUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Inbox Health</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${inboxHealthUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Inbox Health</a>
                       </td>
                     </tr>
                   </table>
@@ -1372,7 +1372,7 @@ export async function notifySenderHealth(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -1443,8 +1443,8 @@ ${
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${sendersUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Senders</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${sendersUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Senders</a>
                       </td>
                     </tr>
                   </table>
@@ -1576,7 +1576,7 @@ export async function sendSenderHealthDigest(params: {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -1604,8 +1604,8 @@ export async function sendSenderHealthDigest(params: {
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${sendersUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Senders</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${sendersUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Senders</a>
                       </td>
                     </tr>
                   </table>
@@ -1952,7 +1952,7 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -2032,8 +2032,8 @@ ${worstDomainHtml}
                 <td style="padding-top:8px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${deliverabilityUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View Deliverability Dashboard</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${deliverabilityUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Deliverability Dashboard</a>
                       </td>
                     </tr>
                   </table>
@@ -2387,7 +2387,7 @@ ${campaignHtml}
           <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#F0FF7A;">OUTSIGNAL</td>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
               </tr>
             </table>
           </td>
@@ -2439,8 +2439,8 @@ ${workspaceSectionsHtml}
                 <td style="padding-top:24px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td style="background-color:#F0FF7A;border-radius:8px;">
-                        <a href="${insightsUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#18181b;text-decoration:none;">View All Insights</a>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${insightsUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View All Insights</a>
                       </td>
                     </tr>
                   </table>

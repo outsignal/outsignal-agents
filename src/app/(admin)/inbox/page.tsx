@@ -285,11 +285,11 @@ export default function AdminInboxPage() {
       if (allFeedItems.length === 0) {
         return (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
-            <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
-              <Inbox className="h-6 w-6 text-stone-400" />
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+              <Inbox className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-stone-900">All caught up</p>
-            <p className="text-xs text-stone-500 mt-1">
+            <p className="text-sm font-medium text-foreground">All caught up</p>
+            <p className="text-xs text-muted-foreground mt-1">
               No replies to review right now.
             </p>
           </div>
@@ -297,7 +297,7 @@ export default function AdminInboxPage() {
       }
 
       return (
-        <div className="divide-y divide-stone-200">
+        <div className="divide-y divide-border">
           {allFeedItems.map((item) => {
             if (item.type === "email") {
               return (
@@ -332,11 +332,11 @@ export default function AdminInboxPage() {
       if (threads.length === 0) {
         return (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
-            <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
-              <Mail className="h-6 w-6 text-stone-400" />
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+              <Mail className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-stone-900">All caught up</p>
-            <p className="text-xs text-stone-500 mt-1">
+            <p className="text-sm font-medium text-foreground">All caught up</p>
+            <p className="text-xs text-muted-foreground mt-1">
               No email replies to review right now.
             </p>
           </div>
@@ -355,11 +355,11 @@ export default function AdminInboxPage() {
     if (linkedinConversations.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
-          <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
-            <Linkedin className="h-6 w-6 text-stone-400" />
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+            <Linkedin className="h-6 w-6 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-stone-900">All caught up</p>
-          <p className="text-xs text-stone-500 mt-1">
+          <p className="text-sm font-medium text-foreground">All caught up</p>
+          <p className="text-xs text-muted-foreground mt-1">
             No LinkedIn conversations to review right now.
           </p>
         </div>
@@ -413,20 +413,20 @@ export default function AdminInboxPage() {
     // Empty state — no thread selected
     const icon =
       activeChannel === "linkedin" ? (
-        <Linkedin className="h-6 w-6 text-stone-400" />
+        <Linkedin className="h-6 w-6 text-muted-foreground" />
       ) : (
-        <Inbox className="h-6 w-6 text-stone-400" />
+        <Inbox className="h-6 w-6 text-muted-foreground" />
       );
 
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-6">
-        <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
+        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
           {icon}
         </div>
-        <p className="text-sm font-medium text-stone-900">
+        <p className="text-sm font-medium text-foreground">
           Select a thread to view
         </p>
-        <p className="text-xs text-stone-500 mt-1 max-w-xs">
+        <p className="text-xs text-muted-foreground mt-1 max-w-xs">
           Choose a conversation from the left to view the full thread and send a
           reply.
         </p>
@@ -437,10 +437,10 @@ export default function AdminInboxPage() {
   return (
     <div className="flex flex-col h-full">
       {/* ===== Unified header bar ===== */}
-      <div className="px-5 py-3 border-b border-stone-200 shrink-0 bg-white">
+      <div className="px-5 py-3 border-b border-border shrink-0 bg-background">
         <div className="flex items-center gap-4">
           {/* Page title */}
-          <h1 className="text-lg font-heading font-bold text-stone-900 shrink-0">
+          <h1 className="text-lg font-heading font-bold text-foreground shrink-0">
             Inbox
           </h1>
 
@@ -465,7 +465,7 @@ export default function AdminInboxPage() {
           </Select>
 
           {/* Channel tabs */}
-          <div className="flex items-center gap-0.5 bg-stone-100 rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
             {channelTabs.map((tab) => (
               <button
                 key={tab.key}
@@ -473,8 +473,8 @@ export default function AdminInboxPage() {
                 className={cn(
                   "px-3 py-1 text-xs font-medium rounded-md transition-all duration-150",
                   activeChannel === tab.key
-                    ? "bg-white text-stone-900 shadow-sm"
-                    : "text-stone-500 hover:text-stone-700"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {tab.label}
@@ -489,7 +489,7 @@ export default function AdminInboxPage() {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-stone-500 hover:text-stone-700 hover:bg-stone-50 rounded-md transition-colors duration-150 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors duration-150 disabled:opacity-50"
           >
             <RefreshCw
               className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
@@ -504,7 +504,7 @@ export default function AdminInboxPage() {
         {/* Left panel: thread list */}
         <div
           className={cn(
-            "shrink-0 border-r border-stone-200 flex flex-col bg-white",
+            "shrink-0 border-r border-border flex flex-col bg-background",
             "md:w-[360px]",
             hasSelection
               ? "hidden md:flex"
@@ -520,7 +520,7 @@ export default function AdminInboxPage() {
         {/* Right panel: detail view */}
         <div
           className={cn(
-            "flex-1 overflow-hidden flex flex-col bg-white",
+            "flex-1 overflow-hidden flex flex-col bg-background",
             hasSelection ? "flex" : "hidden md:flex"
           )}
         >
@@ -531,7 +531,7 @@ export default function AdminInboxPage() {
                 setSelectedThreadId(null);
                 setSelectedConversationId(null);
               }}
-              className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-stone-500 hover:text-stone-700 md:hidden border-b border-stone-200 transition-colors duration-150"
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground md:hidden border-b border-border transition-colors duration-150"
             >
               <ArrowLeft className="h-4 w-4" /> Back to inbox
             </button>
@@ -539,9 +539,9 @@ export default function AdminInboxPage() {
 
           {/* "Replying as" banner */}
           {selectedWorkspaceName && hasSelection && (
-            <div className="px-4 py-2 bg-stone-50 border-b border-stone-200 text-xs text-stone-500 shrink-0">
+            <div className="px-4 py-2 bg-muted border-b border-border text-xs text-muted-foreground shrink-0">
               Replying as{" "}
-              <span className="font-medium text-stone-900">
+              <span className="font-medium text-foreground">
                 {selectedWorkspaceName}
               </span>
             </div>

@@ -17,7 +17,7 @@ import { formatGBP, formatInvoiceDate } from "./format";
 
 // Outsignal brand palette
 const BRAND = {
-  primary: "#F0FF7A",       // Yellow-green
+  primary: "#635BFF",       // Brand purple
   dark: "#18181b",          // Zinc-900
   darkMuted: "#27272a",     // Zinc-800
   text: "#18181b",

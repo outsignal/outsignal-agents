@@ -316,7 +316,7 @@ export default function RepliesPage() {
 
         {/* Intent filter chips */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-stone-500 mr-1">Intent:</span>
+          <span className="text-xs text-muted-foreground mr-1">Intent:</span>
           {INTENTS.map((i) => (
             <ToggleChip
               key={i}
@@ -330,7 +330,7 @@ export default function RepliesPage() {
         {/* Sentiment + date range row */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-stone-500 mr-1">
+            <span className="text-xs text-muted-foreground mr-1">
               Sentiment:
             </span>
             {SENTIMENTS.map((s) => (
@@ -349,7 +349,7 @@ export default function RepliesPage() {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <span className="text-xs text-stone-500 mr-1">Range:</span>
+            <span className="text-xs text-muted-foreground mr-1">Range:</span>
             {DATE_RANGES.map((r) => (
               <ToggleChip
                 key={r.value}
@@ -410,7 +410,7 @@ export default function RepliesPage() {
         {/* Pagination */}
         {!loading && data && totalPages > 1 && (
           <div className="flex items-center justify-between text-sm">
-            <p className="text-xs text-stone-500">
+            <p className="text-xs text-muted-foreground">
               Page <span className="font-mono">{params.page}</span> of <span className="font-mono">{totalPages}</span> &middot;{" "}
               <span className="font-mono">{data.total.toLocaleString()}</span> total
             </p>

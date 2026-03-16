@@ -507,8 +507,8 @@ export function PeopleSearchPage() {
                         className="text-center py-16"
                       >
                         <div className="flex flex-col items-center gap-2 animate-fade-in">
-                          <div className="h-14 w-14 rounded-full bg-stone-100 flex items-center justify-center mb-1">
-                            <Users className="h-6 w-6 text-stone-400" aria-hidden="true" />
+                          <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-1">
+                            <Users className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
                           </div>
                           <p className="text-lg font-semibold text-foreground">
                             No people found

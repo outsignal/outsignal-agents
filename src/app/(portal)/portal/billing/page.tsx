@@ -36,8 +36,8 @@ export default async function PortalBillingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-stone-900">Billing</h1>
-        <p className="text-sm text-stone-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Billing</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Your invoice history and payment records
         </p>
       </div>
@@ -52,19 +52,19 @@ export default async function PortalBillingPage() {
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Total Outstanding</p>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Total Outstanding</p>
                   <p className="text-2xl font-mono font-semibold tabular-nums mt-1">
                     {formatGBP(totalOutstanding)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Overdue Invoices</p>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Overdue Invoices</p>
                   <p className={`text-2xl font-mono font-semibold tabular-nums mt-1 ${overdueCount > 0 ? "text-red-600" : ""}`}>
                     {overdueCount}
                   </p>
                 </div>
                 <div className="flex items-end">
-                  <p className="text-sm text-stone-500">
+                  <p className="text-sm text-muted-foreground">
                     For payment inquiries, contact your Outsignal account manager.
                   </p>
                 </div>
@@ -90,7 +90,7 @@ export default async function PortalBillingPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="bg-stone-50">
+                <TableRow className="bg-muted">
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Due Date</TableHead>
@@ -101,14 +101,14 @@ export default async function PortalBillingPage() {
               </TableHeader>
               <TableBody>
                 {invoices.map((invoice) => (
-                  <TableRow key={invoice.id} className="hover:bg-stone-50 border-stone-100">
+                  <TableRow key={invoice.id} className="hover:bg-muted border-border">
                     <TableCell className="font-medium font-mono">
                       {invoice.invoiceNumber}
                     </TableCell>
-                    <TableCell className="text-sm font-mono text-stone-500 tabular-nums">
+                    <TableCell className="text-sm font-mono text-muted-foreground tabular-nums">
                       {formatInvoiceDate(invoice.issueDate)}
                     </TableCell>
-                    <TableCell className="text-sm font-mono text-stone-500 tabular-nums">
+                    <TableCell className="text-sm font-mono text-muted-foreground tabular-nums">
                       {formatInvoiceDate(invoice.dueDate)}
                     </TableCell>
                     <TableCell className="text-right font-medium font-mono tabular-nums">
@@ -123,12 +123,12 @@ export default async function PortalBillingPage() {
                           href={`/api/invoices/${invoice.id}/pdf?token=${invoice.viewToken}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-[#635BFF] hover:text-[#4b44cc] hover:underline transition-colors"
+                          className="text-sm text-brand hover:text-brand/80 hover:underline transition-colors"
                         >
                           Download PDF
                         </a>
                       ) : (
-                        <span className="text-sm text-stone-500">\u2014</span>
+                        <span className="text-sm text-muted-foreground">\u2014</span>
                       )}
                     </TableCell>
                   </TableRow>

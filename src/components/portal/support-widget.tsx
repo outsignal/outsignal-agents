@@ -319,22 +319,22 @@ export function SupportWidget() {
 
   const renderFaqArticles = (articles: FaqArticle[]) =>
     articles.map((article) => (
-      <div key={article.id} className="border-b border-gray-100 last:border-0">
+      <div key={article.id} className="border-b border-border last:border-0">
         <button
           type="button"
           onClick={() => toggleArticle(article.id)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50"
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-foreground hover:bg-muted"
         >
           <span>{article.question}</span>
           <ChevronDown
             className={cn(
-              "h-4 w-4 shrink-0 text-gray-400 transition-transform",
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
               expandedArticles.has(article.id) && "rotate-180",
             )}
           />
         </button>
         {expandedArticles.has(article.id) && (
-          <div className="px-4 pb-3 text-sm text-gray-500 leading-relaxed">
+          <div className="px-4 pb-3 text-sm text-muted-foreground leading-relaxed">
             {article.answer}
           </div>
         )}
@@ -342,7 +342,7 @@ export function SupportWidget() {
     ));
 
   const renderHeader = (title: string, showBack?: boolean) => (
-    <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+    <div className="flex items-center justify-between border-b border-border px-4 py-3">
       <div className="flex items-center gap-2">
         {showBack && (
           <button
@@ -352,17 +352,17 @@ export function SupportWidget() {
               setSearchQuery("");
               setSearchResults(null);
             }}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
         )}
-        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
       </div>
       <button
         type="button"
         onClick={() => setOpen(false)}
-        className="text-gray-400 hover:text-gray-600"
+        className="text-muted-foreground hover:text-foreground"
       >
         <X className="h-5 w-5" />
       </button>
@@ -379,7 +379,7 @@ export function SupportWidget() {
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#635BFF] text-white shadow-lg transition-colors hover:bg-[#5046E5]"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg transition-colors hover:bg-brand-strong"
       >
         <MessageCircle className="h-6 w-6" />
         {unreadCount > 0 && (
@@ -390,7 +390,7 @@ export function SupportWidget() {
       {/* Popup panel */}
       <div
         className={cn(
-          "fixed bottom-20 right-4 sm:bottom-24 sm:right-6 z-50 flex h-[calc(100vh-8rem)] sm:h-[550px] max-h-[600px] w-[calc(100vw-2rem)] sm:w-[400px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl transition-all duration-200",
+          "fixed bottom-20 right-4 sm:bottom-24 sm:right-6 z-50 flex h-[calc(100vh-8rem)] sm:h-[550px] max-h-[600px] w-[calc(100vw-2rem)] sm:w-[400px] flex-col overflow-hidden rounded-2xl bg-card shadow-2xl transition-all duration-200",
           open
             ? "pointer-events-auto translate-y-0 opacity-100"
             : "pointer-events-none translate-y-4 opacity-0",
@@ -402,9 +402,9 @@ export function SupportWidget() {
             {renderHeader("Help Center")}
             <div className="flex-1 overflow-auto">
               {/* Search bar */}
-              <div className="border-b border-gray-100 p-4">
+              <div className="border-b border-border p-4">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search help articles..."
                     value={searchQuery}
@@ -418,7 +418,7 @@ export function SupportWidget() {
               <div className="p-4">
                 {faqLoading && (
                   <div className="flex items-center justify-center py-8">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#635BFF] border-t-transparent" />
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
                   </div>
                 )}
                 {Object.entries(faqCategories).map(([category, articles]) => (
@@ -426,18 +426,18 @@ export function SupportWidget() {
                     <button
                       type="button"
                       onClick={() => toggleCategory(category)}
-                      className="flex w-full items-center justify-between rounded-lg bg-gray-50 px-4 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-gray-100"
+                      className="flex w-full items-center justify-between rounded-lg bg-muted px-4 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted"
                     >
                       <span>{category}</span>
                       <ChevronDown
                         className={cn(
-                          "h-4 w-4 text-gray-400 transition-transform",
+                          "h-4 w-4 text-muted-foreground transition-transform",
                           expandedCategories.has(category) && "rotate-180",
                         )}
                       />
                     </button>
                     {expandedCategories.has(category) && (
-                      <div className="mt-1 rounded-lg border border-gray-100">
+                      <div className="mt-1 rounded-lg border border-border">
                         {renderFaqArticles(articles)}
                       </div>
                     )}
@@ -447,10 +447,10 @@ export function SupportWidget() {
             </div>
 
             {/* Chat CTA */}
-            <div className="border-t border-gray-200 p-4">
+            <div className="border-t border-border p-4">
               <Button
                 onClick={() => setView("chat")}
-                className="w-full rounded-lg bg-[#635BFF] text-white hover:bg-[#5046E5]"
+                className="w-full rounded-lg bg-brand text-white hover:bg-brand-strong"
               >
                 Chat with us
               </Button>
@@ -464,9 +464,9 @@ export function SupportWidget() {
             {renderHeader("Search Results", true)}
             <div className="flex-1 overflow-auto">
               {/* Search bar (persisted) */}
-              <div className="border-b border-gray-100 p-4">
+              <div className="border-b border-border p-4">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search help articles..."
                     value={searchQuery}
@@ -478,41 +478,42 @@ export function SupportWidget() {
               </div>
 
               {searchResults === null ? (
-                <div className="p-4 text-center text-sm text-gray-400">
+                <div className="p-4 text-center text-sm text-muted-foreground">
                   Searching...
                 </div>
+
               ) : searchResults.faq.length === 0 &&
                 searchResults.kb.length === 0 ? (
-                <div className="p-8 text-center text-sm text-gray-500">
+                <div className="p-8 text-center text-sm text-muted-foreground">
                   No results found
                 </div>
               ) : (
                 <div className="p-4">
                   {searchResults.faq.length > 0 && (
                     <div className="mb-4">
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         FAQ
                       </h3>
-                      <div className="rounded-lg border border-gray-100">
+                      <div className="rounded-lg border border-border">
                         {renderFaqArticles(searchResults.faq)}
                       </div>
                     </div>
                   )}
                   {searchResults.kb.length > 0 && (
                     <div>
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Knowledge Base
                       </h3>
                       <div className="space-y-2">
                         {searchResults.kb.map((item) => (
                           <div
                             key={item.id}
-                            className="rounded-lg border border-gray-100 p-3"
+                            className="rounded-lg border border-border p-3"
                           >
-                            <p className="text-sm font-medium text-gray-800">
+                            <p className="text-sm font-medium text-foreground">
                               {item.title}
                             </p>
-                            <p className="mt-1 text-xs text-gray-500 line-clamp-2">
+                            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
                               {item.preview}
                             </p>
                           </div>
@@ -528,7 +529,7 @@ export function SupportWidget() {
                 <button
                   type="button"
                   onClick={() => setView("chat")}
-                  className="text-sm text-[#635BFF] hover:underline"
+                  className="text-sm text-brand hover:underline"
                 >
                   Still need help? Chat with us
                 </button>
@@ -547,14 +548,14 @@ export function SupportWidget() {
               <div className="space-y-3">
                 {loading && (
                   <div className="flex items-center justify-center py-8">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#635BFF] border-t-transparent" />
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
                   </div>
                 )}
                 {messages.length === 0 && !loading && (
                   <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                    <MessageCircle className="h-10 w-10 text-[#635BFF]/30 mb-3" />
-                    <p className="text-sm font-medium text-gray-700">Welcome to Outsignal Support</p>
-                    <p className="text-xs text-gray-500 mt-1">Send a message and we&apos;ll get back to you.</p>
+                    <MessageCircle className="h-10 w-10 text-brand/30 mb-3" />
+                    <p className="text-sm font-medium text-foreground">Welcome to Outsignal Support</p>
+                    <p className="text-xs text-muted-foreground mt-1">Send a message and we&apos;ll get back to you.</p>
                   </div>
                 )}
                 {messages.map((msg) => {
@@ -571,18 +572,18 @@ export function SupportWidget() {
                         className={cn(
                           "max-w-[80%] rounded-lg px-3 py-2 text-sm",
                           isClient
-                            ? "bg-[#635BFF] text-white"
-                            : "bg-gray-100 text-gray-900",
+                            ? "bg-brand text-white"
+                            : "bg-muted text-foreground",
                         )}
                       >
                         {!isClient && (
                           <div className="mb-1">
                             {msg.role === "ai" ? (
-                              <span className="rounded bg-gray-200 px-1 text-xs text-gray-600">
+                              <span className="rounded bg-muted px-1 text-xs text-muted-foreground">
                                 AI
                               </span>
                             ) : (
-                              <span className="text-xs font-medium text-gray-500">
+                              <span className="text-xs font-medium text-muted-foreground">
                                 Outsignal Team
                               </span>
                             )}
@@ -605,7 +606,7 @@ export function SupportWidget() {
             )}
 
             {/* Input */}
-            <div className="border-t border-gray-200 p-3">
+            <div className="border-t border-border p-3">
               <div className="flex items-end gap-2">
                 <textarea
                   value={chatInput}
@@ -618,13 +619,13 @@ export function SupportWidget() {
                   }}
                   placeholder="Type a message..."
                   rows={1}
-                  className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#635BFF] focus:ring-1 focus:ring-[#635BFF]"
+                  className="flex-1 resize-none rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 />
                 <Button
                   size="icon"
                   disabled={!chatInput.trim() || sending}
                   onClick={sendMessage}
-                  className="h-9 w-9 shrink-0 bg-[#635BFF] hover:bg-[#5046E5]"
+                  className="h-9 w-9 shrink-0 bg-brand hover:bg-brand-strong"
                 >
                   <Send className="h-4 w-4" />
                 </Button>

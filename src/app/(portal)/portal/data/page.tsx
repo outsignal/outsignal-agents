@@ -79,8 +79,8 @@ export default async function PortalDataPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-stone-900">Enrichment Data</h1>
-        <p className="text-sm text-stone-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Enrichment Data</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           A preview of contacts and companies discovered for your campaigns
         </p>
       </div>
@@ -113,7 +113,7 @@ export default async function PortalDataPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-stone-50">
+                  <TableRow className="bg-muted">
                     <TableHead>Name</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead>Company</TableHead>
@@ -128,17 +128,17 @@ export default async function PortalDataPage() {
                       [p.firstName, p.lastName].filter(Boolean).join(" ") ||
                       "\u2014";
                     return (
-                      <TableRow key={pw.id} className="hover:bg-stone-50 border-stone-100">
+                      <TableRow key={pw.id} className="hover:bg-muted border-border">
                         <TableCell className="font-medium text-sm">
                           {name}
                         </TableCell>
-                        <TableCell className="text-sm text-stone-500">
+                        <TableCell className="text-sm text-muted-foreground">
                           {p.jobTitle || "\u2014"}
                         </TableCell>
-                        <TableCell className="text-sm text-stone-500">
+                        <TableCell className="text-sm text-muted-foreground">
                           {p.company || "\u2014"}
                         </TableCell>
-                        <TableCell className="text-sm text-stone-500 font-mono">
+                        <TableCell className="text-sm text-muted-foreground font-mono">
                           {maskEmail(p.email)}
                         </TableCell>
                         <TableCell>
@@ -147,12 +147,12 @@ export default async function PortalDataPage() {
                               href={p.linkedinUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-stone-500 hover:text-stone-900 transition-colors"
+                              className="text-muted-foreground hover:text-foreground transition-colors"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                           ) : (
-                            <span className="text-stone-400">\u2014</span>
+                            <span className="text-muted-foreground">\u2014</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -193,7 +193,7 @@ export default async function PortalDataPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-stone-50">
+                  <TableRow className="bg-muted">
                     <TableHead>Company Name</TableHead>
                     <TableHead>Domain</TableHead>
                     <TableHead>Industry</TableHead>
@@ -202,17 +202,17 @@ export default async function PortalDataPage() {
                 </TableHeader>
                 <TableBody>
                   {companies.map((c) => (
-                    <TableRow key={c.id} className="hover:bg-stone-50 border-stone-100">
+                    <TableRow key={c.id} className="hover:bg-muted border-border">
                       <TableCell className="font-medium text-sm">
                         {c.name}
                       </TableCell>
-                      <TableCell className="text-sm font-mono text-stone-500">
+                      <TableCell className="text-sm font-mono text-muted-foreground">
                         {c.domain}
                       </TableCell>
-                      <TableCell className="text-sm text-stone-500">
+                      <TableCell className="text-sm text-muted-foreground">
                         {c.industry || "\u2014"}
                       </TableCell>
-                      <TableCell className="text-right text-sm font-mono text-stone-500 tabular-nums">
+                      <TableCell className="text-right text-sm font-mono text-muted-foreground tabular-nums">
                         {c.headcount?.toLocaleString() || "\u2014"}
                       </TableCell>
                     </TableRow>

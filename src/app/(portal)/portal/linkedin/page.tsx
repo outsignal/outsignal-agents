@@ -100,13 +100,13 @@ export default async function PortalLinkedInPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-stone-900">LinkedIn</h1>
-          <p className="text-sm text-stone-500 mt-1">
+          <h1 className="text-2xl font-semibold text-foreground">LinkedIn</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Manage your LinkedIn senders and connections
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-stone-500">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
             Updated{" "}
             {now.toLocaleTimeString("en-US", {
@@ -140,7 +140,7 @@ export default async function PortalLinkedInPage() {
               {hasChartData ? (
                 <LinkedInActivityChart data={chartData} />
               ) : (
-                <div className="flex items-center justify-center py-8 text-sm text-stone-500">
+                <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
                   No LinkedIn activity in the last 7 days.
                 </div>
               )}
@@ -156,7 +156,7 @@ export default async function PortalLinkedInPage() {
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-stone-50">
+                  <TableRow className="bg-muted">
                     <TableHead>Name</TableHead>
                     <TableHead>Health</TableHead>
                     <TableHead className="text-right">Connections</TableHead>
@@ -169,7 +169,7 @@ export default async function PortalLinkedInPage() {
                   {senders.map((sender) => {
                     const usage = usageMap.get(sender.id);
                     return (
-                      <TableRow key={sender.id} className="hover:bg-stone-50 border-stone-100">
+                      <TableRow key={sender.id} className="hover:bg-muted border-border">
                         <TableCell className="font-medium">
                           {sender.name}
                           {sender.linkedinProfileUrl && (
@@ -177,7 +177,7 @@ export default async function PortalLinkedInPage() {
                               href={sender.linkedinProfileUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="ml-2 text-xs text-stone-500 hover:text-stone-900 transition-colors"
+                              className="ml-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
                             >
                               Profile
                             </a>
@@ -194,11 +194,11 @@ export default async function PortalLinkedInPage() {
                               ? "text-red-500"
                               : (usage?.connectionsSent ?? 0) >= sender.dailyConnectionLimit * 0.8
                                 ? "text-amber-500"
-                                : "text-stone-500"
+                                : "text-muted-foreground"
                           }>
                             {usage?.connectionsSent ?? 0}
                           </span>
-                          <span className="text-stone-400">/{sender.dailyConnectionLimit}</span>
+                          <span className="text-muted-foreground">/{sender.dailyConnectionLimit}</span>
                         </TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">
                           <span className={
@@ -206,11 +206,11 @@ export default async function PortalLinkedInPage() {
                               ? "text-red-500"
                               : (usage?.messagesSent ?? 0) >= sender.dailyMessageLimit * 0.8
                                 ? "text-amber-500"
-                                : "text-stone-500"
+                                : "text-muted-foreground"
                           }>
                             {usage?.messagesSent ?? 0}
                           </span>
-                          <span className="text-stone-400">/{sender.dailyMessageLimit}</span>
+                          <span className="text-muted-foreground">/{sender.dailyMessageLimit}</span>
                         </TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">
                           <span className={
@@ -218,11 +218,11 @@ export default async function PortalLinkedInPage() {
                               ? "text-red-500"
                               : (usage?.profileViews ?? 0) >= sender.dailyProfileViewLimit * 0.8
                                 ? "text-amber-500"
-                                : "text-stone-500"
+                                : "text-muted-foreground"
                           }>
                             {usage?.profileViews ?? 0}
                           </span>
-                          <span className="text-stone-400">/{sender.dailyProfileViewLimit}</span>
+                          <span className="text-muted-foreground">/{sender.dailyProfileViewLimit}</span>
                         </TableCell>
                         <TableCell>
                           <ConnectButton

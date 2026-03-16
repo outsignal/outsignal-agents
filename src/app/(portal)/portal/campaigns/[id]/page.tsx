@@ -153,7 +153,7 @@ export default async function PortalCampaignDetailPage({
       <div>
         <Link
           href="/portal/campaigns"
-          className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700 transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Campaigns
@@ -163,11 +163,11 @@ export default async function PortalCampaignDetailPage({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-heading font-semibold text-stone-900">{campaign.name}</h1>
+              <h1 className="text-2xl font-heading font-semibold text-foreground">{campaign.name}</h1>
               <StatusBadge status={campaign.status} type="campaign" />
             </div>
             {campaign.description && (
-              <p className="text-sm text-stone-500 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 {campaign.description}
               </p>
             )}
@@ -175,7 +175,7 @@ export default async function PortalCampaignDetailPage({
         </div>
 
         {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 text-sm text-stone-500">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 text-sm text-muted-foreground">
           {campaign.channels.includes("email") && (
             <span className="inline-flex items-center gap-1.5">
               <Mail className="h-3.5 w-3.5" /> Email
@@ -200,7 +200,7 @@ export default async function PortalCampaignDetailPage({
       {/* Campaign KPI Metrics Row */}
       {ebCampaign && (
         <div>
-          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Performance</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Performance</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
               label="Emails Sent"
@@ -248,7 +248,7 @@ export default async function PortalCampaignDetailPage({
 
           return (
             <div>
-              <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Detailed Stats</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Detailed Stats</p>
               <Card>
                 <CardContent className="pt-5 space-y-3">
                   {/* Row 1: High-volume metrics */}
@@ -315,11 +315,11 @@ export default async function PortalCampaignDetailPage({
       {/* Email Activity Chart */}
       {chartData.length > 0 && (
         <div>
-          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Activity</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Activity</p>
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-heading text-stone-900">Email Activity (Last 30 Days)</CardTitle>
+                <CardTitle className="text-base font-heading text-foreground">Email Activity (Last 30 Days)</CardTitle>
                 <EmailActivityChartLegend keys={["sent", "replied", "bounced", "interested", "unsubscribed"]} />
               </div>
             </CardHeader>
@@ -333,13 +333,13 @@ export default async function PortalCampaignDetailPage({
       {/* Email Sequence Steps */}
       {sequenceSteps.length > 0 && (
         <div>
-          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Sequence</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Sequence</p>
           <Card>
             <CardContent className="pt-5">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-stone-100 text-left text-stone-500">
+                    <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="pb-2 pr-4 font-medium w-16">Step</th>
                       <th className="pb-2 pr-4 font-medium">Subject</th>
                       <th className="pb-2 font-medium w-24 text-right">Delay</th>
@@ -349,12 +349,12 @@ export default async function PortalCampaignDetailPage({
                     {sequenceSteps
                       .sort((a, b) => a.position - b.position)
                       .map((step) => (
-                        <tr key={step.id} className="border-b border-stone-50 last:border-0 hover:bg-stone-50">
-                          <td className="py-2.5 pr-4 font-mono text-stone-400">{step.position}</td>
-                          <td className="py-2.5 pr-4 font-medium text-stone-900">
-                            {step.subject || <span className="text-stone-400 italic">No subject</span>}
+                        <tr key={step.id} className="border-b border-border last:border-0 hover:bg-muted">
+                          <td className="py-2.5 pr-4 font-mono text-muted-foreground">{step.position}</td>
+                          <td className="py-2.5 pr-4 font-medium text-foreground">
+                            {step.subject || <span className="text-muted-foreground italic">No subject</span>}
                           </td>
-                          <td className="py-2.5 text-right font-mono text-stone-500">
+                          <td className="py-2.5 text-right font-mono text-muted-foreground">
                             {step.delay_days != null
                               ? step.delay_days === 0
                                 ? "Immediate"

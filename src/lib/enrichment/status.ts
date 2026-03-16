@@ -40,7 +40,7 @@ export function getCompanyEnrichmentStatus(company: {
 /** Color mapping for enrichment status indicators (green/yellow/red intent per user decision) */
 export const ENRICHMENT_COLORS: Record<EnrichmentStatus, string> = {
   full: "#4ECDC4",    // teal-green
-  partial: "#F0FF7A", // brand yellow
+  partial: "#8B85FF", // brand purple (light)
   missing: "#FF6B6B", // red
 };
 

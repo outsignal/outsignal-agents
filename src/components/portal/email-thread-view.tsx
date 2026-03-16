@@ -72,16 +72,16 @@ const INTENT_COLORS: Record<string, string> = {
   interested: "bg-emerald-100 text-emerald-800",
   positive: "bg-emerald-100 text-emerald-800",
   negative: "bg-red-100 text-red-800",
-  neutral: "bg-gray-100 text-gray-700",
+  neutral: "bg-muted text-muted-foreground",
   question: "bg-blue-100 text-blue-800",
   not_interested: "bg-red-100 text-red-800",
-  out_of_office: "bg-gray-100 text-gray-700",
+  out_of_office: "bg-muted text-muted-foreground",
 };
 
 const SENTIMENT_COLORS: Record<string, string> = {
   positive: "text-emerald-600 dark:text-emerald-400",
   negative: "text-red-600 dark:text-red-400",
-  neutral: "text-gray-500 dark:text-gray-400",
+  neutral: "text-muted-foreground",
 };
 
 function MessageCard({ msg }: { msg: ThreadMessage }) {
@@ -118,7 +118,7 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
               <Badge
                 className={cn(
                   "text-[10px] px-1.5 py-0",
-                  INTENT_COLORS[msg.intent] ?? "bg-gray-100 text-gray-700"
+                  INTENT_COLORS[msg.intent] ?? "bg-muted text-muted-foreground"
                 )}
               >
                 {msg.intent.replace(/_/g, " ")}
@@ -134,7 +134,7 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
               <span
                 className={cn(
                   "text-[10px] font-medium",
-                  SENTIMENT_COLORS[msg.sentiment] ?? "text-gray-500"
+                  SENTIMENT_COLORS[msg.sentiment] ?? "text-muted-foreground"
                 )}
               >
                 {msg.sentiment}
@@ -232,7 +232,7 @@ export function EmailThreadView({
     return (
       <div className="flex flex-col h-full">
         {/* Skeleton header */}
-        <div className="px-5 py-4 border-b border-stone-200 shrink-0 space-y-2">
+        <div className="px-5 py-4 border-b border-border shrink-0 space-y-2">
           <SkeletonText width="40%" className="h-4" />
           <SkeletonText width="25%" className="h-3" />
         </div>
@@ -243,8 +243,8 @@ export function EmailThreadView({
             { w: "100%", h: "h-20" },
             { w: "100%", h: "h-32" },
           ].map(({ w, h }, i) => (
-            <div key={i} className="rounded-lg border border-stone-200 overflow-hidden">
-              <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 space-y-1.5">
+            <div key={i} className="rounded-lg border border-border overflow-hidden">
+              <div className="px-4 py-3 bg-muted border-b border-border space-y-1.5">
                 <SkeletonText width="30%" className="h-3.5" />
                 <SkeletonText width="50%" className="h-3" />
               </div>

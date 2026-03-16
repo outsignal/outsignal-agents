@@ -30,7 +30,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   approved: { label: "Approved", className: "bg-emerald-100 text-emerald-800" },
   deployed: { label: "Deployed", className: "bg-purple-100 text-purple-800" },
   active: { label: "Active", className: "bg-emerald-100 text-emerald-800" },
-  paused: { label: "Paused", className: "bg-yellow-100 text-yellow-800" },
+  paused: { label: "Paused", className: "bg-amber-100 text-amber-800" },
   completed: {
     label: "Completed",
     className: "bg-blue-100 text-blue-800",

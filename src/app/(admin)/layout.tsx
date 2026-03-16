@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/theme-provider";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default function AdminLayout({
@@ -10,10 +11,12 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <TooltipProvider>
-      <NuqsAdapter>
-        <AppShell>{children}</AppShell>
-      </NuqsAdapter>
-    </TooltipProvider>
+    <ThemeProvider>
+      <TooltipProvider>
+        <NuqsAdapter>
+          <AppShell>{children}</AppShell>
+        </NuqsAdapter>
+      </TooltipProvider>
+    </ThemeProvider>
   );
 }

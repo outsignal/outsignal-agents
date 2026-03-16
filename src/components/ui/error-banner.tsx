@@ -7,13 +7,13 @@ interface ErrorBannerProps {
 
 export function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
   return (
-    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+    <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-sm text-destructive">
       <div className="flex items-center justify-between gap-3">
         <p>{message}</p>
         {onRetry && (
           <button
             onClick={onRetry}
-            className="shrink-0 text-red-600 hover:text-red-800 font-medium underline underline-offset-2"
+            className="shrink-0 text-destructive hover:text-destructive/80 font-medium underline underline-offset-2"
           >
             Retry
           </button>

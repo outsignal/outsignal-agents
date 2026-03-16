@@ -82,12 +82,12 @@ export default async function PortalRepliesPage({
       <div className="flex items-center gap-3">
         <div>
           <h1 className="text-2xl font-heading font-bold">Replies</h1>
-          <p className="text-sm text-stone-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Recent replies from your campaigns
           </p>
         </div>
         {totalCount > 0 && (
-          <span className="ml-auto inline-flex items-center justify-center min-w-[28px] h-7 rounded-full bg-stone-100 text-stone-600 text-sm font-medium px-2 font-mono tabular-nums">
+          <span className="ml-auto inline-flex items-center justify-center min-w-[28px] h-7 rounded-full bg-muted text-muted-foreground text-sm font-medium px-2 font-mono tabular-nums">
             {totalCount}
           </span>
         )}
@@ -101,17 +101,17 @@ export default async function PortalRepliesPage({
           description="Replies from your campaign prospects will appear here."
         />
       ) : (
-        <div className="rounded-lg border border-stone-200 overflow-hidden">
+        <div className="rounded-lg border border-border overflow-hidden">
           {/* Table header */}
-          <div className="hidden md:grid md:grid-cols-[1fr_auto_auto_auto] gap-4 px-4 py-2.5 bg-stone-50 border-b border-stone-200">
-            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">From</span>
-            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Intent</span>
-            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Sentiment</span>
-            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Received</span>
+          <div className="hidden md:grid md:grid-cols-[1fr_auto_auto_auto] gap-4 px-4 py-2.5 bg-muted border-b border-border">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">From</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Intent</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sentiment</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Received</span>
           </div>
 
           {/* Rows */}
-          <div className="divide-y divide-stone-100">
+          <div className="divide-y divide-border">
             {replies.map((reply) => {
               const threadId = reply.emailBisonParentId ?? reply.emailBisonReplyId;
               const displayIntent = reply.overrideIntent ?? reply.intent;
@@ -121,12 +121,12 @@ export default async function PortalRepliesPage({
                 : null;
 
               const row = (
-                <div className={`px-4 py-3.5 bg-white ${threadId ? "hover:bg-stone-50 transition-colors cursor-pointer" : ""}`}>
+                <div className={`px-4 py-3.5 bg-background ${threadId ? "hover:bg-muted transition-colors cursor-pointer" : ""}`}>
                   {/* Desktop layout */}
                   <div className="hidden md:grid md:grid-cols-[1fr_auto_auto_auto] gap-4 items-center">
                     <div className="min-w-0 space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-stone-900 truncate">
+                        <span className="text-sm font-medium text-foreground truncate">
                           {reply.senderName || reply.senderEmail || reply.leadEmail || "Unknown sender"}
                         </span>
                         {reply.interested && (
@@ -137,15 +137,15 @@ export default async function PortalRepliesPage({
                         )}
                       </div>
                       {reply.senderName && (reply.senderEmail || reply.leadEmail) && (
-                        <p className="text-xs text-stone-400 font-mono truncate">
+                        <p className="text-xs text-muted-foreground font-mono truncate">
                           {reply.senderEmail || reply.leadEmail}
                         </p>
                       )}
                       {reply.subject && (
-                        <p className="text-sm text-stone-600 truncate">{reply.subject}</p>
+                        <p className="text-sm text-muted-foreground truncate">{reply.subject}</p>
                       )}
                       {bodyPreview && (
-                        <p className="text-xs text-stone-400 line-clamp-1">{bodyPreview}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">{bodyPreview}</p>
                       )}
                     </div>
 
@@ -161,7 +161,7 @@ export default async function PortalRepliesPage({
                       )}
                     </div>
 
-                    <span className="text-xs text-stone-400 font-mono tabular-nums whitespace-nowrap shrink-0 w-16 text-right">
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums whitespace-nowrap shrink-0 w-16 text-right">
                       {timeAgo(reply.receivedAt.toISOString())}
                     </span>
                   </div>
@@ -171,7 +171,7 @@ export default async function PortalRepliesPage({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-stone-900 truncate">
+                          <span className="text-sm font-medium text-foreground truncate">
                             {reply.senderName || reply.senderEmail || reply.leadEmail || "Unknown sender"}
                           </span>
                           {reply.interested && (
@@ -181,20 +181,20 @@ export default async function PortalRepliesPage({
                           )}
                         </div>
                         {reply.senderName && (reply.senderEmail || reply.leadEmail) && (
-                          <p className="text-xs text-stone-400 font-mono truncate">
+                          <p className="text-xs text-muted-foreground font-mono truncate">
                             {reply.senderEmail || reply.leadEmail}
                           </p>
                         )}
                       </div>
-                      <span className="text-xs text-stone-400 font-mono tabular-nums whitespace-nowrap shrink-0">
+                      <span className="text-xs text-muted-foreground font-mono tabular-nums whitespace-nowrap shrink-0">
                         {timeAgo(reply.receivedAt.toISOString())}
                       </span>
                     </div>
                     {reply.subject && (
-                      <p className="text-sm text-stone-600 truncate">{reply.subject}</p>
+                      <p className="text-sm text-muted-foreground truncate">{reply.subject}</p>
                     )}
                     {bodyPreview && (
-                      <p className="text-xs text-stone-400 line-clamp-2">{bodyPreview}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{bodyPreview}</p>
                     )}
                     <div className="flex items-center gap-1.5 pt-0.5">
                       {displayIntent && (
@@ -228,18 +228,18 @@ export default async function PortalRepliesPage({
           {currentPage > 1 && (
             <Link
               href={`/portal/replies?page=${currentPage - 1}`}
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 transition-colors"
+              className="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background text-muted-foreground hover:bg-muted transition-colors"
             >
               Previous
             </Link>
           )}
-          <span className="text-xs text-stone-500 font-mono tabular-nums">
+          <span className="text-xs text-muted-foreground font-mono tabular-nums">
             {currentPage} / {totalPages}
           </span>
           {currentPage < totalPages && (
             <Link
               href={`/portal/replies?page=${currentPage + 1}`}
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 transition-colors"
+              className="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background text-muted-foreground hover:bg-muted transition-colors"
             >
               Next
             </Link>

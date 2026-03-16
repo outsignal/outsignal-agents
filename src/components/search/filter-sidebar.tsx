@@ -109,7 +109,7 @@ export function FilterSidebar({
       {/* Vertical filter */}
       {verticals.length > 0 && (
         <div>
-          <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
             Vertical
           </h3>
           <div className="space-y-1">
@@ -144,7 +144,7 @@ export function FilterSidebar({
 
       {/* Enrichment status filter */}
       <div>
-        <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Enrichment
         </h3>
         <div className="space-y-1">
@@ -189,7 +189,7 @@ export function FilterSidebar({
       {/* Workspace filter */}
       {workspaces.length > 0 && (
         <div>
-          <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
             Workspace
           </h3>
           <select
@@ -211,7 +211,7 @@ export function FilterSidebar({
 
       {/* Company sub-filter */}
       <div>
-        <h3 className="text-xs font-medium text-stone-400 uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Company
         </h3>
         <input
@@ -267,7 +267,7 @@ export function FilterSidebar({
                 className={`inline-flex items-center px-2.5 py-1 text-xs rounded-full border transition-colors ${
                   pill.active
                     ? "bg-brand/10 border-brand/30 text-brand-strong font-medium"
-                    : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-stone-300"
+                    : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-border"
                 }`}
               >
                 {pill.label}

@@ -40,7 +40,7 @@ export default async function PortalDashboardPage() {
   if (!workspace) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-stone-500">
+        <div className="text-center py-12 text-muted-foreground">
           Your workspace is being set up. Check back soon.
         </div>
       </div>
@@ -224,8 +224,8 @@ export default async function PortalDashboardPage() {
       {/* Header with refresh */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-stone-900">{workspace.name}</h1>
-          <p className="text-sm text-stone-500 mt-1">
+          <h1 className="text-2xl font-heading font-bold text-foreground">{workspace.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Campaign performance overview
           </p>
         </div>
@@ -239,7 +239,7 @@ export default async function PortalDashboardPage() {
 
       {/* Hero Metric Row -- Bento Grid */}
       <div>
-        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Key Metrics</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Key Metrics</p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             label="Total Replies"
@@ -256,7 +256,7 @@ export default async function PortalDashboardPage() {
             value={totalSent.toLocaleString()}
             icon={Send}
             sparklineData={sentSparkline}
-            sparklineColor="#78716c"
+            sparklineColor="var(--muted-foreground)"
             density="compact"
           />
           <MetricCard
@@ -271,7 +271,7 @@ export default async function PortalDashboardPage() {
 
       {/* Secondary Metrics Row */}
       <div>
-        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Deliverability</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Deliverability</p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             label="Open Rate"
@@ -304,11 +304,11 @@ export default async function PortalDashboardPage() {
       {/* Campaign Performance Chart */}
       {performanceTimeSeries.some((d) => d.sent > 0 || d.replied > 0 || d.bounced > 0 || d.interested > 0 || d.unsubscribed > 0) && (
         <div>
-          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Activity</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Activity</p>
           <Card density="compact">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="font-heading text-base text-stone-900">
+                <CardTitle className="font-heading text-base text-foreground">
                   Email Activity
                 </CardTitle>
                 <PerformanceChartLegend />
@@ -323,17 +323,17 @@ export default async function PortalDashboardPage() {
 
       {/* LinkedIn Summary -- Compact */}
       <div>
-        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">LinkedIn</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">LinkedIn</p>
         <Card density="compact">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Linkedin className="h-4 w-4 text-stone-400" />
-                <p className="text-sm font-medium text-stone-700">LinkedIn Overview</p>
+                <Linkedin className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">LinkedIn Overview</p>
               </div>
               <Link
                 href="/portal/linkedin"
-                className="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 View details
                 <ArrowRight className="h-3 w-3" />
@@ -341,39 +341,39 @@ export default async function PortalDashboardPage() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
                   {senderCount}
                   {totalSenderCount > senderCount && (
-                    <span className="text-sm text-stone-400 font-normal">
+                    <span className="text-sm text-muted-foreground font-normal">
                       /{totalSenderCount}
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-stone-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Active sender{senderCount !== 1 ? "s" : ""}
                 </p>
               </div>
               <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
                   {todayActions}
                 </p>
-                <p className="text-xs text-stone-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Action{todayActions !== 1 ? "s" : ""} today
                 </p>
               </div>
               <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
                   {weekActions}
                 </p>
-                <p className="text-xs text-stone-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Last 7 days
                 </p>
               </div>
               <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
                   {pendingActions}
                 </p>
-                <p className="text-xs text-stone-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Pending
                 </p>
               </div>
@@ -385,10 +385,10 @@ export default async function PortalDashboardPage() {
       {/* Campaigns Table */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Campaigns</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Campaigns</p>
           <Link
             href="/portal/campaigns"
-            className="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 transition-colors"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             View all
             <ArrowRight className="h-3 w-3" />
@@ -406,13 +406,13 @@ export default async function PortalDashboardPage() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-stone-100">
-                    <TableHead className="text-stone-500">Campaign</TableHead>
-                    <TableHead className="text-stone-500">Status</TableHead>
-                    <TableHead className="text-right text-stone-500">Leads</TableHead>
-                    <TableHead className="text-right text-stone-500">Sent</TableHead>
-                    <TableHead className="text-right text-stone-500">Replies</TableHead>
-                    <TableHead className="text-right text-stone-500">Reply Rate</TableHead>
+                  <TableRow className="border-border">
+                    <TableHead className="text-muted-foreground">Campaign</TableHead>
+                    <TableHead className="text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-right text-muted-foreground">Leads</TableHead>
+                    <TableHead className="text-right text-muted-foreground">Sent</TableHead>
+                    <TableHead className="text-right text-muted-foreground">Replies</TableHead>
+                    <TableHead className="text-right text-muted-foreground">Reply Rate</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -426,9 +426,9 @@ export default async function PortalDashboardPage() {
                     return (
                       <TableRow
                         key={campaign.id}
-                        className={`border-stone-50 ${internalId ? "hover:bg-stone-50 cursor-pointer group" : ""}`}
+                        className={`border-border ${internalId ? "hover:bg-muted cursor-pointer group" : ""}`}
                       >
-                        <TableCell className="font-medium text-stone-900">
+                        <TableCell className="font-medium text-foreground">
                           {internalId ? (
                             <Link
                               href={`/portal/campaigns/${internalId}`}
@@ -446,16 +446,16 @@ export default async function PortalDashboardPage() {
                             type="campaign"
                           />
                         </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                        <TableCell className="text-right font-mono tabular-nums text-foreground">
                           {campaign.total_leads.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                        <TableCell className="text-right font-mono tabular-nums text-foreground">
                           {sent.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                        <TableCell className="text-right font-mono tabular-nums text-foreground">
                           {campaign.replied.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                        <TableCell className="text-right font-mono tabular-nums text-foreground">
                           {rRate}%
                         </TableCell>
                       </TableRow>
@@ -470,7 +470,7 @@ export default async function PortalDashboardPage() {
 
       {/* Recent Replies */}
       <div>
-        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Recent Replies</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Recent Replies</p>
         <Card>
           <CardContent className="p-0">
             {recentReplies.length === 0 ? (
@@ -483,20 +483,20 @@ export default async function PortalDashboardPage() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-stone-100">
-                    <TableHead className="text-stone-500">From</TableHead>
-                    <TableHead className="text-stone-500">Subject</TableHead>
-                    <TableHead className="text-stone-500">Intent</TableHead>
-                    <TableHead className="text-right text-stone-500">Received</TableHead>
+                  <TableRow className="border-border">
+                    <TableHead className="text-muted-foreground">From</TableHead>
+                    <TableHead className="text-muted-foreground">Subject</TableHead>
+                    <TableHead className="text-muted-foreground">Intent</TableHead>
+                    <TableHead className="text-right text-muted-foreground">Received</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {recentReplies.map((reply) => (
-                    <TableRow key={reply.id} className="border-stone-50 hover:bg-stone-50">
-                      <TableCell className="font-medium text-sm text-stone-900">
+                    <TableRow key={reply.id} className="border-border hover:bg-muted">
+                      <TableCell className="font-medium text-sm text-foreground">
                         {reply.leadEmail}
                       </TableCell>
-                      <TableCell className="text-sm text-stone-500 truncate max-w-[200px]">
+                      <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
                         {reply.subject ?? "\u2014"}
                       </TableCell>
                       <TableCell>
@@ -506,10 +506,10 @@ export default async function PortalDashboardPage() {
                             type="intent"
                           />
                         ) : (
-                          <span className="text-xs text-stone-400">\u2014</span>
+                          <span className="text-xs text-muted-foreground">\u2014</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right text-sm font-mono tabular-nums text-stone-500 whitespace-nowrap">
+                      <TableCell className="text-right text-sm font-mono tabular-nums text-muted-foreground whitespace-nowrap">
                         {reply.receivedAt
                           ? new Date(reply.receivedAt).toLocaleDateString("en-GB", {
                               day: "numeric",

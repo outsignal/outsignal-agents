@@ -16,30 +16,30 @@ export function AISuggestionCard({ suggestion, onUse }: AISuggestionCardProps) {
   if (dismissed) return null;
 
   return (
-    <div className="rounded-lg border border-[#635BFF]/20 border-l-2 border-l-[#635BFF] bg-[#635BFF]/[0.03] overflow-hidden">
+    <div className="rounded-lg border border-brand/20 border-l-2 border-l-brand bg-brand/[0.03] overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[#635BFF]/[0.05] transition-colors"
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-brand/[0.05] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[#635BFF] shrink-0" />
-          <span className="text-sm font-semibold text-stone-900">
+          <Sparkles className="h-4 w-4 text-brand shrink-0" />
+          <span className="text-sm font-semibold text-foreground">
             AI Suggested Reply
           </span>
         </div>
         {expanded ? (
-          <ChevronUp className="h-4 w-4 text-stone-400 shrink-0" />
+          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
         ) : (
-          <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
+          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         )}
       </button>
 
       {/* Body */}
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
-          <div className="border-l-2 border-stone-200 pl-3 py-1">
-            <p className="text-[15px] leading-relaxed text-stone-700 whitespace-pre-wrap">
+          <div className="border-l-2 border-border pl-3 py-1">
+            <p className="text-[15px] leading-relaxed text-foreground whitespace-pre-wrap">
               {suggestion}
             </p>
           </div>
@@ -66,7 +66,7 @@ export function AISuggestionCard({ suggestion, onUse }: AISuggestionCardProps) {
               size="sm"
               variant="ghost"
               onClick={() => setDismissed(true)}
-              className="text-xs text-stone-400 hover:text-stone-600 gap-1.5"
+              className="text-xs text-muted-foreground hover:text-foreground gap-1.5"
             >
               <X className="h-3.5 w-3.5" />
               Dismiss

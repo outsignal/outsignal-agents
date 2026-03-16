@@ -12,15 +12,21 @@ import {
   MessageSquareText,
   Zap,
   Users,
+  Building2,
+  BarChart3,
   FileText,
   ClipboardCheck,
   Receipt,
+  BookOpen,
+  ShieldCheck,
+  Settings,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Tooltip,
   TooltipTrigger,
@@ -48,10 +54,16 @@ const navItems: NavItem[] = [
   { href: "/portal/linkedin", label: "LinkedIn", icon: LinkedinIcon },
   { href: "/portal/email-health", label: "Email Health", icon: Mail },
   { href: "/portal/signals", label: "Signals", icon: Zap },
+  { href: "/portal/people", label: "People", icon: Users },
+  { href: "/portal/companies", label: "Companies", icon: Building2 },
   { href: "/portal/data", label: "Data", icon: Users },
+  { href: "/portal/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/portal/deliverability", label: "Deliverability", icon: ShieldCheck },
+  { href: "/portal/knowledge", label: "Knowledge", icon: BookOpen },
   { href: "/portal/pages", label: "Pages", icon: FileText },
   { href: "/portal/onboarding", label: "Onboarding", icon: ClipboardCheck },
   { href: "/portal/billing", label: "Billing", icon: Receipt },
+  { href: "/portal/settings", label: "Settings", icon: Settings },
 ];
 
 export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
@@ -178,7 +190,7 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
       {/* Logo header */}
       <div
         className={cn(
-          "flex h-14 items-center border-b border-sidebar-border/50 text-white",
+          "flex h-14 items-center border-b border-sidebar-border/50 text-sidebar-foreground",
           isCollapsed ? "justify-center px-2" : "px-6",
         )}
       >
@@ -231,6 +243,9 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
             </TooltipContent>
           )}
         </Tooltip>
+
+        {/* Theme toggle */}
+        <ThemeToggle collapsed={isCollapsed} />
 
         {/* Collapse/expand toggle */}
         <Tooltip>

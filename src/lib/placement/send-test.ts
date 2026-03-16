@@ -58,7 +58,7 @@ export async function sendTestEmail(
         </p>
 
         <p>
-          <a href="https://admin.outsignal.ai" style="display:inline-block;background-color:#F0FF7A;color:#1a1a1a;font-weight:700;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:13px;">
+          <a href="https://admin.outsignal.ai" style="display:inline-block;background-color:#635BFF;color:#ffffff;font-weight:700;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:13px;">
             Book a Call
           </a>
         </p>

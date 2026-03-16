@@ -228,11 +228,11 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
     <div className="space-y-3">
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-4 py-2.5 animate-fade-in">
-          <span className="text-sm font-medium text-stone-700">
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-2.5 animate-fade-in">
+          <span className="text-sm font-medium text-foreground">
             {selected.size} selected
           </span>
-          <div className="h-4 w-px bg-stone-200" />
+          <div className="h-4 w-px bg-border" />
           <Button
             variant="outline"
             size="sm"
@@ -263,7 +263,7 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
       )}
 
       {/* Table */}
-      <div className="rounded-lg border border-stone-200 overflow-hidden">
+      <div className="rounded-lg border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -322,7 +322,7 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
                   <div>
                     <Link
                       href={`/campaigns/${campaign.id}`}
-                      className="font-medium text-sm text-stone-900 hover:text-[#635BFF] transition-colors"
+                      className="font-medium text-sm text-foreground hover:text-brand transition-colors"
                     >
                       {campaign.name}
                     </Link>
@@ -332,7 +332,7 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
                           Signal
                         </Badge>
                         {campaign.dailyLeadCap && (
-                          <span className="text-[11px] text-stone-400">
+                          <span className="text-[11px] text-muted-foreground">
                             {campaign.dailyLeadCap}/day cap
                           </span>
                         )}
@@ -343,7 +343,7 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
                 <TableCell className="hidden md:table-cell">
                   <Link
                     href={`/workspace/${campaign.workspaceSlug}`}
-                    className="text-sm text-stone-500 hover:text-stone-700 transition-colors"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {campaign.workspaceName}
                   </Link>
@@ -352,11 +352,11 @@ export function CampaignsTable({ campaigns }: CampaignsTableProps) {
                   <StatusBadge status={campaign.status} type="campaign" />
                 </TableCell>
                 <TableCell className="text-right">
-                  <span className="font-mono text-sm text-stone-700">
+                  <span className="font-mono text-sm text-foreground">
                     {campaign.leadCount.toLocaleString()}
                   </span>
                 </TableCell>
-                <TableCell className="hidden md:table-cell text-sm text-stone-500">
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                   {relativeTime(campaign.updatedAt)}
                 </TableCell>
                 <TableCell className="w-12 px-2">

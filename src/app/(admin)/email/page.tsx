@@ -230,8 +230,8 @@ export default async function EmailHealthPage({
 
         {/* Sender Health table */}
         <div>
-          <h2 className="text-base font-semibold text-stone-900 mb-3">Sender Health</h2>
-          <div className="rounded-lg border border-stone-200 overflow-hidden">
+          <h2 className="text-base font-semibold text-foreground mb-3">Sender Health</h2>
+          <div className="rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -320,7 +320,7 @@ export default async function EmailHealthPage({
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between">
-            <p className="text-sm text-stone-500">
+            <p className="text-sm text-muted-foreground">
               Showing <span className="font-mono">{(currentPage - 1) * PAGE_SIZE + 1}</span>–<span className="font-mono">{Math.min(currentPage * PAGE_SIZE, totalSenders)}</span> of <span className="font-mono">{totalSenders}</span> senders
             </p>
             <div className="flex items-center gap-2">

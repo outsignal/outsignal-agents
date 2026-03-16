@@ -38,7 +38,7 @@ function FullLogo({ className, iconColor = "#F0FF7A" }: { className?: string; ic
         />
       </g>
       <text
-        fontFamily="var(--font-montserrat), Montserrat, sans-serif"
+        fontFamily="var(--font-geist-sans), system-ui, sans-serif"
         fontSize="89.85"
         fontWeight="800"
         letterSpacing="-3"

@@ -143,8 +143,8 @@ export default function RevenuePage() {
 
         {/* Per-client breakdown table */}
         <div>
-          <h2 className="text-base font-semibold text-stone-900 mb-3">Per-Client Breakdown</h2>
-          <div className="rounded-lg border border-stone-200 overflow-hidden">
+          <h2 className="text-base font-semibold text-foreground mb-3">Per-Client Breakdown</h2>
+          <div className="rounded-lg border border-border overflow-hidden">
             {loading ? (
               <div className="p-6 space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -153,7 +153,7 @@ export default function RevenuePage() {
               </div>
             ) : !data || data.clientBreakdown.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-sm text-stone-500">
+                <p className="text-sm text-muted-foreground">
                   No paid invoices to show yet.
                 </p>
               </div>
@@ -173,16 +173,16 @@ export default function RevenuePage() {
                       <TableCell>
                         <div>
                           <p className="text-sm font-medium">{row.workspaceName}</p>
-                          <p className="text-xs text-stone-500">{row.workspaceSlug}</p>
+                          <p className="text-xs text-muted-foreground">{row.workspaceSlug}</p>
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-medium font-mono tabular-nums text-sm">
                         {formatGBP(row.totalPaidPence)}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-stone-500 font-mono tabular-nums">
+                      <TableCell className="text-right text-sm text-muted-foreground font-mono tabular-nums">
                         {row.invoiceCount}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-stone-500 font-mono tabular-nums">
+                      <TableCell className="text-right text-sm text-muted-foreground font-mono tabular-nums">
                         {avgInvoice(row.totalPaidPence, row.invoiceCount)}
                       </TableCell>
                     </TableRow>

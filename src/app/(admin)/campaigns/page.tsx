@@ -84,7 +84,7 @@ export default async function CampaignsPage({
       <div className="p-6 space-y-4">
         {/* Summary */}
         <div>
-          <span className="text-xs text-stone-500">
+          <span className="text-xs text-muted-foreground">
             {totalCount} campaign{totalCount !== 1 ? "s" : ""}
             {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
           </span>
@@ -103,7 +103,7 @@ export default async function CampaignsPage({
                   ...(status ? { status } : {}),
                   page: String(currentPage - 1),
                 }).toString()}`}
-                className="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
+                className="px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
               >
                 Previous
               </Link>
@@ -124,7 +124,7 @@ export default async function CampaignsPage({
                 p === "..." ? (
                   <span
                     key={`ellipsis-${idx}`}
-                    className="px-1 text-xs text-stone-400"
+                    className="px-1 text-xs text-muted-foreground"
                   >
                     ...
                   </span>
@@ -138,8 +138,8 @@ export default async function CampaignsPage({
                     }).toString()}`}
                     className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
                       p === currentPage
-                        ? "bg-stone-900 text-white border-stone-900"
-                        : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                        ? "bg-foreground text-background border-foreground"
+                        : "border-border text-muted-foreground hover:bg-muted"
                     }`}
                   >
                     {p}
@@ -153,7 +153,7 @@ export default async function CampaignsPage({
                   ...(status ? { status } : {}),
                   page: String(currentPage + 1),
                 }).toString()}`}
-                className="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
+                className="px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
               >
                 Next
               </Link>

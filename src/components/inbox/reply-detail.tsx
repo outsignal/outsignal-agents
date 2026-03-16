@@ -129,7 +129,7 @@ export function InboxReplyDetail({ reply }: InboxReplyDetailProps) {
                 )}
               </div>
 
-              <div className="border rounded-lg bg-white p-4">
+              <div className="border rounded-lg bg-card p-4">
                 {reply.html_body ? (
                   <div
                     className="prose prose-sm max-w-none"

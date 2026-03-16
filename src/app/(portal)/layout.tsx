@@ -1,4 +1,5 @@
 import { getPortalSession } from "@/lib/portal-session";
+import { ThemeProvider } from "@/components/theme-provider";
 import { PortalAppShell } from "@/components/portal/portal-app-shell";
 
 export default async function PortalLayout({
@@ -15,11 +16,17 @@ export default async function PortalLayout({
 
   if (session) {
     return (
-      <PortalAppShell workspaceSlug={session.workspaceSlug}>
-        {children}
-      </PortalAppShell>
+      <ThemeProvider>
+        <PortalAppShell workspaceSlug={session.workspaceSlug}>
+          {children}
+        </PortalAppShell>
+      </ThemeProvider>
     );
   }
 
-  return <div className="min-h-screen bg-background">{children}</div>;
+  return (
+    <ThemeProvider>
+      <div className="min-h-screen bg-background">{children}</div>
+    </ThemeProvider>
+  );
 }

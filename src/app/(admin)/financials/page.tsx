@@ -101,7 +101,7 @@ export default function FinancialsPage() {
       <div className="p-6 space-y-4">
         {/* Filter bar */}
         <div className="flex items-center gap-3">
-          <span className="text-xs text-stone-500">Workspace:</span>
+          <span className="text-xs text-muted-foreground">Workspace:</span>
           <Select value={filterWorkspace} onValueChange={setFilterWorkspace}>
             <SelectTrigger className="w-[180px]" aria-label="Filter by workspace">
               <SelectValue placeholder="All workspaces" />
@@ -116,7 +116,7 @@ export default function FinancialsPage() {
             </SelectContent>
           </Select>
 
-          <span className="text-xs text-stone-500">Status:</span>
+          <span className="text-xs text-muted-foreground">Status:</span>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-[150px]" aria-label="Filter by status">
               <SelectValue placeholder="All statuses" />
@@ -131,24 +131,24 @@ export default function FinancialsPage() {
           </Select>
 
           {!loading && (
-            <span className="text-xs text-stone-500 ml-auto">
+            <span className="text-xs text-muted-foreground ml-auto">
               <span className="font-mono">{invoices.length}</span> invoice{invoices.length !== 1 ? "s" : ""}
             </span>
           )}
         </div>
 
         {/* Invoice table */}
-        <div className="rounded-lg border border-stone-200 overflow-hidden">
+        <div className="rounded-lg border border-border overflow-hidden">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16">
-              <FileText className="h-8 w-8 text-stone-300 mb-3 animate-pulse" aria-hidden="true" />
-              <p className="text-sm text-stone-500">Loading invoices...</p>
+              <FileText className="h-8 w-8 text-muted-foreground/30 mb-3 animate-pulse" aria-hidden="true" />
+              <p className="text-sm text-muted-foreground">Loading invoices...</p>
             </div>
           ) : invoices.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">
-              <FileText className="h-8 w-8 text-stone-300 mb-3" aria-hidden="true" />
-              <p className="text-sm font-medium text-stone-900">No invoices found</p>
-              <p className="text-sm text-stone-500 mt-1">
+              <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" aria-hidden="true" />
+              <p className="text-sm font-medium text-foreground">No invoices found</p>
+              <p className="text-sm text-muted-foreground mt-1">
                 {filterWorkspace !== "all" || filterStatus !== "all"
                   ? "Try adjusting your filters"
                   : "Create your first invoice to get started"}

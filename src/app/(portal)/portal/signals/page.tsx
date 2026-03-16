@@ -85,20 +85,20 @@ export default async function PortalSignalsPage() {
   return (
     <div className="relative min-h-screen p-6 space-y-6">
       {/* Coming Soon overlay */}
-      <div className="absolute inset-0 bg-gray-100/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
-        <div className="h-14 w-14 rounded-full bg-white shadow-sm flex items-center justify-center mb-4">
-          <Zap className="h-7 w-7 text-stone-400" />
+      <div className="absolute inset-0 bg-muted backdrop-blur-[2px] z-10 flex flex-col items-center justify-center">
+        <div className="h-14 w-14 rounded-full bg-background shadow-sm flex items-center justify-center mb-4">
+          <Zap className="h-7 w-7 text-muted-foreground" />
         </div>
-        <h2 className="text-xl font-semibold text-stone-900">Coming Soon</h2>
-        <p className="text-sm text-stone-500 mt-1">
+        <h2 className="text-xl font-semibold text-foreground">Coming Soon</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           Signal-based outreach is on the way
         </p>
       </div>
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-stone-900">Signal Activity</h1>
-        <p className="text-sm text-stone-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Signal Activity</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Intent signals detected for your accounts in the last 30 days
         </p>
       </div>
@@ -148,7 +148,7 @@ export default async function PortalSignalsPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="bg-stone-50">
+                <TableRow className="bg-muted">
                   <TableHead>Time</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Signal Type</TableHead>
@@ -163,8 +163,8 @@ export default async function PortalSignalsPage() {
                   const typeLabel =
                     SIGNAL_TYPE_LABELS[signal.signalType] ?? signal.signalType;
                   return (
-                    <TableRow key={signal.id} className="hover:bg-stone-50 border-stone-100">
-                      <TableCell className="text-sm font-mono text-stone-500 whitespace-nowrap tabular-nums">
+                    <TableRow key={signal.id} className="hover:bg-muted border-border">
+                      <TableCell className="text-sm font-mono text-muted-foreground whitespace-nowrap tabular-nums">
                         {formatRelativeTime(signal.detectedAt)}
                       </TableCell>
                       <TableCell>
@@ -172,7 +172,7 @@ export default async function PortalSignalsPage() {
                           {signal.companyName ?? signal.companyDomain}
                         </div>
                         {signal.companyName && (
-                          <div className="text-xs text-stone-500">
+                          <div className="text-xs text-muted-foreground">
                             {signal.companyDomain}
                           </div>
                         )}
@@ -187,7 +187,7 @@ export default async function PortalSignalsPage() {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-stone-500 max-w-md truncate">
+                      <TableCell className="text-sm text-muted-foreground max-w-md truncate">
                         {signal.title ?? signal.summary ?? "\u2014"}
                       </TableCell>
                     </TableRow>

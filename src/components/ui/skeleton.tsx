@@ -5,7 +5,7 @@ function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="skeleton"
-      className={cn("bg-stone-100 animate-pulse rounded-md", className)}
+      className={cn("bg-muted animate-pulse rounded-md", className)}
       {...props}
     />
   )
@@ -84,7 +84,7 @@ function SkeletonMetricCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-stone-200 bg-white p-6 space-y-3",
+        "rounded-lg border border-border bg-card p-6 space-y-3",
         isHero && "p-8",
         className
       )}
@@ -121,7 +121,7 @@ function SkeletonTableRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 px-4 py-3 border-b border-stone-100",
+        "flex items-center gap-4 px-4 py-3 border-b border-border",
         className
       )}
       {...props}
@@ -179,7 +179,7 @@ function SkeletonChart({
   return (
     <div
       className={cn(
-        "rounded-lg border border-stone-200 bg-white p-6 space-y-4",
+        "rounded-lg border border-border bg-card p-6 space-y-4",
         className
       )}
       {...props}

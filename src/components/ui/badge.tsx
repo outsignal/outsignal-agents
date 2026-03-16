@@ -21,13 +21,13 @@ const badgeVariants = cva(
         brand:
           "bg-foreground/90 text-background border-foreground/20",
         success:
-          "bg-emerald-50 text-emerald-700 border-emerald-200",
+          "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800",
         warning:
-          "bg-amber-50 text-amber-700 border-amber-200",
+          "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800",
         info:
-          "bg-blue-50 text-blue-600 border-blue-200",
+          "bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-800",
         purple:
-          "bg-purple-50 text-purple-600 border-purple-200",
+          "bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-800",
       },
       size: {
         default: "px-2 py-0.5 text-xs",
