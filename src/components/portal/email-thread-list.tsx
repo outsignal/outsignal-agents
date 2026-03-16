@@ -125,7 +125,7 @@ export function EmailThreadList({
             className={cn(
               "w-full text-left px-4 py-3 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring relative",
               // Unread: purple left border
-              isUnread && "border-l-2 border-l-[#635BFF]",
+              isUnread && "border-l-2 border-l-brand",
               !isUnread && "border-l-2 border-l-transparent",
               // Selected state
               isSelected && "bg-muted",

@@ -227,7 +227,7 @@ export default function PortalInboxPage() {
       {/* Page header with channel tabs */}
       <div className="px-5 py-4 border-b border-border shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-heading font-bold">Inbox</h1>
+          <h1 className="text-2xl font-heading font-bold">Inbox</h1>
           {/* Mark all as read — only shown on email/all tabs */}
           {(activeChannel === "email" || activeChannel === "all") && (
             <button
@@ -267,7 +267,7 @@ export default function PortalInboxPage() {
               <Mail className="h-3.5 w-3.5" />
               Email
               {threads.filter((t) => t.isRead === false).length > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-[#635BFF] text-white text-[10px] font-medium px-1">
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-brand text-white text-[10px] font-medium px-1">
                   {threads.filter((t) => t.isRead === false).length}
                 </span>
               )}
@@ -284,7 +284,7 @@ export default function PortalInboxPage() {
               <Linkedin className="h-3.5 w-3.5" />
               LinkedIn
               {linkedinConversations.filter((c) => c.unreadCount > 0).length > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-[#635BFF] text-white text-[10px] font-medium px-1">
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-brand text-white text-[10px] font-medium px-1">
                   {linkedinConversations.filter((c) => c.unreadCount > 0).length}
                 </span>
               )}

@@ -79,7 +79,7 @@ export default async function PortalDataPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Enrichment Data</h1>
+        <h1 className="text-2xl font-heading font-bold text-foreground">Enrichment Data</h1>
         <p className="text-sm text-muted-foreground mt-1">
           A preview of contacts and companies discovered for your campaigns
         </p>

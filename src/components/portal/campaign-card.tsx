@@ -51,8 +51,8 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
     <Link href={`/portal/campaigns/${campaign.id}`}>
       <Card
         className={cn(
-          "transition-shadow hover:shadow-md cursor-pointer relative",
-          isPending && "ring-2 ring-amber-300",
+          "transition-shadow hover:shadow-md cursor-pointer relative overflow-visible",
+          isPending && "border-2 border-amber-300",
         )}
       >
         {/* Notification dot for pending campaigns */}
@@ -76,36 +76,22 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
             {/* Channel icons */}
             <div className="flex items-center gap-1 ml-auto">
               {campaign.channels.includes("email") && (
-                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                <Mail className="h-3.5 w-3.5 text-foreground/70" />
               )}
               {campaign.channels.includes("linkedin") && (
-                <Linkedin className="h-3.5 w-3.5 text-muted-foreground" />
+                <Linkedin className="h-3.5 w-3.5 text-foreground/70" />
               )}
             </div>
           </div>
 
           {/* Approval indicators */}
           <div className="flex items-center gap-2 mt-3">
-            <span
-              className={cn(
-                "inline-flex items-center text-xs px-2 py-0.5 rounded-full",
-                campaign.leadsApproved
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-amber-100 text-amber-800",
-              )}
-            >
+            <Badge variant={campaign.leadsApproved ? "success" : "warning"}>
               Leads: {campaign.leadsApproved ? "Approved" : "Pending"}
-            </span>
-            <span
-              className={cn(
-                "inline-flex items-center text-xs px-2 py-0.5 rounded-full",
-                campaign.contentApproved
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-amber-100 text-amber-800",
-              )}
-            >
+            </Badge>
+            <Badge variant={campaign.contentApproved ? "success" : "warning"}>
               Content: {campaign.contentApproved ? "Approved" : "Pending"}
-            </span>
+            </Badge>
           </div>
         </CardContent>
       </Card>

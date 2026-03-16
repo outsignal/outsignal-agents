@@ -134,7 +134,7 @@ function StageProgressBar({ stageProgress }: { stageProgress: StageProgress[] })
                 style={{ width: `${percentage}%` }}
               />
             </div>
-            <span className="text-[9px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground">
               {completed}/{total}
             </span>
           </div>
@@ -506,9 +506,9 @@ export default function ClientsPage() {
                                 {client.overdueTasks} overdue
                               </Badge>
                             ) : client.outstandingTasks > 0 ? (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0 text-[10px] font-medium text-amber-700">
+                              <Badge variant="warning" className="ml-2 text-[10px] px-1.5 py-0">
                                 {client.outstandingTasks} pending
-                              </span>
+                              </Badge>
                             ) : null}
                           </div>
                         </TableCell>
@@ -552,7 +552,7 @@ export default function ClientsPage() {
                       className="py-12 text-center text-muted-foreground"
                     >
                       <div className="flex flex-col items-center gap-2">
-                        <Users className="h-8 w-8 text-muted-foreground/40" aria-hidden="true" />
+                        <Users className="h-8 w-8 text-muted-foreground/60" aria-hidden="true" />
                         <p className="text-sm">
                           No active clients yet. Convert a prospect from the
                           pipeline or add one directly.

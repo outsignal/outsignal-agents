@@ -36,7 +36,7 @@ export default async function PortalBillingPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Billing</h1>
+        <h1 className="text-2xl font-heading font-bold text-foreground">Billing</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Your invoice history and payment records
         </p>

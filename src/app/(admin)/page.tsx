@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { useQueryState } from "nuqs";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -349,13 +350,12 @@ export default function DashboardPage() {
                   >
                     {/* Top accent line */}
                     <div
-                      className="absolute top-0 left-0 right-0 h-0.5"
-                      style={{
-                        backgroundColor:
-                          kpis.workerStatus === "online" ? "#10b981"
-                          : kpis.workerStatus === "paused" ? "#f59e0b"
-                          : "#ef4444",
-                      }}
+                      className={cn(
+                        "absolute top-0 left-0 right-0 h-0.5",
+                        kpis.workerStatus === "online" ? "bg-emerald-500"
+                        : kpis.workerStatus === "paused" ? "bg-amber-500"
+                        : "bg-red-500",
+                      )}
                     />
                     <CardContent className="pt-3 pb-3">
                       <div className="flex items-center justify-between">

@@ -68,7 +68,7 @@ export default async function PortalPageDetailPage({
 
       {/* Title + meta */}
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">{page.title}</h1>
+        <h1 className="text-2xl font-heading font-bold text-foreground">{page.title}</h1>
         <p className="text-xs font-mono text-muted-foreground mt-1">
           Last updated: {formatDate(page.updatedAt)}
         </p>

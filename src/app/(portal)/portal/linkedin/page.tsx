@@ -100,7 +100,7 @@ export default async function PortalLinkedInPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">LinkedIn</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">LinkedIn</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage your LinkedIn senders and connections
           </p>

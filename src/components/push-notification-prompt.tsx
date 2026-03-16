@@ -88,12 +88,12 @@ export function PushNotificationPrompt({ vapidPublicKey }: PushNotificationPromp
 
   return (
     <div className="fixed top-4 right-4 z-50 flex items-center gap-3 rounded-lg border bg-background px-4 py-3 shadow-lg max-w-sm animate-in slide-in-from-top-2 fade-in duration-300">
-      <Bell className="h-5 w-5 text-[#635BFF] shrink-0" />
+      <Bell className="h-5 w-5 text-brand shrink-0" />
       <p className="text-sm text-foreground">
         Enable push notifications for support messages?
       </p>
       <div className="flex items-center gap-1.5 shrink-0">
-        <Button size="sm" onClick={handleEnable} className="h-7 bg-[#635BFF] hover:bg-[#5046E5] text-white">
+        <Button size="sm" onClick={handleEnable} className="h-7 bg-brand hover:bg-brand-strong text-white">
           Enable
         </Button>
         <Button size="sm" variant="ghost" onClick={handleDismiss} className="h-7 w-7 p-0">

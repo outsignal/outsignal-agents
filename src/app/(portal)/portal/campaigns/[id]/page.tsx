@@ -163,7 +163,7 @@ export default async function PortalCampaignDetailPage({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-heading font-semibold text-foreground">{campaign.name}</h1>
+              <h1 className="text-2xl font-heading font-bold text-foreground">{campaign.name}</h1>
               <StatusBadge status={campaign.status} type="campaign" />
             </div>
             {campaign.description && (

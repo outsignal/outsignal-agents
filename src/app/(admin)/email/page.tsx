@@ -131,11 +131,11 @@ export default async function EmailHealthPage({
 
   const bounceTrend = avgBounceRate > 5 ? "down" : avgBounceRate > 2 ? "warning" : "up";
 
-  const healthBadgeStyles = {
-    healthy: "bg-emerald-100 text-emerald-800",
-    warning: "bg-yellow-100 text-yellow-800",
-    critical: "bg-red-100 text-red-800",
-  };
+  const healthBadgeVariant = {
+    healthy: "success",
+    warning: "warning",
+    critical: "destructive",
+  } as const;
 
   return (
     <div>
@@ -155,15 +155,15 @@ export default async function EmailHealthPage({
         {/* Alert banners */}
         {disconnected.length > 0 && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4">
-            <h3 className="font-heading font-bold text-red-900">
+            <h3 className="font-heading font-bold text-red-800">
               {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""} disconnected
             </h3>
-            <p className="text-sm text-red-800 mt-1">
+            <p className="text-sm text-red-600 mt-1">
               These inboxes are no longer connected and cannot send emails. Reconnect them immediately.
             </p>
             <ul className="mt-2 space-y-1">
               {disconnected.map((s) => (
-                <li key={`${s.workspaceSlug}-${s.email}`} className="text-sm text-red-700 font-medium">
+                <li key={`${s.workspaceSlug}-${s.email}`} className="text-sm text-red-600 font-medium">
                   {s.email}{" "}
                   <Link
                     href={`/workspace/${s.workspaceSlug}/inbox-health`}
@@ -179,15 +179,15 @@ export default async function EmailHealthPage({
 
         {highBounce.length > 0 && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-            <h3 className="font-heading font-bold text-amber-900">
+            <h3 className="font-heading font-bold text-amber-800">
               {highBounce.length} sender{highBounce.length !== 1 ? "s" : ""} with high bounce rates
             </h3>
-            <p className="text-sm text-amber-800 mt-1">
+            <p className="text-sm text-amber-600 mt-1">
               These senders have bounce rates above 5%. Consider removing them from active campaigns.
             </p>
             <ul className="mt-2 space-y-1">
               {highBounce.map((s) => (
-                <li key={`${s.workspaceSlug}-${s.email}`} className="text-sm text-amber-700 font-medium">
+                <li key={`${s.workspaceSlug}-${s.email}`} className="text-sm text-amber-600 font-medium">
                   {s.email} — {s.bounceRate.toFixed(1)}% bounce rate ({s.workspaceName})
                 </li>
               ))}
@@ -295,7 +295,8 @@ export default async function EmailHealthPage({
                     </TableCell>
                     <TableCell>
                       <Badge
-                        className={`text-xs ${healthBadgeStyles[sender.healthStatus]}`}
+                        variant={healthBadgeVariant[sender.healthStatus]}
+                        className="text-xs"
                       >
                         {sender.healthStatus}
                       </Badge>

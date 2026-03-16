@@ -97,7 +97,7 @@ export default async function PortalSignalsPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Signal Activity</h1>
+        <h1 className="text-2xl font-heading font-bold text-foreground">Signal Activity</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Intent signals detected for your accounts in the last 30 days
         </p>

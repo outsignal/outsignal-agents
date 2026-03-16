@@ -251,7 +251,7 @@ function ProspectCard({
       className={cn(
         "group flex items-stretch rounded-xl border border-border bg-background shadow-sm transition-all hover:shadow-md cursor-pointer",
         isDragging && "opacity-40",
-        isDragOverlay && "shadow-lg ring-2 ring-[#635BFF]/20 rotate-[2deg]",
+        isDragOverlay && "shadow-lg ring-2 ring-brand/20 rotate-[2deg]",
       )}
       onClick={onEdit}
     >
@@ -423,8 +423,8 @@ function KanbanColumn({
         ref={setNodeRef}
         className={cn(
           "flex-1 rounded-lg transition-all min-h-[80px] p-1",
-          isOver && "bg-[#635BFF]/5 ring-2 ring-[#635BFF]/20",
-          isDragging && !isOver && "border-2 border-dashed border-[#635BFF]/10 rounded-lg",
+          isOver && "bg-brand/5 ring-2 ring-brand/20",
+          isDragging && !isOver && "border-2 border-dashed border-brand/10 rounded-lg",
         )}
       >
         <div className="space-y-3">

@@ -22,15 +22,15 @@ interface CampaignDetailPageProps {
 // ─── Status color map ─────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-zinc-700 text-zinc-300",
-  internal_review: "bg-purple-900/60 text-purple-300",
-  pending_approval: "bg-amber-900/60 text-amber-300",
-  approved: "bg-emerald-900/60 text-emerald-300",
-  deployed: "bg-blue-900/60 text-blue-300",
-  active: "bg-emerald-900/60 text-emerald-300",
-  paused: "bg-yellow-900/60 text-yellow-300",
-  completed: "bg-zinc-600 text-zinc-300",
-  archived: "bg-zinc-800 text-zinc-400",
+  draft: "bg-muted text-muted-foreground",
+  internal_review: "bg-purple-50 text-purple-700 border border-purple-200",
+  pending_approval: "bg-amber-50 text-amber-700 border border-amber-200",
+  approved: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  deployed: "bg-blue-50 text-blue-700 border border-blue-200",
+  active: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  paused: "bg-amber-50 text-amber-700 border border-amber-200",
+  completed: "bg-muted text-foreground",
+  archived: "bg-muted text-muted-foreground",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ export default async function CampaignDetailPage({
               <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <span
-                    className={`h-2 w-2 rounded-full ${campaign.leadsApproved ? "bg-emerald-400" : "bg-zinc-600"}`}
+                    className={`h-2 w-2 rounded-full ${campaign.leadsApproved ? "bg-emerald-400" : "bg-muted-foreground"}`}
                   />
                   <p className="text-xs font-medium">Leads Approved</p>
                 </div>
@@ -175,7 +175,7 @@ export default async function CampaignDetailPage({
               <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <span
-                    className={`h-2 w-2 rounded-full ${campaign.contentApproved ? "bg-emerald-400" : "bg-zinc-600"}`}
+                    className={`h-2 w-2 rounded-full ${campaign.contentApproved ? "bg-emerald-400" : "bg-muted-foreground"}`}
                   />
                   <p className="text-xs font-medium">Content Approved</p>
                 </div>
@@ -231,9 +231,9 @@ export default async function CampaignDetailPage({
 
         {/* ─── Signal campaign stats ─────────────────────────────────────────── */}
         {campaign.type === "signal" && (
-          <Card className="border-zinc-800 bg-zinc-900">
+          <Card className="border-border bg-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Signal Stats</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Signal Stats</CardTitle>
               <CardDescription>
                 Signal matching configuration and live metrics
               </CardDescription>
@@ -241,32 +241,32 @@ export default async function CampaignDetailPage({
             <CardContent>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div>
-                  <p className="text-xs text-zinc-500">Signal Types</p>
-                  <p className="text-sm text-zinc-200">
+                  <p className="text-xs text-muted-foreground">Signal Types</p>
+                  <p className="text-sm text-foreground">
                     {campaign.signalTypes && campaign.signalTypes.length > 0
                       ? campaign.signalTypes.join(", ")
                       : "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500">Daily Lead Cap</p>
-                  <p className="text-sm text-zinc-200">{campaign.dailyLeadCap}</p>
+                  <p className="text-xs text-muted-foreground">Daily Lead Cap</p>
+                  <p className="text-sm text-foreground">{campaign.dailyLeadCap}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500">ICP Threshold</p>
-                  <p className="text-sm text-zinc-200">{campaign.icpScoreThreshold}/100</p>
+                  <p className="text-xs text-muted-foreground">ICP Threshold</p>
+                  <p className="text-sm text-foreground">{campaign.icpScoreThreshold}/100</p>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500">Last Processed</p>
-                  <p className="text-sm text-zinc-200">
+                  <p className="text-xs text-muted-foreground">Last Processed</p>
+                  <p className="text-sm text-foreground">
                     {campaign.lastSignalProcessedAt
                       ? formatDate(new Date(campaign.lastSignalProcessedAt))
                       : "Never"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500">Leads Added</p>
-                  <p className="text-sm text-zinc-200">{signalLeadCount.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Leads Added</p>
+                  <p className="text-sm text-foreground">{signalLeadCount.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>

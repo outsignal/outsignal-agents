@@ -57,7 +57,7 @@ export default function AdminLoginPage() {
               className="h-8 w-auto text-foreground mx-auto"
               iconColor="currentColor"
             />
-            <h1 className="mt-6 text-xl font-heading font-semibold tracking-tight">
+            <h1 className="mt-6 text-2xl font-heading font-bold tracking-tight">
               Admin Dashboard
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
