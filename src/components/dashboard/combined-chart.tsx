@@ -44,7 +44,7 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload || payload.length === 0) return null;
 
   return (
-    <div className="bg-popover border border-border rounded-md shadow-md p-3 text-xs">
+    <div className="bg-white border border-stone-200 rounded-lg shadow-lg p-3 text-sm">
       <p className="font-medium text-popover-foreground mb-2">
         {formatDate(String(label ?? ""))}
       </p>
@@ -85,7 +85,7 @@ export function CombinedChart({ emailData, linkedInData }: CombinedChartProps) {
   };
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height={280}>
       <AreaChart
         data={mergedData}
         margin={{ top: 4, right: 4, left: -12, bottom: 0 }}
@@ -119,14 +119,14 @@ export function CombinedChart({ emailData, linkedInData }: CombinedChartProps) {
           tickLine={false}
           axisLine={false}
           tickFormatter={formatDate}
-          tick={{ fill: "oklch(0.45 0 0)" }}
+          tick={{ fill: "#a8a29e" }}
           interval="preserveStartEnd"
         />
         <YAxis
           fontSize={11}
           tickLine={false}
           axisLine={false}
-          tick={{ fill: "oklch(0.45 0 0)" }}
+          tick={{ fill: "#a8a29e" }}
           allowDecimals={false}
           width={36}
         />

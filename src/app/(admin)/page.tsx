@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useQueryState } from "nuqs";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,28 +80,57 @@ function buildWorkspaceSummaries(
   }));
 }
 
-function KpiSkeleton() {
-  return <Skeleton className="h-[88px] rounded-lg" />;
+// ---------------------------------------------------------------------------
+// Section header
+// ---------------------------------------------------------------------------
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-xs font-medium uppercase tracking-wider text-stone-400 pt-6 pb-2">
+      {children}
+    </h2>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Skeleton loading state — matches the actual layout
+// ---------------------------------------------------------------------------
 
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
+      {/* Hero metric row */}
+      <div>
+        <div className="h-4 w-24 bg-stone-100 rounded animate-pulse mb-2 mt-6" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="col-span-2">
+            <Skeleton className="h-[140px] rounded-lg" />
+          </div>
+          <Skeleton className="h-[140px] rounded-lg" />
+          <Skeleton className="h-[140px] rounded-lg" />
+        </div>
+      </div>
+
       {/* Health row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <KpiSkeleton key={i} />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-[96px] rounded-lg" />
         ))}
       </div>
-      {/* Combined chart */}
-      <Card>
-        <CardHeader>
-          <div className="h-4 w-32 bg-muted rounded animate-pulse" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-[300px] rounded-lg" />
-        </CardContent>
-      </Card>
+
+      {/* Activity section */}
+      <div>
+        <div className="h-4 w-20 bg-stone-100 rounded animate-pulse mb-2 mt-6" />
+        <Card>
+          <CardHeader>
+            <div className="h-4 w-32 bg-stone-100 rounded animate-pulse" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[280px] rounded-lg" />
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Collapsible section skeletons */}
       {Array.from({ length: 4 }).map((_, i) => (
         <Skeleton key={i} className="h-12 rounded-lg" />
@@ -109,6 +138,10 @@ function DashboardSkeleton() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
   const [workspace] = useQueryState("workspace", { defaultValue: "all" });
@@ -162,22 +195,39 @@ export default function DashboardPage() {
   const replyRate =
     kpis.emailSent > 0
       ? ((totalReplies / kpis.emailSent) * 100).toFixed(1)
-      : "—";
+      : "\u2014";
   const bounceRate =
     kpis.emailSent > 0
       ? ((kpis.emailBounced / kpis.emailSent) * 100).toFixed(1)
-      : "—";
+      : "\u2014";
+
+  // Derive sparkline arrays from time series for hero metrics
+  const sparklineReplies = useMemo(
+    () => timeSeries.map((d) => d.replies),
+    [timeSeries]
+  );
+  const sparklineSent = useMemo(
+    () => timeSeries.map((d) => d.sent),
+    [timeSeries]
+  );
+  const sparklineLinkedin = useMemo(
+    () =>
+      linkedInTimeSeries.map(
+        (d) => (d.connections ?? 0) + (d.messages ?? 0) + (d.profileViews ?? 0)
+      ),
+    [linkedInTimeSeries]
+  );
 
   return (
     <div>
       {/* Header */}
       <Header
         title="Dashboard"
-        description={`${days === "7" ? "Last 7 days" : days === "14" ? "Last 14 days" : days === "30" ? "Last 30 days" : "Last 90 days"} ${workspace !== "all" ? `· ${workspace}` : "· all campaigns"}`}
+        description={`${days === "7" ? "Last 7 days" : days === "14" ? "Last 14 days" : days === "30" ? "Last 30 days" : "Last 90 days"} ${workspace !== "all" ? `\u00b7 ${workspace}` : "\u00b7 all campaigns"}`}
         actions={<ClientFilter workspaces={workspaces} />}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-2">
         {/* Alerts */}
         {!loading && alerts.length > 0 && (
           <AlertsSection alerts={alerts} />
@@ -193,98 +243,153 @@ export default function DashboardPage() {
           <DashboardSkeleton />
         ) : !error ? (
           <>
-            {/* Section 1: Health & Alerts */}
-            {(() => {
-              const workerDetail = kpis.workerLastPollAt
-                ? `Last poll ${(() => {
-                    const mins = Math.round((Date.now() - new Date(kpis.workerLastPollAt).getTime()) / 60000);
-                    if (mins < 1) return "just now";
-                    if (mins < 60) return `${mins}m ago`;
-                    const hrs = Math.round(mins / 60);
-                    return `${hrs}h ago`;
-                  })()}`
-                : "Never polled";
+            {/* ============================================================ */}
+            {/* KEY METRICS — Hero bento grid                                */}
+            {/* ============================================================ */}
+            <SectionLabel>Key Metrics</SectionLabel>
 
-              return (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-stretch">
-                  <Link href="/senders" className="block">
-                    <MetricCard
-                      label="Senders"
-                      value={`${kpis.linkedinAccountsActive} active`}
-                      trend={kpis.linkedinAccountsExpired > 0 ? "warning" : kpis.linkedinAccountsActive > 0 ? "up" : "neutral"}
-                      detail={`${kpis.linkedinAccountsTotal} total${kpis.linkedinAccountsExpired > 0 ? ` · ${kpis.linkedinAccountsExpired} expired` : ""}`}
-                      density="compact"
-                      className="h-full"
-                    />
-                  </Link>
-                  <MetricCard
-                    label="Inboxes"
-                    value={`${kpis.inboxesTotal} total`}
-                    trend={kpis.inboxesCritical > 0 ? "down" : kpis.inboxesWarning > 0 ? "warning" : kpis.inboxesHealthy > 0 ? "up" : "neutral"}
-                    detail={`${kpis.inboxesHealthy} healthy · ${kpis.inboxesWarning} warning · ${kpis.inboxesCritical} critical`}
-                    density="compact"
-                    className="h-full"
-                  />
-                  <MetricCard
-                    label="Campaigns"
-                    value={`${kpis.campaignsActive + kpis.campaignsPaused + kpis.campaignsCompleted + kpis.campaignsDraft} total`}
-                    trend={kpis.campaignsActive > 0 ? "up" : "neutral"}
-                    detail={`${kpis.campaignsActive} active · ${kpis.campaignsPaused} paused · ${kpis.campaignsCompleted} done · ${kpis.campaignsDraft} draft`}
-                    density="compact"
-                    className="h-full"
-                  />
-                  <MetricCard
-                    label="Emails"
-                    value={kpis.emailSent.toLocaleString() + " sent"}
-                    trend={kpis.emailBounced > 0 ? "warning" : kpis.emailSent > 0 ? "up" : "neutral"}
-                    detail={`${(kpis.emailReplied + kpis.emailInterested).toLocaleString()} replies · ${kpis.emailAutoReplied} auto${kpis.emailBounced > 0 ? ` · ${kpis.emailBounced} bounced` : ""}`}
-                    density="compact"
-                    className="h-full"
-                  />
-                  <MetricCard
-                    label="LinkedIn"
-                    value={`${(kpis.linkedinProfileView + kpis.linkedinConnect + kpis.linkedinMessage).toLocaleString()} actions`}
-                    trend={kpis.linkedinFailed > 0 ? "warning" : (kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView) > 0 ? "up" : "neutral"}
-                    detail={`${kpis.linkedinProfileView} views · ${kpis.linkedinConnect} connects · ${kpis.linkedinMessage} messages`}
-                    density="compact"
-                    className="h-full"
-                  />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Hero: Total Replies — spans 2 cols */}
+              <div className="col-span-2">
+                <MetricCard
+                  label="Total Replies"
+                  value={totalReplies.toLocaleString()}
+                  variant="hero"
+                  trend={totalReplies > 0 ? "up" : "neutral"}
+                  detail={`${replyRate === "\u2014" ? "\u2014" : `${replyRate}%`} reply rate \u00b7 ${kpis.emailAutoReplied} auto`}
+                  sparklineData={sparklineReplies.length > 1 ? sparklineReplies : undefined}
+                  sparklineColor="#635BFF"
+                  className="h-full"
+                />
+              </div>
+
+              {/* Emails Sent */}
+              <MetricCard
+                label="Emails Sent"
+                value={kpis.emailSent.toLocaleString()}
+                trend={kpis.emailSent > 0 ? "up" : "neutral"}
+                detail={`${kpis.emailOpened.toLocaleString()} opened \u00b7 ${bounceRate === "\u2014" ? "\u2014" : `${bounceRate}%`} bounced`}
+                sparklineData={sparklineSent.length > 1 ? sparklineSent : undefined}
+                sparklineColor="#635BFF"
+                density="compact"
+                className="h-full"
+              />
+
+              {/* LinkedIn Actions */}
+              <MetricCard
+                label="LinkedIn Actions"
+                value={(kpis.linkedinProfileView + kpis.linkedinConnect + kpis.linkedinMessage).toLocaleString()}
+                trend={(kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView) > 0 ? "up" : "neutral"}
+                detail={`${kpis.linkedinConnect} connects \u00b7 ${kpis.linkedinMessage} messages`}
+                sparklineData={sparklineLinkedin.length > 1 ? sparklineLinkedin : undefined}
+                sparklineColor="#635BFF"
+                density="compact"
+                className="h-full"
+              />
+            </div>
+
+            {/* ============================================================ */}
+            {/* SYSTEM HEALTH — compact row                                  */}
+            {/* ============================================================ */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
+              <MetricCard
+                label="Senders"
+                value={`${kpis.linkedinAccountsActive}`}
+                suffix="active"
+                trend={kpis.linkedinAccountsExpired > 0 ? "warning" : kpis.linkedinAccountsActive > 0 ? "up" : "neutral"}
+                detail={`${kpis.linkedinAccountsTotal} total${kpis.linkedinAccountsExpired > 0 ? ` \u00b7 ${kpis.linkedinAccountsExpired} expired` : ""}`}
+                density="compact"
+                href="/senders"
+                className="h-full"
+              />
+              <MetricCard
+                label="Inboxes"
+                value={`${kpis.inboxesTotal}`}
+                suffix="total"
+                trend={kpis.inboxesCritical > 0 ? "down" : kpis.inboxesWarning > 0 ? "warning" : kpis.inboxesHealthy > 0 ? "up" : "neutral"}
+                detail={`${kpis.inboxesHealthy} healthy \u00b7 ${kpis.inboxesWarning} warn \u00b7 ${kpis.inboxesCritical} crit`}
+                density="compact"
+                className="h-full"
+              />
+              <MetricCard
+                label="Campaigns"
+                value={`${kpis.campaignsActive + kpis.campaignsPaused + kpis.campaignsCompleted + kpis.campaignsDraft}`}
+                suffix="total"
+                trend={kpis.campaignsActive > 0 ? "up" : "neutral"}
+                detail={`${kpis.campaignsActive} active \u00b7 ${kpis.campaignsPaused} paused \u00b7 ${kpis.campaignsCompleted} done`}
+                density="compact"
+                className="h-full"
+              />
+              <MetricCard
+                label="Pipeline"
+                value={kpis.pipelineContacted.toLocaleString()}
+                suffix="contacted"
+                trend={kpis.pipelineInterested > 0 ? "up" : "neutral"}
+                detail={`${kpis.pipelineReplied} replied \u00b7 ${kpis.pipelineInterested} interested`}
+                density="compact"
+                className="h-full"
+              />
+
+              {/* Worker status card */}
+              {(() => {
+                const workerDetail = kpis.workerLastPollAt
+                  ? `Last poll ${(() => {
+                      const mins = Math.round((Date.now() - new Date(kpis.workerLastPollAt).getTime()) / 60000);
+                      if (mins < 1) return "just now";
+                      if (mins < 60) return `${mins}m ago`;
+                      const hrs = Math.round(mins / 60);
+                      return `${hrs}h ago`;
+                    })()}`
+                  : "Never polled";
+
+                return (
                   <Card
-                    className="h-full border-t-2 px-4 py-3"
-                    style={{
-                      borderTopColor:
-                        kpis.workerStatus === "online" ? "#10b981"
-                        : kpis.workerStatus === "paused" ? "#f59e0b"
-                        : "#ef4444",
-                    }}
+                    density="compact"
+                    className="h-full relative overflow-hidden"
                   >
-                    <div className="flex items-center justify-between">
-                      <p className="text-muted-foreground text-xs font-medium">Worker</p>
-                      <span className="relative flex h-3 w-3">
-                        {kpis.workerStatus === "online" && (
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                        )}
-                        <span
-                          className={`relative inline-flex h-3 w-3 rounded-full ${
-                            kpis.workerStatus === "online" ? "bg-emerald-500"
-                            : kpis.workerStatus === "paused" ? "bg-amber-500"
-                            : "bg-red-500"
-                          }`}
-                        />
-                      </span>
-                    </div>
-                    <p className="mt-1 text-lg font-semibold">
-                      {kpis.workerStatus === "online" ? "Online" : kpis.workerStatus === "paused" ? "Paused" : "Offline"}
-                    </p>
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      {workerDetail}{kpis.workerStatus === "paused" ? " \u00b7 Outside business hours" : ""}
-                    </p>
+                    {/* Top accent line */}
+                    <div
+                      className="absolute top-0 left-0 right-0 h-0.5"
+                      style={{
+                        backgroundColor:
+                          kpis.workerStatus === "online" ? "#10b981"
+                          : kpis.workerStatus === "paused" ? "#f59e0b"
+                          : "#ef4444",
+                      }}
+                    />
+                    <CardContent className="pt-3 pb-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wider text-stone-500">Worker</p>
+                        <span className="relative flex h-2.5 w-2.5">
+                          {kpis.workerStatus === "online" && (
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                          )}
+                          <span
+                            className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                              kpis.workerStatus === "online" ? "bg-emerald-500"
+                              : kpis.workerStatus === "paused" ? "bg-amber-500"
+                              : "bg-red-500"
+                            }`}
+                          />
+                        </span>
+                      </div>
+                      <p className="mt-1.5 font-mono text-3xl font-semibold tabular-nums tracking-tight">
+                        {kpis.workerStatus === "online" ? "Online" : kpis.workerStatus === "paused" ? "Paused" : "Offline"}
+                      </p>
+                      <p className="text-sm text-stone-500 mt-1">
+                        {workerDetail}{kpis.workerStatus === "paused" ? " \u00b7 Outside business hours" : ""}
+                      </p>
+                    </CardContent>
                   </Card>
-                </div>
-              );
-            })()}
+                );
+              })()}
+            </div>
 
-            {/* Section 2: Combined Activity Chart */}
+            {/* ============================================================ */}
+            {/* ACTIVITY — Combined chart                                    */}
+            {/* ============================================================ */}
+            <SectionLabel>Activity</SectionLabel>
+
             <Card>
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle>Activity Overview</CardTitle>
@@ -292,7 +397,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {timeSeries.length === 0 && linkedInTimeSeries.length === 0 ? (
-                  <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
+                  <div className="h-[280px] flex items-center justify-center text-sm text-stone-400">
                     No activity data for this period
                   </div>
                 ) : (
@@ -301,26 +406,32 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Section 3: Email (collapsible, default open) */}
+            {/* ============================================================ */}
+            {/* PERFORMANCE — Email & LinkedIn detail sections               */}
+            {/* ============================================================ */}
+            <SectionLabel>Performance</SectionLabel>
+
+            {/* Email (collapsible, default open) */}
             <CollapsibleSection
               id="email"
               title="Email"
               collapsedSummary={
-                <span className="text-xs text-muted-foreground">
-                  {kpis.emailSent.toLocaleString()} sent · {replyRate === "—" ? "—" : `${replyRate}%`} reply rate
+                <span className="text-xs text-stone-400">
+                  {kpis.emailSent.toLocaleString()} sent \u00b7 {replyRate === "\u2014" ? "\u2014" : `${replyRate}%`} reply rate
                 </span>
               }
               actions={<ActivityChartLegend />}
             >
               <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <MetricCard
                     label="Reply Rate"
-                    value={replyRate === "—" ? "—" : `${replyRate}%`}
+                    value={replyRate === "\u2014" ? "\u2014" : replyRate}
+                    suffix={replyRate !== "\u2014" ? "%" : undefined}
                     trend={Number(replyRate) > 0 ? "up" : "neutral"}
-                    detail={`${totalReplies.toLocaleString()} replies · ${kpis.emailAutoReplied} OOO/auto`}
+                    detail={`${totalReplies.toLocaleString()} replies \u00b7 ${kpis.emailAutoReplied} OOO/auto`}
                     density="compact"
-                    featured
+                    variant="hero"
                   />
                   <MetricCard
                     label="Emails Sent"
@@ -348,7 +459,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 {timeSeries.length === 0 ? (
-                  <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
+                  <div className="h-[280px] flex items-center justify-center text-sm text-stone-400">
                     No email activity for this period
                   </div>
                 ) : (
@@ -357,19 +468,19 @@ export default function DashboardPage() {
               </div>
             </CollapsibleSection>
 
-            {/* Section 4: LinkedIn (collapsible, default open) */}
+            {/* LinkedIn (collapsible, default open) */}
             <CollapsibleSection
               id="linkedin"
               title="LinkedIn"
               collapsedSummary={
-                <span className="text-xs text-muted-foreground">
-                  {(kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView).toLocaleString()} actions · {kpis.linkedinConnect.toLocaleString()} connections
+                <span className="text-xs text-stone-400">
+                  {(kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView).toLocaleString()} actions \u00b7 {kpis.linkedinConnect.toLocaleString()} connections
                 </span>
               }
               actions={<LinkedInChartLegend />}
             >
               <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <MetricCard
                     label="Profile Views"
                     value={kpis.linkedinProfileView.toLocaleString()}
@@ -397,7 +508,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 {linkedInTimeSeries.length === 0 ? (
-                  <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
+                  <div className="h-[280px] flex items-center justify-center text-sm text-stone-400">
                     No LinkedIn activity for this period
                   </div>
                 ) : (
@@ -406,84 +517,52 @@ export default function DashboardPage() {
               </div>
             </CollapsibleSection>
 
-            {/* Section 5: Signals (collapsible, default open) */}
+            {/* ============================================================ */}
+            {/* OVERVIEW — Signals, Client table                             */}
+            {/* ============================================================ */}
+            <SectionLabel>Overview</SectionLabel>
+
+            {/* Signals (collapsible, default open) */}
             <CollapsibleSection
               id="signals"
               title="Signals"
               collapsedSummary={
                 signalsData ? (
-                  <span className="text-xs text-muted-foreground">
-                    {signalsData.summary?.totalSignals ?? 0} signals (7d) · ${(signalsData.summary?.totalWeeklyUsd ?? 0).toFixed(2)} spend
+                  <span className="text-xs text-stone-400">
+                    {signalsData.summary?.totalSignals ?? 0} signals (7d) \u00b7 ${(signalsData.summary?.totalWeeklyUsd ?? 0).toFixed(2)} spend
                   </span>
                 ) : null
               }
             >
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-4">
                 <MetricCard
                   label="Signals (7d)"
-                  value={signalsData?.summary?.totalSignals?.toLocaleString() ?? "—"}
+                  value={signalsData?.summary?.totalSignals?.toLocaleString() ?? "\u2014"}
                   trend={(signalsData?.summary?.totalSignals ?? 0) > 0 ? "up" : "neutral"}
                   density="compact"
                 />
                 <MetricCard
                   label="Daily Spend"
-                  value={signalsData ? `$${(signalsData.summary?.totalDailyUsd ?? 0).toFixed(2)}` : "—"}
+                  value={signalsData ? `$${(signalsData.summary?.totalDailyUsd ?? 0).toFixed(2)}` : "\u2014"}
                   trend="neutral"
                   density="compact"
                 />
                 <MetricCard
                   label="Weekly Spend"
-                  value={signalsData ? `$${(signalsData.summary?.totalWeeklyUsd ?? 0).toFixed(2)}` : "—"}
+                  value={signalsData ? `$${(signalsData.summary?.totalWeeklyUsd ?? 0).toFixed(2)}` : "\u2014"}
                   trend="neutral"
                   density="compact"
                 />
               </div>
             </CollapsibleSection>
 
-            {/* Section 6: Pipeline (collapsible, default open) */}
-            <CollapsibleSection
-              id="pipeline"
-              title="Pipeline"
-              collapsedSummary={
-                <span className="text-xs text-muted-foreground">
-                  {kpis.pipelineContacted.toLocaleString()} contacted · {kpis.pipelineReplied.toLocaleString()} replied · {kpis.pipelineInterested.toLocaleString()} interested
-                </span>
-              }
-            >
-              <div className="grid grid-cols-3 gap-3">
-                <MetricCard
-                  label="Contacted"
-                  value={kpis.pipelineContacted.toLocaleString()}
-                  trend="neutral"
-                  density="compact"
-                />
-                <MetricCard
-                  label="Replied"
-                  value={kpis.pipelineReplied.toLocaleString()}
-                  trend={kpis.pipelineReplied > 0 ? "up" : "neutral"}
-                  detail={
-                    kpis.pipelineContacted > 0
-                      ? `${((kpis.pipelineReplied / kpis.pipelineContacted) * 100).toFixed(1)}% reply rate`
-                      : undefined
-                  }
-                  density="compact"
-                />
-                <MetricCard
-                  label="Interested"
-                  value={kpis.pipelineInterested.toLocaleString()}
-                  trend={kpis.pipelineInterested > 0 ? "up" : "neutral"}
-                  density="compact"
-                />
-              </div>
-            </CollapsibleSection>
-
-            {/* Section 7: Client Overview (collapsible, default COLLAPSED) */}
+            {/* Client Overview (collapsible, default COLLAPSED) */}
             <CollapsibleSection
               id="clients"
               title="Client Overview"
               defaultCollapsed
               collapsedSummary={
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-stone-400">
                   {workspaces.length} workspaces
                 </span>
               }

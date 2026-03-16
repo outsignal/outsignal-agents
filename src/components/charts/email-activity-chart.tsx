@@ -90,7 +90,7 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload || payload.length === 0) return null;
 
   return (
-    <div className="bg-popover border border-border rounded-md shadow-md p-3 text-xs">
+    <div className="bg-white border border-stone-200 rounded-lg shadow-lg p-3 text-sm">
       <p className="font-medium text-popover-foreground mb-2">
         {formatDate(String(label ?? ""))}
       </p>
@@ -164,7 +164,7 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
           tickLine={false}
           axisLine={false}
           tickFormatter={formatDate}
-          tick={{ fill: "oklch(0.45 0 0)" }}
+          tick={{ fill: "#a8a29e" }}
           interval="preserveStartEnd"
         />
         {/* Left Y-axis: high-volume (Sent, Opens) */}
@@ -173,7 +173,7 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
           fontSize={11}
           tickLine={false}
           axisLine={false}
-          tick={{ fill: "oklch(0.45 0 0)" }}
+          tick={{ fill: "#a8a29e" }}
           allowDecimals={false}
           width={36}
         />
@@ -185,7 +185,7 @@ export function EmailActivityChart({ data, height = 280 }: Props) {
             fontSize={11}
             tickLine={false}
             axisLine={false}
-            tick={{ fill: "oklch(0.55 0 0)" }}
+            tick={{ fill: "#a8a29e" }}
             allowDecimals={false}
             width={30}
           />
