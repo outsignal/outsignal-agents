@@ -8,15 +8,16 @@ const CSRF_EXEMPT_PREFIXES = [
   "/api/cron/",
   "/api/trigger/",
   "/api/extension/",
+  "/api/linkedin/",
   "/api/people/enrich",
   "/api/companies/enrich",
 ];
 
 const CSRF_EXEMPT_EXACT = [
   "/api/admin/login",
-  "/api/admin/magic-link",
   "/api/portal/login",
   "/api/csrf",
+  "/api/stripe/webhook",
 ];
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
