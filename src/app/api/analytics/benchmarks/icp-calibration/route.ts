@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 
@@ -23,15 +24,13 @@ export async function GET(request: NextRequest) {
   const workspace = searchParams.get("workspace") || null;
   const isGlobal = searchParams.get("global") === "true";
 
-  // Build workspace filter for raw SQL
-  const wsFilter =
+  // Build parameterized workspace filter fragment
+  const wsCondition =
     workspace && !isGlobal
-      ? `AND lw."workspace" = '${workspace.replace(/'/g, "''")}'`
-      : "";
+      ? Prisma.sql`AND lw."workspace" = ${workspace}`
+      : Prisma.empty;
 
-  // Cross-join PersonWorkspace (icpScore) with Reply outcomes
-  // JOIN: LeadWorkspace -> Lead (by leadId) -> Reply (by Lead.email = Reply.senderEmail AND LeadWorkspace.workspace = Reply.workspaceSlug)
-  const bucketRows = await prisma.$queryRawUnsafe<BucketRow[]>(`
+  const bucketRows = await prisma.$queryRaw<BucketRow[]>(Prisma.sql`
     WITH scored_people AS (
       SELECT
         lw."leadId" AS person_id,
@@ -41,7 +40,7 @@ export async function GET(request: NextRequest) {
       FROM "LeadWorkspace" lw
       JOIN "Lead" l ON l."id" = lw."leadId"
       WHERE lw."icpScore" IS NOT NULL
-      ${wsFilter}
+      ${wsCondition}
     ),
     people_with_replies AS (
       SELECT
