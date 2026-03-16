@@ -39,15 +39,15 @@ export default async function PortalCampaignsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold">Campaigns</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-heading font-bold text-stone-900">Campaigns</h1>
+          <p className="text-sm text-stone-500 mt-1">
             {pendingCount > 0
               ? `${pendingCount} campaign${pendingCount !== 1 ? "s" : ""} awaiting your review`
               : "Review and approve your campaigns"}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-stone-400">
             <Clock className="h-3 w-3" />
             Updated{" "}
             {now.toLocaleTimeString("en-US", {
@@ -66,10 +66,17 @@ export default async function PortalCampaignsPage() {
           description="Your campaigns will appear here once they are ready for review. We'll notify you when there's something to approve."
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sorted.map((campaign) => (
-            <CampaignCard key={campaign.id} campaign={campaign} />
-          ))}
+        <div>
+          {pendingCount > 0 && (
+            <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">
+              Needs Attention ({pendingCount})
+            </p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sorted.map((campaign) => (
+              <CampaignCard key={campaign.id} campaign={campaign} />
+            ))}
+          </div>
         </div>
       )}
     </div>

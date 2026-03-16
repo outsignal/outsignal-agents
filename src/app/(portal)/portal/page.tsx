@@ -4,7 +4,8 @@ import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   Table,
@@ -22,7 +23,7 @@ import {
   type PerformanceDayPoint,
 } from "@/components/portal/portal-performance-chart";
 import { RelativeTimestamp } from "@/components/portal/relative-timestamp";
-import { Linkedin } from "lucide-react";
+import { Linkedin, Mail, MessageSquare, Send, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { Campaign } from "@/lib/emailbison/types";
 
@@ -39,7 +40,7 @@ export default async function PortalDashboardPage() {
   if (!workspace) {
     return (
       <div className="p-6">
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-12 text-stone-500">
           Your workspace is being set up. Check back soon.
         </div>
       </div>
@@ -172,12 +173,9 @@ export default async function PortalDashboardPage() {
     );
   }
 
-  const statusColors: Record<string, string> = {
-    active: "bg-emerald-100 text-emerald-800",
-    paused: "bg-yellow-100 text-yellow-800",
-    draft: "bg-gray-100 text-gray-800",
-    completed: "bg-blue-100 text-blue-800",
-  };
+  // Build sparkline arrays from time series
+  const sentSparkline = performanceTimeSeries.map((d) => d.sent);
+  const repliesSparkline = performanceTimeSeries.map((d) => d.replied);
 
   // Pending approval campaigns count
   const pendingApprovalCount = await prisma.campaign.count({
@@ -201,20 +199,13 @@ export default async function PortalDashboardPage() {
 
   const now = new Date();
 
-  const intentColors: Record<string, string> = {
-    interested: "bg-emerald-100 text-emerald-800",
-    meeting_request: "bg-emerald-100 text-emerald-800",
-    positive: "bg-emerald-100 text-emerald-800",
-    not_interested: "bg-red-100 text-red-800",
-    objection: "bg-amber-100 text-amber-800",
-    out_of_office: "bg-gray-100 text-gray-800",
-    referral: "bg-blue-100 text-blue-800",
-    unsubscribe: "bg-red-100 text-red-800",
-    neutral: "bg-gray-100 text-gray-800",
-  };
+  // Computed rates
+  const openRate = totalSent > 0 ? ((totalOpens / totalSent) * 100) : 0;
+  const replyRate = totalSent > 0 ? ((totalReplies / totalSent) * 100) : 0;
+  const bounceRate = totalSent > 0 ? ((totalBounces / totalSent) * 100) : 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-8">
       {/* Pending Approval Banner */}
       {pendingApprovalCount > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between">
@@ -233,8 +224,8 @@ export default async function PortalDashboardPage() {
       {/* Header with refresh */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold">{workspace.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-heading font-bold text-stone-900">{workspace.name}</h1>
+          <p className="text-sm text-stone-500 mt-1">
             Campaign performance overview
           </p>
         </div>
@@ -246,277 +237,296 @@ export default async function PortalDashboardPage() {
 
       {error && <ErrorBanner message={error} />}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="Total Sent"
-          value={totalSent.toLocaleString()}
-          density="compact"
-        />
-        <MetricCard
-          label="Open Rate"
-          value={hasOpenTracking ? `${totalSent > 0 ? ((totalOpens / totalSent) * 100).toFixed(1) : 0}%` : "N/A"}
-          detail={hasOpenTracking ? undefined : "Tracking disabled"}
-          density="compact"
-        />
-        <MetricCard
-          label="Reply Rate"
-          value={`${totalSent > 0 ? ((totalReplies / totalSent) * 100).toFixed(1) : 0}%`}
-          trend={
-            totalSent > 0 && (totalReplies / totalSent) * 100 > 3 ? "up" : "neutral"
-          }
-          density="compact"
-        />
-        <MetricCard
-          label="Bounce Rate"
-          value={`${totalSent > 0 ? ((totalBounces / totalSent) * 100).toFixed(1) : 0}%`}
-          trend={
-            totalSent > 0 && (totalBounces / totalSent) * 100 > 5 ? "warning" : "neutral"
-          }
-          density="compact"
-        />
+      {/* Hero Metric Row -- Bento Grid */}
+      <div>
+        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Key Metrics</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard
+            label="Total Replies"
+            value={totalReplies.toLocaleString()}
+            variant="hero"
+            icon={MessageSquare}
+            sparklineData={repliesSparkline}
+            sparklineColor="#635BFF"
+            density="compact"
+            className="col-span-2"
+          />
+          <MetricCard
+            label="Emails Sent"
+            value={totalSent.toLocaleString()}
+            icon={Send}
+            sparklineData={sentSparkline}
+            sparklineColor="#78716c"
+            density="compact"
+          />
+          <MetricCard
+            label="Reply Rate"
+            value={replyRate.toFixed(1)}
+            suffix="%"
+            trend={replyRate > 3 ? "up" : "neutral"}
+            density="compact"
+          />
+        </div>
+      </div>
+
+      {/* Secondary Metrics Row */}
+      <div>
+        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Deliverability</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard
+            label="Open Rate"
+            value={hasOpenTracking ? openRate.toFixed(1) : "N/A"}
+            suffix={hasOpenTracking ? "%" : undefined}
+            detail={hasOpenTracking ? undefined : "Tracking disabled"}
+            density="compact"
+          />
+          <MetricCard
+            label="Bounce Rate"
+            value={bounceRate.toFixed(1)}
+            suffix="%"
+            trend={bounceRate > 5 ? "warning" : "neutral"}
+            density="compact"
+          />
+          <MetricCard
+            label="Total Opens"
+            value={hasOpenTracking ? totalOpens.toLocaleString() : "N/A"}
+            detail={hasOpenTracking ? undefined : "Tracking disabled"}
+            density="compact"
+          />
+          <MetricCard
+            label="Total Bounces"
+            value={totalBounces.toLocaleString()}
+            density="compact"
+          />
+        </div>
       </div>
 
       {/* Campaign Performance Chart */}
       {performanceTimeSeries.some((d) => d.sent > 0 || d.replied > 0 || d.bounced > 0 || d.interested > 0 || d.unsubscribed > 0) && (
-        <Card density="compact">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="font-heading text-base">
-                Email Activity
-              </CardTitle>
-              <PerformanceChartLegend />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <PortalPerformanceChart data={performanceTimeSeries} />
-          </CardContent>
-        </Card>
+        <div>
+          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Activity</p>
+          <Card density="compact">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="font-heading text-base text-stone-900">
+                  Email Activity
+                </CardTitle>
+                <PerformanceChartLegend />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <PortalPerformanceChart data={performanceTimeSeries} />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
-      {/* LinkedIn Summary */}
-      <Card density="compact">
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Linkedin className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-medium">LinkedIn Overview</p>
+      {/* LinkedIn Summary -- Compact */}
+      <div>
+        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">LinkedIn</p>
+        <Card density="compact">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Linkedin className="h-4 w-4 text-stone-400" />
+                <p className="text-sm font-medium text-stone-700">LinkedIn Overview</p>
+              </div>
+              <Link
+                href="/portal/linkedin"
+                className="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 transition-colors"
+              >
+                View details
+                <ArrowRight className="h-3 w-3" />
+              </Link>
             </div>
-            <Link
-              href="/portal/linkedin"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              View details
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-2xl font-heading font-semibold tabular-nums">
-                {senderCount}
-                {totalSenderCount > senderCount && (
-                  <span className="text-sm text-muted-foreground font-normal">
-                    /{totalSenderCount}
-                  </span>
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Active sender{senderCount !== 1 ? "s" : ""}
-              </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                  {senderCount}
+                  {totalSenderCount > senderCount && (
+                    <span className="text-sm text-stone-400 font-normal">
+                      /{totalSenderCount}
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Active sender{senderCount !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div>
+                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                  {todayActions}
+                </p>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Action{todayActions !== 1 ? "s" : ""} today
+                </p>
+              </div>
+              <div>
+                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                  {weekActions}
+                </p>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Last 7 days
+                </p>
+              </div>
+              <div>
+                <p className="text-2xl font-mono font-semibold tabular-nums text-stone-900">
+                  {pendingActions}
+                </p>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Pending
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-heading font-semibold tabular-nums">
-                {todayActions}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Action{todayActions !== 1 ? "s" : ""} today
-              </p>
-            </div>
-            <div>
-              <p className="text-2xl font-heading font-semibold tabular-nums">
-                {weekActions}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Last 7 days
-              </p>
-            </div>
-            <div>
-              <p className="text-2xl font-heading font-semibold tabular-nums">
-                {pendingActions}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Pending
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Campaigns Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-heading">Campaigns</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {campaigns.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <svg
-                  className="h-6 w-6 text-muted-foreground"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21.75 9v.906a2.25 2.25 0 01-1.183 1.981l-6.478 3.488M2.25 9v.906a2.25 2.25 0 001.183 1.981l6.478 3.488m8.839 2.51l-4.66-2.51m0 0l-1.023-.55a2.25 2.25 0 00-2.134 0l-1.022.55m0 0l-4.661 2.51m16.5 1.615a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V8.844a2.25 2.25 0 011.183-1.98l7.5-4.04a2.25 2.25 0 012.134 0l7.5 4.04a2.25 2.25 0 011.183 1.98V18"
-                  />
-                </svg>
-              </div>
-              <p className="text-sm font-medium">No campaigns yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Your campaigns will appear here once they are set up.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Campaign</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">Sent</TableHead>
-                  <TableHead className="text-right">Replies</TableHead>
-                  <TableHead className="text-right">Reply Rate</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {campaigns.map((campaign) => {
-                  const sent = campaign.emails_sent ?? 0;
-                  const rRate =
-                    sent > 0
-                      ? ((campaign.replied / sent) * 100).toFixed(1)
-                      : "0.0";
-                  const internalId = ebToInternalId.get(campaign.id);
-                  return (
-                    <TableRow
-                      key={campaign.id}
-                      className={internalId ? "hover:bg-muted/50 cursor-pointer group" : ""}
-                    >
-                      <TableCell className="font-medium">
-                        {internalId ? (
-                          <Link
-                            href={`/portal/campaigns/${internalId}`}
-                            className="group-hover:underline"
-                          >
-                            {campaign.name}
-                          </Link>
-                        ) : (
-                          campaign.name
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={`text-xs ${statusColors[campaign.status] ?? ""}`}
-                        >
-                          {campaign.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {campaign.total_leads.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {sent.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {campaign.replied.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{rRate}%</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Campaigns</p>
+          <Link
+            href="/portal/campaigns"
+            className="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 transition-colors"
+          >
+            View all
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+        <Card>
+          <CardContent className="p-0">
+            {campaigns.length === 0 ? (
+              <EmptyState
+                icon={Mail}
+                title="No campaigns yet"
+                description="Your campaigns will appear here once they are set up."
+                variant="compact"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-stone-100">
+                    <TableHead className="text-stone-500">Campaign</TableHead>
+                    <TableHead className="text-stone-500">Status</TableHead>
+                    <TableHead className="text-right text-stone-500">Leads</TableHead>
+                    <TableHead className="text-right text-stone-500">Sent</TableHead>
+                    <TableHead className="text-right text-stone-500">Replies</TableHead>
+                    <TableHead className="text-right text-stone-500">Reply Rate</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {campaigns.map((campaign) => {
+                    const sent = campaign.emails_sent ?? 0;
+                    const rRate =
+                      sent > 0
+                        ? ((campaign.replied / sent) * 100).toFixed(1)
+                        : "0.0";
+                    const internalId = ebToInternalId.get(campaign.id);
+                    return (
+                      <TableRow
+                        key={campaign.id}
+                        className={`border-stone-50 ${internalId ? "hover:bg-stone-50 cursor-pointer group" : ""}`}
+                      >
+                        <TableCell className="font-medium text-stone-900">
+                          {internalId ? (
+                            <Link
+                              href={`/portal/campaigns/${internalId}`}
+                              className="group-hover:underline"
+                            >
+                              {campaign.name}
+                            </Link>
+                          ) : (
+                            campaign.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={campaign.status}
+                            type="campaign"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                          {campaign.total_leads.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                          {sent.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                          {campaign.replied.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                          {rRate}%
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recent Replies */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-heading">Recent Replies</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentReplies.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <svg
-                  className="h-6 w-6 text-muted-foreground"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
-                  />
-                </svg>
-              </div>
-              <p className="text-sm font-medium">No replies yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Replies to your campaigns will appear here.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>From</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Intent</TableHead>
-                  <TableHead className="text-right">Received</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentReplies.map((reply) => (
-                  <TableRow key={reply.id}>
-                    <TableCell className="font-medium text-sm">
-                      {reply.leadEmail}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
-                      {reply.subject ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      {reply.intent ? (
-                        <Badge
-                          className={`text-xs ${intentColors[reply.intent] ?? "bg-gray-100 text-gray-800"}`}
-                        >
-                          {reply.intent.replace(/_/g, " ")}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
-                      {reply.receivedAt
-                        ? new Date(reply.receivedAt).toLocaleDateString("en-GB", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "—"}
-                    </TableCell>
+      <div>
+        <p className="text-xs uppercase tracking-wider text-stone-400 font-medium mb-3">Recent Replies</p>
+        <Card>
+          <CardContent className="p-0">
+            {recentReplies.length === 0 ? (
+              <EmptyState
+                icon={MessageSquare}
+                title="No replies yet"
+                description="Replies to your campaigns will appear here."
+                variant="compact"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-stone-100">
+                    <TableHead className="text-stone-500">From</TableHead>
+                    <TableHead className="text-stone-500">Subject</TableHead>
+                    <TableHead className="text-stone-500">Intent</TableHead>
+                    <TableHead className="text-right text-stone-500">Received</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {recentReplies.map((reply) => (
+                    <TableRow key={reply.id} className="border-stone-50 hover:bg-stone-50">
+                      <TableCell className="font-medium text-sm text-stone-900">
+                        {reply.leadEmail}
+                      </TableCell>
+                      <TableCell className="text-sm text-stone-500 truncate max-w-[200px]">
+                        {reply.subject ?? "\u2014"}
+                      </TableCell>
+                      <TableCell>
+                        {reply.intent ? (
+                          <StatusBadge
+                            status={reply.intent}
+                            type="intent"
+                          />
+                        ) : (
+                          <span className="text-xs text-stone-400">\u2014</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-sm font-mono tabular-nums text-stone-500 whitespace-nowrap">
+                        {reply.receivedAt
+                          ? new Date(reply.receivedAt).toLocaleDateString("en-GB", {
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "\u2014"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
