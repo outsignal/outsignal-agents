@@ -110,6 +110,17 @@ export async function proxy(req: NextRequest) {
       return NextResponse.next();
     }
 
+    // Local dev bypass — skip auth and inject a default session
+    if (process.env.NODE_ENV === "development") {
+      const cookie = req.cookies.get(PORTAL_COOKIE_NAME)?.value;
+      if (!cookie) {
+        const requestHeaders = new Headers(req.headers);
+        requestHeaders.set("x-portal-workspace", "outsignal");
+        requestHeaders.set("x-portal-email", "dev@localhost");
+        return NextResponse.next({ request: { headers: requestHeaders } });
+      }
+    }
+
     // All other /portal/* routes require a valid portal session
     const cookie = req.cookies.get(PORTAL_COOKIE_NAME)?.value;
 

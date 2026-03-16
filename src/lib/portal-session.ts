@@ -16,6 +16,10 @@ export async function getPortalSession(): Promise<{
   const cookie = cookieStore.get(COOKIE_NAME)?.value;
 
   if (!cookie) {
+    // Local dev bypass — return a default session instead of throwing
+    if (process.env.NODE_ENV === "development") {
+      return { workspaceSlug: "outsignal", email: "dev@localhost" };
+    }
     throw new Error("No portal session cookie");
   }
 

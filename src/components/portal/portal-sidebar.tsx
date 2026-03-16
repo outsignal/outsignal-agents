@@ -9,17 +9,9 @@ import {
   Inbox,
   LinkedinIcon,
   Mail,
-  MessageSquareText,
-  Zap,
-  Users,
-  Building2,
-  BarChart3,
-  FileText,
-  ClipboardCheck,
-  Receipt,
-  BookOpen,
   ShieldCheck,
-  Settings,
+  Receipt,
+  LifeBuoy,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -39,31 +31,52 @@ interface PortalSidebarProps {
 }
 
 interface NavItem {
-  href: string;
+  href?: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  onClick?: () => void;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
 }
 
 const STORAGE_KEY = "portal-sidebar-collapsed";
 
-const navItems: NavItem[] = [
-  { href: "/portal", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/portal/campaigns", label: "Campaigns", icon: Megaphone },
-  { href: "/portal/inbox", label: "Inbox", icon: Inbox },
-  { href: "/portal/replies", label: "Replies", icon: MessageSquareText },
-  { href: "/portal/linkedin", label: "LinkedIn", icon: LinkedinIcon },
-  { href: "/portal/email-health", label: "Email Health", icon: Mail },
-  { href: "/portal/signals", label: "Signals", icon: Zap },
-  { href: "/portal/people", label: "People", icon: Users },
-  { href: "/portal/companies", label: "Companies", icon: Building2 },
-  { href: "/portal/data", label: "Data", icon: Users },
-  { href: "/portal/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/portal/deliverability", label: "Deliverability", icon: ShieldCheck },
-  { href: "/portal/knowledge", label: "Knowledge", icon: BookOpen },
-  { href: "/portal/pages", label: "Pages", icon: FileText },
-  { href: "/portal/onboarding", label: "Onboarding", icon: ClipboardCheck },
-  { href: "/portal/billing", label: "Billing", icon: Receipt },
-  { href: "/portal/settings", label: "Settings", icon: Settings },
+const navGroups: NavGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      { href: "/portal", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Outreach",
+    items: [
+      { href: "/portal/campaigns", label: "Campaigns", icon: Megaphone },
+      { href: "/portal/inbox", label: "Inbox", icon: Inbox },
+      { href: "/portal/linkedin", label: "LinkedIn", icon: LinkedinIcon },
+    ],
+  },
+  {
+    label: "Health",
+    items: [
+      { href: "/portal/email-health", label: "Email Health", icon: Mail },
+      { href: "/portal/deliverability", label: "Deliverability", icon: ShieldCheck },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { href: "/portal/billing", label: "Billing", icon: Receipt },
+      {
+        label: "Support",
+        icon: LifeBuoy,
+        onClick: () => window.dispatchEvent(new Event("open-support-widget")),
+      },
+    ],
+  },
 ];
 
 export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
@@ -117,25 +130,27 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
     window.location.href = "/portal/login";
   };
 
-  function renderNavItem(item: NavItem) {
-    const isActive =
-      item.href === "/portal"
-        ? pathname === "/portal"
-        : pathname === item.href || pathname.startsWith(item.href + "/");
+  function isItemActive(item: NavItem) {
+    if (!item.href) return false;
+    return item.href === "/portal"
+      ? pathname === "/portal"
+      : pathname === item.href || pathname.startsWith(item.href + "/");
+  }
 
+  function renderNavItem(item: NavItem) {
+    const isActive = isItemActive(item);
     const isInbox = item.href === "/portal/inbox";
 
-    const linkContent = (
-      <Link
-        href={item.href}
-        className={cn(
-          "flex items-center rounded-lg text-sm transition-colors duration-150",
-          isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
-          isActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-brand"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground border-l-2 border-transparent",
-        )}
-      >
+    const sharedClasses = cn(
+      "flex items-center rounded-lg text-sm transition-colors duration-150",
+      isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+      isActive
+        ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary"
+        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground border-l-2 border-transparent",
+    );
+
+    const innerContent = (
+      <>
         <item.icon className="h-4 w-4 shrink-0" />
         {!isCollapsed && (
           <>
@@ -147,15 +162,27 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
             )}
           </>
         )}
-      </Link>
+      </>
     );
+
+    const element = item.href ? (
+      <Link href={item.href} className={sharedClasses}>
+        {innerContent}
+      </Link>
+    ) : (
+      <button onClick={item.onClick} className={cn(sharedClasses, "w-full")}>
+        {innerContent}
+      </button>
+    );
+
+    const key = item.href ?? item.label;
 
     if (isCollapsed) {
       return (
-        <Tooltip key={item.href}>
+        <Tooltip key={key}>
           <TooltipTrigger asChild>
             <div className="relative">
-              {linkContent}
+              {element}
               {isInbox && unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-0.5">
                   {unreadCount > 99 ? "99+" : unreadCount}
@@ -173,11 +200,7 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
       );
     }
 
-    return (
-      <div key={item.href}>
-        {linkContent}
-      </div>
-    );
+    return <div key={key}>{element}</div>;
   }
 
   return (
@@ -204,7 +227,7 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
       {/* Workspace name */}
       {!isCollapsed && (
         <div className="px-6 py-3 border-b border-sidebar-border/50">
-          <p className="text-xs font-medium text-sidebar-foreground/50 uppercase tracking-wider">
+          <p className="text-xs font-medium text-sidebar-foreground/50">
             Client Portal
           </p>
           <p className="text-sm font-medium text-sidebar-foreground truncate mt-0.5">
@@ -214,9 +237,20 @@ export function PortalSidebar({ workspaceName }: PortalSidebarProps) {
       )}
 
       {/* Navigation */}
-      <nav aria-label="Portal navigation" className={cn("flex-1 py-4", isCollapsed ? "px-1.5" : "px-3")}>
-        <div className="space-y-1">
-          {navItems.map((item) => renderNavItem(item))}
+      <nav aria-label="Portal navigation" className={cn("flex-1 py-4 overflow-y-auto", isCollapsed ? "px-1.5" : "px-3")}>
+        <div className="space-y-4">
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              {!isCollapsed && (
+                <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => renderNavItem(item))}
+              </div>
+            </div>
+          ))}
         </div>
       </nav>
 

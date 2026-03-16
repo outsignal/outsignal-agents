@@ -23,7 +23,7 @@ import {
   type PerformanceDayPoint,
 } from "@/components/portal/portal-performance-chart";
 import { RelativeTimestamp } from "@/components/portal/relative-timestamp";
-import { Linkedin, Mail, MessageSquare, Send, ArrowRight } from "lucide-react";
+
 import Link from "next/link";
 import type { Campaign } from "@/lib/emailbison/types";
 
@@ -76,45 +76,7 @@ export default async function PortalDashboardPage() {
   );
 
   const totalSent = campaigns.reduce((sum, c) => sum + (c.emails_sent ?? 0), 0);
-  const totalOpens = campaigns.reduce((sum, c) => sum + (c.unique_opens ?? 0), 0);
   const totalReplies = campaigns.reduce((sum, c) => sum + (c.replied ?? 0), 0);
-  const totalBounces = campaigns.reduce((sum, c) => sum + (c.bounced ?? 0), 0);
-  const hasOpenTracking = campaigns.some((c) => c.open_tracking);
-
-  // LinkedIn summary
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const sevenDaysAgoLI = new Date();
-  sevenDaysAgoLI.setDate(sevenDaysAgoLI.getDate() - 7);
-
-  const [senderCount, totalSenderCount, todayActions, weekActions, pendingActions] = await Promise.all([
-    prisma.sender.count({
-      where: { workspaceSlug, sessionStatus: "active" },
-    }),
-    prisma.sender.count({
-      where: { workspaceSlug },
-    }),
-    prisma.linkedInAction.count({
-      where: {
-        workspaceSlug,
-        status: "complete",
-        completedAt: { gte: todayStart },
-      },
-    }),
-    prisma.linkedInAction.count({
-      where: {
-        workspaceSlug,
-        status: "complete",
-        completedAt: { gte: sevenDaysAgoLI },
-      },
-    }),
-    prisma.linkedInAction.count({
-      where: {
-        workspaceSlug,
-        status: "pending",
-      },
-    }),
-  ]);
 
   // Time-series data from WebhookEvent for the last 14 days
   const timeSeriesDays = 14;
@@ -173,39 +135,22 @@ export default async function PortalDashboardPage() {
     );
   }
 
-  // Build sparkline arrays from time series
-  const sentSparkline = performanceTimeSeries.map((d) => d.sent);
-  const repliesSparkline = performanceTimeSeries.map((d) => d.replied);
-
   // Pending approval campaigns count
   const pendingApprovalCount = await prisma.campaign.count({
     where: { workspaceSlug, status: "pending_approval" },
   });
 
-  // Recent inbound replies
-  const recentReplies = await prisma.reply.findMany({
-    where: { workspaceSlug, direction: "inbound" },
-    orderBy: { receivedAt: "desc" },
-    take: 10,
-    select: {
-      id: true,
-      leadEmail: true,
-      subject: true,
-      receivedAt: true,
-      intent: true,
-      sentiment: true,
-    },
-  });
-
   const now = new Date();
 
   // Computed rates
-  const openRate = totalSent > 0 ? ((totalOpens / totalSent) * 100) : 0;
   const replyRate = totalSent > 0 ? ((totalReplies / totalSent) * 100) : 0;
-  const bounceRate = totalSent > 0 ? ((totalBounces / totalSent) * 100) : 0;
+
+  // Build sparkline arrays from time series
+  const sentSparkline = performanceTimeSeries.map((d) => d.sent);
+  const repliesSparkline = performanceTimeSeries.map((d) => d.replied);
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-6 space-y-6">
       {/* Pending Approval Banner */}
       {pendingApprovalCount > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between">
@@ -224,9 +169,9 @@ export default async function PortalDashboardPage() {
       {/* Header with refresh */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">{workspace.name}</h1>
+          <h1 className="text-xl font-medium text-foreground">{workspace.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Campaign performance overview
+            Campaign performance overview · <Link href="/portal/email-health" className="text-brand hover:underline">Email health</Link> · <Link href="/portal/linkedin" className="text-brand hover:underline">LinkedIn</Link> · <Link href="/portal/replies" className="text-brand hover:underline">Replies</Link>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -237,24 +182,18 @@ export default async function PortalDashboardPage() {
 
       {error && <ErrorBanner message={error} />}
 
-      {/* Hero Metric Row -- Bento Grid */}
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Key Metrics</p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Hero Metric Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <MetricCard
             label="Total Replies"
             value={totalReplies.toLocaleString()}
-            variant="hero"
-            icon={MessageSquare}
             sparklineData={repliesSparkline}
             sparklineColor="#635BFF"
             density="compact"
-            className="col-span-2"
           />
           <MetricCard
             label="Emails Sent"
             value={totalSent.toLocaleString()}
-            icon={Send}
             sparklineData={sentSparkline}
             sparklineColor="var(--muted-foreground)"
             density="compact"
@@ -263,52 +202,18 @@ export default async function PortalDashboardPage() {
             label="Reply Rate"
             value={replyRate.toFixed(1)}
             suffix="%"
-            trend={replyRate > 3 ? "up" : "neutral"}
+            sparklineData={performanceTimeSeries.map((d) => d.sent > 0 ? (d.replied / d.sent) * 100 : 0)}
+            sparklineColor="#10B981"
             density="compact"
           />
-        </div>
-      </div>
-
-      {/* Secondary Metrics Row */}
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Deliverability</p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            label="Open Rate"
-            value={hasOpenTracking ? openRate.toFixed(1) : "N/A"}
-            suffix={hasOpenTracking ? "%" : undefined}
-            detail={hasOpenTracking ? undefined : "Tracking disabled"}
-            density="compact"
-          />
-          <MetricCard
-            label="Bounce Rate"
-            value={bounceRate.toFixed(1)}
-            suffix="%"
-            trend={bounceRate > 5 ? "warning" : "neutral"}
-            density="compact"
-          />
-          <MetricCard
-            label="Total Opens"
-            value={hasOpenTracking ? totalOpens.toLocaleString() : "N/A"}
-            detail={hasOpenTracking ? undefined : "Tracking disabled"}
-            density="compact"
-          />
-          <MetricCard
-            label="Total Bounces"
-            value={totalBounces.toLocaleString()}
-            density="compact"
-          />
-        </div>
       </div>
 
       {/* Campaign Performance Chart */}
       {performanceTimeSeries.some((d) => d.sent > 0 || d.replied > 0 || d.bounced > 0 || d.interested > 0 || d.unsubscribed > 0) && (
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Activity</p>
           <Card density="compact">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="font-heading text-base text-foreground">
+                <CardTitle className="text-base text-foreground">
                   Email Activity
                 </CardTitle>
                 <PerformanceChartLegend />
@@ -318,87 +223,14 @@ export default async function PortalDashboardPage() {
               <PortalPerformanceChart data={performanceTimeSeries} />
             </CardContent>
           </Card>
-        </div>
       )}
-
-      {/* LinkedIn Summary -- Compact */}
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">LinkedIn</p>
-        <Card density="compact">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Linkedin className="h-4 w-4 text-muted-foreground" />
-                <p className="text-sm font-medium text-foreground">LinkedIn Overview</p>
-              </div>
-              <Link
-                href="/portal/linkedin"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                View details
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
-                  {senderCount}
-                  {totalSenderCount > senderCount && (
-                    <span className="text-sm text-muted-foreground font-normal">
-                      /{totalSenderCount}
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Active sender{senderCount !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
-                  {todayActions}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Action{todayActions !== 1 ? "s" : ""} today
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
-                  {weekActions}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Last 7 days
-                </p>
-              </div>
-              <div>
-                <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
-                  {pendingActions}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Pending
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Campaigns Table */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Campaigns</p>
-          <Link
-            href="/portal/campaigns"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            View all
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
         <Card>
           <CardContent className="p-0">
             {campaigns.length === 0 ? (
               <EmptyState
-                icon={Mail}
                 title="No campaigns yet"
                 description="Your campaigns will appear here once they are set up."
                 variant="compact"
@@ -468,65 +300,6 @@ export default async function PortalDashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Replies */}
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium mb-3">Recent Replies</p>
-        <Card>
-          <CardContent className="p-0">
-            {recentReplies.length === 0 ? (
-              <EmptyState
-                icon={MessageSquare}
-                title="No replies yet"
-                description="Replies to your campaigns will appear here."
-                variant="compact"
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border">
-                    <TableHead className="text-muted-foreground">From</TableHead>
-                    <TableHead className="text-muted-foreground">Subject</TableHead>
-                    <TableHead className="text-muted-foreground">Intent</TableHead>
-                    <TableHead className="text-right text-muted-foreground">Received</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentReplies.map((reply) => (
-                    <TableRow key={reply.id} className="border-border hover:bg-muted">
-                      <TableCell className="font-medium text-sm text-foreground">
-                        {reply.leadEmail}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
-                        {reply.subject ?? "\u2014"}
-                      </TableCell>
-                      <TableCell>
-                        {reply.intent ? (
-                          <StatusBadge
-                            status={reply.intent}
-                            type="intent"
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">\u2014</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-sm font-mono tabular-nums text-muted-foreground whitespace-nowrap">
-                        {reply.receivedAt
-                          ? new Date(reply.receivedAt).toLocaleDateString("en-GB", {
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "\u2014"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

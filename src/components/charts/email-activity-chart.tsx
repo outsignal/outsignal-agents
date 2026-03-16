@@ -36,14 +36,14 @@ interface Props {
 
 const COLORS = {
   // High-volume (left axis)
-  sent: "oklch(0 0 0)",              // black
-  opens: "oklch(0.7 0 0)",           // medium gray
-  uniqueOpens: "oklch(0.6 0.05 250)", // slate blue
+  sent: "#635BFF",              // brand purple
+  opens: "oklch(0.7 0 0)",           // medium gray (unchanged)
+  uniqueOpens: "oklch(0.6 0.05 250)", // slate blue (unchanged)
   // Low-volume (right axis)
-  replied: "oklch(0.85 0.12 110)",   // brand accent (yellow-green)
-  bounced: "oklch(0.577 0.245 27.325)", // destructive red
-  interested: "oklch(0.7 0.15 160)", // teal
-  unsubscribed: "oklch(0.55 0.1 280)", // muted purple
+  replied: "#10B981",           // green
+  bounced: "#EF4444",           // red
+  interested: "#F59E0B",        // amber
+  unsubscribed: "#6B7280",      // gray
 } as const;
 
 type SeriesKey = keyof typeof COLORS;
