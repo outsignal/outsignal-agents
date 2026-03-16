@@ -120,7 +120,7 @@ export async function sendInvoiceEmail(
 
   const resend = new Resend(apiKey);
   const from =
-    process.env.RESEND_FROM ?? "Outsignal <notifications@outsignal.ai>";
+    process.env.RESEND_FROM ?? "Outsignal <notifications@notification.outsignal.ai>";
 
   // Cast needed: renderToBuffer expects ReactElement<DocumentProps> but our
   // wrapper component has InvoicePdfDocumentProps. The Document is rendered internally.

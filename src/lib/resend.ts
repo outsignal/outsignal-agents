@@ -18,7 +18,7 @@ export async function sendNotificationEmail(params: {
     return;
   }
 
-  const from = process.env.RESEND_FROM ?? "Outsignal <notifications@outsignal.ai>";
+  const from = process.env.RESEND_FROM ?? "Outsignal <notifications@notification.outsignal.ai>";
 
   await resend.emails.send({
     from,
