@@ -14,6 +14,7 @@ import {
   Mail,
   User,
   Clock,
+  Archive,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PIPELINE_STATUSES } from "@/lib/clients/task-templates";
 import { ControlledConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CollapsibleSection } from "@/components/dashboard/collapsible-section";
 import { cn } from "@/lib/utils";
 import {
   DndContext,
@@ -84,6 +86,14 @@ const EMPTY_FORM: ProspectFormData = {
   notes: "",
 };
 
+/** Statuses shown as active kanban columns */
+const ACTIVE_STATUSES = PIPELINE_STATUSES.filter(
+  (s) => !["closed_won", "closed_lost", "unqualified", "churned"].includes(s.value),
+);
+
+/** Statuses relegated to the archive section */
+const ARCHIVED_STATUSES = new Set(["closed_won", "closed_lost", "unqualified", "churned"]);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeTime(dateStr: string): string {
@@ -106,6 +116,14 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function getStatusConfig(status: string) {
   return PIPELINE_STATUSES.find((s) => s.value === status) ?? {
     value: status,
@@ -116,7 +134,7 @@ function getStatusConfig(status: string) {
 
 /** Map pipeline status values to Tailwind classes for badge + dot styling */
 const STATUS_BADGE_CLASSES: Record<string, { badge: string; dot: string }> = {
-  new_lead:     { badge: "bg-slate-100 text-slate-600",    dot: "bg-slate-400" },
+  new_lead:     { badge: "bg-stone-100 text-stone-600",    dot: "bg-stone-400" },
   contacted:    { badge: "bg-indigo-50 text-indigo-600",   dot: "bg-indigo-500" },
   qualified:    { badge: "bg-indigo-50 text-indigo-600",   dot: "bg-indigo-500" },
   demo:         { badge: "bg-violet-50 text-violet-600",   dot: "bg-violet-500" },
@@ -124,14 +142,36 @@ const STATUS_BADGE_CLASSES: Record<string, { badge: string; dot: string }> = {
   negotiation:  { badge: "bg-orange-50 text-orange-600",   dot: "bg-orange-500" },
   closed_won:   { badge: "bg-green-50 text-green-700",     dot: "bg-green-500" },
   closed_lost:  { badge: "bg-red-50 text-red-700",         dot: "bg-red-500" },
-  unqualified:  { badge: "bg-slate-50 text-slate-500",     dot: "bg-slate-400" },
+  unqualified:  { badge: "bg-stone-50 text-stone-500",     dot: "bg-stone-400" },
   churned:      { badge: "bg-rose-50 text-rose-700",       dot: "bg-rose-500" },
 };
 
-const FALLBACK_BADGE_CLASSES = { badge: "bg-slate-100 text-slate-600", dot: "bg-slate-400" };
+const FALLBACK_BADGE_CLASSES = { badge: "bg-stone-100 text-stone-600", dot: "bg-stone-400" };
 
 function getStatusClasses(status: string) {
   return STATUS_BADGE_CLASSES[status] ?? FALLBACK_BADGE_CLASSES;
+}
+
+// ─── Drag Handle ──────────────────────────────────────────────────────────────
+
+function DragGrip({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex flex-col gap-[2px] opacity-0 group-hover:opacity-40 transition-opacity", className)}>
+      {/* 6-dot grip pattern (3 rows x 2 cols) */}
+      <div className="flex gap-[2px]">
+        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+      </div>
+      <div className="flex gap-[2px]">
+        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+      </div>
+      <div className="flex gap-[2px]">
+        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+        <span className="h-[3px] w-[3px] rounded-full bg-stone-400" />
+      </div>
+    </div>
+  );
 }
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
@@ -151,10 +191,11 @@ function StatusBadge({
       <DropdownMenuTrigger asChild>
         <button
           className={cn(
-            "px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-opacity hover:opacity-80 focus:outline-none",
+            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-opacity hover:opacity-80 focus:outline-none",
             classes.badge,
           )}
         >
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", classes.dot)} />
           {config.label}
         </button>
       </DropdownMenuTrigger>
@@ -207,101 +248,112 @@ function ProspectCard({
   return (
     <div
       ref={isDragOverlay ? undefined : setNodeRef}
-      {...(isDragOverlay ? {} : listeners)}
-      {...(isDragOverlay ? {} : attributes)}
       className={cn(
-        "group rounded-lg border border-border/50 bg-card p-3 transition-all hover:border-border hover:shadow-sm cursor-pointer",
-        isDragging && "opacity-50",
-        isDragOverlay && "shadow-lg ring-2 ring-primary/20 rotate-[2deg]",
+        "group flex items-stretch rounded-xl border border-stone-200 bg-white shadow-sm transition-all hover:shadow-md cursor-pointer",
+        isDragging && "opacity-40",
+        isDragOverlay && "shadow-lg ring-2 ring-[#635BFF]/20 rotate-[2deg]",
       )}
       onClick={onEdit}
     >
-      {/* Top row: company name + action menu */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="min-w-0 flex-1">
-          {prospect.pipelineStatus === "closed_won" ? (
-            <a
-              href={`/clients/${prospect.id}`}
-              className="text-sm font-semibold leading-tight hover:underline text-foreground block truncate"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {prospect.name}
-            </a>
-          ) : (
-            <p className="text-sm font-semibold leading-tight text-foreground truncate">
-              {prospect.name}
-            </p>
+      {/* Drag handle zone */}
+      <div
+        {...(isDragOverlay ? {} : listeners)}
+        {...(isDragOverlay ? {} : attributes)}
+        className="flex items-center justify-center w-6 shrink-0 cursor-grab active:cursor-grabbing"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DragGrip />
+      </div>
+
+      {/* Card content */}
+      <div className="flex-1 min-w-0 py-2.5 pr-2.5">
+        {/* Top row: company name + action menu */}
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <div className="min-w-0 flex-1">
+            {prospect.pipelineStatus === "closed_won" ? (
+              <a
+                href={`/clients/${prospect.id}`}
+                className="text-sm font-semibold leading-tight text-stone-900 hover:underline block truncate"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {prospect.name}
+              </a>
+            ) : (
+              <p className="text-sm font-semibold leading-tight text-stone-900 truncate">
+                {prospect.name}
+              </p>
+            )}
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Prospect actions"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <ArrowRight className="h-4 w-4 mr-2" />
+                View / Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onConvert}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Convert to Client
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Details */}
+        <div className="space-y-0.5 mb-2">
+          {prospect.contactName && (
+            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+              <User className="h-3 w-3 shrink-0" />
+              <span className="truncate">{prospect.contactName}</span>
+            </div>
+          )}
+          {prospect.contactEmail && (
+            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+              <Mail className="h-3 w-3 shrink-0" />
+              <span className="truncate">{prospect.contactEmail}</span>
+            </div>
+          )}
+          {domain && (
+            <div className="flex items-center gap-1.5 text-xs text-stone-500">
+              <Globe className="h-3 w-3 shrink-0" />
+              <a
+                href={prospect.website!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="truncate hover:underline hover:text-stone-700"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {domain}
+              </a>
+            </div>
           )}
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-              onClick={(e) => e.stopPropagation()}
-              aria-label="Prospect actions"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEdit}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              View / Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onConvert}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Convert to Client
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Details */}
-      <div className="space-y-1 mb-2.5">
-        {prospect.contactName && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <User className="h-3 w-3 shrink-0" />
-            <span className="truncate">{prospect.contactName}</span>
-          </div>
-        )}
-        {prospect.contactEmail && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Mail className="h-3 w-3 shrink-0" />
-            <span className="truncate">{prospect.contactEmail}</span>
-          </div>
-        )}
-        {domain && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Globe className="h-3 w-3 shrink-0" />
-            <a
-              href={prospect.website!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="truncate hover:underline hover:text-foreground"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {domain}
-            </a>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom row: status badge + time */}
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
-        <StatusBadge status={prospect.pipelineStatus} onStatusChange={onStatusChange} />
-        <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70 shrink-0">
-          <Clock className="h-2.5 w-2.5" />
-          {relativeTime(prospect.createdAt)}
-        </span>
+        {/* Bottom row: status badge + time */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+          <StatusBadge status={prospect.pipelineStatus} onStatusChange={onStatusChange} />
+          <span className="flex items-center gap-1 text-[10px] text-stone-400 shrink-0">
+            <Clock className="h-2.5 w-2.5" />
+            {relativeTime(prospect.createdAt)}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -311,18 +363,18 @@ function ProspectCard({
 
 function SkeletonColumn() {
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
-          className="rounded-lg border border-border/30 bg-card p-3 space-y-2"
+          className="rounded-xl border border-stone-200 bg-white p-3 space-y-2"
         >
-          <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
-          <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-          <div className="h-3 bg-muted rounded animate-pulse w-2/3" />
+          <div className="h-4 bg-stone-100 rounded animate-pulse w-3/4" />
+          <div className="h-3 bg-stone-100 rounded animate-pulse w-1/2" />
+          <div className="h-3 bg-stone-100 rounded animate-pulse w-2/3" />
           <div className="flex items-center justify-between pt-1">
-            <div className="h-5 bg-muted rounded-full animate-pulse w-20" />
-            <div className="h-3 bg-muted rounded animate-pulse w-12" />
+            <div className="h-5 bg-stone-100 rounded-full animate-pulse w-20" />
+            <div className="h-3 bg-stone-100 rounded animate-pulse w-12" />
           </div>
         </div>
       ))}
@@ -339,6 +391,7 @@ function KanbanColumn({
   onDelete,
   onConvert,
   onEdit,
+  isDragging,
 }: {
   status: { value: string; label: string; color: string };
   prospects: Prospect[];
@@ -346,20 +399,21 @@ function KanbanColumn({
   onDelete: (id: string, name: string) => void;
   onConvert: (id: string) => void;
   onEdit: (prospect: Prospect) => void;
+  isDragging?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.value });
 
   return (
     <div className="flex flex-col min-h-0">
       {/* Column header */}
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2 px-1">
         <span
-          className={cn("h-2.5 w-2.5 rounded-full shrink-0", getStatusClasses(status.value).dot)}
+          className={cn("h-2 w-2 rounded-full shrink-0", getStatusClasses(status.value).dot)}
         />
-        <h3 className="text-sm font-semibold tracking-tight truncate">
+        <h3 className="text-sm font-semibold text-stone-700 tracking-tight truncate">
           {status.label}
         </h3>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">
+        <span className="text-xs font-mono text-stone-400 shrink-0">
           {prospects.length}
         </span>
       </div>
@@ -368,27 +422,120 @@ function KanbanColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          "space-y-2 flex-1 rounded-md transition-colors min-h-[60px]",
-          isOver && "bg-primary/5 ring-2 ring-primary/20",
+          "flex-1 rounded-lg transition-all min-h-[80px] p-1",
+          isOver && "bg-[#635BFF]/5 ring-2 ring-[#635BFF]/20",
+          isDragging && !isOver && "border-2 border-dashed border-[#635BFF]/10 rounded-lg",
         )}
       >
-        {prospects.map((p) => (
-          <ProspectCard
-            key={p.id}
-            prospect={p}
-            onStatusChange={(newStatus) => onStatusChange(p.id, newStatus)}
-            onDelete={() => onDelete(p.id, p.name)}
-            onConvert={() => onConvert(p.id)}
-            onEdit={() => onEdit(p)}
-          />
-        ))}
+        <div className="space-y-3">
+          {prospects.map((p) => (
+            <ProspectCard
+              key={p.id}
+              prospect={p}
+              onStatusChange={(newStatus) => onStatusChange(p.id, newStatus)}
+              onDelete={() => onDelete(p.id, p.name)}
+              onConvert={() => onConvert(p.id)}
+              onEdit={() => onEdit(p)}
+            />
+          ))}
+        </div>
 
         {prospects.length === 0 && (
-          <p className="text-xs text-muted-foreground/50 text-center py-6">
-            No prospects
-          </p>
+          <div className="flex items-center justify-center h-full min-h-[80px] border-2 border-dashed border-stone-200 rounded-lg">
+            <p className="text-xs text-stone-400">No deals</p>
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Archive Table ────────────────────────────────────────────────────────────
+
+function ArchiveTable({
+  prospects,
+  onStatusChange,
+  onDelete,
+  onConvert,
+  onEdit,
+}: {
+  prospects: Prospect[];
+  onStatusChange: (id: string, newStatus: string) => void;
+  onDelete: (id: string, name: string) => void;
+  onConvert: (id: string) => void;
+  onEdit: (prospect: Prospect) => void;
+}) {
+  if (prospects.length === 0) {
+    return (
+      <p className="text-sm text-stone-400 text-center py-8">
+        No archived deals yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-stone-200">
+            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Name</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Contact</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Status</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider">Date</th>
+            <th className="text-right py-2 px-3 text-xs font-medium text-stone-500 uppercase tracking-wider w-10"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {prospects.map((p) => {
+            const classes = getStatusClasses(p.pipelineStatus);
+            const config = getStatusConfig(p.pipelineStatus);
+            return (
+              <tr
+                key={p.id}
+                className="border-b border-stone-100 hover:bg-stone-50 transition-colors cursor-pointer"
+                onClick={() => onEdit(p)}
+              >
+                <td className="py-2.5 px-3 text-stone-500 font-medium">{p.name}</td>
+                <td className="py-2.5 px-3 text-stone-400">{p.contactName || p.contactEmail || "—"}</td>
+                <td className="py-2.5 px-3">
+                  {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <StatusBadge status={p.pipelineStatus} onStatusChange={(ns) => onStatusChange(p.id, ns)} />
+                  </span>
+                </td>
+                <td className="py-2.5 px-3 text-stone-400 text-xs font-mono">{formatDate(p.createdAt)}</td>
+                <td className="py-2.5 px-3 text-right">
+                  {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                          <MoreHorizontal className="h-3.5 w-3.5 text-stone-400" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onEdit(p)}>
+                          <ArrowRight className="h-4 w-4 mr-2" />
+                          View / Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onConvert(p.id)}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Convert to Client
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => onDelete(p.id, p.name)}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -472,21 +619,33 @@ export default function PipelinePage() {
     });
   }, [prospects, search]);
 
+  /** Active prospects (shown in kanban columns) */
+  const activeFiltered = useMemo(
+    () => filtered.filter((p) => !ARCHIVED_STATUSES.has(p.pipelineStatus)),
+    [filtered],
+  );
+
+  /** Archived prospects (closed_won, closed_lost, unqualified, churned) */
+  const archivedFiltered = useMemo(
+    () => filtered.filter((p) => ARCHIVED_STATUSES.has(p.pipelineStatus)),
+    [filtered],
+  );
+
   const prospectsByStatus = useMemo(() => {
     const grouped: Record<string, Prospect[]> = {};
-    for (const status of PIPELINE_STATUSES) {
+    for (const status of ACTIVE_STATUSES) {
       grouped[status.value] = [];
     }
-    for (const p of filtered) {
+    for (const p of activeFiltered) {
       if (grouped[p.pipelineStatus]) {
         grouped[p.pipelineStatus].push(p);
       } else {
         // Unknown status — put in first column
-        grouped[PIPELINE_STATUSES[0].value].push(p);
+        grouped[ACTIVE_STATUSES[0].value].push(p);
       }
     }
     return grouped;
-  }, [filtered]);
+  }, [activeFiltered]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -743,9 +902,9 @@ export default function PipelinePage() {
 
       <div className="p-6 space-y-6">
         {/* Search + count */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" aria-hidden="true" />
             <Input
               placeholder="Search prospects..."
               value={search}
@@ -755,7 +914,7 @@ export default function PipelinePage() {
           </div>
 
           {!loading && (
-            <span className="text-xs text-muted-foreground ml-auto">
+            <span className="text-xs text-stone-400 ml-auto font-mono">
               {filtered.length} prospect{filtered.length !== 1 ? "s" : ""}
             </span>
           )}
@@ -764,11 +923,11 @@ export default function PipelinePage() {
         {/* Kanban board */}
         {!loading && prospects.length === 0 && !search ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Building2 className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
-            <h3 className="text-lg font-medium text-foreground mb-1">
+            <Building2 className="h-12 w-12 text-stone-300 mb-4" aria-hidden="true" />
+            <h3 className="text-lg font-medium text-stone-900 mb-1">
               No pipeline deals
             </h3>
-            <p className="text-sm text-muted-foreground text-center max-w-sm mb-5">
+            <p className="text-sm text-stone-500 text-center max-w-sm mb-5">
               Add your first prospect to start tracking deals through the sales pipeline.
             </p>
             <Button size="sm" onClick={() => setDialogOpen(true)}>
@@ -780,30 +939,30 @@ export default function PipelinePage() {
           <>
             {/* Desktop skeleton */}
             <div className="hidden lg:flex gap-4 overflow-x-auto pb-4">
-              {PIPELINE_STATUSES.map((status) => (
+              {ACTIVE_STATUSES.map((status) => (
                 <div
                   key={status.value}
-                  className="min-w-[280px] flex-1 rounded-lg bg-muted/30 p-3 border border-border/30"
+                  className="min-w-[280px] flex-1 rounded-xl bg-stone-50 p-3"
                 >
-                  <div className="mb-3 flex items-center gap-2">
+                  <div className="mb-3 flex items-center gap-2 px-1">
                     <span
-                      className={cn("h-2.5 w-2.5 rounded-full shrink-0", getStatusClasses(status.value).dot)}
+                      className={cn("h-2 w-2 rounded-full shrink-0", getStatusClasses(status.value).dot)}
                     />
-                    <div className="h-4 bg-muted rounded animate-pulse w-24" />
+                    <div className="h-4 bg-stone-200 rounded animate-pulse w-24" />
                   </div>
                   <SkeletonColumn />
                 </div>
               ))}
             </div>
             {/* Mobile skeleton */}
-            <div className="lg:hidden rounded-lg bg-muted/30 p-3 border border-border/30">
+            <div className="lg:hidden rounded-xl bg-stone-50 p-3">
               <SkeletonColumn />
             </div>
           </>
         ) : filtered.length === 0 && search ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Building2 className="h-8 w-8 text-muted-foreground/40 mb-2" aria-hidden="true" />
-            <p className="text-sm">No prospects match your search.</p>
+          <div className="flex flex-col items-center justify-center py-16">
+            <Building2 className="h-8 w-8 text-stone-300 mb-2" aria-hidden="true" />
+            <p className="text-sm text-stone-400">No prospects match your search.</p>
           </div>
         ) : (
           <>
@@ -815,19 +974,11 @@ export default function PipelinePage() {
               onDragEnd={handleDragEnd}
               onDragCancel={handleDragCancel}
             >
-              <div className="hidden lg:flex gap-4 overflow-x-auto pb-4">
-                {PIPELINE_STATUSES.map((status) => (
+              <div className="hidden lg:flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
+                {ACTIVE_STATUSES.map((status) => (
                   <div
                     key={status.value}
-                    className={cn(
-                      "min-w-[280px] flex-1 rounded-lg bg-muted/30 p-3 border border-border/30",
-                      // Slightly dim "done" state columns
-                      (status.value === "closed_won" ||
-                        status.value === "closed_lost" ||
-                        status.value === "unqualified" ||
-                        status.value === "churned") &&
-                        "opacity-80"
-                    )}
+                    className="min-w-[280px] flex-1 rounded-xl bg-stone-50 p-3 snap-start"
                   >
                     <KanbanColumn
                       status={status}
@@ -836,6 +987,7 @@ export default function PipelinePage() {
                       onDelete={handleDelete}
                       onConvert={handleConvertToClient}
                       onEdit={handleEdit}
+                      isDragging={activeProspect !== null}
                     />
                   </div>
                 ))}
@@ -861,7 +1013,7 @@ export default function PipelinePage() {
             <div className="lg:hidden">
               <Tabs defaultValue="new_lead">
                 <TabsList className="w-full overflow-x-auto flex-nowrap justify-start">
-                  {PIPELINE_STATUSES.map((status) => {
+                  {ACTIVE_STATUSES.map((status) => {
                     const count = (prospectsByStatus[status.value] ?? []).length;
                     return (
                       <TabsTrigger
@@ -874,7 +1026,7 @@ export default function PipelinePage() {
                         />
                         {status.label}
                         {count > 0 && (
-                          <span className="ml-1 text-[10px] text-muted-foreground">
+                          <span className="ml-1 text-[10px] text-stone-400">
                             {count}
                           </span>
                         )}
@@ -883,9 +1035,9 @@ export default function PipelinePage() {
                   })}
                 </TabsList>
 
-                {PIPELINE_STATUSES.map((status) => (
+                {ACTIVE_STATUSES.map((status) => (
                   <TabsContent key={status.value} value={status.value}>
-                    <div className="rounded-lg bg-muted/30 p-3 border border-border/30">
+                    <div className="rounded-xl bg-stone-50 p-3">
                       <KanbanColumn
                         status={status}
                         prospects={prospectsByStatus[status.value] ?? []}
@@ -899,6 +1051,31 @@ export default function PipelinePage() {
                 ))}
               </Tabs>
             </div>
+
+            {/* Archive section */}
+            {(archivedFiltered.length > 0 || !search) && (
+              <CollapsibleSection
+                id="pipeline-archive"
+                title="Archived"
+                defaultCollapsed
+                collapsedSummary={
+                  <span className="font-mono text-xs">
+                    {archivedFiltered.length} deal{archivedFiltered.length !== 1 ? "s" : ""}
+                  </span>
+                }
+                actions={
+                  <Archive className="h-4 w-4 text-stone-400" />
+                }
+              >
+                <ArchiveTable
+                  prospects={archivedFiltered}
+                  onStatusChange={handleStatusChange}
+                  onDelete={handleDelete}
+                  onConvert={handleConvertToClient}
+                  onEdit={handleEdit}
+                />
+              </CollapsibleSection>
+            )}
           </>
         )}
       </div>
