@@ -22,9 +22,15 @@ export async function POST(request: Request) {
 
     try {
       const leads = await client.getLeads();
-      for (const lead of leads) {
-        try {
-          const upsertedLead = await prisma.person.upsert({
+
+      // Process in batches of 50 inside a single transaction to eliminate N+1 queries
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+        const batch = leads.slice(i, i + BATCH_SIZE);
+
+        // Build all upsert operations for this batch
+        const operations = batch.map((lead) => ({
+          personUpsert: prisma.person.upsert({
             where: {
               email: lead.email,
             },
@@ -50,9 +56,85 @@ export async function POST(request: Request) {
                 ? JSON.stringify(lead.custom_variables)
                 : undefined,
             },
-          });
+          }),
+          lead,
+        }));
 
-          await prisma.personWorkspace.upsert({
+        // Step 1: Batch all person upserts in a single transaction
+        let upsertedPeople: Awaited<ReturnType<typeof prisma.person.upsert>>[];
+        try {
+          upsertedPeople = await prisma.$transaction(
+            operations.map((op) => op.personUpsert)
+          );
+        } catch {
+          // If the whole batch transaction fails, fall back to individual upserts
+          // to match original per-record error handling
+          for (const op of operations) {
+            try {
+              const upsertedLead = await prisma.person.upsert(
+                // Re-create the upsert since the previous promise is consumed
+                {
+                  where: { email: op.lead.email },
+                  create: {
+                    email: op.lead.email,
+                    firstName: op.lead.first_name ?? null,
+                    lastName: op.lead.last_name ?? null,
+                    jobTitle: op.lead.title ?? null,
+                    company: op.lead.company ? normalizeCompanyName(op.lead.company) : null,
+                    phone: op.lead.phone ?? null,
+                    enrichmentData: op.lead.custom_variables
+                      ? JSON.stringify(op.lead.custom_variables)
+                      : null,
+                    source: "emailbison",
+                  },
+                  update: {
+                    firstName: op.lead.first_name ?? undefined,
+                    lastName: op.lead.last_name ?? undefined,
+                    jobTitle: op.lead.title ?? undefined,
+                    company: op.lead.company ? normalizeCompanyName(op.lead.company) : undefined,
+                    phone: op.lead.phone ?? undefined,
+                    enrichmentData: op.lead.custom_variables
+                      ? JSON.stringify(op.lead.custom_variables)
+                      : undefined,
+                  },
+                }
+              );
+
+              await prisma.personWorkspace.upsert({
+                where: {
+                  personId_workspace: {
+                    personId: upsertedLead.id,
+                    workspace: ws.slug,
+                  },
+                },
+                create: {
+                  personId: upsertedLead.id,
+                  workspace: ws.slug,
+                  sourceId: op.lead.id.toString(),
+                  status: op.lead.status ?? "new",
+                  vertical: ws.vertical ?? null,
+                  tags: op.lead.tags?.map((t: { name: string }) => t.name).join(",") ?? null,
+                },
+                update: {
+                  sourceId: op.lead.id.toString(),
+                  status: op.lead.status ?? undefined,
+                  vertical: ws.vertical ?? undefined,
+                  tags: op.lead.tags?.map((t: { name: string }) => t.name).join(",") ?? undefined,
+                },
+              });
+
+              synced++;
+            } catch {
+              errors++;
+            }
+          }
+          continue;
+        }
+
+        // Step 2: Batch all personWorkspace upserts in a single transaction
+        const workspaceUpserts = upsertedPeople.map((upsertedLead, idx) => {
+          const lead = batch[idx];
+          return prisma.personWorkspace.upsert({
             where: {
               personId_workspace: {
                 personId: upsertedLead.id,
@@ -65,19 +147,53 @@ export async function POST(request: Request) {
               sourceId: lead.id.toString(),
               status: lead.status ?? "new",
               vertical: ws.vertical ?? null,
-              tags: lead.tags?.map((t) => t.name).join(",") ?? null,
+              tags: lead.tags?.map((t: { name: string }) => t.name).join(",") ?? null,
             },
             update: {
               sourceId: lead.id.toString(),
               status: lead.status ?? undefined,
               vertical: ws.vertical ?? undefined,
-              tags: lead.tags?.map((t) => t.name).join(",") ?? undefined,
+              tags: lead.tags?.map((t: { name: string }) => t.name).join(",") ?? undefined,
             },
           });
+        });
 
-          synced++;
+        try {
+          await prisma.$transaction(workspaceUpserts);
+          synced += batch.length;
         } catch {
-          errors++;
+          // If batch workspace upsert fails, fall back to individual for error isolation
+          for (let idx = 0; idx < batch.length; idx++) {
+            try {
+              const upsertedLead = upsertedPeople[idx];
+              const lead = batch[idx];
+              await prisma.personWorkspace.upsert({
+                where: {
+                  personId_workspace: {
+                    personId: upsertedLead.id,
+                    workspace: ws.slug,
+                  },
+                },
+                create: {
+                  personId: upsertedLead.id,
+                  workspace: ws.slug,
+                  sourceId: lead.id.toString(),
+                  status: lead.status ?? "new",
+                  vertical: ws.vertical ?? null,
+                  tags: lead.tags?.map((t: { name: string }) => t.name).join(",") ?? null,
+                },
+                update: {
+                  sourceId: lead.id.toString(),
+                  status: lead.status ?? undefined,
+                  vertical: ws.vertical ?? undefined,
+                  tags: lead.tags?.map((t: { name: string }) => t.name).join(",") ?? undefined,
+                },
+              });
+              synced++;
+            } catch {
+              errors++;
+            }
+          }
         }
       }
     } catch (err) {
