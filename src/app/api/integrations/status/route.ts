@@ -16,7 +16,6 @@ interface ProviderStatus {
     | "ai"
     | "discovery"
     | "scraping"
-    | "signals"
     | "notifications"
     | "infrastructure";
   status: ConnectionStatus;
@@ -322,61 +321,6 @@ async function checkApollo(): Promise<ProviderStatus> {
   }
 }
 
-async function checkTheirStack(): Promise<ProviderStatus> {
-  const now = new Date().toISOString();
-  const apiKey = process.env.THEIRSTACK_API_KEY;
-
-  if (!apiKey) {
-    return {
-      id: "theirstack",
-      name: "TheirStack",
-      category: "discovery",
-      status: "disconnected",
-      configured: false,
-      dashboardUrl: "https://app.theirstack.com",
-      lastChecked: now,
-    };
-  }
-
-  try {
-    const res = await fetchWithTimeout(
-      "https://api.theirstack.com/v0/billing/credit-balance",
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    const data = await res.json();
-
-    const remaining = data?.api_credits != null && data?.used_api_credits != null
-      ? data.api_credits - data.used_api_credits
-      : undefined;
-
-    return {
-      id: "theirstack",
-      name: "TheirStack",
-      category: "discovery",
-      status: "connected",
-      configured: true,
-      credits: {
-        used: data?.used_api_credits,
-        remaining,
-        total: data?.api_credits,
-      },
-      dashboardUrl: "https://app.theirstack.com",
-      lastChecked: now,
-    };
-  } catch (err) {
-    return {
-      id: "theirstack",
-      name: "TheirStack",
-      category: "discovery",
-      status: "degraded",
-      configured: true,
-      dashboardUrl: "https://app.theirstack.com",
-      error: "Connection check failed",
-      lastChecked: now,
-    };
-  }
-}
-
 async function checkApify(): Promise<ProviderStatus> {
   const now = new Date().toISOString();
   const token = process.env.APIFY_API_TOKEN;
@@ -513,23 +457,6 @@ async function checkSerper(): Promise<ProviderStatus> {
       lastChecked: now,
     };
   }
-}
-
-function checkPredictLeads(): ProviderStatus {
-  const now = new Date().toISOString();
-  const configured =
-    !!process.env.PREDICTLEADS_API_KEY &&
-    !!process.env.PREDICTLEADS_API_TOKEN;
-
-  return {
-    id: "predictleads",
-    name: "PredictLeads",
-    category: "signals",
-    status: configured ? "no_api" : "disconnected",
-    configured,
-    dashboardUrl: "https://predictleads.com",
-    lastChecked: now,
-  };
 }
 
 function checkAnthropic(): ProviderStatus {
@@ -741,7 +668,6 @@ export async function GET() {
       checkFirecrawl(),
       checkApollo(),
       checkSerper(),
-      checkTheirStack(),
       checkApify(),
       checkNeon(),
       checkRailway(),
@@ -773,7 +699,6 @@ export async function GET() {
     const envProviders: ProviderStatus[] = [
       checkOpenAI(),
       checkAiArk(),
-      checkPredictLeads(),
       checkAnthropic(),
       checkSlack(),
       checkCheapInboxes(),

@@ -21,7 +21,6 @@ interface ProviderStatus {
     | "ai"
     | "discovery"
     | "scraping"
-    | "signals"
     | "notifications"
     | "infrastructure";
   status: ConnectionStatus;
@@ -56,7 +55,6 @@ const CATEGORY_ORDER: ProviderStatus["category"][] = [
   "discovery",
   "ai",
   "scraping",
-  "signals",
   "notifications",
 ];
 
@@ -66,7 +64,6 @@ const CATEGORY_LABELS: Record<ProviderStatus["category"], string> = {
   discovery: "Discovery",
   ai: "AI / LLM",
   scraping: "Scraping",
-  signals: "Signals",
   notifications: "Notifications",
 };
 
