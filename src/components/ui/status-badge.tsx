@@ -21,6 +21,7 @@ type StatusType =
   | "invoice"
   | "enrichment"
   | "sentiment"
+  | "campaign"
   | "generic";
 
 interface StatusConfig {
@@ -65,6 +66,17 @@ const STATUS_MAPS: Record<StatusType, Record<string, StatusConfig>> = {
     positive: { variant: "success", label: "Positive" },
     negative: { variant: "destructive", label: "Negative" },
     neutral: { variant: "secondary", label: "Neutral" },
+  },
+  campaign: {
+    active: { variant: "success", dot: true, label: "Active" },
+    paused: { variant: "warning", dot: true, label: "Paused" },
+    completed: { variant: "secondary", label: "Completed" },
+    draft: { variant: "outline", label: "Draft" },
+    deployed: { variant: "info", dot: true, label: "Deployed" },
+    approved: { variant: "success", label: "Approved" },
+    pending_approval: { variant: "warning", label: "Pending Approval" },
+    internal_review: { variant: "purple", label: "Internal Review" },
+    archived: { variant: "secondary", label: "Archived" },
   },
   generic: {},
 };

@@ -1,53 +1,13 @@
 import Link from "next/link";
-import { Megaphone } from "lucide-react";
 import { Header } from "@/components/layout/header";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { CampaignFilters } from "@/components/campaigns/campaign-filters";
+import {
+  CampaignsTable,
+  type CampaignRow,
+} from "@/components/campaigns/campaigns-table";
 
 export const dynamic = "force-dynamic";
-
-// ─── Status color map (matches campaign detail page) ────────────────────────
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-zinc-700 text-zinc-300",
-  internal_review: "bg-purple-900/60 text-purple-300",
-  pending_approval: "bg-amber-900/60 text-amber-300",
-  approved: "bg-emerald-900/60 text-emerald-300",
-  deployed: "bg-blue-900/60 text-blue-300",
-  active: "bg-emerald-900/60 text-emerald-300",
-  paused: "bg-yellow-900/60 text-yellow-300",
-  completed: "bg-zinc-600 text-zinc-300",
-  archived: "bg-zinc-800 text-zinc-400",
-};
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function parseChannels(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : ["email"];
-  } catch {
-    return ["email"];
-  }
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -99,6 +59,20 @@ export default async function CampaignsPage({
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
+  // Serialize for client component
+  const rows: CampaignRow[] = campaigns.map((c) => ({
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    type: c.type,
+    workspaceSlug: c.workspaceSlug,
+    workspaceName: c.workspace.name,
+    leadCount: c.targetList?._count.people ?? 0,
+    dailyLeadCap: c.dailyLeadCap,
+    updatedAt: c.updatedAt.toISOString(),
+    createdAt: c.createdAt.toISOString(),
+  }));
+
   return (
     <div>
       <Header
@@ -107,135 +81,21 @@ export default async function CampaignsPage({
         actions={<CampaignFilters workspaces={workspaces} />}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-4">
         {/* Summary */}
-        <div className="mb-6">
-          <span className="text-xs text-muted-foreground">
+        <div>
+          <span className="text-xs text-stone-500">
             {totalCount} campaign{totalCount !== 1 ? "s" : ""}
             {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
           </span>
         </div>
 
         {/* Table */}
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Workspace</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="hidden md:table-cell">Channels</TableHead>
-                  <TableHead className="hidden md:table-cell">Target List</TableHead>
-                  <TableHead className="hidden md:table-cell">Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {campaigns.length > 0 ? (
-                  campaigns.map((campaign) => {
-                    const channels = parseChannels(campaign.channels);
-                    const leadCount =
-                      campaign.targetList?._count.people ?? 0;
-
-                    return (
-                      <TableRow key={campaign.id} className="border-border">
-                        <TableCell>
-                          <Link
-                            href={`/campaigns/${campaign.id}`}
-                            className="font-medium text-sm hover:underline"
-                          >
-                            {campaign.name}
-                          </Link>
-                          {campaign.type === "signal" && campaign.dailyLeadCap && (
-                            <p className="text-xs text-muted-foreground/60 mt-0.5">
-                              Cap: {campaign.dailyLeadCap}/day
-                            </p>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Link
-                            href={`/workspace/${campaign.workspaceSlug}`}
-                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-                          >
-                            {campaign.workspace.name}
-                          </Link>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={`text-xs capitalize ${STATUS_COLORS[campaign.status] ?? ""}`}
-                          >
-                            {campaign.status.replace(/_/g, " ")}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {campaign.type === "signal" ? (
-                            <Badge className="bg-[#F0FF7A]/20 text-[#F0FF7A] text-xs">
-                              Signal
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-zinc-700 text-zinc-300 text-xs">
-                              Static
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <div className="flex gap-1">
-                            {channels.map((ch) => (
-                              <Badge
-                                key={ch}
-                                variant="secondary"
-                                size="xs"
-                                className="capitalize"
-                              >
-                                {ch}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          {campaign.targetList ? (
-                            <span className="text-xs text-muted-foreground">
-                              {campaign.targetList.name}
-                              <span className="ml-1 text-muted-foreground/60">
-                                ({leadCount.toLocaleString()})
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/50">
-                              --
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                          {formatDate(campaign.createdAt)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="py-12 text-center text-muted-foreground"
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        <Megaphone className="h-8 w-8 text-muted-foreground/40" aria-hidden="true" />
-                        <p className="text-sm">
-                          No campaigns yet. Create one from a workspace page.
-                        </p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <CampaignsTable campaigns={rows} />
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-2 pt-2">
             {currentPage > 1 && (
               <Link
                 href={`/campaigns?${new URLSearchParams({
@@ -243,7 +103,7 @@ export default async function CampaignsPage({
                   ...(status ? { status } : {}),
                   page: String(currentPage - 1),
                 }).toString()}`}
-                className="px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors"
+                className="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
               >
                 Previous
               </Link>
@@ -264,7 +124,7 @@ export default async function CampaignsPage({
                 p === "..." ? (
                   <span
                     key={`ellipsis-${idx}`}
-                    className="px-1 text-xs text-muted-foreground"
+                    className="px-1 text-xs text-stone-400"
                   >
                     ...
                   </span>
@@ -278,8 +138,8 @@ export default async function CampaignsPage({
                     }).toString()}`}
                     className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
                       p === currentPage
-                        ? "bg-foreground text-background border-foreground"
-                        : "border-border hover:bg-muted"
+                        ? "bg-stone-900 text-white border-stone-900"
+                        : "border-stone-200 text-stone-600 hover:bg-stone-50"
                     }`}
                   >
                     {p}
@@ -293,7 +153,7 @@ export default async function CampaignsPage({
                   ...(status ? { status } : {}),
                   page: String(currentPage + 1),
                 }).toString()}`}
-                className="px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors"
+                className="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
               >
                 Next
               </Link>
