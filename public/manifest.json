@@ -1,0 +1,12 @@
+{
+  "name": "Outsignal",
+  "short_name": "Outsignal",
+  "description": "Outbound that compounds",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#635BFF",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" }
+  ]
+}

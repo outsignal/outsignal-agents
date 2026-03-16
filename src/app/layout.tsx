@@ -17,7 +17,29 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   title: "Outsignal",
-  description: "Cold outbound campaign management",
+  description: "Outbound that compounds",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-touch-icon.svg" }],
+  },
+  manifest: "/manifest.json",
+  themeColor: "#635BFF",
+  openGraph: {
+    title: "Outsignal",
+    description: "Outbound that compounds",
+    url: "https://admin.outsignal.ai",
+    siteName: "Outsignal",
+    images: [
+      { url: "/og-image.svg", width: 1200, height: 630, alt: "Outsignal" },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Outsignal",
+    description: "Outbound that compounds",
+    images: ["/og-image.svg"],
+  },
 };
 
 export default function RootLayout({
