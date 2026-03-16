@@ -26,7 +26,7 @@ function isCsrfExempt(pathname: string): boolean {
   return CSRF_EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Only validate CSRF on API mutation requests
@@ -49,7 +49,7 @@ export function middleware(request: NextRequest) {
     );
   }
 
-  // Constant-time comparison (Edge-compatible, no Node crypto needed)
+  // Constant-time comparison
   if (headerToken.length !== cookieToken.length) {
     return NextResponse.json(
       { error: "CSRF token invalid" },
