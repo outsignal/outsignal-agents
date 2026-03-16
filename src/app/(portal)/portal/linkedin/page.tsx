@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
-import { ConnectButton } from "@/components/linkedin/connect-button";
+import { PortalConnectButton } from "@/components/portal/linkedin-connect-button";
 import { AddAccountButton } from "@/components/linkedin/add-account-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
@@ -19,7 +19,7 @@ import {
   LinkedInChartLegend,
 } from "@/components/portal/linkedin-activity-chart";
 import { HealthStatusBadge } from "@/components/portal/health-status-badge";
-import { LinkedinIcon, Clock } from "lucide-react";
+import { LinkedinIcon, Clock, AlertTriangle } from "lucide-react";
 
 export default async function PortalLinkedInPage() {
   let session;
@@ -117,6 +117,15 @@ export default async function PortalLinkedInPage() {
           <PortalRefreshButton />
         </div>
       </div>
+
+      {senders.some(s => s.sessionStatus === "expired") && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+          <p className="text-sm text-yellow-800 dark:text-yellow-200">
+            Your LinkedIn session has expired. Please reconnect to continue outreach.
+          </p>
+        </div>
+      )}
 
       {senders.length === 0 ? (
         <EmptyState
@@ -225,7 +234,7 @@ export default async function PortalLinkedInPage() {
                           <span className="text-muted-foreground">/{sender.dailyProfileViewLimit}</span>
                         </TableCell>
                         <TableCell>
-                          <ConnectButton
+                          <PortalConnectButton
                             senderId={sender.id}
                             senderName={sender.name}
                             sessionStatus={sender.sessionStatus}
