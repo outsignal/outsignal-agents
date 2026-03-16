@@ -40,6 +40,7 @@ import {
   Cpu,
   CalendarClock,
   Wallet,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -77,8 +78,6 @@ interface NavGroup {
   label: string;
   collapsible: boolean;
   defaultCollapsed?: boolean;
-  /** "primary" = larger/bolder, "secondary" = normal, "system" = dimmer/smaller */
-  tier: "primary" | "secondary" | "system";
   items: NavItem[];
 }
 
@@ -91,76 +90,52 @@ const GROUPS_STORAGE_KEY = "sidebar-collapsed-groups";
 
 const STATIC_NAV_GROUPS: NavGroup[] = [
   {
-    key: "overview",
-    label: "Overview",
+    key: "core",
+    label: "Core",
     collapsible: false,
-    tier: "primary",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-      { href: "/ooo-queue", label: "OOO Queue", icon: CalendarClock },
-      { href: "/signals", label: "Signals", icon: Zap },
-      { href: "/notifications", label: "Notifications", icon: Bell },
-    ],
-  },
-  {
-    key: "sales",
-    label: "Sales",
-    collapsible: true,
-    tier: "secondary",
-    items: [
       { href: "/pipeline", label: "Pipeline", icon: Target },
-      { href: "/onboard", label: "Onboard", icon: ClipboardList },
-      { href: "/clients", label: "Clients", icon: Briefcase },
-      { href: "/pages", label: "Pages", icon: FileText },
+      { href: "/inbox", label: "Inbox", icon: Inbox },
     ],
   },
   {
     key: "data",
     label: "Data",
     collapsible: true,
-    tier: "secondary",
     items: [
       { href: "/people", label: "People", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/lists", label: "Lists", icon: ListChecks },
+      { href: "/replies", label: "Replies", icon: MessageSquareText },
     ],
   },
   {
-    key: "email",
-    label: "Email",
+    key: "email-health",
+    label: "Email Health",
     collapsible: true,
-    tier: "secondary",
     items: [
-      { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/email", label: "Email Health", icon: Mail },
-      { href: "/replies", label: "Replies", icon: MessageSquareText },
+      { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/intelligence", label: "Intelligence Hub", icon: Brain },
-      { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
-      { href: "/webhook-log", label: "Webhook Log", icon: Webhook },
-    ],
-  },
-  {
-    key: "linkedin",
-    label: "LinkedIn",
-    collapsible: true,
-    tier: "secondary",
-    items: [
       { href: "/senders", label: "Senders", icon: Linkedin },
       { href: "/linkedin-queue", label: "LinkedIn Queue", icon: ListOrdered },
     ],
   },
   {
-    key: "financials",
-    label: "Financials",
+    key: "business",
+    label: "Business",
     collapsible: true,
-    tier: "secondary",
     items: [
+      { href: "/clients", label: "Clients", icon: Briefcase },
       { href: "/financials", label: "Invoices", icon: FileText },
       { href: "/revenue", label: "Revenue", icon: TrendingUp },
       { href: "/platform-costs", label: "Costs", icon: Wallet },
       { href: "/cashflow", label: "Cashflow", icon: BarChart3 },
+      { href: "/onboard", label: "Onboard", icon: ClipboardList },
+      { href: "/pages", label: "Pages", icon: FileText },
     ],
   },
   // WORKSPACES group is inserted dynamically by buildNavGroups()
@@ -169,16 +144,18 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     label: "System",
     collapsible: true,
     defaultCollapsed: true,
-    tier: "system",
     items: [
-      { href: "/agent-guide", label: "Agent Guide", icon: BookOpen },
       { href: "/agent-runs", label: "Agent Runs", icon: Activity },
       { href: "/background-tasks", label: "Background Tasks", icon: Cpu },
       { href: "/enrichment-costs", label: "Enrichment Costs", icon: DollarSign },
       { href: "/integrations", label: "Integrations", icon: Plug },
       { href: "/notification-health", label: "Notification Health", icon: HeartPulse },
+      { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/ooo-queue", label: "OOO Queue", icon: CalendarClock },
+      { href: "/signals", label: "Signals", icon: Zap },
+      { href: "/webhook-log", label: "Webhook Log", icon: Webhook },
       { href: "/packages", label: "Packages", icon: Package },
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/agent-guide", label: "Agent Guide", icon: BookOpen },
     ],
   },
 ];
@@ -192,7 +169,6 @@ function buildNavGroups(workspaces: WorkspaceItem[]): NavGroup[] {
     key: "workspaces",
     label: "Workspaces",
     collapsible: true,
-    tier: "secondary",
     items: workspaces.map((ws) => ({
       href: `/workspace/${ws.slug}`,
       label: ws.name,
@@ -226,32 +202,30 @@ function CollapsibleGroup({
   isGroupOpen: boolean;
   onToggle: () => void;
   isSidebarCollapsed: boolean;
-  renderItem: (item: NavItem, tier: NavGroup["tier"]) => React.ReactNode;
+  renderItem: (item: NavItem) => React.ReactNode;
 }) {
   // When sidebar is collapsed, never show group headers -- just show icons
   if (isSidebarCollapsed) {
-    // Non-collapsible groups (Overview) always show
     if (!group.collapsible) {
       return (
         <div className="space-y-0.5">
-          {group.items.map((item) => renderItem(item, group.tier))}
+          {group.items.map((item) => renderItem(item))}
         </div>
       );
     }
-    // Collapsible groups: only show items if group is open
     if (!isGroupOpen) return null;
     return (
       <div className="space-y-0.5">
-        {group.items.map((item) => renderItem(item, group.tier))}
+        {group.items.map((item) => renderItem(item))}
       </div>
     );
   }
 
-  // Non-collapsible groups (Overview): just show items, no header
+  // Non-collapsible groups (Core): just show items, no header
   if (!group.collapsible) {
     return (
       <div className="space-y-0.5">
-        {group.items.map((item) => renderItem(item, group.tier))}
+        {group.items.map((item) => renderItem(item))}
       </div>
     );
   }
@@ -261,15 +235,15 @@ function CollapsibleGroup({
       {/* Group header */}
       <button
         onClick={onToggle}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 group"
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 group cursor-pointer"
       >
         <ChevronRight
           className={cn(
-            "h-3 w-3 text-sidebar-foreground/30 transition-transform duration-200",
+            "h-3 w-3 text-[var(--stone-400)] transition-transform duration-150 ease-out",
             isGroupOpen && "rotate-90",
           )}
         />
-        <span className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-medium">
+        <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--stone-400)] font-medium select-none">
           {group.label}
         </span>
       </button>
@@ -277,12 +251,12 @@ function CollapsibleGroup({
       {/* Collapsible items with smooth height animation */}
       <div
         className={cn(
-          "overflow-hidden transition-all duration-200 ease-in-out",
-          isGroupOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0",
+          "overflow-hidden transition-all duration-150 ease-out",
+          isGroupOpen ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0",
         )}
       >
         <div className="space-y-0.5">
-          {group.items.map((item) => renderItem(item, group.tier))}
+          {group.items.map((item) => renderItem(item))}
         </div>
       </div>
     </div>
@@ -347,6 +321,17 @@ export function Sidebar({ workspaces }: SidebarProps) {
     });
   }, []);
 
+  // Dispatch Cmd+K to open command palette
+  const openCommandPalette = useCallback(() => {
+    const event = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      metaKey: true,
+      bubbles: true,
+    });
+    document.dispatchEvent(event);
+  }, []);
+
   // Fetch unread notification count
   useEffect(() => {
     let active = true;
@@ -375,7 +360,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
   // -----------------------------------------------------------------------
   // Render a single nav item
   // -----------------------------------------------------------------------
-  function renderNavItem(item: NavItem, tier: NavGroup["tier"]) {
+  function renderNavItem(item: NavItem) {
     const isActive =
       item.href === "/"
         ? pathname === "/"
@@ -383,44 +368,36 @@ export function Sidebar({ workspaces }: SidebarProps) {
 
     const isNotification = item.href === "/notifications";
 
-    // Tier-based text classes
-    const tierText =
-      tier === "primary"
-        ? "text-[13px] font-medium"
-        : tier === "system"
-          ? "text-xs text-sidebar-foreground/50"
-          : "text-sm";
-
-    const tierIcon =
-      tier === "primary"
-        ? "h-[18px] w-[18px]"
-        : tier === "system"
-          ? "h-3.5 w-3.5"
-          : "h-4 w-4";
-
     const linkContent = (
       <Link
         href={item.href}
         className={cn(
-          "flex items-center rounded-lg transition-colors duration-150",
-          isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
-          tierText,
+          "group/item flex items-center rounded-md transition-all duration-150 ease-out",
+          isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
+          "text-[13px]",
           isActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-3 border-brand"
+            ? "bg-[color:oklch(0.55_0.25_275_/_0.08)] text-[color:var(--brand)] border-l-2 border-[color:var(--brand)]"
             : cn(
-                "border-l-3 border-transparent",
-                tier === "system"
-                  ? "text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/70"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                "border-l-2 border-transparent",
+                "text-[var(--stone-600)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-900)]",
               ),
         )}
       >
-        <item.icon className={cn("shrink-0", tierIcon)} />
-        {!isCollapsed && <span className="truncate">{item.label}</span>}
+        <item.icon
+          className={cn(
+            "shrink-0 h-4 w-4 transition-colors duration-150",
+            isActive
+              ? "text-[color:var(--brand)]"
+              : "text-[var(--stone-400)] group-hover/item:text-[var(--stone-600)]",
+          )}
+        />
+        {!isCollapsed && (
+          <span className="truncate">{item.label}</span>
+        )}
         {isNotification && unreadCount > 0 && (
           <span
             className={cn(
-              "flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white",
+              "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white leading-none",
               isCollapsed ? "absolute -top-1 -right-1" : "ml-auto",
             )}
           >
@@ -436,7 +413,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
           <TooltipTrigger asChild>
             <div className="relative">{linkContent}</div>
           </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>
+          <TooltipContent side="right" sideOffset={8} className="text-xs">
             {item.label}
             {isNotification && unreadCount > 0 && (
               <span className="ml-1.5 text-red-400">({unreadCount})</span>
@@ -452,15 +429,29 @@ export function Sidebar({ workspaces }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-200",
+        "flex h-screen flex-col bg-white border-r border-[var(--sidebar-border)] transition-all duration-200 ease-out",
         isCollapsed ? "w-16" : "w-64",
       )}
+      style={{
+        // CSS custom properties for stone palette (warm neutrals matching the brand)
+        // These map to the warm-stone system from globals.css
+        ["--stone-50" as string]: "oklch(0.985 0.002 90)",
+        ["--stone-100" as string]: "oklch(0.97 0.002 90)",
+        ["--stone-200" as string]: "oklch(0.93 0.002 90)",
+        ["--stone-300" as string]: "oklch(0.87 0.003 90)",
+        ["--stone-400" as string]: "oklch(0.65 0.005 60)",
+        ["--stone-500" as string]: "oklch(0.55 0.005 60)",
+        ["--stone-600" as string]: "oklch(0.45 0.005 60)",
+        ["--stone-700" as string]: "oklch(0.35 0.005 60)",
+        ["--stone-800" as string]: "oklch(0.25 0.005 60)",
+        ["--stone-900" as string]: "oklch(0.145 0.005 60)",
+      }}
     >
       {/* Logo header */}
       <div
         className={cn(
-          "flex h-14 items-center border-b border-sidebar-border/50 text-white",
-          isCollapsed ? "justify-center px-2" : "px-6",
+          "flex h-14 shrink-0 items-center border-b border-[var(--sidebar-border)]",
+          isCollapsed ? "justify-center px-2" : "px-5",
         )}
       >
         {isCollapsed ? (
@@ -475,8 +466,8 @@ export function Sidebar({ workspaces }: SidebarProps) {
       </div>
 
       {/* Scrollable nav */}
-      <ScrollArea className={cn("flex-1 py-3", isCollapsed ? "px-1.5" : "px-3")}>
-        <nav aria-label="Main navigation" className="space-y-3">
+      <ScrollArea className={cn("flex-1 py-3", isCollapsed ? "px-1.5" : "px-2.5")}>
+        <nav aria-label="Main navigation" className="space-y-4">
           {navGroups.map((group) => {
             const isGroupOpen = !collapsedGroups[group.key];
             return (
@@ -493,15 +484,95 @@ export function Sidebar({ workspaces }: SidebarProps) {
         </nav>
       </ScrollArea>
 
-      {/* Collapse/expand toggle footer */}
-      <div className="border-t border-sidebar-border/50 p-2">
+      {/* Bottom section: Settings + Cmd+K + Collapse toggle */}
+      <div className="shrink-0 border-t border-[var(--sidebar-border)] p-2 space-y-0.5">
+        {/* Settings link */}
+        {(() => {
+          const isSettingsActive = pathname === "/settings" || pathname.startsWith("/settings/");
+          const settingsContent = (
+            <Link
+              href="/settings"
+              className={cn(
+                "group/item flex items-center rounded-md transition-all duration-150 ease-out",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
+                "text-[13px]",
+                isSettingsActive
+                  ? "bg-[color:oklch(0.55_0.25_275_/_0.08)] text-[color:var(--brand)]"
+                  : "text-[var(--stone-500)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-700)]",
+              )}
+            >
+              <Settings
+                className={cn(
+                  "shrink-0 h-4 w-4 transition-colors duration-150",
+                  isSettingsActive
+                    ? "text-[color:var(--brand)]"
+                    : "text-[var(--stone-400)] group-hover/item:text-[var(--stone-500)]",
+                )}
+              />
+              {!isCollapsed && <span>Settings</span>}
+            </Link>
+          );
+          if (isCollapsed) {
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>{settingsContent}</div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8} className="text-xs">
+                  Settings
+                </TooltipContent>
+              </Tooltip>
+            );
+          }
+          return settingsContent;
+        })()}
+
+        {/* Cmd+K shortcut hint */}
+        {(() => {
+          const cmdKContent = (
+            <button
+              onClick={openCommandPalette}
+              className={cn(
+                "flex w-full items-center rounded-md transition-all duration-150 ease-out cursor-pointer",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
+                "text-[13px] text-[var(--stone-400)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-600)]",
+              )}
+            >
+              <Search className="shrink-0 h-4 w-4" />
+              {!isCollapsed && (
+                <>
+                  <span>Search</span>
+                  <kbd className="ml-auto inline-flex items-center gap-0.5 rounded border border-[var(--stone-200)] bg-[var(--stone-50)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--stone-400)] font-mono">
+                    <span className="text-[11px]">&#8984;</span>K
+                  </kbd>
+                </>
+              )}
+            </button>
+          );
+          if (isCollapsed) {
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>{cmdKContent}</div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8} className="text-xs">
+                  Search (&#8984;K)
+                </TooltipContent>
+              </Tooltip>
+            );
+          }
+          return cmdKContent;
+        })()}
+
+        {/* Collapse/expand toggle */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               onClick={toggleCollapsed}
               aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               className={cn(
-                "flex w-full items-center rounded-lg py-2 text-sm text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors duration-150",
+                "flex w-full items-center rounded-md py-2 text-[13px] transition-all duration-150 ease-out cursor-pointer",
+                "text-[var(--stone-400)] hover:bg-[var(--stone-100)] hover:text-[var(--stone-600)]",
                 isCollapsed ? "justify-center px-2" : "gap-3 px-3",
               )}
             >
@@ -516,7 +587,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
             </button>
           </TooltipTrigger>
           {isCollapsed && (
-            <TooltipContent side="right" sideOffset={8}>
+            <TooltipContent side="right" sideOffset={8} className="text-xs">
               Expand sidebar
             </TooltipContent>
           )}
