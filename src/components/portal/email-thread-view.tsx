@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, AlertCircle, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { AISuggestionCard } from "@/components/portal/ai-suggestion-card";
 import { EmailReplyComposer } from "@/components/portal/email-reply-composer";
@@ -230,11 +230,30 @@ export function EmailThreadView({
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full p-4 space-y-3">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-32 w-full" />
+      <div className="flex flex-col h-full">
+        {/* Skeleton header */}
+        <div className="px-5 py-4 border-b border-stone-200 shrink-0 space-y-2">
+          <SkeletonText width="40%" className="h-4" />
+          <SkeletonText width="25%" className="h-3" />
+        </div>
+        {/* Skeleton messages */}
+        <div className="flex-1 p-4 space-y-4">
+          {[
+            { w: "100%", h: "h-28" },
+            { w: "100%", h: "h-20" },
+            { w: "100%", h: "h-32" },
+          ].map(({ w, h }, i) => (
+            <div key={i} className="rounded-lg border border-stone-200 overflow-hidden">
+              <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 space-y-1.5">
+                <SkeletonText width="30%" className="h-3.5" />
+                <SkeletonText width="50%" className="h-3" />
+              </div>
+              <div className="px-4 py-4">
+                <Skeleton className={cn("w-full rounded", h)} style={{ width: w }} />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

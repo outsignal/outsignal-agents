@@ -27,17 +27,17 @@ function timeAgo(dateStr: string): string {
   const diffMs = now - then;
 
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}h`;
 
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return `${days}d`;
 
   const months = Math.floor(days / 30);
-  return `${months}mo ago`;
+  return `${months}mo`;
 }
 
 const STATUS_DOT: Record<ThreadSummary["replyStatus"], string> = {
@@ -99,23 +99,23 @@ export function EmailThreadList({
   if (threads.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
-        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-          <Mail className="h-6 w-6 text-muted-foreground" />
+        <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
+          <Mail className="h-6 w-6 text-stone-400" />
         </div>
-        <p className="text-sm font-medium">No email conversations yet</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Reply threads from your campaigns will appear here.
+        <p className="text-sm font-medium text-stone-900">All caught up</p>
+        <p className="text-xs text-stone-500 mt-1">
+          No replies to review right now.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="divide-y divide-border">
+    <div>
       {threads.map((thread) => {
         const isSelected = thread.threadId === selectedThreadId;
         const displayName = thread.leadName || thread.leadEmail;
-        const snippet = thread.lastSnippet.slice(0, 80);
+        const snippet = thread.lastSnippet.slice(0, 100);
         const isUnread = thread.isRead === false;
 
         return (
@@ -123,17 +123,17 @@ export function EmailThreadList({
             key={thread.threadId}
             onClick={() => onSelectThread(thread.threadId)}
             className={cn(
-              "w-full text-left px-4 py-3.5 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              isSelected && "bg-accent",
-              thread.interested &&
-                !isSelected &&
-                "bg-yellow-50 dark:bg-yellow-950/20 hover:bg-yellow-100/60 dark:hover:bg-yellow-950/30"
+              "w-full text-left px-4 py-3 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring relative",
+              // Unread: purple left border
+              isUnread && "border-l-2 border-l-[#635BFF]",
+              !isUnread && "border-l-2 border-l-transparent",
+              // Selected state
+              isSelected && "bg-stone-50",
+              // Hover state
+              !isSelected && "hover:bg-stone-50"
             )}
           >
-            <div className="flex items-start gap-2">
-              {/* Channel icon */}
-              <Mail className="mt-1.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
-
+            <div className="flex items-start gap-2.5">
               {/* Status dot */}
               <span
                 className={cn(
@@ -144,43 +144,51 @@ export function EmailThreadList({
               />
 
               <div className="flex-1 min-w-0">
-                {/* Top row: name + unread dot + timestamp */}
+                {/* Top row: name + timestamp */}
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {/* Unread dot */}
-                    {isUnread && (
-                      <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                  <span
+                    className={cn(
+                      "text-sm truncate",
+                      isUnread
+                        ? "font-semibold text-stone-900"
+                        : "font-normal text-stone-700"
                     )}
-                    <span className={cn("text-sm truncate", isUnread ? "font-bold" : "font-semibold")}>
-                      {displayName}
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                  >
+                    {displayName}
+                  </span>
+                  <span className="text-[11px] font-mono text-stone-400 whitespace-nowrap shrink-0 tabular-nums">
                     {timeAgo(thread.lastMessageAt)}
                   </span>
                 </div>
 
                 {/* Subject */}
                 {thread.subject && (
-                  <p className="text-xs font-medium text-foreground/80 truncate mt-0.5">
+                  <p
+                    className={cn(
+                      "text-xs truncate mt-0.5",
+                      isUnread
+                        ? "font-medium text-stone-700"
+                        : "text-stone-600"
+                    )}
+                  >
                     {thread.subject}
                   </p>
                 )}
 
                 {/* Snippet */}
-                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                <p className="text-xs text-stone-400 truncate mt-0.5">
                   {snippet}
                 </p>
 
                 {/* Tags row */}
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   {thread.workspaceName && (
-                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-stone-100 text-stone-500 border border-stone-200">
                       {thread.workspaceName}
                     </span>
                   )}
                   {thread.interested && (
-                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-[#F0FF7A]/30 text-yellow-800 dark:text-yellow-300 border border-[#F0FF7A]/50">
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                       Interested
                     </span>
                   )}
@@ -195,7 +203,7 @@ export function EmailThreadList({
                     </span>
                   )}
                   {thread.hasAiSuggestion && (
-                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-purple-50 text-purple-600 border border-purple-200">
                       AI ready
                     </span>
                   )}

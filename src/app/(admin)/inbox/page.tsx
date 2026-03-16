@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Mail, Linkedin, ArrowLeft } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Inbox, Mail, Linkedin, ArrowLeft, RefreshCw } from "lucide-react";
+import { Skeleton, SkeletonListItem } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
   EmailThreadList,
@@ -36,6 +36,7 @@ export default function AdminInboxPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceFilter, setWorkspaceFilter] = useState<string>("");
   const [activeChannel, setActiveChannel] = useState<ActiveChannel>("all");
+  const [refreshing, setRefreshing] = useState(false);
 
   // --- Email state ---
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -171,14 +172,17 @@ export default function AdminInboxPage() {
     };
   }, [fetchThreads, fetchLinkedinConversations]);
 
-  // Refresh all threads
+  // Refresh all data
   const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      await fetchThreads();
+      await Promise.all([fetchThreads(), fetchLinkedinConversations()]);
     } catch {
       // Silently fail
+    } finally {
+      setRefreshing(false);
     }
-  }, [fetchThreads]);
+  }, [fetchThreads, fetchLinkedinConversations]);
 
   // Cross-channel navigation handlers
   const handleSwitchToLinkedIn = useCallback((conversationId: string) => {
@@ -238,350 +242,313 @@ export default function AdminInboxPage() {
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
+  // Channel tabs config
+  const channelTabs: { key: ActiveChannel; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "email", label: "Email" },
+    { key: "linkedin", label: "LinkedIn" },
+  ];
+
+  // Check if we should show threads or LinkedIn list
+  const showEmailPanel = activeChannel === "email" || activeChannel === "all";
+  const showLinkedInPanel = activeChannel === "linkedin";
+
+  // Loading state for current view
+  const isLoading =
+    activeChannel === "all"
+      ? loading && linkedinLoading
+      : activeChannel === "email"
+        ? loading
+        : linkedinLoading;
+
+  // Render the thread list content based on active channel
+  const renderThreadList = () => {
+    if (isLoading) {
+      return (
+        <div className="px-3 py-2 space-y-1">
+          {[...Array(8)].map((_, i) => (
+            <SkeletonListItem key={i} withAvatar={false} lines={3} className="px-3 py-3 rounded-lg" />
+          ))}
+        </div>
+      );
+    }
+
+    if (activeChannel === "email" && error) {
+      return (
+        <div className="p-4 text-sm text-destructive text-center pt-12">
+          {error}
+        </div>
+      );
+    }
+
+    if (activeChannel === "all") {
+      if (allFeedItems.length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
+            <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
+              <Inbox className="h-6 w-6 text-stone-400" />
+            </div>
+            <p className="text-sm font-medium text-stone-900">All caught up</p>
+            <p className="text-xs text-stone-500 mt-1">
+              No replies to review right now.
+            </p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="divide-y divide-stone-200">
+          {allFeedItems.map((item) => {
+            if (item.type === "email") {
+              return (
+                <EmailThreadList
+                  key={`email-${item.id}`}
+                  threads={[item.data]}
+                  selectedThreadId={selectedThreadId}
+                  onSelectThread={(id) => {
+                    setSelectedThreadId(id);
+                    setSelectedConversationId(null);
+                  }}
+                />
+              );
+            }
+            return (
+              <LinkedInConversationList
+                key={`linkedin-${item.id}`}
+                conversations={[item.data]}
+                selectedConversationId={selectedConversationId}
+                onSelectConversation={(id) => {
+                  setSelectedConversationId(id);
+                  setSelectedThreadId(null);
+                }}
+              />
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (activeChannel === "email") {
+      if (threads.length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
+            <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
+              <Mail className="h-6 w-6 text-stone-400" />
+            </div>
+            <p className="text-sm font-medium text-stone-900">All caught up</p>
+            <p className="text-xs text-stone-500 mt-1">
+              No email replies to review right now.
+            </p>
+          </div>
+        );
+      }
+      return (
+        <EmailThreadList
+          threads={threads}
+          selectedThreadId={selectedThreadId}
+          onSelectThread={setSelectedThreadId}
+        />
+      );
+    }
+
+    // LinkedIn
+    if (linkedinConversations.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
+          <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
+            <Linkedin className="h-6 w-6 text-stone-400" />
+          </div>
+          <p className="text-sm font-medium text-stone-900">All caught up</p>
+          <p className="text-xs text-stone-500 mt-1">
+            No LinkedIn conversations to review right now.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <LinkedInConversationList
+        conversations={linkedinConversations}
+        selectedConversationId={selectedConversationId}
+        onSelectConversation={setSelectedConversationId}
+      />
+    );
+  };
+
+  // Render detail pane content
+  const renderDetailPane = () => {
+    if (selectedThreadId !== null) {
+      return (
+        <EmailThreadView
+          threadId={selectedThreadId}
+          onReplySent={fetchThreads}
+          onSwitchChannel={handleSwitchToLinkedIn}
+          threadDetailBasePath="/api/admin/inbox/email/threads"
+          replyEndpoint="/api/admin/inbox/email/reply"
+          replyExtraBody={
+            selectedWorkspaceSlug
+              ? { workspaceSlug: selectedWorkspaceSlug }
+              : undefined
+          }
+        />
+      );
+    }
+
+    if (selectedConversationId !== null) {
+      return (
+        <LinkedInConversationView
+          conversationId={selectedConversationId}
+          onMessageSent={fetchLinkedinConversations}
+          onSwitchChannel={handleSwitchToEmail}
+          messagesBasePath="/api/admin/inbox/linkedin/conversations"
+          replyEndpoint="/api/admin/inbox/linkedin/reply"
+          replyExtraBody={
+            selectedWorkspaceSlug
+              ? { workspaceSlug: selectedWorkspaceSlug }
+              : undefined
+          }
+        />
+      );
+    }
+
+    // Empty state — no thread selected
+    const icon =
+      activeChannel === "linkedin" ? (
+        <Linkedin className="h-6 w-6 text-stone-400" />
+      ) : (
+        <Inbox className="h-6 w-6 text-stone-400" />
+      );
+
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center px-6">
+        <div className="h-12 w-12 rounded-full bg-stone-100 flex items-center justify-center mb-3">
+          {icon}
+        </div>
+        <p className="text-sm font-medium text-stone-900">
+          Select a thread to view
+        </p>
+        <p className="text-xs text-stone-500 mt-1 max-w-xs">
+          Choose a conversation from the left to view the full thread and send a
+          reply.
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full">
-      {/* Page header */}
-      <div className="px-5 py-4 border-b border-border shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-heading font-bold">Inbox</h1>
-          {(activeChannel === "email" || activeChannel === "all") && (
-            <button
-              onClick={handleRefresh}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Refresh
-            </button>
-          )}
-        </div>
+      {/* ===== Unified header bar ===== */}
+      <div className="px-5 py-3 border-b border-stone-200 shrink-0 bg-white">
+        <div className="flex items-center gap-4">
+          {/* Page title */}
+          <h1 className="text-lg font-heading font-bold text-stone-900 shrink-0">
+            Inbox
+          </h1>
 
-        {/* Channel tabs */}
-        <div className="flex gap-1 mt-2">
-          <button
-            onClick={() => setActiveChannel("all")}
-            className={cn(
-              "px-3 py-1 text-sm rounded-md transition-colors",
-              activeChannel === "all"
-                ? "bg-foreground text-background font-medium"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+          {/* Workspace filter */}
+          <Select
+            value={workspaceFilter || "__all__"}
+            onValueChange={(val) =>
+              setWorkspaceFilter(val === "__all__" ? "" : val)
+            }
           >
-            All
-          </button>
+            <SelectTrigger className="h-8 w-[180px] text-xs shrink-0">
+              <SelectValue placeholder="All Workspaces" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All Workspaces</SelectItem>
+              {workspaces.map((ws) => (
+                <SelectItem key={ws.slug} value={ws.slug}>
+                  {ws.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Channel tabs */}
+          <div className="flex items-center gap-0.5 bg-stone-100 rounded-lg p-0.5">
+            {channelTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveChannel(tab.key)}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded-md transition-all duration-150",
+                  activeChannel === tab.key
+                    ? "bg-white text-stone-900 shadow-sm"
+                    : "text-stone-500 hover:text-stone-700"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Refresh button */}
           <button
-            onClick={() => setActiveChannel("email")}
-            className={cn(
-              "px-3 py-1 text-sm rounded-md transition-colors",
-              activeChannel === "email"
-                ? "bg-foreground text-background font-medium"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-stone-500 hover:text-stone-700 hover:bg-stone-50 rounded-md transition-colors duration-150 disabled:opacity-50"
           >
-            Email
-          </button>
-          <button
-            onClick={() => setActiveChannel("linkedin")}
-            className={cn(
-              "px-3 py-1 text-sm rounded-md transition-colors",
-              activeChannel === "linkedin"
-                ? "bg-foreground text-background font-medium"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            LinkedIn
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
+            />
+            Refresh
           </button>
         </div>
       </div>
 
-      {/* Two-panel layout — mobile: single panel with back button */}
+      {/* ===== Two-panel layout ===== */}
       <div className="flex flex-1 overflow-hidden">
-        {activeChannel === "email" || activeChannel === "all" ? (
-          <>
-            {/* Left panel: thread list */}
-            <div
-              className={cn(
-                "shrink-0 border-r border-border overflow-y-auto flex flex-col",
-                "md:w-[380px]",
-                hasSelection
-                  ? "hidden md:flex"
-                  : "flex w-full md:w-[380px]"
-              )}
+        {/* Left panel: thread list */}
+        <div
+          className={cn(
+            "shrink-0 border-r border-stone-200 flex flex-col bg-white",
+            "md:w-[360px]",
+            hasSelection
+              ? "hidden md:flex"
+              : "flex w-full md:w-[360px]"
+          )}
+        >
+          {/* Thread list — independent scroll */}
+          <div className="flex-1 overflow-y-auto">
+            {renderThreadList()}
+          </div>
+        </div>
+
+        {/* Right panel: detail view */}
+        <div
+          className={cn(
+            "flex-1 overflow-hidden flex flex-col bg-white",
+            hasSelection ? "flex" : "hidden md:flex"
+          )}
+        >
+          {/* Back button — mobile only */}
+          {hasSelection && (
+            <button
+              onClick={() => {
+                setSelectedThreadId(null);
+                setSelectedConversationId(null);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-stone-500 hover:text-stone-700 md:hidden border-b border-stone-200 transition-colors duration-150"
             >
-              {/* Workspace filter dropdown */}
-              <div className="px-3 py-2 border-b border-border">
-                <Select
-                  value={workspaceFilter || "__all__"}
-                  onValueChange={(val) =>
-                    setWorkspaceFilter(val === "__all__" ? "" : val)
-                  }
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="All Workspaces" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All Workspaces</SelectItem>
-                    {workspaces.map((ws) => (
-                      <SelectItem key={ws.slug} value={ws.slug}>
-                        {ws.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <ArrowLeft className="h-4 w-4" /> Back to inbox
+            </button>
+          )}
 
-              {activeChannel === "all" ? (
-                // All feed: mixed email + LinkedIn
-                <div className="divide-y divide-border flex-1 overflow-y-auto">
-                  {loading && linkedinLoading ? (
-                    <div className="p-4 space-y-3">
-                      {[...Array(5)].map((_, i) => (
-                        <div key={i} className="space-y-1.5">
-                          <Skeleton className="h-4 w-3/4" />
-                          <Skeleton className="h-3 w-1/2" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : allFeedItems.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-                      <p className="text-sm font-medium">
-                        No conversations yet
-                      </p>
-                    </div>
-                  ) : (
-                    allFeedItems.map((item) => {
-                      if (item.type === "email") {
-                        return (
-                          <EmailThreadList
-                            key={`email-${item.id}`}
-                            threads={[item.data]}
-                            selectedThreadId={selectedThreadId}
-                            onSelectThread={(id) => {
-                              setSelectedThreadId(id);
-                              setSelectedConversationId(null);
-                            }}
-                          />
-                        );
-                      }
-                      return (
-                        <LinkedInConversationList
-                          key={`linkedin-${item.id}`}
-                          conversations={[item.data]}
-                          selectedConversationId={selectedConversationId}
-                          onSelectConversation={(id) => {
-                            setSelectedConversationId(id);
-                            setSelectedThreadId(null);
-                          }}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              ) : (
-                // Email-only thread list
-                <div className="flex-1 overflow-y-auto">
-                  {loading ? (
-                    <div className="p-4 space-y-3">
-                      {[...Array(5)].map((_, i) => (
-                        <div key={i} className="space-y-1.5">
-                          <Skeleton className="h-4 w-3/4" />
-                          <Skeleton className="h-3 w-1/2" />
-                          <Skeleton className="h-3 w-full" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : error ? (
-                    <div className="p-4 text-sm text-destructive text-center pt-12">
-                      {error}
-                    </div>
-                  ) : (
-                    <EmailThreadList
-                      threads={threads}
-                      selectedThreadId={selectedThreadId}
-                      onSelectThread={setSelectedThreadId}
-                    />
-                  )}
-                </div>
-              )}
+          {/* "Replying as" banner */}
+          {selectedWorkspaceName && hasSelection && (
+            <div className="px-4 py-2 bg-stone-50 border-b border-stone-200 text-xs text-stone-500 shrink-0">
+              Replying as{" "}
+              <span className="font-medium text-stone-900">
+                {selectedWorkspaceName}
+              </span>
             </div>
+          )}
 
-            {/* Right panel: email conversation view */}
-            <div
-              className={cn(
-                "flex-1 overflow-hidden flex flex-col",
-                hasSelection ? "flex" : "hidden md:flex"
-              )}
-            >
-              {/* Back button — mobile only */}
-              <button
-                onClick={() => {
-                  setSelectedThreadId(null);
-                  setSelectedConversationId(null);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground md:hidden border-b border-border"
-              >
-                <ArrowLeft className="h-4 w-4" /> Back to inbox
-              </button>
-
-              {/* "Replying as" banner */}
-              {selectedWorkspaceName && (
-                <div className="px-4 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground shrink-0">
-                  Replying as{" "}
-                  <span className="font-medium text-foreground">
-                    {selectedWorkspaceName}
-                  </span>
-                </div>
-              )}
-
-              {selectedThreadId !== null ? (
-                <EmailThreadView
-                  threadId={selectedThreadId}
-                  onReplySent={fetchThreads}
-                  onSwitchChannel={handleSwitchToLinkedIn}
-                  threadDetailBasePath="/api/admin/inbox/email/threads"
-                  replyEndpoint="/api/admin/inbox/email/reply"
-                  replyExtraBody={
-                    selectedWorkspaceSlug
-                      ? { workspaceSlug: selectedWorkspaceSlug }
-                      : undefined
-                  }
-                />
-              ) : selectedConversationId !== null && activeChannel === "all" ? (
-                <LinkedInConversationView
-                  conversationId={selectedConversationId}
-                  onMessageSent={fetchLinkedinConversations}
-                  onSwitchChannel={handleSwitchToEmail}
-                  messagesBasePath="/api/admin/inbox/linkedin/conversations"
-                  replyEndpoint="/api/admin/inbox/linkedin/reply"
-                  replyExtraBody={
-                    selectedWorkspaceSlug
-                      ? { workspaceSlug: selectedWorkspaceSlug }
-                      : undefined
-                  }
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center px-6">
-                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
-                    <Mail className="h-7 w-7 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium">Select a conversation</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                    Choose a thread from the left to view the full conversation
-                    and send a reply.
-                  </p>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Left panel: LinkedIn conversation list */}
-            <div
-              className={cn(
-                "shrink-0 border-r border-border overflow-y-auto flex flex-col",
-                "md:w-[380px]",
-                hasSelection
-                  ? "hidden md:flex"
-                  : "flex w-full md:w-[380px]"
-              )}
-            >
-              {/* Workspace filter dropdown */}
-              <div className="px-3 py-2 border-b border-border">
-                <Select
-                  value={workspaceFilter || "__all__"}
-                  onValueChange={(val) =>
-                    setWorkspaceFilter(val === "__all__" ? "" : val)
-                  }
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="All Workspaces" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All Workspaces</SelectItem>
-                    {workspaces.map((ws) => (
-                      <SelectItem key={ws.slug} value={ws.slug}>
-                        {ws.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {linkedinLoading ? (
-                  <div className="p-4 space-y-3">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="space-y-1.5">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-3 w-1/2" />
-                        <Skeleton className="h-3 w-full" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <LinkedInConversationList
-                    conversations={linkedinConversations}
-                    selectedConversationId={selectedConversationId}
-                    onSelectConversation={setSelectedConversationId}
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Right panel: LinkedIn conversation view */}
-            <div
-              className={cn(
-                "flex-1 overflow-hidden flex flex-col",
-                hasSelection ? "flex" : "hidden md:flex"
-              )}
-            >
-              {/* Back button — mobile only */}
-              <button
-                onClick={() => {
-                  setSelectedThreadId(null);
-                  setSelectedConversationId(null);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground md:hidden border-b border-border"
-              >
-                <ArrowLeft className="h-4 w-4" /> Back to inbox
-              </button>
-
-              {/* "Replying as" banner */}
-              {selectedWorkspaceName && (
-                <div className="px-4 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground shrink-0">
-                  Replying as{" "}
-                  <span className="font-medium text-foreground">
-                    {selectedWorkspaceName}
-                  </span>
-                </div>
-              )}
-
-              {selectedConversationId !== null ? (
-                <LinkedInConversationView
-                  conversationId={selectedConversationId}
-                  onMessageSent={fetchLinkedinConversations}
-                  onSwitchChannel={handleSwitchToEmail}
-                  messagesBasePath="/api/admin/inbox/linkedin/conversations"
-                  replyEndpoint="/api/admin/inbox/linkedin/reply"
-                  replyExtraBody={
-                    selectedWorkspaceSlug
-                      ? { workspaceSlug: selectedWorkspaceSlug }
-                      : undefined
-                  }
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center px-6">
-                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
-                    <Linkedin className="h-7 w-7 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium">Select a conversation</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                    Choose a conversation from the left to view the full message
-                    history.
-                  </p>
-                </div>
-              )}
-            </div>
-          </>
-        )}
+          {renderDetailPane()}
+        </div>
       </div>
     </div>
   );

@@ -67,23 +67,16 @@ export function EmailReplyComposer({
   };
 
   return (
-    <div className="border-t border-border bg-background">
-      {/* Channel mode label */}
-      <div className="px-3 py-1.5 border-b border-border">
-        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-          Email Reply
-        </span>
-      </div>
-
+    <div className="sticky bottom-0 border-t border-stone-200 bg-white">
       {/* Subject line (read-only) */}
       {subject && (
-        <div className="px-3 py-2 border-b border-border text-sm">
-          <span className="text-muted-foreground">Subject:</span>{" "}
-          <span className="text-foreground">Re: {subject}</span>
+        <div className="px-4 py-2 border-b border-stone-100 text-sm">
+          <span className="text-stone-400">Subject:</span>{" "}
+          <span className="text-stone-700">Re: {subject}</span>
         </div>
       )}
 
-      <div className="p-4 space-y-2">
+      <div className="p-4 space-y-3">
         <Textarea
           placeholder="Type your reply... (Cmd+Enter to send)"
           value={composerText}
@@ -91,25 +84,26 @@ export function EmailReplyComposer({
           onKeyDown={handleKeyDown}
           disabled={sending}
           rows={3}
-          className="resize-none"
+          className="resize-none text-sm"
         />
         {error && (
           <p className="text-xs text-destructive">{error}</p>
         )}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
           <Button
             onClick={handleSend}
             disabled={!composerText.trim() || sending}
             size="sm"
+            className="bg-[#635BFF] hover:bg-[#635BFF]/90 text-white"
           >
             {sending ? (
               <>
-                <Loader2 className="animate-spin" />
+                <Loader2 className="animate-spin h-3.5 w-3.5" />
                 Sending...
               </>
             ) : (
               <>
-                <Send />
+                <Send className="h-3.5 w-3.5" />
                 Send
               </>
             )}
