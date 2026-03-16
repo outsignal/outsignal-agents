@@ -24,6 +24,10 @@ const badgeVariants = cva(
           "bg-emerald-50 text-emerald-700 border-emerald-200",
         warning:
           "bg-amber-50 text-amber-700 border-amber-200",
+        info:
+          "bg-blue-50 text-blue-600 border-blue-200",
+        purple:
+          "bg-purple-50 text-purple-600 border-purple-200",
       },
       size: {
         default: "px-2 py-0.5 text-xs",
@@ -37,23 +41,61 @@ const badgeVariants = cva(
   }
 )
 
+const dotColorMap: Record<string, string> = {
+  default: "bg-primary",
+  secondary: "bg-secondary-foreground/50",
+  destructive: "bg-white",
+  outline: "bg-foreground",
+  ghost: "bg-foreground",
+  link: "bg-primary",
+  brand: "bg-background",
+  success: "bg-emerald-500",
+  warning: "bg-amber-500",
+  info: "bg-blue-500",
+  purple: "bg-purple-500",
+}
+
+type BadgeProps = React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & {
+    asChild?: boolean
+    dot?: boolean
+    shape?: "default" | "pill"
+  }
+
 function Badge({
   className,
   variant = "default",
   size = "default",
   asChild = false,
+  dot = false,
+  shape = "default",
+  children,
   ...props
-}: React.ComponentProps<"span"> &
-  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+}: BadgeProps) {
   const Comp = asChild ? Slot.Root : "span"
 
   return (
     <Comp
       data-slot="badge"
       data-variant={variant}
-      className={cn(badgeVariants({ variant, size }), className)}
+      className={cn(
+        badgeVariants({ variant, size }),
+        shape === "pill" && "rounded-full",
+        className,
+      )}
       {...props}
-    />
+    >
+      {dot && (
+        <span
+          className={cn(
+            "size-1.5 rounded-full shrink-0",
+            dotColorMap[variant ?? "default"] ?? "bg-current",
+          )}
+          aria-hidden="true"
+        />
+      )}
+      {children}
+    </Comp>
   )
 }
 
