@@ -148,7 +148,7 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
             </p>
           )}
         </div>
-        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 font-mono tabular-nums">
           {timestamp}
         </span>
       </div>
@@ -307,7 +307,7 @@ export function EmailThreadView({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {threadMeta.interested && (
-              <Badge className="text-xs bg-[#F0FF7A]/30 text-yellow-800 dark:text-yellow-300 border border-[#F0FF7A]/50">
+              <Badge className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Interested
               </Badge>
             )}

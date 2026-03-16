@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Mail, Linkedin, ArrowLeft } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonListItem } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
   EmailThreadList,
@@ -239,17 +239,17 @@ export default function PortalInboxPage() {
           )}
         </div>
 
-        {/* Channel tabs — only render if more than one channel */}
+        {/* Channel tabs — pill/segment toggle */}
         {channels.length > 1 && (
-          <div className="flex gap-1 mt-2">
+          <div className="inline-flex items-center gap-0.5 mt-3 p-0.5 rounded-lg bg-stone-100">
             {showAllTab && (
               <button
                 onClick={() => setActiveChannel("all")}
                 className={cn(
-                  "px-3 py-1 text-sm rounded-md transition-colors",
+                  "px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                   activeChannel === "all"
-                    ? "bg-foreground text-background font-medium"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white text-stone-900 font-medium shadow-sm"
+                    : "text-stone-500 hover:text-stone-700"
                 )}
               >
                 All
@@ -258,24 +258,36 @@ export default function PortalInboxPage() {
             <button
               onClick={() => setActiveChannel("email")}
               className={cn(
-                "px-3 py-1 text-sm rounded-md transition-colors",
+                "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                 activeChannel === "email"
-                  ? "bg-foreground text-background font-medium"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-white text-stone-900 font-medium shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
               )}
             >
+              <Mail className="h-3.5 w-3.5" />
               Email
+              {threads.filter((t) => t.isRead === false).length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-[#635BFF] text-white text-[10px] font-medium px-1">
+                  {threads.filter((t) => t.isRead === false).length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setActiveChannel("linkedin")}
               className={cn(
-                "px-3 py-1 text-sm rounded-md transition-colors",
+                "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                 activeChannel === "linkedin"
-                  ? "bg-foreground text-background font-medium"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-white text-stone-900 font-medium shadow-sm"
+                  : "text-stone-500 hover:text-stone-700"
               )}
             >
+              <Linkedin className="h-3.5 w-3.5" />
               LinkedIn
+              {linkedinConversations.filter((c) => c.unreadCount > 0).length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-[#635BFF] text-white text-[10px] font-medium px-1">
+                  {linkedinConversations.filter((c) => c.unreadCount > 0).length}
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -297,12 +309,9 @@ export default function PortalInboxPage() {
                 // All feed: mixed email + LinkedIn
                 <div className="divide-y divide-border">
                   {loading && linkedinLoading ? (
-                    <div className="p-4 space-y-3">
-                      {[...Array(5)].map((_, i) => (
-                        <div key={i} className="space-y-1.5">
-                          <Skeleton className="h-4 w-3/4" />
-                          <Skeleton className="h-3 w-1/2" />
-                        </div>
+                    <div className="px-4">
+                      {[...Array(6)].map((_, i) => (
+                        <SkeletonListItem key={i} withAvatar={false} lines={3} />
                       ))}
                     </div>
                   ) : allFeedItems.length === 0 ? (
@@ -342,13 +351,9 @@ export default function PortalInboxPage() {
                 // Email-only thread list
                 <>
                   {loading ? (
-                    <div className="p-4 space-y-3">
-                      {[...Array(5)].map((_, i) => (
-                        <div key={i} className="space-y-1.5">
-                          <Skeleton className="h-4 w-3/4" />
-                          <Skeleton className="h-3 w-1/2" />
-                          <Skeleton className="h-3 w-full" />
-                        </div>
+                    <div className="px-4">
+                      {[...Array(6)].map((_, i) => (
+                        <SkeletonListItem key={i} withAvatar={false} lines={3} />
                       ))}
                     </div>
                   ) : error ? (
@@ -421,13 +426,9 @@ export default function PortalInboxPage() {
               )}
             >
               {linkedinLoading ? (
-                <div className="p-4 space-y-3">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="space-y-1.5">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                      <Skeleton className="h-3 w-full" />
-                    </div>
+                <div className="px-4">
+                  {[...Array(6)].map((_, i) => (
+                    <SkeletonListItem key={i} withAvatar={false} lines={3} />
                   ))}
                 </div>
               ) : (

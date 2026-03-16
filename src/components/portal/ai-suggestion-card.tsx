@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, ChevronUp, ChevronDown } from "lucide-react";
+import { Sparkles, Check, Pencil, X, ChevronUp, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface AISuggestionCardProps {
@@ -16,46 +16,59 @@ export function AISuggestionCard({ suggestion, onUse }: AISuggestionCardProps) {
   if (dismissed) return null;
 
   return (
-    <div className="border border-[#F0FF7A]/60 bg-[#F0FF7A]/5 dark:bg-[#F0FF7A]/5 rounded-lg overflow-hidden">
+    <div className="rounded-lg border border-[#635BFF]/20 border-l-2 border-l-[#635BFF] bg-[#635BFF]/[0.03] overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-[#F0FF7A]/10 transition-colors"
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[#635BFF]/[0.05] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-          <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
-            AI suggestion available
+          <Sparkles className="h-4 w-4 text-[#635BFF] shrink-0" />
+          <span className="text-sm font-semibold text-stone-900">
+            AI Suggested Reply
           </span>
         </div>
         {expanded ? (
-          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+          <ChevronUp className="h-4 w-4 text-stone-400 shrink-0" />
         ) : (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+          <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
         )}
       </button>
 
       {/* Body */}
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
-          <pre className="whitespace-pre-wrap text-sm text-foreground bg-background/50 rounded-md p-3 border border-border/50 font-sans">
-            {suggestion}
-          </pre>
+          <div className="border-l-2 border-stone-200 pl-3 py-1">
+            <p className="text-[15px] leading-relaxed text-stone-700 whitespace-pre-wrap">
+              {suggestion}
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="brand"
               onClick={() => onUse(suggestion)}
-              className="text-xs"
+              className="text-xs gap-1.5"
             >
-              Use this
+              <Check className="h-3.5 w-3.5" />
+              Accept
             </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setDismissed(true)}
-              className="text-xs"
+              onClick={() => onUse(suggestion)}
+              className="text-xs gap-1.5"
             >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDismissed(true)}
+              className="text-xs text-stone-400 hover:text-stone-600 gap-1.5"
+            >
+              <X className="h-3.5 w-3.5" />
               Dismiss
             </Button>
           </div>

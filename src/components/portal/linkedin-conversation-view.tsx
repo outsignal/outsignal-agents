@@ -470,8 +470,8 @@ export function LinkedInConversationView({
                 <div className="max-w-[70%]">
                   <div
                     className={cn(
-                      "px-4 py-2.5 rounded-2xl rounded-br-sm bg-[#F0FF7A] text-black",
-                      isHighlighted && "ring-2 ring-[#F0FF7A]/50"
+                      "px-4 py-2.5 rounded-2xl rounded-br-sm bg-[#635BFF] text-white",
+                      isHighlighted && "ring-2 ring-[#635BFF]/30"
                     )}
                   >
                     <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
@@ -502,7 +502,7 @@ export function LinkedInConversationView({
                 <div
                   className={cn(
                     "px-4 py-2.5 rounded-2xl rounded-bl-sm bg-muted text-foreground",
-                    isHighlighted && "ring-2 ring-[#F0FF7A]/50"
+                    isHighlighted && "ring-2 ring-[#635BFF]/30"
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
