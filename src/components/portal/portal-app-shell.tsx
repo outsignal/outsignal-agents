@@ -3,6 +3,7 @@ import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { PortalMobileMenu } from "@/components/portal/portal-mobile-menu";
 import { PageTransition } from "@/components/layout/page-transition";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SupportWidget } from "@/components/portal/support-widget";
 
 interface PortalAppShellProps {
   workspaceSlug: string;
@@ -39,6 +40,7 @@ export async function PortalAppShell({ workspaceSlug, children }: PortalAppShell
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
+      <SupportWidget />
     </TooltipProvider>
   );
 }
