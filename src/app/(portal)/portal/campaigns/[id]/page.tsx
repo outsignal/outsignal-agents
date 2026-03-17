@@ -14,14 +14,17 @@ import { getCampaignLeadSample } from "@/lib/campaigns/operations";
 import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
 import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+
 
 export default async function PortalCampaignDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ step?: string }>;
 }) {
   const { id } = await params;
+  const { step: stepParam } = await searchParams;
   let session;
   try {
     session = await getPortalSession();
@@ -157,6 +160,14 @@ export default async function PortalCampaignDetailPage({
 
   const isPendingApproval = campaign.status === "pending_approval";
 
+  // Wizard step: default to "content" if leads already approved, otherwise "leads".
+  // User can override via ?step=leads to review approved leads.
+  const activeStep = isPendingApproval
+    ? (stepParam === "leads" || stepParam === "content")
+      ? stepParam
+      : campaign.leadsApproved ? "content" : "leads"
+    : null;
+
   return (
     <div className={isPendingApproval ? "p-4 space-y-4" : "p-6 space-y-6"}>
       {/* Header — compact for approval, full for other statuses */}
@@ -189,9 +200,12 @@ export default async function PortalCampaignDetailPage({
                 <span>Created {formatDate(campaign.createdAt)}</span>
               </div>
             </div>
-            {/* Stepper on the right */}
+            {/* Stepper on the right — clickable to navigate between steps */}
             <div className="flex items-center gap-0 shrink-0 pt-1">
-              <div className="flex items-center gap-1.5">
+              <Link
+                href={`/portal/campaigns/${campaign.id}?step=leads`}
+                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+              >
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                     campaign.leadsApproved
@@ -201,12 +215,15 @@ export default async function PortalCampaignDetailPage({
                 >
                   {campaign.leadsApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "1"}
                 </div>
-                <span className={`text-xs font-medium ${campaign.leadsApproved ? "text-[#635BFF]" : "text-foreground"}`}>
+                <span className={`text-xs font-medium ${activeStep === "leads" ? "text-foreground" : campaign.leadsApproved ? "text-[#635BFF]" : "text-foreground"}`}>
                   Leads
                 </span>
-              </div>
+              </Link>
               <div className={`mx-2.5 h-px w-8 ${campaign.leadsApproved ? "bg-[#635BFF]" : "bg-border"}`} />
-              <div className="flex items-center gap-1.5">
+              <Link
+                href={`/portal/campaigns/${campaign.id}?step=content`}
+                className={`flex items-center gap-1.5 transition-opacity ${campaign.leadsApproved ? "hover:opacity-80" : "pointer-events-none"}`}
+              >
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                     campaign.contentApproved
@@ -223,7 +240,7 @@ export default async function PortalCampaignDetailPage({
                 }`}>
                   Content
                 </span>
-              </div>
+              </Link>
             </div>
           </div>
         ) : (
@@ -283,74 +300,35 @@ export default async function PortalCampaignDetailPage({
       )}
 
       {isPendingApproval && (
-        <div className="space-y-6">
-          {/* Success banner when both approved */}
-          {campaign.leadsApproved && campaign.contentApproved && (
-            <Card className="border-[#635BFF]/20 bg-[#635BFF]/5">
-              <CardContent className="flex flex-col items-center justify-center py-10 text-center">
-                <div className="rounded-full bg-[#635BFF]/10 p-3 mb-4">
-                  <CheckCircle2 className="h-6 w-6 text-[#635BFF]" />
-                </div>
-                <h2 className="text-lg font-medium text-foreground mb-1">Campaign Approved!</h2>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  Both leads and content have been approved. We&apos;ll get your campaign deployed shortly.
-                </p>
-              </CardContent>
-            </Card>
+        <div>
+          {activeStep === "leads" && (
+            campaign.leadsApproved ? (
+              /* Reviewing approved leads — green surround, read-only */
+              <Card className="border-emerald-200/50 bg-emerald-50/20">
+                <CardContent className="pt-5">
+                  <CampaignApprovalLeads
+                    campaignId={campaign.id}
+                    leads={leadSample?.leads ?? []}
+                    totalCount={leadSample?.totalCount ?? 0}
+                    leadsApproved={campaign.leadsApproved}
+                    leadsFeedback={campaign.leadsFeedback}
+                    isPending={campaign.status === "pending_approval"}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <CampaignApprovalLeads
+                campaignId={campaign.id}
+                leads={leadSample?.leads ?? []}
+                totalCount={leadSample?.totalCount ?? 0}
+                leadsApproved={campaign.leadsApproved}
+                leadsFeedback={campaign.leadsFeedback}
+                isPending={campaign.status === "pending_approval"}
+              />
+            )
           )}
 
-          {/* Section 1: Leads Review */}
-          <div>
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
-                campaign.leadsApproved
-                  ? "bg-emerald-100 text-emerald-700"
-                  : "bg-[#635BFF] text-white"
-              )}>
-                {campaign.leadsApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "1"}
-              </div>
-              <h2 className="text-base font-medium text-foreground">
-                Review Target Leads
-              </h2>
-            </div>
-            <Card className={cn(
-              "border",
-              campaign.leadsApproved && "border-emerald-200/50 bg-emerald-50/20"
-            )}>
-              <CardContent className="pt-5">
-                <CampaignApprovalLeads
-                  campaignId={campaign.id}
-                  leads={leadSample?.leads ?? []}
-                  totalCount={leadSample?.totalCount ?? 0}
-                  leadsApproved={campaign.leadsApproved}
-                  leadsFeedback={campaign.leadsFeedback}
-                  isPending={campaign.status === "pending_approval"}
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Section 2: Content Review */}
-          <div className={cn(!campaign.leadsApproved && "opacity-60 pointer-events-none")}>
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
-                campaign.contentApproved
-                  ? "bg-emerald-100 text-emerald-700"
-                  : campaign.leadsApproved
-                    ? "bg-[#635BFF] text-white"
-                    : "border-2 border-muted-foreground/30 text-muted-foreground"
-              )}>
-                {campaign.contentApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "2"}
-              </div>
-              <h2 className="text-base font-medium text-foreground">
-                Review Campaign Content
-              </h2>
-              {!campaign.leadsApproved && (
-                <span className="text-xs text-muted-foreground ml-1">Approve leads first</span>
-              )}
-            </div>
+          {activeStep === "content" && (
             <CampaignApprovalContent
               campaignId={campaign.id}
               emailSequence={campaign.emailSequence as unknown[] | null}
@@ -361,7 +339,7 @@ export default async function PortalCampaignDetailPage({
               isPending={campaign.status === "pending_approval"}
               ebSequenceSteps={sequenceSteps}
             />
-          </div>
+          )}
         </div>
       )}
 
