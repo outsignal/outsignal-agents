@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
+        // portal.outsignal.ai/ → /portal/login
+        {
+          source: "/",
+          has: [{ type: "host", value: "portal.outsignal.ai" }],
+          destination: "/portal/login",
+        },
         // portal.outsignal.ai/* → /portal/*
         // Excludes _next, api, and static files
         {

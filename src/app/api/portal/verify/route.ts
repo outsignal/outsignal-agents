@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
 
   const cookie = createSessionCookie(session);
 
-  const url = new URL("/portal", req.url);
+  const host = req.headers.get("host") ?? req.nextUrl.host;
+  const url = new URL("/portal", `https://${host}`);
   const res = NextResponse.redirect(url);
   res.headers.append("Set-Cookie", cookie);
 
@@ -65,7 +66,8 @@ export async function GET(req: NextRequest) {
 }
 
 function redirectToLogin(req: NextRequest, error: string): NextResponse {
-  const url = new URL("/portal/login", req.url);
+  const host = req.headers.get("host") ?? req.nextUrl.host;
+  const url = new URL("/portal/login", `https://${host}`);
   url.searchParams.set("error", error);
   return NextResponse.redirect(url);
 }

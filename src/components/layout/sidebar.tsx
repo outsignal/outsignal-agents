@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -42,6 +42,7 @@ import {
   CalendarClock,
   Wallet,
   Search,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -272,6 +273,7 @@ function CollapsibleGroup({
 
 export function Sidebar({ workspaces }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
@@ -588,6 +590,42 @@ export function Sidebar({ workspaces }: SidebarProps) {
 
         {/* Theme toggle */}
         <ThemeToggle collapsed={isCollapsed} />
+
+        {/* Logout */}
+        {(() => {
+          const handleLogout = async () => {
+            try {
+              await fetch("/api/admin/logout", { method: "POST" });
+            } catch {}
+            router.push("/login");
+          };
+          const logoutContent = (
+            <button
+              onClick={handleLogout}
+              className={cn(
+                "flex w-full items-center rounded-md transition-all duration-150 ease-out cursor-pointer",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
+                "text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <LogOut className="shrink-0 h-4 w-4" />
+              {!isCollapsed && <span>Log out</span>}
+            </button>
+          );
+          if (isCollapsed) {
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>{logoutContent}</div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8} className="text-xs">
+                  Log out
+                </TooltipContent>
+              </Tooltip>
+            );
+          }
+          return logoutContent;
+        })()}
 
         {/* Collapse/expand toggle */}
         <Tooltip>
