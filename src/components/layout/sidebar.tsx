@@ -2,50 +2,28 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
   Settings,
-  ChevronRight,
-  Linkedin,
   Building2,
   ListChecks,
   Briefcase,
   Target,
-  Bell,
   PanelLeftClose,
   PanelLeftOpen,
-  Activity,
-  Webhook,
-  ListOrdered,
   BarChart3,
   Megaphone,
-  Package,
-  Plug,
-  HeartPulse,
-  Mail,
-  DollarSign,
-  ClipboardList,
   CircleDot,
   CircleDashed,
-  Zap,
   FileText,
-  TrendingUp,
-  BookOpen,
-  MessageCircle,
-  MessageSquareText,
-  Brain,
   ShieldCheck,
   Inbox,
-  Cpu,
-  CalendarClock,
-  Wallet,
   Search,
-  LogOut,
+  LifeBuoy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -79,8 +57,8 @@ interface NavItem {
 interface NavGroup {
   key: string;
   label: string;
-  collapsible: boolean;
-  defaultCollapsed?: boolean;
+  /** If true, group header label is hidden (items rendered directly). */
+  hideLabel?: boolean;
   items: NavItem[];
 }
 
@@ -89,79 +67,45 @@ interface NavGroup {
 // ---------------------------------------------------------------------------
 
 const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
-const GROUPS_STORAGE_KEY = "sidebar-collapsed-groups";
 
 const STATIC_NAV_GROUPS: NavGroup[] = [
   {
     key: "core",
     label: "Core",
-    collapsible: false,
+    hideLabel: true,
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
       { href: "/pipeline", label: "Pipeline", icon: Target },
       { href: "/inbox", label: "Inbox", icon: Inbox },
-      { href: "/support", label: "Support", icon: MessageCircle },
     ],
   },
   {
-    key: "data",
-    label: "Data",
-    collapsible: true,
+    key: "outreach",
+    label: "Outreach",
     items: [
       { href: "/people", label: "People", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/lists", label: "Lists", icon: ListChecks },
-      { href: "/replies", label: "Replies", icon: MessageSquareText },
     ],
   },
   {
-    key: "email-health",
-    label: "Email Health",
-    collapsible: true,
+    key: "health",
+    label: "Health",
     items: [
-      { href: "/email", label: "Email Health", icon: Mail },
       { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
-      { href: "/intelligence", label: "Intelligence Hub", icon: Brain },
-      { href: "/senders", label: "Senders", icon: Linkedin },
-      { href: "/linkedin-queue", label: "LinkedIn Queue", icon: ListOrdered },
     ],
   },
   {
     key: "business",
     label: "Business",
-    collapsible: true,
     items: [
       { href: "/clients", label: "Clients", icon: Briefcase },
-      { href: "/financials", label: "Invoices", icon: FileText },
-      { href: "/revenue", label: "Revenue", icon: TrendingUp },
-      { href: "/platform-costs", label: "Costs", icon: Wallet },
-      { href: "/cashflow", label: "Cashflow", icon: BarChart3 },
-      { href: "/onboard", label: "Onboard", icon: ClipboardList },
-      { href: "/pages", label: "Pages", icon: FileText },
+      { href: "/financials", label: "Financials", icon: FileText },
     ],
   },
   // WORKSPACES group is inserted dynamically by buildNavGroups()
-  {
-    key: "system",
-    label: "System",
-    collapsible: true,
-    defaultCollapsed: true,
-    items: [
-      { href: "/agent-runs", label: "Agent Runs", icon: Activity },
-      { href: "/background-tasks", label: "Background Tasks", icon: Cpu },
-      { href: "/enrichment-costs", label: "Enrichment Costs", icon: DollarSign },
-      { href: "/integrations", label: "Integrations", icon: Plug },
-      { href: "/notification-health", label: "Notification Health", icon: HeartPulse },
-      { href: "/notifications", label: "Notifications", icon: Bell },
-      { href: "/ooo-queue", label: "OOO Queue", icon: CalendarClock },
-      { href: "/signals", label: "Signals", icon: Zap },
-      { href: "/webhook-log", label: "Webhook Log", icon: Webhook },
-      { href: "/packages", label: "Packages", icon: Package },
-      { href: "/agent-guide", label: "Agent Guide", icon: BookOpen },
-    ],
-  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -172,7 +116,6 @@ function buildNavGroups(workspaces: WorkspaceItem[]): NavGroup[] {
   const workspacesGroup: NavGroup = {
     key: "workspaces",
     label: "Workspaces",
-    collapsible: true,
     items: workspaces.map((ws) => ({
       href: `/workspace/${ws.slug}`,
       label: ws.name,
@@ -180,91 +123,7 @@ function buildNavGroups(workspaces: WorkspaceItem[]): NavGroup[] {
     })),
   };
 
-  // Insert workspaces group before the system group (last static group)
-  const groups = [...STATIC_NAV_GROUPS];
-  const systemIndex = groups.findIndex((g) => g.key === "system");
-  if (systemIndex !== -1) {
-    groups.splice(systemIndex, 0, workspacesGroup);
-  } else {
-    groups.push(workspacesGroup);
-  }
-  return groups;
-}
-
-// ---------------------------------------------------------------------------
-// Collapsible Nav Group
-// ---------------------------------------------------------------------------
-
-function CollapsibleGroup({
-  group,
-  isGroupOpen,
-  onToggle,
-  isSidebarCollapsed,
-  renderItem,
-}: {
-  group: NavGroup;
-  isGroupOpen: boolean;
-  onToggle: () => void;
-  isSidebarCollapsed: boolean;
-  renderItem: (item: NavItem) => React.ReactNode;
-}) {
-  // When sidebar is collapsed, never show group headers -- just show icons
-  if (isSidebarCollapsed) {
-    if (!group.collapsible) {
-      return (
-        <div className="space-y-0.5">
-          {group.items.map((item) => renderItem(item))}
-        </div>
-      );
-    }
-    if (!isGroupOpen) return null;
-    return (
-      <div className="space-y-0.5">
-        {group.items.map((item) => renderItem(item))}
-      </div>
-    );
-  }
-
-  // Non-collapsible groups (Core): just show items, no header
-  if (!group.collapsible) {
-    return (
-      <div className="space-y-0.5">
-        {group.items.map((item) => renderItem(item))}
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* Group header */}
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 mt-2 group cursor-pointer"
-      >
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 text-muted-foreground transition-transform duration-150 ease-out",
-            isGroupOpen && "rotate-90",
-          )}
-        />
-        <span className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground font-medium select-none">
-          {group.label}
-        </span>
-      </button>
-
-      {/* Collapsible items with smooth height animation */}
-      <div
-        className={cn(
-          "overflow-hidden transition-all duration-150 ease-out",
-          isGroupOpen ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0",
-        )}
-      >
-        <div className="space-y-0.5">
-          {group.items.map((item) => renderItem(item))}
-        </div>
-      </div>
-    </div>
-  );
+  return [...STATIC_NAV_GROUPS, workspacesGroup];
 }
 
 // ---------------------------------------------------------------------------
@@ -273,37 +132,34 @@ function CollapsibleGroup({
 
 export function Sidebar({ workspaces }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const navGroups = buildNavGroups(workspaces);
 
-  // Hydrate collapsed states from localStorage after mount
+  // Support unread badge polling
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    async function fetchSupportUnread() {
+      try {
+        const res = await fetch("/api/support/unread-count");
+        const json = await res.json();
+        if (active) setSupportUnreadCount(json.count ?? 0);
+      } catch {}
+    }
+    fetchSupportUnread();
+    const interval = setInterval(fetchSupportUnread, 30_000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
+
+  // Hydrate collapsed state from localStorage after mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       if (stored === "true") setCollapsed(true);
     } catch {}
-
-    // Hydrate group collapsed states
-    try {
-      const storedGroups = localStorage.getItem(GROUPS_STORAGE_KEY);
-      if (storedGroups) {
-        setCollapsedGroups(JSON.parse(storedGroups));
-      } else {
-        // Set defaults: collapse groups marked defaultCollapsed
-        const defaults: Record<string, boolean> = {};
-        for (const g of STATIC_NAV_GROUPS) {
-          if (g.defaultCollapsed) defaults[g.key] = true;
-        }
-        setCollapsedGroups(defaults);
-      }
-    } catch {}
-
     setMounted(true);
   }, []);
 
@@ -312,16 +168,6 @@ export function Sidebar({ workspaces }: SidebarProps) {
       const next = !prev;
       try {
         localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
-      } catch {}
-      return next;
-    });
-  }, []);
-
-  const toggleGroup = useCallback((key: string) => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      try {
-        localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -338,46 +184,6 @@ export function Sidebar({ workspaces }: SidebarProps) {
     document.dispatchEvent(event);
   }, []);
 
-  // Fetch unread notification count
-  useEffect(() => {
-    let active = true;
-    async function fetchUnread() {
-      try {
-        const res = await fetch("/api/notifications?page=1");
-        const json = await res.json();
-        if (active) {
-          setUnreadCount(
-            json.notifications?.filter((n: { read: boolean }) => !n.read).length ?? 0,
-          );
-        }
-      } catch {}
-    }
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 60_000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Fetch support unread count
-  useEffect(() => {
-    let active = true;
-    async function fetchSupportUnread() {
-      try {
-        const res = await fetch("/api/support/unread-count");
-        const json = await res.json();
-        if (active) setSupportUnreadCount(json.count ?? 0);
-      } catch {}
-    }
-    fetchSupportUnread();
-    const interval = setInterval(fetchSupportUnread, 30_000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
-
   // Prevent layout shift: render expanded width until client hydration completes
   const isCollapsed = mounted ? collapsed : false;
 
@@ -390,55 +196,18 @@ export function Sidebar({ workspaces }: SidebarProps) {
         ? pathname === "/"
         : pathname === item.href || pathname.startsWith(item.href + "/");
 
-    const isNotification = item.href === "/notifications";
-    const isSupport = item.href === "/support";
+    const sharedClasses = cn(
+      "flex items-center rounded-lg text-sm transition-colors duration-150 cursor-pointer",
+      isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+      isActive
+        ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary"
+        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground border-l-2 border-transparent",
+    );
 
     const linkContent = (
-      <Link
-        href={item.href}
-        className={cn(
-          "group/item flex items-center rounded-md transition-all duration-150 ease-out",
-          isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
-          "text-[13px]",
-          isActive
-            ? "bg-[color:oklch(0.55_0.25_275_/_0.08)] text-[color:var(--brand)] border-l-2 border-[color:var(--brand)]"
-            : cn(
-                "border-l-2 border-transparent",
-                "text-muted-foreground hover:bg-muted hover:text-foreground",
-              ),
-        )}
-      >
-        <item.icon
-          className={cn(
-            "shrink-0 h-4 w-4 transition-colors duration-150",
-            isActive
-              ? "text-[color:var(--brand)]"
-              : "text-muted-foreground group-hover/item:text-foreground",
-          )}
-        />
-        {!isCollapsed && (
-          <span className="truncate">{item.label}</span>
-        )}
-        {isNotification && unreadCount > 0 && (
-          <span
-            className={cn(
-              "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white leading-none",
-              isCollapsed ? "absolute -top-1 -right-1" : "ml-auto",
-            )}
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-        {isSupport && supportUnreadCount > 0 && (
-          <span
-            className={cn(
-              "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white leading-none",
-              isCollapsed ? "absolute -top-1 -right-1" : "ml-auto",
-            )}
-          >
-            {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
-          </span>
-        )}
+      <Link href={item.href} className={sharedClasses}>
+        <item.icon className="h-4 w-4 shrink-0" />
+        {!isCollapsed && <span className="truncate">{item.label}</span>}
       </Link>
     );
 
@@ -448,14 +217,8 @@ export function Sidebar({ workspaces }: SidebarProps) {
           <TooltipTrigger asChild>
             <div className="relative">{linkContent}</div>
           </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8} className="text-xs">
+          <TooltipContent side="right" sideOffset={8}>
             {item.label}
-            {isNotification && unreadCount > 0 && (
-              <span className="ml-1.5 text-red-400">({unreadCount})</span>
-            )}
-            {isSupport && supportUnreadCount > 0 && (
-              <span className="ml-1.5 text-red-400">({supportUnreadCount})</span>
-            )}
           </TooltipContent>
         </Tooltip>
       );
@@ -467,15 +230,15 @@ export function Sidebar({ workspaces }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col bg-[var(--sidebar)] border-r border-[var(--sidebar-border)] transition-all duration-200 ease-out",
+        "flex h-screen flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-200",
         isCollapsed ? "w-16" : "w-64",
       )}
     >
       {/* Logo header */}
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center border-b border-[var(--sidebar-border)]",
-          isCollapsed ? "justify-center px-2" : "px-5",
+          "flex h-14 shrink-0 items-center border-b border-sidebar-border/50 text-sidebar-foreground",
+          isCollapsed ? "justify-center px-2" : "px-6",
         )}
       >
         {isCollapsed ? (
@@ -489,27 +252,75 @@ export function Sidebar({ workspaces }: SidebarProps) {
         )}
       </div>
 
-      {/* Scrollable nav */}
-      <ScrollArea className={cn("flex-1 py-3", isCollapsed ? "px-1.5" : "px-2.5")}>
-        <nav aria-label="Main navigation" className="space-y-1">
-          {navGroups.map((group) => {
-            const isGroupOpen = !collapsedGroups[group.key];
-            return (
-              <CollapsibleGroup
-                key={group.key}
-                group={group}
-                isGroupOpen={isGroupOpen}
-                onToggle={() => toggleGroup(group.key)}
-                isSidebarCollapsed={isCollapsed}
-                renderItem={renderNavItem}
-              />
-            );
-          })}
-        </nav>
-      </ScrollArea>
+      {/* Navigation */}
+      <nav
+        aria-label="Main navigation"
+        className={cn("flex-1 py-4 overflow-y-auto", isCollapsed ? "px-1.5" : "px-3")}
+      >
+        <div className="space-y-4">
+          {navGroups.map((group) => (
+            <div key={group.key}>
+              {!isCollapsed && !group.hideLabel && (
+                <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => renderNavItem(item))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </nav>
 
-      {/* Bottom section: Settings + Cmd+K + Collapse toggle */}
-      <div className="shrink-0 border-t border-[var(--sidebar-border)] p-2 space-y-0.5">
+      {/* Footer: Settings + Search + Theme + Collapse */}
+      <div className="shrink-0 border-t border-sidebar-border/50 p-2 space-y-1">
+        {/* Support link */}
+        {(() => {
+          const isSupportActive = pathname === "/support" || pathname.startsWith("/support/");
+          const supportContent = (
+            <Link
+              href="/support"
+              className={cn(
+                "flex items-center rounded-lg text-sm transition-colors duration-150",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                isSupportActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+              )}
+            >
+              <LifeBuoy className="h-4 w-4 shrink-0" />
+              {!isCollapsed && <span className="truncate">Support</span>}
+              {supportUnreadCount > 0 && (
+                <span
+                  className={cn(
+                    "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white leading-none",
+                    isCollapsed ? "absolute -top-1 -right-1" : "ml-auto",
+                  )}
+                >
+                  {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
+                </span>
+              )}
+            </Link>
+          );
+          if (isCollapsed) {
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative">{supportContent}</div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  Support
+                  {supportUnreadCount > 0 && (
+                    <span className="ml-1.5 text-primary">({supportUnreadCount})</span>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            );
+          }
+          return supportContent;
+        })()}
+
         {/* Settings link */}
         {(() => {
           const isSettingsActive = pathname === "/settings" || pathname.startsWith("/settings/");
@@ -517,22 +328,14 @@ export function Sidebar({ workspaces }: SidebarProps) {
             <Link
               href="/settings"
               className={cn(
-                "group/item flex items-center rounded-md transition-all duration-150 ease-out",
-                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
-                "text-[13px]",
+                "flex items-center rounded-lg text-sm transition-colors duration-150",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
                 isSettingsActive
-                  ? "bg-[color:oklch(0.55_0.25_275_/_0.08)] text-[color:var(--brand)]"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
               )}
             >
-              <Settings
-                className={cn(
-                  "shrink-0 h-4 w-4 transition-colors duration-150",
-                  isSettingsActive
-                    ? "text-[color:var(--brand)]"
-                    : "text-muted-foreground group-hover/item:text-foreground",
-                )}
-              />
+              <Settings className="h-4 w-4 shrink-0" />
               {!isCollapsed && <span>Settings</span>}
             </Link>
           );
@@ -542,7 +345,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
                 <TooltipTrigger asChild>
                   <div>{settingsContent}</div>
                 </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8} className="text-xs">
+                <TooltipContent side="right" sideOffset={8}>
                   Settings
                 </TooltipContent>
               </Tooltip>
@@ -551,22 +354,22 @@ export function Sidebar({ workspaces }: SidebarProps) {
           return settingsContent;
         })()}
 
-        {/* Cmd+K shortcut hint */}
+        {/* Search (Cmd+K) */}
         {(() => {
           const cmdKContent = (
             <button
               onClick={openCommandPalette}
               className={cn(
-                "flex w-full items-center rounded-md transition-all duration-150 ease-out cursor-pointer",
-                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
-                "text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
+                "flex w-full items-center rounded-lg text-sm transition-colors duration-150 cursor-pointer",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
               )}
             >
-              <Search className="shrink-0 h-4 w-4" />
+              <Search className="h-4 w-4 shrink-0" />
               {!isCollapsed && (
                 <>
                   <span>Search</span>
-                  <kbd className="ml-auto inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground font-mono">
+                  <kbd className="ml-auto inline-flex items-center gap-0.5 rounded border border-sidebar-border bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground/50 font-mono">
                     <span className="text-[11px]">&#8984;</span>K
                   </kbd>
                 </>
@@ -579,7 +382,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
                 <TooltipTrigger asChild>
                   <div>{cmdKContent}</div>
                 </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8} className="text-xs">
+                <TooltipContent side="right" sideOffset={8}>
                   Search (&#8984;K)
                 </TooltipContent>
               </Tooltip>
@@ -591,42 +394,6 @@ export function Sidebar({ workspaces }: SidebarProps) {
         {/* Theme toggle */}
         <ThemeToggle collapsed={isCollapsed} />
 
-        {/* Logout */}
-        {(() => {
-          const handleLogout = async () => {
-            try {
-              await fetch("/api/admin/logout", { method: "POST" });
-            } catch {}
-            router.push("/login");
-          };
-          const logoutContent = (
-            <button
-              onClick={handleLogout}
-              className={cn(
-                "flex w-full items-center rounded-md transition-all duration-150 ease-out cursor-pointer",
-                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-[7px]",
-                "text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <LogOut className="shrink-0 h-4 w-4" />
-              {!isCollapsed && <span>Log out</span>}
-            </button>
-          );
-          if (isCollapsed) {
-            return (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>{logoutContent}</div>
-                </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8} className="text-xs">
-                  Log out
-                </TooltipContent>
-              </Tooltip>
-            );
-          }
-          return logoutContent;
-        })()}
-
         {/* Collapse/expand toggle */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -634,8 +401,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
               onClick={toggleCollapsed}
               aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               className={cn(
-                "flex w-full items-center rounded-md py-2 text-[13px] transition-all duration-150 ease-out cursor-pointer",
-                "text-muted-foreground hover:bg-muted hover:text-foreground",
+                "flex w-full items-center rounded-lg py-2 text-sm text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors duration-150",
                 isCollapsed ? "justify-center px-2" : "gap-3 px-3",
               )}
             >
@@ -650,7 +416,7 @@ export function Sidebar({ workspaces }: SidebarProps) {
             </button>
           </TooltipTrigger>
           {isCollapsed && (
-            <TooltipContent side="right" sideOffset={8} className="text-xs">
+            <TooltipContent side="right" sideOffset={8}>
               Expand sidebar
             </TooltipContent>
           )}

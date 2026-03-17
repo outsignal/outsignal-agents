@@ -88,9 +88,9 @@ export default async function PortalCampaignsPage({
   const now = new Date();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col h-full p-6 gap-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between shrink-0">
         <div>
           <h1 className="text-xl font-medium text-foreground">Campaigns</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -113,17 +113,17 @@ export default async function PortalCampaignsPage({
       </div>
 
       {merged.length === 0 ? (
-        <EmptyState
+        <div className="flex-1 min-h-0 overflow-hidden"><EmptyState
           icon={Megaphone}
           title="No campaigns yet"
           description="Your campaigns will appear here once they are ready for review. We'll notify you when there's something to approve."
-        />
+        /></div>
       ) : (
-        <CampaignChannelTabs
+        <div className="flex-1 min-h-0 overflow-hidden"><CampaignChannelTabs
           campaigns={merged}
           workspacePackage={workspace?.package ?? "email"}
           initialChannel={channel}
-        />
+        /></div>
       )}
     </div>
   );

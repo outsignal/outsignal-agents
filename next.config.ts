@@ -1,6 +1,31 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      { source: "/agent-runs", destination: "/settings?tab=operations", permanent: true },
+      { source: "/background-tasks", destination: "/settings?tab=operations", permanent: true },
+      { source: "/enrichment-costs", destination: "/settings?tab=costs", permanent: true },
+      { source: "/integrations", destination: "/settings?tab=integrations", permanent: true },
+      { source: "/notification-health", destination: "/settings?tab=notifications", permanent: true },
+      { source: "/notifications", destination: "/settings?tab=notifications", permanent: true },
+      { source: "/ooo-queue", destination: "/settings?tab=operations", permanent: true },
+      { source: "/signals", destination: "/settings?tab=operations", permanent: true },
+      { source: "/webhook-log", destination: "/settings?tab=operations", permanent: true },
+      { source: "/packages", destination: "/settings?tab=packages", permanent: true },
+      { source: "/agent-guide", destination: "/settings?tab=guide", permanent: true },
+      { source: "/linkedin-queue", destination: "/settings?tab=operations", permanent: true },
+      { source: "/pages", destination: "/settings?tab=content", permanent: true },
+      { source: "/revenue", destination: "/financials?tab=revenue", permanent: true },
+      { source: "/platform-costs", destination: "/financials?tab=costs", permanent: true },
+      { source: "/cashflow", destination: "/financials?tab=cashflow", permanent: true },
+      { source: "/email", destination: "/deliverability?tab=email-health", permanent: true },
+      { source: "/senders", destination: "/deliverability?tab=senders", permanent: true },
+      { source: "/intelligence", destination: "/analytics?view=intelligence", permanent: true },
+      { source: "/replies", destination: "/inbox?view=classifications", permanent: true },
+      { source: "/onboard", destination: "/clients?tab=onboard", permanent: true },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [

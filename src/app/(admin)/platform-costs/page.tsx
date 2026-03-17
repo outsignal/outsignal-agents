@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Input } from "@/components/ui/input";
@@ -637,13 +636,7 @@ export default function PlatformCostsPage() {
   const serviceCount = data?.services.length ?? 0;
 
   return (
-    <div>
-      <Header
-        title="Platform Costs"
-        description="Monthly service expenses (GBP)"
-      />
-
-      <div className="p-6 space-y-6">
+    <div className="space-y-6 py-4">
         {/* Error state */}
         {error && (
           <ErrorBanner
@@ -738,6 +731,5 @@ export default function PlatformCostsPage() {
           </div>
         )}
       </div>
-    </div>
   );
 }

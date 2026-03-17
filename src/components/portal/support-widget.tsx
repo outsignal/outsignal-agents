@@ -53,18 +53,13 @@ interface Conversation {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)__csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function SupportWidget() {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"home" | "search" | "chat">("home");
+  const [view, setView] = useState<"home" | "search" | "chat">("chat");
 
   // FAQ
   const [faqCategories, setFaqCategories] = useState<
@@ -97,6 +92,7 @@ export function SupportWidget() {
 
   // Polling refs
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sendingRef = useRef(false);
 
   // -----------------------------------------------------------------------
   // FAQ fetch
@@ -105,11 +101,19 @@ export function SupportWidget() {
   useEffect(() => {
     fetch("/api/portal/support/faq")
       .then((r) => r.json())
-      .then((data: FaqArticle[]) => {
+      .then((data) => {
         const grouped: Record<string, FaqArticle[]> = {};
-        for (const article of data) {
-          if (!grouped[article.category]) grouped[article.category] = [];
-          grouped[article.category].push(article);
+        // API returns { categories: [{ name, articles }] }
+        if (data.categories && Array.isArray(data.categories)) {
+          for (const cat of data.categories) {
+            grouped[cat.name] = cat.articles;
+          }
+        } else if (Array.isArray(data)) {
+          // Fallback: flat array of articles
+          for (const article of data as FaqArticle[]) {
+            if (!grouped[article.category]) grouped[article.category] = [];
+            grouped[article.category].push(article);
+          }
         }
         setFaqCategories(grouped);
       })
@@ -159,10 +163,11 @@ export function SupportWidget() {
       const msgRes = await fetch(
         `/api/portal/support/messages?conversationId=${conv.id}`,
       );
-      const msgs: Message[] = await msgRes.json();
+      const msgData = await msgRes.json();
+      const msgs: Message[] = Array.isArray(msgData) ? msgData : (msgData.messages ?? []);
       setMessages(msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
-    } catch {
-      // fail silently
+    } catch (err) {
+      console.error("[SupportWidget] Failed to load chat:", err);
     } finally {
       setLoading(false);
     }
@@ -188,6 +193,7 @@ export function SupportWidget() {
     const content = chatInput.trim();
     setChatInput("");
     setSending(true);
+    sendingRef.current = true;
 
     // Optimistic client message
     const optimistic: Message = {
@@ -204,11 +210,12 @@ export function SupportWidget() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-csrf-token": getCsrfToken(),
         },
+        credentials: "same-origin",
         body: JSON.stringify({ conversationId: conversation.id, content }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       // Replace optimistic + append response messages
       setMessages((prev) => {
         const withoutOptimistic = prev.filter((m) => m.id !== optimistic.id);
@@ -219,11 +226,12 @@ export function SupportWidget() {
           a.createdAt.localeCompare(b.createdAt),
         );
       });
-    } catch {
-      // Remove optimistic message on failure
+    } catch (err) {
+      console.error("[SupportWidget] Failed to send message:", err);
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
     } finally {
       setSending(false);
+      sendingRef.current = false;
     }
   }, [chatInput, conversation, sending]);
 
@@ -239,16 +247,19 @@ export function SupportWidget() {
 
     if (open && view === "chat" && conversation) {
       chatPollRef.current = setInterval(() => {
-        if (!isVisible()) return;
+        if (!isVisible() || sendingRef.current) return;
         fetch(
           `/api/portal/support/messages?conversationId=${conversation.id}`,
         )
           .then((r) => r.json())
-          .then((msgs: Message[]) =>
+          .then((data) => {
+            // Skip poll update if a send started while the request was in-flight
+            if (sendingRef.current) return;
+            const msgs: Message[] = Array.isArray(data) ? data : (data.messages ?? []);
             setMessages(
               msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-            ),
-          )
+            );
+          })
           .catch(() => {});
       }, 10_000);
     }
@@ -544,14 +555,13 @@ export function SupportWidget() {
                         )}
                       >
                         {!isClient && (
-                          <div className="mb-1">
-                            {msg.role === "ai" ? (
-                              <span className="rounded bg-muted px-1 text-xs text-muted-foreground">
+                          <div className="mb-1 flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {msg.role === "ai" ? "Outsignal Assistant" : "Outsignal Team"}
+                            </span>
+                            {msg.role === "ai" && (
+                              <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">
                                 AI
-                              </span>
-                            ) : (
-                              <span className="text-xs font-medium text-muted-foreground">
-                                Outsignal Team
                               </span>
                             )}
                           </div>

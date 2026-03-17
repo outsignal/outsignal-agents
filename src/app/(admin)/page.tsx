@@ -6,7 +6,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useQueryState } from "nuqs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
+import { FilterBar } from "@/components/ui/filter-bar";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ClientFilter } from "@/components/dashboard/client-filter";
 import { CombinedChart, CombinedChartLegend } from "@/components/dashboard/combined-chart";
@@ -157,98 +158,96 @@ export default function DashboardPage() {
   const disconnectedInboxes = kpis.inboxesWarning + kpis.inboxesCritical;
   const workerOnline = kpis.workerStatus === "online";
 
+  const description = `${days === "7" ? "Last 7 days" : days === "14" ? "Last 14 days" : days === "30" ? "Last 30 days" : "Last 90 days"} ${workspace !== "all" ? `\u00b7 ${workspace}` : "\u00b7 all campaigns"}`;
+
   return (
-    <div>
-      <Header
-        title="Dashboard"
-        description={`${days === "7" ? "Last 7 days" : days === "14" ? "Last 14 days" : days === "30" ? "Last 30 days" : "Last 90 days"} ${workspace !== "all" ? `\u00b7 ${workspace}` : "\u00b7 all campaigns"}`}
-        actions={<ClientFilter workspaces={workspaces} />}
-      />
+    <PageShell title="Dashboard" description={description}>
+      <FilterBar>
+        <ClientFilter workspaces={workspaces} />
+      </FilterBar>
 
-      <div className="p-6 space-y-4">
-        {!loading && alerts.length > 0 && (
-          <AlertsSection alerts={alerts} />
-        )}
+      {!loading && alerts.length > 0 && (
+        <AlertsSection alerts={alerts} />
+      )}
 
-        {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+      {error && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
-        {loading ? (
-          <DashboardSkeleton />
-        ) : !error ? (
-          <>
-            {/* Row 1: Hero metric cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="col-span-2">
-                <MetricCard
-                  label="Total Replies"
-                  value={totalReplies.toLocaleString()}
-                  variant="hero"
-                  trend={totalReplies > 0 ? "up" : "neutral"}
-                  detail={`${replyRate === "\u2014" ? "\u2014" : `${replyRate}%`} reply rate \u00b7 ${kpis.emailAutoReplied} auto`}
-                  sparklineData={sparklineReplies.length > 1 ? sparklineReplies : undefined}
-                  sparklineColor="#635BFF"
-                  density="compact"
-                  className="h-full"
-                />
-              </div>
-
+      {loading ? (
+        <DashboardSkeleton />
+      ) : !error ? (
+        <>
+          {/* Row 1: Hero metric cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="col-span-2">
               <MetricCard
-                label="Emails Sent"
-                value={kpis.emailSent.toLocaleString()}
-                trend={kpis.emailSent > 0 ? "up" : "neutral"}
-                detail={`${kpis.emailOpened.toLocaleString()} opened \u00b7 ${bounceRate === "\u2014" ? "\u2014" : `${bounceRate}%`} bounced`}
-                sparklineData={sparklineSent.length > 1 ? sparklineSent : undefined}
-                sparklineColor="#635BFF"
-                density="compact"
-                className="h-full"
-              />
-
-              <MetricCard
-                label="LinkedIn Actions"
-                value={(kpis.linkedinProfileView + kpis.linkedinConnect + kpis.linkedinMessage).toLocaleString()}
-                trend={(kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView) > 0 ? "up" : "neutral"}
-                detail={`${kpis.linkedinConnect} connects \u00b7 ${kpis.linkedinMessage} messages`}
-                sparklineData={sparklineLinkedin.length > 1 ? sparklineLinkedin : undefined}
+                label="Total Replies"
+                value={totalReplies.toLocaleString()}
+                variant="hero"
+                trend={totalReplies > 0 ? "up" : "neutral"}
+                detail={`${replyRate === "\u2014" ? "\u2014" : `${replyRate}%`} reply rate \u00b7 ${kpis.emailAutoReplied} auto`}
+                sparklineData={sparklineReplies.length > 1 ? sparklineReplies : undefined}
                 sparklineColor="#635BFF"
                 density="compact"
                 className="h-full"
               />
             </div>
 
-            {/* Row 2: System health status row */}
-            <StatusIndicatorRow
-              items={[
-                { label: "Senders", value: `${kpis.sendersActiveTotal} active`, status: kpis.sendersActiveTotal > 0 ? "green" : "red", href: "/senders" },
-                { label: "Inboxes", value: `${kpis.inboxesHealthy}/${kpis.inboxesTotal}`, status: disconnectedInboxes > 0 ? "amber" : "green", href: "/email" },
-                { label: "Campaigns", value: `${kpis.campaignsActive} running`, status: kpis.campaignsActive > 0 ? "green" : "neutral" },
-                { label: "Pipeline", value: `${kpis.pipelineContacted} leads`, status: "neutral", href: "/people" },
-                { label: "Worker", value: workerOnline ? "Online" : "Offline", status: workerOnline ? "green" : "red" },
-              ]}
+            <MetricCard
+              label="Emails Sent"
+              value={kpis.emailSent.toLocaleString()}
+              trend={kpis.emailSent > 0 ? "up" : "neutral"}
+              detail={`${kpis.emailOpened.toLocaleString()} opened \u00b7 ${bounceRate === "\u2014" ? "\u2014" : `${bounceRate}%`} bounced`}
+              sparklineData={sparklineSent.length > 1 ? sparklineSent : undefined}
+              sparklineColor="#635BFF"
+              density="compact"
+              className="h-full"
             />
 
-            {/* Row 3: Activity combined chart */}
-            <Card>
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>Activity Overview</CardTitle>
-                <CombinedChartLegend />
-              </CardHeader>
-              <CardContent>
-                {timeSeries.length === 0 && linkedInTimeSeries.length === 0 ? (
-                  <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
-                    No activity data for this period
-                  </div>
-                ) : (
-                  <CombinedChart emailData={timeSeries} linkedInData={linkedInTimeSeries} />
-                )}
-              </CardContent>
-            </Card>
-          </>
-        ) : null}
-      </div>
-    </div>
+            <MetricCard
+              label="LinkedIn Actions"
+              value={(kpis.linkedinProfileView + kpis.linkedinConnect + kpis.linkedinMessage).toLocaleString()}
+              trend={(kpis.linkedinConnect + kpis.linkedinMessage + kpis.linkedinProfileView) > 0 ? "up" : "neutral"}
+              detail={`${kpis.linkedinConnect} connects \u00b7 ${kpis.linkedinMessage} messages`}
+              sparklineData={sparklineLinkedin.length > 1 ? sparklineLinkedin : undefined}
+              sparklineColor="#635BFF"
+              density="compact"
+              className="h-full"
+            />
+          </div>
+
+          {/* Row 2: System health status row */}
+          <StatusIndicatorRow
+            items={[
+              { label: "Senders", value: `${kpis.sendersActiveTotal} active`, status: kpis.sendersActiveTotal > 0 ? "green" : "red", href: "/senders" },
+              { label: "Inboxes", value: `${kpis.inboxesHealthy}/${kpis.inboxesTotal}`, status: disconnectedInboxes > 0 ? "amber" : "green", href: "/email" },
+              { label: "Campaigns", value: `${kpis.campaignsActive} running`, status: kpis.campaignsActive > 0 ? "green" : "neutral" },
+              { label: "Pipeline", value: `${kpis.pipelineContacted} leads`, status: "neutral", href: "/people" },
+              { label: "Worker", value: workerOnline ? "Online" : "Offline", status: workerOnline ? "green" : "red" },
+            ]}
+          />
+
+          {/* Row 3: Activity combined chart */}
+          <Card>
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle>Activity Overview</CardTitle>
+              <CombinedChartLegend />
+            </CardHeader>
+            <CardContent>
+              {timeSeries.length === 0 && linkedInTimeSeries.length === 0 ? (
+                <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">
+                  No activity data for this period
+                </div>
+              ) : (
+                <CombinedChart emailData={timeSeries} linkedInData={linkedInTimeSeries} />
+              )}
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+    </PageShell>
   );
 }

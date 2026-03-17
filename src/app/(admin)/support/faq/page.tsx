@@ -40,11 +40,6 @@ const emptyForm: FormData = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)__csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -94,11 +89,9 @@ export default function FaqManagementPage() {
   }
 
   async function handleSave() {
-    const csrf = getCsrfToken();
     const body = JSON.stringify(form);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "x-csrf-token": csrf,
     };
 
     if (editingId) {
@@ -122,7 +115,6 @@ export default function FaqManagementPage() {
     if (!window.confirm("Delete this FAQ article?")) return;
     await fetch(`/api/support/faq/${id}`, {
       method: "DELETE",
-      headers: { "x-csrf-token": getCsrfToken() },
     });
     fetchArticles();
   }
@@ -132,7 +124,6 @@ export default function FaqManagementPage() {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        "x-csrf-token": getCsrfToken(),
       },
       body: JSON.stringify({ published: !article.published }),
     });

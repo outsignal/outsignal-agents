@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { Header } from "@/components/layout/header";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -245,17 +246,16 @@ export function CompaniesSearchPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="border-b border-border px-4 py-4 sm:px-6 sm:py-5">
-        <h1 className="text-xl font-semibold text-foreground">Companies</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {data
+      <Header
+        title="Companies"
+        description={
+          data
             ? `${data.total.toLocaleString()} companies${loading ? " (refreshing...)" : ""}`
             : loading
             ? "Loading..."
-            : "Search and filter your company database"}
-        </p>
-      </div>
+            : "Search and filter your company database"
+        }
+      />
 
       <div className="p-4 sm:p-6 space-y-4">
         {/* Filter toggle + collapsed pill bar / expanded sidebar wrapper */}

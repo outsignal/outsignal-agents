@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,63 +52,65 @@ export default async function InboxPage({ params }: InboxPageProps) {
   const autoReplyCount = replies.filter((r) => r.automated_reply).length;
 
   return (
-    <div>
-      <Header
-        title="Inbox"
-        description={`${workspace.name} - ${replies.length} total replies`}
-      />
-      <div className="p-6 space-y-6">
-        {error && <ErrorBanner message={error} />}
+    <PageShell
+      title="Inbox"
+      description={`${workspace.name} — ${replies.length} total replies`}
+      breadcrumbs={[
+        { label: "Workspaces", href: "/" },
+        { label: workspace.name, href: `/workspace/${slug}` },
+        { label: "Inbox" },
+      ]}
+    >
+      {error && <ErrorBanner message={error} />}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <MetricCard label="Total Replies" value={replies.length} />
-          <MetricCard
-            label="Unread"
-            value={unreadCount}
-            trend={unreadCount > 0 ? "warning" : "neutral"}
-          />
-          <MetricCard
-            label="Interested"
-            value={interestedCount}
-            trend={interestedCount > 0 ? "up" : "neutral"}
-          />
-          <MetricCard
-            label="Bounced"
-            value={bouncedReplies.length}
-            trend={bouncedReplies.length > 0 ? "down" : "neutral"}
-          />
-          <MetricCard
-            label="Auto-Replies"
-            value={autoReplyCount}
-            detail="Filtered automatically"
-          />
-        </div>
-
-        <Tabs defaultValue="inbox">
-          <TabsList>
-            <TabsTrigger value="inbox">
-              Inbox ({inboxReplies.length})
-            </TabsTrigger>
-            <TabsTrigger value="bounced">
-              Bounced ({bouncedReplies.length})
-            </TabsTrigger>
-            <TabsTrigger value="all">All ({replies.length})</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="inbox">
-            <ReplyTable replies={inboxReplies} slug={slug} />
-          </TabsContent>
-
-          <TabsContent value="bounced">
-            <ReplyTable replies={bouncedReplies} slug={slug} />
-          </TabsContent>
-
-          <TabsContent value="all">
-            <ReplyTable replies={replies} slug={slug} />
-          </TabsContent>
-        </Tabs>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <MetricCard label="Total Replies" value={replies.length} />
+        <MetricCard
+          label="Unread"
+          value={unreadCount}
+          trend={unreadCount > 0 ? "warning" : "neutral"}
+        />
+        <MetricCard
+          label="Interested"
+          value={interestedCount}
+          trend={interestedCount > 0 ? "up" : "neutral"}
+        />
+        <MetricCard
+          label="Bounced"
+          value={bouncedReplies.length}
+          trend={bouncedReplies.length > 0 ? "down" : "neutral"}
+        />
+        <MetricCard
+          label="Auto-Replies"
+          value={autoReplyCount}
+          detail="Filtered automatically"
+        />
       </div>
-    </div>
+
+      <Tabs defaultValue="inbox">
+        <TabsList>
+          <TabsTrigger value="inbox">
+            Inbox ({inboxReplies.length})
+          </TabsTrigger>
+          <TabsTrigger value="bounced">
+            Bounced ({bouncedReplies.length})
+          </TabsTrigger>
+          <TabsTrigger value="all">All ({replies.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="inbox">
+          <ReplyTable replies={inboxReplies} slug={slug} />
+        </TabsContent>
+
+        <TabsContent value="bounced">
+          <ReplyTable replies={bouncedReplies} slug={slug} />
+        </TabsContent>
+
+        <TabsContent value="all">
+          <ReplyTable replies={replies} slug={slug} />
+        </TabsContent>
+      </Tabs>
+    </PageShell>
   );
 }
 

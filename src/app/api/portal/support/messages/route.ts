@@ -94,9 +94,24 @@ export async function POST(request: NextRequest) {
       data: { lastMessageAt: new Date(), unreadByAdmin: true },
     });
 
-    const aiResponse = await generateAutoResponse(conversationId, content);
+    // Generate AI response in isolation — a failure here must not lose the
+    // already-persisted client message or return a 500 to the caller.
+    let aiMessage = null;
+    try {
+      const result = await generateAutoResponse(conversationId, content);
+      // Only look for a new AI message if one was actually created
+      // (empty message means escalation was already sent previously)
+      if (result.message) {
+        aiMessage = await prisma.supportMessage.findFirst({
+          where: { conversationId, role: "ai" },
+          orderBy: { createdAt: "desc" },
+        });
+      }
+    } catch (aiErr) {
+      console.error("Auto-response generation failed:", aiErr);
+    }
 
-    return NextResponse.json({ clientMessage, aiResponse });
+    return NextResponse.json({ clientMessage, aiMessage });
   } catch (error) {
     console.error("Failed to send support message:", error);
     return NextResponse.json(

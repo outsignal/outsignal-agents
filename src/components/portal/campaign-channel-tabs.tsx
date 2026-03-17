@@ -47,13 +47,13 @@ export function CampaignChannelTabs({
         />
       );
     }
-    return <CampaignListTable campaigns={campaigns} />;
+    return <CampaignListTable campaigns={campaigns} className="h-full" />;
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full gap-4">
       {/* Tab bar */}
-      <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted">
+      <div className="shrink-0 inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted">
         <button
           onClick={() => setActiveChannel("all")}
           className={cn(
@@ -92,6 +92,7 @@ export function CampaignChannelTabs({
       </div>
 
       {/* Content */}
+      <div className="flex-1 min-h-0">
       {activeChannel === "linkedin" ? (
         <EmptyState
           icon={Linkedin}
@@ -99,8 +100,9 @@ export function CampaignChannelTabs({
           description="LinkedIn campaign management will be available here shortly."
         />
       ) : (
-        <CampaignListTable campaigns={campaigns} />
+        <CampaignListTable campaigns={campaigns} className="h-full" />
       )}
+      </div>
     </div>
   );
 }

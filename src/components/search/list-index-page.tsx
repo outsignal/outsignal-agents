@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListChecks } from "lucide-react";
+import { PageShell } from "@/components/layout/page-shell";
 import {
   Dialog,
   DialogContent,
@@ -142,15 +143,10 @@ export function ListIndexPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Target Lists</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Named lists of prospects ready for export
-          </p>
-        </div>
-      </div>
+    <PageShell
+      title="Target Lists"
+      description="Named lists of prospects ready for export"
+    >
 
       {/* Search */}
       <div className="max-w-sm">
@@ -303,6 +299,6 @@ export function ListIndexPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

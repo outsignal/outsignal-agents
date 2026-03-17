@@ -21,11 +21,6 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)__csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
-
 export function PushNotificationPrompt({ vapidPublicKey }: PushNotificationPromptProps) {
   const [show, setShow] = useState(false);
 
@@ -56,7 +51,7 @@ export function PushNotificationPrompt({ vapidPublicKey }: PushNotificationPromp
       const json = subscription.toJSON();
       await fetch("/api/push/subscribe", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-csrf-token": getCsrfToken() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           endpoint: json.endpoint,
           keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth },

@@ -51,11 +51,6 @@ interface ResultState {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)__csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -143,7 +138,6 @@ export function PortalConnectModal({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-csrf-token": getCsrfToken(),
         },
         body: JSON.stringify({
           senderId,

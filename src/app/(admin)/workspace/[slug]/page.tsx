@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Header } from "@/components/layout/header";
-import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,186 +79,181 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
   };
 
   return (
-    <div>
-      <Breadcrumb
-        items={[
-          { label: "Workspaces", href: "/" },
-          { label: workspace.name },
-        ]}
-      />
-      <Header
-        title={workspace.name}
-        description={
-          workspace.vertical ? `Vertical: ${workspace.vertical}` : undefined
-        }
-        actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/workspace/${slug}/settings`}>
-              <Settings className="h-4 w-4 mr-1.5" />
-              Settings
-            </Link>
-          </Button>
-        }
-      />
-      <div className="p-6 space-y-6">
-        {error && <ErrorBanner message={error} />}
+    <PageShell
+      title={workspace.name}
+      description={
+        workspace.vertical ? `Vertical: ${workspace.vertical}` : undefined
+      }
+      breadcrumbs={[
+        { label: "Workspaces", href: "/" },
+        { label: workspace.name },
+      ]}
+      actions={
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/workspace/${slug}/settings`}>
+            <Settings className="h-4 w-4 mr-1.5" />
+            Settings
+          </Link>
+        </Button>
+      }
+    >
+      {error && <ErrorBanner message={error} />}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Total Sent" value={totalSent.toLocaleString()} />
-          <MetricCard
-            label="Open Rate"
-            value={`${totalSent > 0 ? ((totalOpens / totalSent) * 100).toFixed(1) : 0}%`}
-          />
-          <MetricCard
-            label="Reply Rate"
-            value={`${totalSent > 0 ? ((totalReplies / totalSent) * 100).toFixed(1) : 0}%`}
-            trend={
-              totalSent > 0 && (totalReplies / totalSent) * 100 > 3
-                ? "up"
-                : "neutral"
-            }
-          />
-          <MetricCard
-            label="Bounce Rate"
-            value={`${totalSent > 0 ? ((totalBounces / totalSent) * 100).toFixed(1) : 0}%`}
-            trend={
-              totalSent > 0 && (totalBounces / totalSent) * 100 > 5
-                ? "warning"
-                : "neutral"
-            }
-          />
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard label="Total Sent" value={totalSent.toLocaleString()} />
+        <MetricCard
+          label="Open Rate"
+          value={`${totalSent > 0 ? ((totalOpens / totalSent) * 100).toFixed(1) : 0}%`}
+        />
+        <MetricCard
+          label="Reply Rate"
+          value={`${totalSent > 0 ? ((totalReplies / totalSent) * 100).toFixed(1) : 0}%`}
+          trend={
+            totalSent > 0 && (totalReplies / totalSent) * 100 > 3
+              ? "up"
+              : "neutral"
+          }
+        />
+        <MetricCard
+          label="Bounce Rate"
+          value={`${totalSent > 0 ? ((totalBounces / totalSent) * 100).toFixed(1) : 0}%`}
+          trend={
+            totalSent > 0 && (totalBounces / totalSent) * 100 > 5
+              ? "warning"
+              : "neutral"
+          }
+        />
+      </div>
 
-        <Tabs defaultValue="campaigns">
-          <TabsList>
-            <TabsTrigger value="campaigns">
-              Campaigns ({campaigns.length})
-            </TabsTrigger>
-            <TabsTrigger value="replies">
-              Replies ({replies.length})
-            </TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="campaigns">
+        <TabsList>
+          <TabsTrigger value="campaigns">
+            Campaigns ({campaigns.length})
+          </TabsTrigger>
+          <TabsTrigger value="replies">
+            Replies ({replies.length})
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="campaigns">
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-heading">Campaigns</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Sent</TableHead>
-                      <TableHead className="text-right">Replies</TableHead>
-                      <TableHead className="text-right">Reply Rate</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {campaigns.map((campaign) => {
-                      const sent = campaign.emails_sent ?? 0;
-                      const rRate =
-                        sent > 0
-                          ? ((campaign.replied / sent) * 100).toFixed(1)
-                          : "0.0";
-                      return (
-                        <TableRow key={campaign.id}>
-                          <TableCell>
-                            <Link
-                              href={`/workspace/${slug}/campaigns/${campaign.id}`}
-                              className="font-medium hover:underline"
-                            >
-                              {campaign.name}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={statusVariant[campaign.status] ?? "secondary"}
-                              className="text-xs"
-                            >
-                              {campaign.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {sent.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {campaign.replied.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {rRate}%
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {campaigns.length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          className="text-center py-8 text-muted-foreground"
-                        >
-                          No campaigns found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="replies">
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-heading">Replies</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {replies.slice(0, 50).map((reply) => (
-                      <TableRow key={reply.id}>
-                        <TableCell className="font-medium">
-                          {reply.subject ?? "(No subject)"}
+        <TabsContent value="campaigns">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading">Campaigns</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Sent</TableHead>
+                    <TableHead className="text-right">Replies</TableHead>
+                    <TableHead className="text-right">Reply Rate</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {campaigns.map((campaign) => {
+                    const sent = campaign.emails_sent ?? 0;
+                    const rRate =
+                      sent > 0
+                        ? ((campaign.replied / sent) * 100).toFixed(1)
+                        : "0.0";
+                    return (
+                      <TableRow key={campaign.id}>
+                        <TableCell>
+                          <Link
+                            href={`/workspace/${slug}/campaigns/${campaign.id}`}
+                            className="font-medium hover:underline"
+                          >
+                            {campaign.name}
+                          </Link>
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={reply.folder === "Bounced" ? "destructive" : "success"}
+                            variant={statusVariant[campaign.status] ?? "secondary"}
                             className="text-xs"
                           >
-                            {reply.type}
+                            {campaign.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {new Date(reply.date_received).toLocaleDateString()}
+                        <TableCell className="text-right">
+                          {sent.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {campaign.replied.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {rRate}%
                         </TableCell>
                       </TableRow>
-                    ))}
-                    {replies.length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={3}
-                          className="text-center py-8 text-muted-foreground"
+                    );
+                  })}
+                  {campaigns.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center py-8 text-muted-foreground"
+                      >
+                        No campaigns found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="replies">
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-heading">Replies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {replies.slice(0, 50).map((reply) => (
+                    <TableRow key={reply.id}>
+                      <TableCell className="font-medium">
+                        {reply.subject ?? "(No subject)"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={reply.folder === "Bounced" ? "destructive" : "success"}
+                          className="text-xs"
                         >
-                          No replies yet
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+                          {reply.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(reply.date_received).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {replies.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={3}
+                        className="text-center py-8 text-muted-foreground"
+                      >
+                        No replies yet
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </PageShell>
   );
 }
 
@@ -294,26 +288,24 @@ function PendingWorkspaceView({
     : [];
 
   return (
-    <div>
-      <Breadcrumb
-        items={[
-          { label: "Workspaces", href: "/" },
-          { label: details.name },
-        ]}
-      />
-      <Header
-        title={details.name}
-        description={
-          details.vertical ? `Vertical: ${details.vertical}` : "Pending setup"
-        }
-        actions={
-          <Badge variant="warning" className="text-xs">
-            {details.status === "pending_emailbison"
-              ? "Pending Email Bison"
-              : details.status}
-          </Badge>
-        }
-      />
+    <PageShell
+      title={details.name}
+      description={
+        details.vertical ? `Vertical: ${details.vertical}` : "Pending setup"
+      }
+      breadcrumbs={[
+        { label: "Workspaces", href: "/" },
+        { label: details.name },
+      ]}
+      actions={
+        <Badge variant="warning" className="text-xs">
+          {details.status === "pending_emailbison"
+            ? "Pending Email Bison"
+            : details.status}
+        </Badge>
+      }
+      noPadding
+    >
       <div className="p-6 space-y-6 max-w-4xl">
         {/* Setup Checklist */}
         <Card>
@@ -382,7 +374,7 @@ function PendingWorkspaceView({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

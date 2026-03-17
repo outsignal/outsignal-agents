@@ -47,18 +47,21 @@ export default async function PortalDashboardPage({
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - timeSeriesDays);
 
-  // LinkedIn actions for the same period
-  const linkedInActions = await prisma.linkedInAction.findMany({
-    where: {
-      workspaceSlug,
-      createdAt: { gte: sinceDate },
-      status: "complete",
-    },
-    select: {
-      createdAt: true,
-      actionType: true,
-    },
-  });
+  // LinkedIn actions — only query if workspace package includes LinkedIn
+  const hasLinkedIn = workspace.package === "linkedin" || workspace.package === "email_linkedin";
+  const linkedInActions = hasLinkedIn
+    ? await prisma.linkedInAction.findMany({
+        where: {
+          workspaceSlug,
+          createdAt: { gte: sinceDate },
+          status: "complete",
+        },
+        select: {
+          createdAt: true,
+          actionType: true,
+        },
+      })
+    : [];
 
   const linkedInTotals = {
     connections: linkedInActions.filter((a) => a.actionType === "connect").length,
@@ -179,11 +182,13 @@ export default async function PortalDashboardPage({
     linkedInMessagesSparkline.push(count);
   }
 
-  // LinkedIn worker online status
-  const linkedInSender = await prisma.sender.findFirst({
-    where: { workspaceSlug, linkedinProfileUrl: { not: null } },
-    select: { lastPolledAt: true },
-  });
+  // LinkedIn worker online status — only query if package includes LinkedIn
+  const linkedInSender = hasLinkedIn
+    ? await prisma.sender.findFirst({
+        where: { workspaceSlug, linkedinProfileUrl: { not: null } },
+        select: { lastPolledAt: true },
+      })
+    : null;
   const linkedInWorkerOnline =
     linkedInSender?.lastPolledAt &&
     now.getTime() - linkedInSender.lastPolledAt.getTime() < 10 * 60 * 1000;
@@ -233,7 +238,7 @@ export default async function PortalDashboardPage({
         <div>
           <h1 className="text-xl font-medium text-foreground">{workspace.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Campaign performance overview · <Link href="/portal/email-health" className="text-brand hover:underline">Email health</Link> · <Link href="/portal/linkedin" className="text-brand hover:underline">LinkedIn</Link> · <Link href="/portal/inbox" className="text-brand hover:underline">Replies</Link>
+            Campaign performance overview · <Link href="/portal/email-health" className="text-brand hover:underline">Email health</Link>{hasLinkedIn && <> · <Link href="/portal/linkedin" className="text-brand hover:underline">LinkedIn</Link></>} · <Link href="/portal/inbox" className="text-brand hover:underline">Replies</Link>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -253,43 +258,47 @@ export default async function PortalDashboardPage({
         </div>
       </div>
 
-      {/* LinkedIn */}
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">LinkedIn</p>
-        <div className="grid grid-cols-3 gap-4">
-          <MetricCard label="Requests Sent" value={linkedInTotals.connections.toLocaleString()} sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
-          <MetricCard label="Connections Made" value={linkedInTotals.connections.toLocaleString()} detail="Accepted connections" sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
-          <MetricCard label="Messages Sent" value={linkedInTotals.messages.toLocaleString()} sparklineData={linkedInMessagesSparkline} sparklineColor="#635BFF" density="compact" icon="MessageSquare" />
-        </div>
-      </div>
+      {/* LinkedIn — only shown for packages that include LinkedIn */}
+      {hasLinkedIn && (
+        <>
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">LinkedIn</p>
+            <div className="grid grid-cols-3 gap-4">
+              <MetricCard label="Requests Sent" value={linkedInTotals.connections.toLocaleString()} sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
+              <MetricCard label="Connections Made" value={linkedInTotals.connections.toLocaleString()} detail="Accepted connections" sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
+              <MetricCard label="Messages Sent" value={linkedInTotals.messages.toLocaleString()} sparklineData={linkedInMessagesSparkline} sparklineColor="#635BFF" density="compact" icon="MessageSquare" />
+            </div>
+          </div>
 
-      {/* Worker Status */}
-      <div className={`rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm ${
-        linkedInWorkerOnline
-          ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-          : "bg-red-50 border border-red-200 text-red-700"
-      }`}>
-        {linkedInWorkerOnline ? (
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-        ) : (
-          <span className="inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-        )}
-        <span className="font-medium">{linkedInWorkerOnline ? "LinkedIn Worker Online" : "LinkedIn Worker Offline"}</span>
-        <span className="text-xs opacity-70">
-          {(() => {
-            if (!linkedInSender?.lastPolledAt) return "";
-            const mins = Math.floor((now.getTime() - linkedInSender.lastPolledAt.getTime()) / 60000);
-            if (mins < 1) return "· just now";
-            if (mins < 60) return `· ${mins}m ago`;
-            const hours = Math.floor(mins / 60);
-            if (hours < 24) return `· ${hours}h ago`;
-            return `· ${Math.floor(hours / 24)}d ago`;
-          })()}
-        </span>
-      </div>
+          {/* Worker Status */}
+          <div className={`rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm ${
+            linkedInWorkerOnline
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+              : "bg-red-50 border border-red-200 text-red-700"
+          }`}>
+            {linkedInWorkerOnline ? (
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            ) : (
+              <span className="inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            )}
+            <span className="font-medium">{linkedInWorkerOnline ? "LinkedIn Worker Online" : "LinkedIn Worker Offline"}</span>
+            <span className="text-xs opacity-70">
+              {(() => {
+                if (!linkedInSender?.lastPolledAt) return "";
+                const mins = Math.floor((now.getTime() - linkedInSender.lastPolledAt.getTime()) / 60000);
+                if (mins < 1) return "· just now";
+                if (mins < 60) return `· ${mins}m ago`;
+                const hours = Math.floor(mins / 60);
+                if (hours < 24) return `· ${hours}h ago`;
+                return `· ${Math.floor(hours / 24)}d ago`;
+              })()}
+            </span>
+          </div>
+        </>
+      )}
 
       {/* Recent Replies */}
       <Card density="compact">

@@ -12,6 +12,7 @@ const PORTAL_COOKIE_NAME = "portal_session";
 // These routes have their own authentication (API keys, signatures,
 // worker tokens, cron secrets) and must remain publicly accessible.
 const PUBLIC_API_PREFIXES = [
+  "/api/csrf",             // CSRF token (has own admin/portal auth check)
   "/api/admin/login",      // Public login endpoint
   "/api/admin/logout",     // Logout endpoint (has own session check)
   "/api/webhooks/",        // EmailBison webhooks (HMAC auth)

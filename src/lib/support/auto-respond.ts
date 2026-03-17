@@ -14,6 +14,23 @@ export async function generateAutoResponse(
   conversationId: string,
   clientMessage: string,
 ): Promise<AutoResponseResult> {
+  // 0. Check if an admin has already replied — if so, a human has taken
+  //    over the conversation and the AI should not auto-respond.
+  const adminReplyExists = await prisma.supportMessage.findFirst({
+    where: { conversationId, role: "admin" },
+    select: { id: true },
+  });
+
+  if (adminReplyExists) {
+    // Still mark as unread so the admin sees the new client message
+    await prisma.supportConversation.update({
+      where: { id: conversationId },
+      data: { unreadByAdmin: true },
+    });
+
+    return { message: "", escalated: false, confidence: null };
+  }
+
   // Get workspace slug for escalation notifications
   const conversation = await prisma.supportConversation.findUnique({
     where: { id: conversationId },
@@ -43,14 +60,26 @@ export async function generateAutoResponse(
         })
       : [];
 
-  // 3. Check if we should auto-escalate (3+ consecutive client messages with no admin reply)
+  // 3. Check conversation history for escalation logic
   const recentMessages = await prisma.supportMessage.findMany({
     where: { conversationId },
     orderBy: { createdAt: "desc" },
-    take: 10,
-    select: { role: true },
+    take: 20,
+    select: { role: true, escalated: true },
   });
 
+  // Check if an escalation message has already been sent in this conversation
+  // (without an admin reply after it — an admin reply "resets" escalation state)
+  let alreadyEscalated = false;
+  for (const msg of recentMessages) {
+    if (msg.role === "admin") break; // admin replied since last escalation — reset
+    if (msg.role === "ai" && msg.escalated) {
+      alreadyEscalated = true;
+      break;
+    }
+  }
+
+  // Check if we should auto-escalate (3+ consecutive client messages with no admin reply)
   let consecutiveClientMessages = 0;
   for (const msg of recentMessages) {
     if (msg.role === "client") {
@@ -97,34 +126,48 @@ ${faqResults.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n")}`,
 
   // 6. Escalate path
   if (shouldEscalate) {
-    const escalationMessage =
-      "I'll connect you with the team — they typically respond within 30 minutes.";
+    // Only send the escalation message and notify admins if we haven't
+    // already escalated in this conversation (avoids spamming the client
+    // with "I'll connect you with the team..." on every message).
+    if (!alreadyEscalated) {
+      const escalationMessage =
+        "I'll connect you with the team — they typically respond within 30 minutes.";
 
-    await prisma.supportMessage.create({
-      data: {
-        conversationId,
-        role: "ai",
-        content: escalationMessage,
-        escalated: true,
-      },
-    });
+      await prisma.supportMessage.create({
+        data: {
+          conversationId,
+          role: "ai",
+          content: escalationMessage,
+          escalated: true,
+        },
+      });
 
-    await prisma.supportConversation.update({
-      where: { id: conversationId },
-      data: {
-        unreadByAdmin: true,
-        lastMessageAt: new Date(),
-      },
-    });
+      await prisma.supportConversation.update({
+        where: { id: conversationId },
+        data: {
+          unreadByAdmin: true,
+          lastMessageAt: new Date(),
+        },
+      });
 
-    // Notify admins via push, email, and Slack
-    try {
-      await notifyAdminOfEscalation(conversation?.workspaceSlug ?? "unknown", clientMessage);
-    } catch (err) {
-      console.error("[auto-respond] Failed to notify admins:", err instanceof Error ? err.message : err);
+      // Notify admins via push, email, and Slack
+      try {
+        await notifyAdminOfEscalation(conversation?.workspaceSlug ?? "unknown", clientMessage);
+      } catch (err) {
+        console.error("[auto-respond] Failed to notify admins:", err instanceof Error ? err.message : err);
+      }
+
+      return { message: escalationMessage, escalated: true, confidence: null };
     }
 
-    return { message: escalationMessage, escalated: true, confidence: null };
+    // Already escalated — still mark as unread for admin but don't send
+    // another AI message or notification
+    await prisma.supportConversation.update({
+      where: { id: conversationId },
+      data: { unreadByAdmin: true },
+    });
+
+    return { message: "", escalated: true, confidence: null };
   }
 
   // 7. Normal AI response path

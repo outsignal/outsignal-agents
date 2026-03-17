@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -47,92 +47,94 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
   };
 
   return (
-    <div>
-      <Header
-        title="LinkedIn"
-        description={`Manage LinkedIn senders for ${workspace.name}`}
-      />
-      <div className="p-6 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-heading">Senders</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Health</TableHead>
-                  <TableHead>Warmup</TableHead>
-                  <TableHead>Session</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workspace.senders.map((sender) => (
-                  <TableRow key={sender.id}>
-                    <TableCell className="font-medium">
-                      {sender.name}
-                      {sender.linkedinProfileUrl && (
-                        <a
-                          href={sender.linkedinProfileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-2 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          Profile
-                        </a>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {sender.emailAddress ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={statusVariant[sender.status] ?? "secondary"}
-                        className="text-xs"
+    <PageShell
+      title="LinkedIn"
+      description={`Manage LinkedIn senders for ${workspace.name}`}
+      breadcrumbs={[
+        { label: "Workspaces", href: "/" },
+        { label: workspace.name, href: `/workspace/${slug}` },
+        { label: "LinkedIn" },
+      ]}
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-heading">Senders</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Health</TableHead>
+                <TableHead>Warmup</TableHead>
+                <TableHead>Session</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workspace.senders.map((sender) => (
+                <TableRow key={sender.id}>
+                  <TableCell className="font-medium">
+                    {sender.name}
+                    {sender.linkedinProfileUrl && (
+                      <a
+                        href={sender.linkedinProfileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-2 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        {sender.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={healthVariant[sender.healthStatus] ?? "secondary"}
-                        className="text-xs"
-                      >
-                        {sender.healthStatus}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {sender.warmupDay > 0
-                        ? `Day ${sender.warmupDay}`
-                        : "Not started"}
-                    </TableCell>
-                    <TableCell>
-                      <ConnectButton
-                        senderId={sender.id}
-                        senderName={sender.name}
-                        sessionStatus={sender.sessionStatus}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {workspace.senders.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="text-center py-8 text-muted-foreground"
+                        Profile
+                      </a>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {sender.emailAddress ?? "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={statusVariant[sender.status] ?? "secondary"}
+                      className="text-xs"
                     >
-                      No LinkedIn senders configured yet
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+                      {sender.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={healthVariant[sender.healthStatus] ?? "secondary"}
+                      className="text-xs"
+                    >
+                      {sender.healthStatus}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {sender.warmupDay > 0
+                      ? `Day ${sender.warmupDay}`
+                      : "Not started"}
+                  </TableCell>
+                  <TableCell>
+                    <ConnectButton
+                      senderId={sender.id}
+                      senderName={sender.name}
+                      sessionStatus={sender.sessionStatus}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+              {workspace.senders.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    No LinkedIn senders configured yet
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }

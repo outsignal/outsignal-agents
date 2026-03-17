@@ -17,6 +17,50 @@ function slugify(text: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
+export async function GET() {
+  try {
+    const [proposals, onboardingInvites] = await Promise.all([
+      prisma.proposal.findMany({ orderBy: { createdAt: "desc" } }),
+      prisma.onboardingInvite.findMany({ orderBy: { createdAt: "desc" } }),
+    ]);
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+    return NextResponse.json({
+      proposals: proposals.map((p) => ({
+        id: p.id,
+        token: p.token,
+        status: p.status,
+        clientName: p.clientName,
+        clientEmail: p.clientEmail ?? undefined,
+        companyOverview: p.companyOverview,
+        packageType: p.packageType,
+        setupFee: p.setupFee,
+        platformCost: p.platformCost,
+        retainerCost: p.retainerCost,
+        createdAt: p.createdAt.toISOString(),
+      })),
+      onboardingInvites: onboardingInvites.map((inv) => ({
+        id: inv.id,
+        token: inv.token,
+        status: inv.status,
+        clientName: inv.clientName,
+        clientEmail: inv.clientEmail ?? undefined,
+        createWorkspace: inv.createWorkspace,
+        workspaceSlug: inv.workspaceSlug ?? undefined,
+        createdAt: inv.createdAt.toISOString(),
+      })),
+      appUrl,
+    });
+  } catch (error) {
+    console.error("[GET /api/onboard] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch onboard data" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Admin session validation

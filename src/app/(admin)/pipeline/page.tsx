@@ -16,7 +16,8 @@ import {
   Clock,
   Archive,
 } from "lucide-react";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
+import { FilterBar } from "@/components/ui/filter-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -779,23 +780,22 @@ export default function PipelinePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div>
-      <Header
-        title="Pipeline"
-        description="Track prospects through the sales funnel"
-        actions={
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Prospect
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Prospect</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
+    <PageShell
+      title="Pipeline"
+      description="Track prospects through the sales funnel"
+      actions={
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Prospect
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Prospect</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Company Name *</Label>
                   <Input
@@ -898,11 +898,9 @@ export default function PipelinePage() {
             </DialogContent>
           </Dialog>
         }
-      />
-
-      <div className="p-6 space-y-6">
+      >
         {/* Search + count */}
-        <div className="flex items-center gap-3">
+        <FilterBar resultCount={!loading ? filtered.length : undefined} resultLabel="prospects">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <Input
@@ -912,13 +910,7 @@ export default function PipelinePage() {
               className="pl-8 h-8 w-64 text-sm"
             />
           </div>
-
-          {!loading && (
-            <span className="text-xs text-muted-foreground ml-auto font-mono">
-              {filtered.length} prospect{filtered.length !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
+        </FilterBar>
 
         {/* Kanban board */}
         {!loading && prospects.length === 0 && !search ? (
@@ -1078,7 +1070,6 @@ export default function PipelinePage() {
             )}
           </>
         )}
-      </div>
 
       {/* ─── Confirmation Dialogs ─────────────────────────────────────────── */}
       <ControlledConfirmDialog
@@ -1227,6 +1218,6 @@ export default function PipelinePage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

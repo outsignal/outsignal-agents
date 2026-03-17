@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -236,13 +235,7 @@ export default function CashflowPage() {
   }, [costs, revenue, daysInMonth]);
 
   return (
-    <div>
-      <Header
-        title="Cashflow"
-        description="Revenue vs costs -- monthly profitability overview"
-      />
-
-      <div className="p-6 space-y-6">
+    <div className="space-y-6 py-4">
         {error && (
           <ErrorBanner
             message={`Failed to load data: ${error}`}
@@ -660,6 +653,5 @@ export default function CashflowPage() {
           </div>
         )}
       </div>
-    </div>
   );
 }

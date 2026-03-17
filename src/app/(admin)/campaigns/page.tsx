@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
+import { Pagination } from "@/components/ui/pagination";
 import { prisma } from "@/lib/db";
 import { CampaignFilters } from "@/components/campaigns/campaign-filters";
 import {
@@ -73,15 +73,21 @@ export default async function CampaignsPage({
     createdAt: c.createdAt.toISOString(),
   }));
 
-  return (
-    <div>
-      <Header
-        title="Campaigns"
-        description="All campaigns across workspaces"
-        actions={<CampaignFilters workspaces={workspaces} />}
-      />
+  function buildHref(page: number) {
+    return `/campaigns?${new URLSearchParams({
+      ...(workspace ? { workspace } : {}),
+      ...(status ? { status } : {}),
+      page: String(page),
+    }).toString()}`;
+  }
 
-      <div className="p-6 space-y-4">
+  return (
+    <PageShell
+      title="Campaigns"
+      description="All campaigns across workspaces"
+      actions={<CampaignFilters workspaces={workspaces} />}
+    >
+      <div className="space-y-4">
         {/* Summary */}
         <div>
           <span className="text-xs text-muted-foreground">
@@ -94,73 +100,14 @@ export default async function CampaignsPage({
         <CampaignsTable campaigns={rows} />
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-2">
-            {currentPage > 1 && (
-              <Link
-                href={`/campaigns?${new URLSearchParams({
-                  ...(workspace ? { workspace } : {}),
-                  ...(status ? { status } : {}),
-                  page: String(currentPage - 1),
-                }).toString()}`}
-                className="px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
-              >
-                Previous
-              </Link>
-            )}
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(
-                (p) =>
-                  p === 1 ||
-                  p === totalPages ||
-                  Math.abs(p - currentPage) <= 1,
-              )
-              .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                if (idx > 0 && p - (arr[idx - 1] ?? 0) > 1) acc.push("...");
-                acc.push(p);
-                return acc;
-              }, [])
-              .map((p, idx) =>
-                p === "..." ? (
-                  <span
-                    key={`ellipsis-${idx}`}
-                    className="px-1 text-xs text-muted-foreground"
-                  >
-                    ...
-                  </span>
-                ) : (
-                  <Link
-                    key={p}
-                    href={`/campaigns?${new URLSearchParams({
-                      ...(workspace ? { workspace } : {}),
-                      ...(status ? { status } : {}),
-                      page: String(p),
-                    }).toString()}`}
-                    className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                      p === currentPage
-                        ? "bg-foreground text-background border-foreground"
-                        : "border-border text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {p}
-                  </Link>
-                ),
-              )}
-            {currentPage < totalPages && (
-              <Link
-                href={`/campaigns?${new URLSearchParams({
-                  ...(workspace ? { workspace } : {}),
-                  ...(status ? { status } : {}),
-                  page: String(currentPage + 1),
-                }).toString()}`}
-                className="px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
-              >
-                Next
-              </Link>
-            )}
-          </div>
-        )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          pageSize={PAGE_SIZE}
+          buildHref={buildHref}
+        />
       </div>
-    </div>
+    </PageShell>
   );
 }

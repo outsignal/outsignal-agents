@@ -84,7 +84,7 @@ export function ClassificationDonuts({
           <h3 className="font-semibold">Reply Classification</h3>
         </div>
         <Link
-          href="/replies"
+          href="/inbox?view=classifications"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           View details

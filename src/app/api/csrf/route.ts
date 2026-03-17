@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { generateCsrfToken, CSRF_COOKIE_NAME } from "@/lib/csrf";
-import { verifySession, COOKIE_NAME as PORTAL_COOKIE_NAME } from "@/lib/portal-auth";
+import { getPortalSession } from "@/lib/portal-session";
 
 /**
  * GET /api/csrf
@@ -18,11 +17,10 @@ export async function GET() {
   let portalSession = null;
 
   if (!adminSession) {
-    // Try portal session
-    const cookieStore = await cookies();
-    const portalCookie = cookieStore.get(PORTAL_COOKIE_NAME)?.value;
-    if (portalCookie) {
-      portalSession = verifySession(portalCookie);
+    try {
+      portalSession = await getPortalSession();
+    } catch {
+      // No portal session
     }
   }
 
@@ -36,7 +34,7 @@ export async function GET() {
 
   response.cookies.set(CSRF_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV !== "development",
     sameSite: "strict",
     path: "/",
   });

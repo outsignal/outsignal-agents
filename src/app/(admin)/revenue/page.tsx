@@ -4,7 +4,6 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import { TrendingUp } from "lucide-react";
-import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,13 +56,7 @@ export default function RevenuePage() {
   }
 
   return (
-    <div>
-      <Header
-        title="Revenue"
-        description="Financial performance overview across all clients"
-      />
-
-      <div className="p-6 space-y-6">
+    <div className="space-y-6 py-4">
         {/* Error banner */}
         {error && !loading && (
           <ErrorBanner message={`Failed to load revenue data: ${error}`} />
@@ -193,6 +186,5 @@ export default function RevenuePage() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

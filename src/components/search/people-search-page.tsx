@@ -21,6 +21,7 @@ import { EnrichmentBadge } from "./enrichment-badge";
 import { BulkActionBar } from "./bulk-action-bar";
 import { AddToListDropdown } from "./add-to-list-dropdown";
 import { ErrorBanner } from "@/components/ui/error-banner";
+import { Header } from "@/components/layout/header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -347,19 +348,16 @@ export function PeopleSearchPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="border-b border-border px-4 py-4 sm:px-6 sm:py-5">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">People</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {data
-              ? `${data.total.toLocaleString()} people${loading ? " (refreshing...)" : ""}`
-              : loading
-              ? "Loading..."
-              : "Search and filter your lead database"}
-          </p>
-        </div>
-      </div>
+      <Header
+        title="People"
+        description={
+          data
+            ? `${data.total.toLocaleString()} people${loading ? " (refreshing...)" : ""}`
+            : loading
+            ? "Loading..."
+            : "Search and filter your lead database"
+        }
+      />
 
       <div className="p-4 sm:p-6 space-y-4">
         {/* Filter sidebar / pill bar */}

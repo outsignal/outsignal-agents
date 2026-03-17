@@ -1,243 +1,90 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Header } from "@/components/layout/header";
-import {
-  DomainHealthCards,
-  type DomainData,
-} from "@/components/deliverability/domain-health-cards";
-import {
-  SenderHealthTable,
-  type SenderData,
-} from "@/components/deliverability/sender-health-table";
-import {
-  ActivityFeed,
-  type EventData,
-} from "@/components/deliverability/activity-feed";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+export const dynamic = "force-dynamic";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import dynamic_ from "next/dynamic";
+import { useQueryState } from "nuqs";
+import { PageShell } from "@/components/layout/page-shell";
 
-interface SummaryData {
-  domains: {
-    total: number;
-    healthy: number;
-    atRisk: number;
-    worst: { domain: string; overallHealth: string } | null;
-  };
-  senders: {
-    total: number;
-    healthy: number;
-    elevated: number;
-    warning: number;
-    critical: number;
-  };
-  recentEvents: EventData[];
-}
+// Lazy-load each tab's content
+const DeliverabilityTab = dynamic_(
+  () =>
+    import("@/components/deliverability/deliverability-tab").then((m) => ({
+      default: m.DeliverabilityTab,
+    })),
+  { ssr: false, loading: () => <TabSkeleton /> },
+);
 
-interface EventsResponse {
-  events: EventData[];
-  hasMore: boolean;
-  nextCursor?: string;
-}
+const EmailHealthTab = dynamic_(
+  () =>
+    import("@/components/deliverability/email-health-tab").then((m) => ({
+      default: m.EmailHealthTab,
+    })),
+  { ssr: false, loading: () => <TabSkeleton /> },
+);
 
-// ---------------------------------------------------------------------------
-// Loading skeletons
-// ---------------------------------------------------------------------------
+const SendersTab = dynamic_(
+  () =>
+    import("@/components/deliverability/senders-tab").then((m) => ({
+      default: m.SendersTab,
+    })),
+  { ssr: false, loading: () => <TabSkeleton /> },
+);
 
-function CardSkeleton() {
+function TabSkeleton() {
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <Skeleton className="h-4 w-32" />
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <Skeleton className="h-3 w-full" />
-        <Skeleton className="h-3 w-3/4" />
-        <Skeleton className="h-3 w-1/2" />
-      </CardContent>
-    </Card>
-  );
-}
-
-function TableSkeleton() {
-  return (
-    <div className="space-y-2">
-      <Skeleton className="h-9 w-full" />
-      {[...Array(5)].map((_, i) => (
-        <Skeleton key={i} className="h-14 w-full" />
-      ))}
+    <div className="flex flex-col items-center justify-center py-16">
+      <div className="h-8 w-8 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+      <p className="text-sm text-muted-foreground mt-3">Loading...</p>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
+const TAB_VALUES = ["deliverability", "email-health", "senders"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
+const TAB_LABELS: Record<TabValue, string> = {
+  deliverability: "Deliverability",
+  "email-health": "Email Health",
+  senders: "Senders",
+};
 
 export default function DeliverabilityPage() {
-  const [workspace, setWorkspace] = useState<string>("");
-  const [workspaceOptions, setWorkspaceOptions] = useState<string[]>([]);
-
-  const [domains, setDomains] = useState<DomainData[] | null>(null);
-  const [senders, setSenders] = useState<SenderData[] | null>(null);
-  const [events, setEvents] = useState<EventsResponse | null>(null);
-
-  const [domainsLoading, setDomainsLoading] = useState(true);
-  const [sendersLoading, setSendersLoading] = useState(true);
-  const [eventsLoading, setEventsLoading] = useState(true);
-
-  // ─── Fetch data ──────────────────────────────────────────────────────────
-
-  const fetchAll = useCallback(async (ws: string) => {
-    const params = new URLSearchParams();
-    if (ws) params.set("workspace", ws);
-    const qs = params.toString() ? `?${params.toString()}` : "";
-
-    setDomainsLoading(true);
-    setSendersLoading(true);
-    setEventsLoading(true);
-
-    const [domainsRes, sendersRes, eventsRes] = await Promise.allSettled([
-      fetch(`/api/deliverability/domains${qs}`),
-      fetch(`/api/deliverability/senders${qs}`),
-      fetch(`/api/deliverability/events${qs}`),
-    ]);
-
-    if (domainsRes.status === "fulfilled" && domainsRes.value.ok) {
-      const json = (await domainsRes.value.json()) as DomainData[];
-      setDomains(json);
-    } else {
-      setDomains([]);
-    }
-    setDomainsLoading(false);
-
-    if (sendersRes.status === "fulfilled" && sendersRes.value.ok) {
-      const json = (await sendersRes.value.json()) as SenderData[];
-      setSenders(json);
-      // Extract unique workspace slugs for filter dropdown
-      const slugs = [...new Set(json.map((s) => s.workspaceSlug))].sort();
-      setWorkspaceOptions(slugs);
-    } else {
-      setSenders([]);
-    }
-    setSendersLoading(false);
-
-    if (eventsRes.status === "fulfilled" && eventsRes.value.ok) {
-      const json = (await eventsRes.value.json()) as EventsResponse;
-      setEvents(json);
-    } else {
-      setEvents({ events: [], hasMore: false });
-    }
-    setEventsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    void fetchAll(workspace);
-  }, [fetchAll, workspace]);
-
-  // ─── Workspace filter handler ─────────────────────────────────────────
-
-  function handleWorkspaceChange(val: string) {
-    setWorkspace(val === "all" ? "" : val);
-  }
-
-  // ─── Render ───────────────────────────────────────────────────────────
+  const [tab, setTab] = useQueryState("tab", {
+    defaultValue: "deliverability",
+    parse: (v) =>
+      TAB_VALUES.includes(v as TabValue) ? (v as TabValue) : "deliverability",
+    serialize: (v) => v,
+  });
 
   return (
-    <div className="flex flex-col h-full">
-      <Header
-        title="Deliverability"
-        description="Domain health, sender status, and auto-rotation activity"
-      />
-
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Workspace filter */}
-        <div className="flex items-center justify-end gap-2">
-          <span className="text-xs text-muted-foreground">Workspace:</span>
-          <Select
-            value={workspace || "all"}
-            onValueChange={handleWorkspaceChange}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="All workspaces" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All workspaces</SelectItem>
-              {workspaceOptions.map((slug) => (
-                <SelectItem key={slug} value={slug}>
-                  {slug}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <PageShell title="Deliverability" noPadding>
+      <div className="px-6 pt-4 space-y-6">
+        {/* Tab buttons */}
+        <div className="flex items-center gap-1 border-b border-border">
+          {TAB_VALUES.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => void setTab(value)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                tab === value
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+              }`}
+            >
+              {TAB_LABELS[value]}
+            </button>
+          ))}
         </div>
 
-        {/* Section 1: Domain Health */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Domain Health</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {domainsLoading ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {[...Array(3)].map((_, i) => (
-                  <CardSkeleton key={i} />
-                ))}
-              </div>
-            ) : (
-              <DomainHealthCards domains={domains ?? []} />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Section 2: Sender Health */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Sender Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sendersLoading ? (
-              <TableSkeleton />
-            ) : (
-              <SenderHealthTable senders={senders ?? []} />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Section 3: Activity Feed */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Health Events</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {eventsLoading ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : (
-              <ActivityFeed
-                initialEvents={events?.events ?? []}
-                initialHasMore={events?.hasMore ?? false}
-                initialCursor={events?.nextCursor}
-                workspaceFilter={workspace || undefined}
-              />
-            )}
-          </CardContent>
-        </Card>
+        {/* Tab content */}
+        <div className="pb-6">
+          {tab === "deliverability" && <DeliverabilityTab />}
+          {tab === "email-health" && <EmailHealthTab />}
+          {tab === "senders" && <SendersTab />}
+        </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

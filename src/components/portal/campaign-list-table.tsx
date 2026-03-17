@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -50,6 +51,7 @@ export interface MergedCampaign {
 
 interface CampaignListTableProps {
   campaigns: MergedCampaign[];
+  className?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +112,7 @@ function formatStatus(status: string): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function CampaignListTable({ campaigns }: CampaignListTableProps) {
+export function CampaignListTable({ campaigns, className }: CampaignListTableProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -150,9 +152,9 @@ export function CampaignListTable({ campaigns }: CampaignListTableProps) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className={cn("flex flex-col gap-4", className)}>
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="shrink-0 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -177,7 +179,7 @@ export function CampaignListTable({ campaigns }: CampaignListTableProps) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -368,7 +370,7 @@ export function CampaignListTable({ campaigns }: CampaignListTableProps) {
 
       {/* Pagination */}
       {filtered.length > 0 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="shrink-0 flex items-center justify-between text-sm text-muted-foreground">
           <span>
             Showing {showFrom} to {showTo} of {filtered.length} results
           </span>

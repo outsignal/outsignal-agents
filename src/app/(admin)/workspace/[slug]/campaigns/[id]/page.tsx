@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,66 +64,69 @@ export default async function CampaignDetailPage({
   };
 
   return (
-    <div>
-      <Header
-        title={campaign.name}
-        description={`${workspace.name} campaign`}
-        actions={
-          <Badge className={`text-xs ${statusColors[campaign.status] ?? ""}`}>
-            {campaign.status}
-          </Badge>
-        }
-      />
-      <div className="p-6 space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <MetricCard label="Sent" value={sent.toLocaleString()} />
-          <MetricCard
-            label="Open Rate"
-            value={`${sent > 0 ? ((opens / sent) * 100).toFixed(1) : 0}%`}
-          />
-          <MetricCard
-            label="Click Rate"
-            value={`${sent > 0 ? ((clicks / sent) * 100).toFixed(1) : 0}%`}
-          />
-          <MetricCard
-            label="Reply Rate"
-            value={`${sent > 0 ? ((replies / sent) * 100).toFixed(1) : 0}%`}
-            trend={sent > 0 && (replies / sent) * 100 > 3 ? "up" : "neutral"}
-          />
-          <MetricCard
-            label="Interested"
-            value={interested.toLocaleString()}
-            trend={interested > 0 ? "up" : "neutral"}
-          />
-          <MetricCard
-            label="Bounce Rate"
-            value={`${sent > 0 ? ((bounces / sent) * 100).toFixed(1) : 0}%`}
-            trend={sent > 0 && (bounces / sent) * 100 > 5 ? "warning" : "neutral"}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-heading">Campaign Funnel</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CampaignBarChart data={barData} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-heading">
-                Lead Status Distribution
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CampaignPieChart data={pieData} />
-            </CardContent>
-          </Card>
-        </div>
+    <PageShell
+      title={campaign.name}
+      description={`${workspace.name} campaign`}
+      breadcrumbs={[
+        { label: "Workspaces", href: "/" },
+        { label: workspace.name, href: `/workspace/${slug}` },
+        { label: "Campaigns" },
+        { label: campaign.name },
+      ]}
+      actions={
+        <Badge className={`text-xs ${statusColors[campaign.status] ?? ""}`}>
+          {campaign.status}
+        </Badge>
+      }
+    >
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <MetricCard label="Sent" value={sent.toLocaleString()} />
+        <MetricCard
+          label="Open Rate"
+          value={`${sent > 0 ? ((opens / sent) * 100).toFixed(1) : 0}%`}
+        />
+        <MetricCard
+          label="Click Rate"
+          value={`${sent > 0 ? ((clicks / sent) * 100).toFixed(1) : 0}%`}
+        />
+        <MetricCard
+          label="Reply Rate"
+          value={`${sent > 0 ? ((replies / sent) * 100).toFixed(1) : 0}%`}
+          trend={sent > 0 && (replies / sent) * 100 > 3 ? "up" : "neutral"}
+        />
+        <MetricCard
+          label="Interested"
+          value={interested.toLocaleString()}
+          trend={interested > 0 ? "up" : "neutral"}
+        />
+        <MetricCard
+          label="Bounce Rate"
+          value={`${sent > 0 ? ((bounces / sent) * 100).toFixed(1) : 0}%`}
+          trend={sent > 0 && (bounces / sent) * 100 > 5 ? "warning" : "neutral"}
+        />
       </div>
-    </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading">Campaign Funnel</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CampaignBarChart data={barData} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-heading">
+              Lead Status Distribution
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CampaignPieChart data={pieData} />
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
   );
 }

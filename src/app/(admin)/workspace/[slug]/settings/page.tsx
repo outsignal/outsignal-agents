@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Header } from "@/components/layout/header";
+import { PageShell } from "@/components/layout/page-shell";
 import { getWorkspaceBySlug, getWorkspaceDetails } from "@/lib/workspaces";
 import { WorkspaceSettingsForm } from "@/components/workspace/workspace-settings-form";
 import { PackageQuotasForm } from "@/components/workspace/package-quotas-form";
@@ -76,15 +76,20 @@ export default async function WorkspaceSettingsPage({
     : null;
 
   return (
-    <div>
-      <Header
-        title={`${workspace.name} — Settings`}
-        description="Manage workspace configuration, ICP, and campaign brief"
-      />
+    <PageShell
+      title={`${workspace.name} — Settings`}
+      description="Manage workspace configuration, ICP, and campaign brief"
+      breadcrumbs={[
+        { label: "Workspaces", href: "/" },
+        { label: workspace.name, href: `/workspace/${slug}` },
+        { label: "Settings" },
+      ]}
+      noPadding
+    >
       <div className="p-6 max-w-4xl space-y-6">
         <WorkspaceSettingsForm workspace={workspace} />
         {packageData && <PackageQuotasForm data={packageData} />}
       </div>
-    </div>
+    </PageShell>
   );
 }

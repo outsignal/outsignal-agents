@@ -85,6 +85,7 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
 
   // Hydrate collapsed state from localStorage after mount
   useEffect(() => {
@@ -111,6 +112,31 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
       active = false;
       clearInterval(interval);
     };
+  }, []);
+
+  // Poll support unread count every 30s
+  useEffect(() => {
+    let active = true;
+    async function fetchSupportUnread() {
+      try {
+        const res = await fetch("/api/portal/support/unread-count");
+        const json = await res.json();
+        if (active) setSupportUnreadCount(json.count ?? 0);
+      } catch {}
+    }
+    fetchSupportUnread();
+    const interval = setInterval(fetchSupportUnread, 30_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Clear support unread when user opens support widget
+  useEffect(() => {
+    const handler = () => setSupportUnreadCount(0);
+    window.addEventListener("open-support-widget", handler);
+    return () => window.removeEventListener("open-support-widget", handler);
   }, []);
 
   const toggleCollapsed = useCallback(() => {
@@ -141,6 +167,7 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
   function renderNavItem(item: NavItem) {
     const isActive = isItemActive(item);
     const isInbox = item.href === "/portal/inbox";
+    const isSupport = item.label === "Support";
 
     const sharedClasses = cn(
       "flex items-center rounded-lg text-sm transition-colors duration-150 cursor-pointer",
@@ -159,6 +186,11 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
             {isInbox && unreadCount > 0 && (
               <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand text-white text-[10px] font-semibold px-1">
                 {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+            {isSupport && supportUnreadCount > 0 && (
+              <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand text-white text-[10px] font-semibold px-1">
+                {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
               </span>
             )}
           </>
@@ -189,12 +221,20 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
+              {isSupport && supportUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand text-white text-[9px] font-bold px-0.5">
+                  {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
+                </span>
+              )}
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
             {item.label}
             {isInbox && unreadCount > 0 && (
               <span className="ml-1.5 text-primary">({unreadCount})</span>
+            )}
+            {isSupport && supportUnreadCount > 0 && (
+              <span className="ml-1.5 text-primary">({supportUnreadCount})</span>
             )}
           </TooltipContent>
         </Tooltip>
