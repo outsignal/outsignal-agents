@@ -11,6 +11,7 @@ const CSRF_EXEMPT_PREFIXES = [
   "/api/linkedin/",
   "/api/people/enrich",
   "/api/companies/enrich",
+  "/api/portal/",           // Portal routes have own session auth
 ];
 
 const CSRF_EXEMPT_EXACT = [

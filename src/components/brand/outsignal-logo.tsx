@@ -1,29 +1,66 @@
+import { useId } from "react";
+
 interface OutsignalLogoProps {
   /** Show just the icon mark, icon + wordmark, or wordmark only */
   variant?: "full" | "mark" | "wordmark";
   className?: string;
-  /** Color for the icon mark. Defaults to brand lime (#635BFF). Use "currentColor" to inherit text color. */
+  /** Color for the icon mark purple top half. Defaults to brand purple (#635BFF). */
   iconColor?: string;
+  /** When true, uses lighter bottom half (#454545) suited for dark backgrounds. */
+  darkBg?: boolean;
 }
 
-function LogoMark({ className, iconColor = "#635BFF" }: { className?: string; iconColor?: string }) {
+function LogoMark({
+  className,
+  iconColor = "#635BFF",
+  darkBg = false,
+}: {
+  className?: string;
+  iconColor?: string;
+  darkBg?: boolean;
+}) {
+  const id = useId();
+  const clipId = `logo-clip-${id}`;
+  const bottomColor = darkBg ? "#454545" : "#2F2F2F";
   return (
     <svg
-      viewBox="0 0 92 92"
+      viewBox="0 0 200 200"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      <path
-        d="M45.326 0c.492 0 .982.008 1.47.022 3.389.103 8.675.157 15.86.16h1.092c6.084-.002 13.46-.037 22.128-.107h.108c3.308.032 5.963 2.74 5.931 6.048l-.01.895c-.068 6.828-.104 12.949-.11 18.363v2.083c.005 7.049.068 12.814.188 17.295.011.412.016.825.016 1.24C92 71.405 71.103 92 45.326 92 23.088 92 4.694 76.604.004 56.083c-.094-.412 1.39-1.358 2.021-1.905 4.048-3.51 9.828-8.575 17.341-15.197-.905 2.673-1.396 5.537-1.396 8.517 0 14.653 11.879 26.532 26.532 26.532s26.533-11.879 26.533-26.532c0-14.654-11.88-26.533-26.533-26.533-7.36 0-14.019 2.997-18.826 7.836-4.923.023-9.02.036-12.289.038h-2.236c-3.018-.003-5.12-.016-6.305-.041-.537-.012-1.013-.018-1.429-.02h-.47c-.368.002-.675.009-.922.02C8.937 11.914 25.72 0 45.326 0Z"
-        fill={iconColor}
-      />
+      <defs>
+        <clipPath id={clipId}>
+          <circle cx="100" cy="100" r="96" />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        <path
+          d="M0,0 H200 V86 C160,114 130,84 100,74 C70,64 40,118 0,94 V0 Z"
+          fill={iconColor}
+        />
+        <path
+          d="M0,112 C40,136 70,82 100,92 C130,102 160,132 200,104 V200 H0 Z"
+          fill={bottomColor}
+        />
+      </g>
     </svg>
   );
 }
 
 /** Full logo: icon mark + "Outsignal" wordmark. Text uses currentColor so wrap in a text color class. */
-function FullLogo({ className, iconColor = "#635BFF" }: { className?: string; iconColor?: string }) {
+function FullLogo({
+  className,
+  iconColor = "#635BFF",
+  darkBg = false,
+}: {
+  className?: string;
+  iconColor?: string;
+  darkBg?: boolean;
+}) {
+  const id = useId();
+  const clipId = `full-logo-clip-${id}`;
+  const bottomColor = darkBg ? "#454545" : "#2F2F2F";
   return (
     <svg
       viewBox="0 0 628 126"
@@ -31,19 +68,30 @@ function FullLogo({ className, iconColor = "#635BFF" }: { className?: string; ic
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      <g transform="translate(26, 17)">
-        <path
-          d="M45.326 0c.492 0 .982.008 1.47.022 3.389.103 8.675.157 15.86.16h1.092c6.084-.002 13.46-.037 22.128-.107h.108c3.308.032 5.963 2.74 5.931 6.048l-.01.895c-.068 6.828-.104 12.949-.11 18.363v2.083c.005 7.049.068 12.814.188 17.295.011.412.016.825.016 1.24C92 71.405 71.103 92 45.326 92 23.088 92 4.694 76.604.004 56.083c-.094-.412 1.39-1.358 2.021-1.905 4.048-3.51 9.828-8.575 17.341-15.197-.905 2.673-1.396 5.537-1.396 8.517 0 14.653 11.879 26.532 26.532 26.532s26.533-11.879 26.533-26.532c0-14.654-11.88-26.533-26.533-26.533-7.36 0-14.019 2.997-18.826 7.836-4.923.023-9.02.036-12.289.038h-2.236c-3.018-.003-5.12-.016-6.305-.041-.537-.012-1.013-.018-1.429-.02h-.47c-.368.002-.675.009-.922.02C8.937 11.914 25.72 0 45.326 0Z"
-          fill={iconColor}
-        />
+      <defs>
+        <clipPath id={clipId}>
+          <circle cx="100" cy="100" r="96" />
+        </clipPath>
+      </defs>
+      <g transform="translate(5, 5) scale(0.58)">
+        <g clipPath={`url(#${clipId})`}>
+          <path
+            d="M0,0 H200 V86 C160,114 130,84 100,74 C70,64 40,118 0,94 V0 Z"
+            fill={iconColor}
+          />
+          <path
+            d="M0,112 C40,136 70,82 100,92 C130,102 160,132 200,104 V200 H0 Z"
+            fill={bottomColor}
+          />
+        </g>
       </g>
       <text
         fontFamily="var(--font-geist-sans), system-ui, sans-serif"
         fontSize="89.85"
-        fontWeight="800"
-        letterSpacing="-3"
+        fontWeight="700"
+        letterSpacing="-0.5"
         fill="currentColor"
-        x="172"
+        x="170"
         y="98"
       >
         Outsignal
@@ -64,8 +112,8 @@ function Wordmark({ className }: { className?: string }) {
       <text
         fontFamily="var(--font-geist-sans), system-ui, sans-serif"
         fontSize="89.85"
-        fontWeight="800"
-        letterSpacing="-3"
+        fontWeight="700"
+        letterSpacing="-0.5"
         fill="currentColor"
         x="0"
         y="80"
@@ -80,13 +128,14 @@ export function OutsignalLogo({
   variant = "full",
   className,
   iconColor,
+  darkBg,
 }: OutsignalLogoProps) {
   if (variant === "mark") {
-    return <LogoMark className={className} iconColor={iconColor} />;
+    return <LogoMark className={className} iconColor={iconColor} darkBg={darkBg} />;
   }
   if (variant === "wordmark") {
     return <Wordmark className={className} />;
   }
 
-  return <FullLogo className={className} iconColor={iconColor} />;
+  return <FullLogo className={className} iconColor={iconColor} darkBg={darkBg} />;
 }

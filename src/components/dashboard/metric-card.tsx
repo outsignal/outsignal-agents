@@ -16,13 +16,16 @@ import {
   FileText,
   LinkedinIcon,
   Mail,
+  MailOpen,
   Megaphone,
   MessageSquare,
   MessageSquareText,
   Send,
   ShieldCheck,
+  Sparkles,
   Star,
   TrendingUp,
+  UserMinus,
   UserPlus,
   Users,
   Zap,
@@ -49,13 +52,16 @@ const ICON_MAP: Record<string, LucideIcon> = {
   FileText,
   LinkedinIcon,
   Mail,
+  MailOpen,
   Megaphone,
   MessageSquare,
   MessageSquareText,
   Send,
   ShieldCheck,
+  Sparkles,
   Star,
   TrendingUp,
+  UserMinus,
   UserPlus,
   Users,
   Zap,
@@ -76,6 +82,8 @@ interface MetricCardProps {
   loading?: boolean;
   href?: string;
   icon?: string;
+  /** Hex colour for left border accent + icon tint */
+  accentColor?: string;
   className?: string;
 }
 
@@ -92,7 +100,9 @@ export function MetricCard({
   suffix,
   loading = false,
   href,
+  trend,
   icon,
+  accentColor,
   className,
 }: MetricCardProps) {
   const IconComponent = icon ? ICON_MAP[icon] : undefined;
@@ -118,13 +128,18 @@ export function MetricCard({
       className={cn(
         "relative overflow-hidden transition-all duration-200",
         href && "cursor-pointer hover:shadow-md hover:scale-[1.01]",
+        accentColor && "border-l-[3px]",
         className,
       )}
+      style={accentColor ? { borderLeftColor: accentColor } : undefined}
     >
       <CardContent className={cn(density === "compact" ? "pt-3" : "pt-6", "pb-0")}>
         <div className="flex items-center gap-1.5">
           {IconComponent && !loading && (
-            <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />
+            <IconComponent
+              className={cn("h-3.5 w-3.5", !accentColor && "text-muted-foreground")}
+              style={accentColor ? { color: accentColor } : undefined}
+            />
           )}
           {loading ? (
             <Skeleton className="h-3 w-24" />
@@ -135,31 +150,49 @@ export function MetricCard({
           )}
         </div>
 
-        <div className="flex items-baseline gap-2 mt-1.5">
+        <div className="flex items-center gap-2 mt-1.5">
           {loading ? (
             <Skeleton className={cn("h-8", isHero ? "w-40" : "w-32")} />
           ) : (
-            <p
-              className={cn(
-                "font-mono font-semibold tabular-nums tracking-tight text-foreground",
-                isHero ? "text-4xl font-semibold" : "text-2xl",
-              )}
-            >
-              {prefix && <span className="font-mono">{prefix}</span>}
-              {value}
-              {suffix && (
-                <span className="font-mono font-normal text-muted-foreground ml-0.5">
-                  {suffix}
+            <>
+              {detail && trend && (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums",
+                    trend === "warning"
+                      ? "bg-red-100 text-red-800"
+                      : trend === "down"
+                        ? "bg-red-100 text-red-800"
+                        : trend === "up"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-gray-200 text-gray-700",
+                  )}
+                >
+                  {detail}
                 </span>
               )}
-            </p>
+              <p
+                className={cn(
+                  "font-mono font-semibold tabular-nums tracking-tight text-foreground",
+                  isHero ? "text-4xl font-semibold" : "text-2xl",
+                )}
+              >
+                {prefix && <span className="font-mono">{prefix}</span>}
+                {value}
+                {suffix && (
+                  <span className="font-mono font-normal text-muted-foreground ml-0.5">
+                    {suffix}
+                  </span>
+                )}
+              </p>
+            </>
           )}
         </div>
 
         {loading ? (
           <Skeleton className="h-3.5 w-28 mt-1.5" />
         ) : (
-          detail && (
+          detail && !trend && (
             <p className="text-sm text-muted-foreground mt-1">{detail}</p>
           )
         )}

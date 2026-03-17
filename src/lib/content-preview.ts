@@ -21,11 +21,13 @@ const EXAMPLE_DATA: Record<string, string> = {
  * Single-option tokens like {FIRSTNAME} are left alone for substituteTokens.
  */
 export function resolveSpintax(text: string): string {
-  return text.replace(/\{([^{}]+)\}/g, (match, inner: string) => {
-    const options = inner.split("|");
-    if (options.length === 1) return match; // merge token, not spintax
-    return options[0].trim();
-  });
+  return text
+    .replace(/\\n/g, "\n")
+    .replace(/\{([^{}]+)\}/g, (match, inner: string) => {
+      const options = inner.split("|");
+      if (options.length === 1) return match; // merge token, not spintax
+      return options[0].trim();
+    });
 }
 
 /**

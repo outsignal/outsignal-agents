@@ -13,6 +13,7 @@ export async function GET() {
           workspaceSlug,
           direction: "inbound",
           isRead: false,
+          deletedAt: null,
         },
       }),
       prisma.linkedInConversation.aggregate({

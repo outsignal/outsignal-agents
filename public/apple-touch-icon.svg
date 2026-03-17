@@ -3,9 +3,15 @@
     <clipPath id="rounded">
       <rect width="180" height="180" rx="40" ry="40"/>
     </clipPath>
+    <clipPath id="ac">
+      <circle cx="90" cy="90" r="72"/>
+    </clipPath>
   </defs>
   <g clip-path="url(#rounded)">
     <rect width="180" height="180" fill="#ffffff"/>
-    <circle cx="90" cy="90" r="55" stroke="#635BFF" stroke-width="22" fill="none"/>
+    <g clip-path="url(#ac)">
+      <path d="M0,0 H180 V81 C144,106.2 117,79.2 90,70.2 C63,61.2 36,109.8 0,88.2 V0 Z" fill="#635BFF"/>
+      <path d="M0,97.2 C36,118.8 63,70.2 90,79.2 C117,88.2 144,115.2 180,90 V180 H0 Z" fill="#2F2F2F"/>
+    </g>
   </g>
 </svg>

@@ -10,9 +10,38 @@ import {
 import type { EmailActivityPoint } from "@/components/charts/email-activity-chart";
 import { SequenceStepsDisplay } from "@/components/portal/sequence-steps-display";
 import { CampaignLeadsTable } from "@/components/portal/campaign-leads-table";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, Users, ListOrdered, MessageSquare } from "lucide-react";
 import type { Campaign as EBCampaign, SequenceStep } from "@/lib/emailbison/types";
+import Link from "next/link";
+
+interface ReplyItem {
+  id: string;
+  senderEmail: string;
+  senderName: string | null;
+  subject: string | null;
+  bodyText: string;
+  receivedAt: string;
+  intent: string | null;
+  sentiment: string | null;
+  emailBisonReplyId: number | null;
+  emailBisonParentId: number | null;
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
 
 interface CampaignDetailTabsProps {
   // Stats tab
@@ -24,6 +53,8 @@ interface CampaignDetailTabsProps {
   ebCampaignId: number | null;
   // Sequence tab
   sequenceSteps: SequenceStep[];
+  // Replies tab
+  replies: ReplyItem[];
   // Status context
   hasPerformanceData: boolean;
 }
@@ -42,6 +73,7 @@ export function CampaignDetailTabs({
   campaignId,
   ebCampaignId,
   sequenceSteps,
+  replies,
   hasPerformanceData,
 }: CampaignDetailTabsProps) {
   const searchParams = useSearchParams();
@@ -84,93 +116,84 @@ export function CampaignDetailTabs({
       <TabsContent value="stats" className="pt-6">
         {ebCampaign ? (
           <div className="space-y-6">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-heading">
-                  Campaign Performance
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(() => {
-                  const sent = ebCampaign.emails_sent;
-                  const trackingOff = !openTracking;
-                  const bounceRate =
-                    sent > 0 ? (ebCampaign.bounced / sent) * 100 : 0;
-                  const interestedRate =
-                    sent > 0 ? (ebCampaign.interested / sent) * 100 : 0;
+            {(() => {
+              const sent = ebCampaign.emails_sent;
+              const bounceRate =
+                sent > 0 ? (ebCampaign.bounced / sent) * 100 : 0;
+              const interestedRate =
+                sent > 0 ? (ebCampaign.interested / sent) * 100 : 0;
+              const replyRate =
+                sent > 0 ? (ebCampaign.unique_replies / sent) * 100 : 0;
+              const unsubRate =
+                sent > 0 ? (ebCampaign.unsubscribed / sent) * 100 : 0;
 
-                  return (
-                    <>
-                      {/* Row 1: High-volume metrics */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <MetricCard
-                          label="Emails Sent"
-                          value={sent.toLocaleString()}
-                          density="compact"
-                        />
-                        <MetricCard
-                          label="People Contacted"
-                          value={ebCampaign.total_leads_contacted.toLocaleString()}
-                          density="compact"
-                        />
-                        <MetricCard
-                          label="Total Opens"
-                          value={
-                            trackingOff
-                              ? "N/A"
-                              : ebCampaign.opened.toLocaleString()
-                          }
-                          density="compact"
-                        />
-                        <MetricCard
-                          label="Unique Opens"
-                          value={
-                            trackingOff
-                              ? "N/A"
-                              : ebCampaign.unique_opens.toLocaleString()
-                          }
-                          detail={
-                            trackingOff
-                              ? "Tracking off"
-                              : `${pct(ebCampaign.unique_opens, sent)}% of sent`
-                          }
-                          density="compact"
-                        />
-                      </div>
-                      {/* Row 2: Outcome metrics */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <MetricCard
-                          label="Unique Replies"
-                          value={ebCampaign.unique_replies.toLocaleString()}
-                          detail={`${pct(ebCampaign.unique_replies, sent)}% of sent`}
-                          density="compact"
-                        />
-                        <MetricCard
-                          label="Unsubscribed"
-                          value={ebCampaign.unsubscribed.toLocaleString()}
-                          detail={`${pct(ebCampaign.unsubscribed, sent)}% of sent`}
-                          density="compact"
-                        />
-                        <MetricCard
-                          label="Bounced"
-                          value={ebCampaign.bounced.toLocaleString()}
-                          detail={`${pct(ebCampaign.bounced, sent)}% of sent`}
-                          trend={bounceRate > 5 ? "warning" : undefined}
-                          density="compact"
-                        />
-                        <MetricCard
-                          label="Interested"
-                          value={ebCampaign.interested.toLocaleString()}
-                          detail={`${pct(ebCampaign.interested, sent)}% of sent`}
-                          trend={interestedRate > 0 ? "up" : undefined}
-                          density="compact"
-                        />
-                      </div>
-                    </>
-                  );
-                })()}
-              </CardContent>
-            </Card>
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Row 1 */}
+                  <MetricCard
+                    label="Emails Sent"
+                    value={sent.toLocaleString()}
+                    icon="Send"
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="People Contacted"
+                    value={ebCampaign.total_leads_contacted.toLocaleString()}
+                    icon="Users"
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Opens"
+                    value={ebCampaign.opened.toLocaleString()}
+                    detail={`${pct(ebCampaign.opened, sent)}%`}
+                    trend="neutral"
+                    icon="Eye"
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Unique Opens"
+                    value={ebCampaign.unique_opens.toLocaleString()}
+                    detail={`${pct(ebCampaign.unique_opens, sent)}%`}
+                    trend="neutral"
+                    icon="Eye"
+                    density="compact"
+                  />
+                  {/* Row 2 */}
+                  <MetricCard
+                    label="Unique Replies"
+                    value={ebCampaign.unique_replies.toLocaleString()}
+                    detail={`${replyRate.toFixed(2)}%`}
+                    trend="up"
+                    icon="MessageSquare"
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Unsubscribed"
+                    value={ebCampaign.unsubscribed.toLocaleString()}
+                    detail={`${unsubRate.toFixed(2)}%`}
+                    trend={unsubRate > 0 ? "warning" : "up"}
+                    icon="UserMinus"
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Bounced"
+                    value={ebCampaign.bounced.toLocaleString()}
+                    detail={`${bounceRate.toFixed(2)}%`}
+                    trend={bounceRate > 2 ? "warning" : "up"}
+                    icon="AlertTriangle"
+                    density="compact"
+                  />
+                  <MetricCard
+                    label="Interested"
+                    value={ebCampaign.interested.toLocaleString()}
+                    detail={`${interestedRate.toFixed(2)}%`}
+                    trend="up"
+                    icon="Sparkles"
+                    density="compact"
+                  />
+                </div>
+              );
+            })()}
 
             {/* Email Activity Chart */}
             {chartData.length > 0 && (
@@ -228,9 +251,55 @@ export function CampaignDetailTabs({
 
       {/* Replies Tab */}
       <TabsContent value="replies" className="pt-6">
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          Campaign replies coming soon.
-        </div>
+        {replies.length > 0 ? (
+          <div className="space-y-3">
+            {replies.map((reply) => (
+              <Link key={reply.id} href={`/portal/inbox${reply.emailBisonParentId ?? reply.emailBisonReplyId ? `?thread=${reply.emailBisonParentId ?? reply.emailBisonReplyId}` : ""}`} className="block">
+                <Card className="cursor-pointer hover:shadow-md hover:bg-muted/30 transition-all">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {reply.senderName || reply.senderEmail}
+                          </span>
+                          {reply.senderName && (
+                            <span className="text-xs text-muted-foreground truncate">
+                              {reply.senderEmail}
+                            </span>
+                          )}
+                          {reply.intent && (
+                            <StatusBadge status={reply.intent} type="intent" />
+                          )}
+                          {reply.sentiment && (
+                            <StatusBadge status={reply.sentiment} type="sentiment" />
+                          )}
+                        </div>
+                        {reply.subject && (
+                          <p className="text-sm text-muted-foreground">
+                            {reply.subject}
+                          </p>
+                        )}
+                        <p className="text-sm text-muted-foreground/80 line-clamp-2">
+                          {reply.bodyText.length > 150
+                            ? reply.bodyText.slice(0, 150) + "..."
+                            : reply.bodyText}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                        {timeAgo(reply.receivedAt)}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+            No replies yet for this campaign.
+          </div>
+        )}
       </TabsContent>
     </Tabs>
   );

@@ -60,6 +60,7 @@ export async function GET(
     // Fetch all replies in the thread — no workspace scope (admin can see all)
     const replies = await prisma.reply.findMany({
       where: {
+        deletedAt: null,
         OR: [
           { emailBisonReplyId: threadId },
           { emailBisonParentId: threadId },

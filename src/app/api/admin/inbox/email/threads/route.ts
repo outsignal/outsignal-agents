@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workspace = searchParams.get("workspace");
 
-    const where: { workspaceSlug?: string } = {};
+    const where: { workspaceSlug?: string; deletedAt: null } = { deletedAt: null };
     if (workspace) {
       where.workspaceSlug = workspace;
     }

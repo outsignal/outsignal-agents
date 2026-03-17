@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, MessageSquare, ChevronDown, Mail, Linkedin, Loader2, Info } from "lucide-react";
+import { CheckCircle2, MessageSquare, ChevronDown, Mail, Loader2, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveSpintax, substituteTokens } from "@/lib/content-preview";
 import { SequenceStepsDisplay } from "@/components/portal/sequence-steps-display";
+import { SequenceFlowTimeline, type TimelineStep } from "@/components/portal/sequence-flow-timeline";
 import type { SequenceStep } from "@/lib/emailbison/types";
 
 interface EmailStep {
@@ -47,7 +47,7 @@ function PreviewText({ raw }: { raw: string }) {
   const { tokensFound } = substituteTokens(afterSpintax);
 
   if (tokensFound.length === 0) {
-    return <span>{afterSpintax}</span>;
+    return <span className="whitespace-pre-line">{afterSpintax}</span>;
   }
 
   // Replace tokens one at a time, building highlighted JSX
@@ -98,7 +98,7 @@ function PreviewText({ raw }: { raw: string }) {
     parts.push(<span key={key++}>{afterSpintax.slice(lastIndex)}</span>);
   }
 
-  return <>{parts}</>;
+  return <span className="whitespace-pre-line">{parts}</span>;
 }
 
 export function CampaignApprovalContent({
@@ -117,6 +117,7 @@ export function CampaignApprovalContent({
   const [feedback, setFeedback] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState(false);
 
   const canAct = isPending && !contentApproved;
 
@@ -127,8 +128,25 @@ export function CampaignApprovalContent({
   const hasEmail = channels.includes("email") && emailSteps.length > 0;
   const hasLinkedIn = channels.includes("linkedin") && linkedinSteps.length > 0;
 
+  const timelineSteps: TimelineStep[] = [
+    ...emailSteps.map((s) => ({
+      type: "email" as const,
+      position: s.position,
+      subject: s.subjectLine,
+      subjectVariantB: s.subjectVariantB,
+      body: s.body,
+      delayDays: s.delayDays,
+    })),
+    ...linkedinSteps.map((s) => ({
+      type: "linkedin" as const,
+      position: s.position,
+      actionType: (s.type || "message") as "profile_view" | "connect_request" | "message" | "follow_up" | "like_post" | "inmail",
+      body: s.body,
+      delayDays: s.delayDays,
+    })),
+  ].sort((a, b) => a.position - b.position);
+
   async function handleApprove() {
-    if (!window.confirm("Approve the content for this campaign?")) return;
     setLoading(true);
     setError(null);
     try {
@@ -141,6 +159,7 @@ export function CampaignApprovalContent({
       setError("Something went wrong approving the content. Please try again.");
     } finally {
       setLoading(false);
+      setConfirmApprove(false);
     }
   }
 
@@ -168,158 +187,148 @@ export function CampaignApprovalContent({
     }
   }
 
-  const typeLabels: Record<string, string> = {
-    connection_request: "Connection Request",
-    follow_up: "Follow-Up Message",
-    message: "Message",
-  };
-
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="font-heading text-lg">Content</CardTitle>
-          {contentApproved && (
-            <span className="inline-flex items-center gap-1 text-sm text-emerald-700 font-medium">
-              <CheckCircle2 className="h-4 w-4" /> Approved
-            </span>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {/* Previous feedback banner */}
-        {contentFeedback && !contentApproved && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 mb-4 text-sm">
-            <p className="font-medium text-amber-800 mb-1">Changes Requested</p>
-            <p className="text-amber-700">{contentFeedback}</p>
-          </div>
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-heading text-lg font-semibold">Content</h2>
+        {contentApproved && (
+          <span className="inline-flex items-center gap-1 text-sm text-emerald-700 font-medium">
+            <CheckCircle2 className="h-4 w-4" /> Approved
+          </span>
         )}
+      </div>
 
-        {!hasEbSteps && !hasEmail && !hasLinkedIn ? (
-          <p className="text-center py-8 text-muted-foreground">
-            No content has been added to this campaign yet.
-          </p>
-        ) : (
-          <div className="space-y-6">
-            {/* EB Sequence Steps (live data from EmailBison) */}
-            {hasEbSteps && (
-              <SequenceStepsDisplay steps={ebSequenceSteps} />
-            )}
+      {/* Previous feedback banner */}
+      {contentFeedback && !contentApproved && (
+        <div className="border-l-4 border-amber-400 bg-amber-50/50 p-3 mb-4 text-sm">
+          <p className="font-medium text-amber-800 mb-1">Changes Requested</p>
+          <p className="text-amber-700">{contentFeedback}</p>
+        </div>
+      )}
 
-            {/* Spintax explanation banner — only show for local email/linkedin content */}
-            {(hasEmail || hasLinkedIn) && !hasEbSteps && (
-              <div className="flex items-start gap-2.5 bg-muted/50 border border-border rounded-md p-3">
+      {!hasEbSteps && !hasEmail && !hasLinkedIn ? (
+        <p className="text-center py-8 text-muted-foreground">
+          No content has been added to this campaign yet.
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {/* EB Sequence Steps (live data from EmailBison) */}
+          {hasEbSteps && (
+            <SequenceStepsDisplay steps={ebSequenceSteps} />
+          )}
+
+          {/* Visual timeline for LinkedIn / multi-channel (local data) */}
+          {hasLinkedIn && !hasEbSteps && (
+            <SequenceFlowTimeline steps={timelineSteps} />
+          )}
+
+          {/* Local Email-only Sequence Accordion (fallback when no EB steps and no LinkedIn) */}
+          {hasEmail && !hasLinkedIn && !hasEbSteps && (
+            <div>
+              {/* Spintax explanation banner */}
+              <div className="flex items-start gap-2.5 bg-muted/50 border border-border rounded-md p-3 mb-4">
                 <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Email content uses dynamic variations — different recipients may see
                   slightly different wording. The preview below shows one possible version.
                 </p>
               </div>
-            )}
 
-            {/* Local Email Sequence Accordion (fallback when no EB steps) */}
-            {hasEmail && !hasEbSteps && (
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
-                  <Mail className="h-4 w-4" /> Email Sequence
-                </h3>
-                <div className="space-y-2">
-                  {emailSteps.map((step, idx) => (
-                    <div key={idx} className="border rounded-lg">
-                      <button
-                        onClick={() =>
-                          setOpenStep(openStep === idx ? -1 : idx)
-                        }
-                        className="w-full flex items-center justify-between px-4 py-3 text-left cursor-pointer hover:bg-muted/30 transition-colors"
-                      >
-                        <span className="font-medium text-sm">
-                          Step {step.position} (Day {step.delayDays})
-                        </span>
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 transition-transform text-muted-foreground",
-                            openStep === idx && "rotate-180",
+              <h3 className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
+                <Mail className="h-4 w-4" /> Email Sequence
+              </h3>
+              <div className="space-y-2">
+                {emailSteps.map((step, idx) => (
+                  <div key={idx} className="border rounded-lg">
+                    <button
+                      onClick={() =>
+                        setOpenStep(openStep === idx ? -1 : idx)
+                      }
+                      className="w-full flex items-center justify-between px-4 py-3 text-left cursor-pointer hover:bg-muted/30 transition-colors"
+                    >
+                      <span className="font-medium text-sm">
+                        Step {step.position} (Day {step.delayDays})
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform text-muted-foreground",
+                          openStep === idx && "rotate-180",
+                        )}
+                      />
+                    </button>
+                    {openStep === idx && (
+                      <div className="px-4 pb-4 space-y-3 border-t">
+                        <div className="pt-3">
+                          <p className="text-xs text-muted-foreground mb-1">
+                            Subject
+                          </p>
+                          <p className="font-medium text-sm">
+                            <PreviewText raw={step.subjectLine} />
+                          </p>
+                          {step.subjectVariantB && (
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Variant B:{" "}
+                              <span className="text-foreground">
+                                <PreviewText raw={step.subjectVariantB} />
+                              </span>
+                            </p>
                           )}
-                        />
-                      </button>
-                      {openStep === idx && (
-                        <div className="px-4 pb-4 space-y-3 border-t">
-                          <div className="pt-3">
-                            <p className="text-xs text-muted-foreground mb-1">
-                              Subject
-                            </p>
-                            <p className="font-medium text-sm">
-                              <PreviewText raw={step.subjectLine} />
-                            </p>
-                            {step.subjectVariantB && (
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Variant B:{" "}
-                                <span className="text-foreground">
-                                  <PreviewText raw={step.subjectVariantB} />
-                                </span>
-                              </p>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">
-                              Body
-                            </p>
-                            <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                              <PreviewText raw={step.body} />
-                            </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">
+                            Body
+                          </p>
+                          <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                            <PreviewText raw={step.body} />
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* LinkedIn Messages */}
-            {hasLinkedIn && (
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
-                  <Linkedin className="h-4 w-4" /> LinkedIn Messages
-                </h3>
-                <div className="space-y-3">
-                  {linkedinSteps.map((step, idx) => (
-                    <div key={idx} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">
-                          {typeLabels[step.type] ?? step.type} (Day{" "}
-                          {step.delayDays})
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Step {step.position}
-                        </span>
                       </div>
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                        <PreviewText raw={step.body} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Approval buttons */}
-        {canAct && (hasEbSteps || hasEmail || hasLinkedIn) && (
-          <div className="mt-6 space-y-3">
-            {error && (
-              <p className="text-sm text-red-600">{error}</p>
-            )}
+      {/* Approval buttons */}
+      {canAct && (hasEbSteps || hasEmail || hasLinkedIn) && (
+        <div className="mt-6 space-y-3">
+          {error && (
+            <p className="text-sm text-red-600">{error}</p>
+          )}
+
+          {confirmApprove ? (
             <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Approve the content for this campaign?</span>
               <Button
                 onClick={handleApprove}
                 disabled={loading}
-                variant="brand"
+                className="bg-[#635BFF] hover:bg-[#635BFF]/90 text-white"
+                size="sm"
               >
-                {loading && !showFeedback && (
+                {loading && (
                   <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                 )}
+                Yes, Approve
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmApprove(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => setConfirmApprove(true)}
+                disabled={loading}
+                className="bg-[#635BFF] hover:bg-[#635BFF]/90 text-white"
+              >
                 Approve Content
               </Button>
               <Button
@@ -331,31 +340,31 @@ export function CampaignApprovalContent({
                 Request Changes
               </Button>
             </div>
+          )}
 
-            {showFeedback && (
-              <div className="space-y-2">
-                <Textarea
-                  placeholder="Describe what changes you'd like (e.g., 'too formal, simplify the CTA')..."
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  rows={3}
-                />
-                <Button
-                  onClick={handleRequestChanges}
-                  disabled={loading || !feedback.trim()}
-                  variant="brand"
-                  size="sm"
-                >
-                  {loading && showFeedback && (
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  )}
-                  Submit Feedback
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          {showFeedback && (
+            <div className="space-y-2">
+              <Textarea
+                placeholder="Describe what changes you'd like (e.g., 'too formal, simplify the CTA')..."
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                rows={3}
+              />
+              <Button
+                onClick={handleRequestChanges}
+                disabled={loading || !feedback.trim()}
+                className="bg-[#635BFF] hover:bg-[#635BFF]/90 text-white"
+                size="sm"
+              >
+                {loading && showFeedback && (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                )}
+                Submit Feedback
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }

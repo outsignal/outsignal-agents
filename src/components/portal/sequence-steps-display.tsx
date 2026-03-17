@@ -25,6 +25,7 @@ function stripHtml(html: string): string {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/\\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

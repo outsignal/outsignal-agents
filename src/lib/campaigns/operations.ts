@@ -46,6 +46,7 @@ export interface CampaignSummary {
   status: string;
   channels: string[];
   targetListName: string | null;
+  emailBisonCampaignId: number | null;
   leadsApproved: boolean;
   contentApproved: boolean;
   createdAt: Date;
@@ -322,6 +323,7 @@ export async function listCampaigns(
     status: c.status,
     channels: parseJsonArray(c.channels) as string[] ?? ["email"],
     targetListName: c.targetList?.name ?? null,
+    emailBisonCampaignId: c.emailBisonCampaignId,
     leadsApproved: c.leadsApproved,
     contentApproved: c.contentApproved,
     createdAt: c.createdAt,

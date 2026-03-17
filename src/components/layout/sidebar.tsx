@@ -23,6 +23,7 @@ import {
   Search,
   LifeBuoy,
   LogOut,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
@@ -94,6 +95,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     key: "health",
     label: "Health",
     items: [
+      { href: "/senders", label: "LinkedIn Senders", icon: Send },
       { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
     ],
@@ -221,7 +223,9 @@ export function Sidebar({ workspaces }: SidebarProps) {
       return (
         <Tooltip key={item.href}>
           <TooltipTrigger asChild>
-            <div className="relative">{linkContent}</div>
+            <Link href={item.href} className={sharedClasses}>
+              <item.icon className="h-4 w-4 shrink-0" />
+            </Link>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
             {item.label}

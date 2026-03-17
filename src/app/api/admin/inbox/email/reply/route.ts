@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Look up the Reply record (admin can access across workspaces)
     const replyRecord = await prisma.reply.findFirst({
-      where: { id: replyId, workspaceSlug },
+      where: { id: replyId, workspaceSlug, deletedAt: null },
       select: {
         emailBisonReplyId: true,
         ebSenderEmailId: true,

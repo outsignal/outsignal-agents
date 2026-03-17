@@ -30,8 +30,9 @@ export async function GET(request: NextRequest) {
 
     const where: {
       workspaceSlug: string;
+      deletedAt: null;
       receivedAt?: { lt: Date };
-    } = { workspaceSlug };
+    } = { workspaceSlug, deletedAt: null };
 
     if (cursor) {
       where.receivedAt = { lt: new Date(cursor) };

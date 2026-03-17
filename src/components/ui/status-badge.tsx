@@ -70,7 +70,7 @@ const STATUS_MAPS: Record<StatusType, Record<string, StatusConfig>> = {
   campaign: {
     active: { variant: "success", dot: true, label: "Active" },
     paused: { variant: "warning", dot: true, label: "Paused" },
-    completed: { variant: "secondary", label: "Completed" },
+    completed: { variant: "info", label: "Completed" },
     draft: { variant: "outline", label: "Draft" },
     deployed: { variant: "info", dot: true, label: "Deployed" },
     approved: { variant: "success", label: "Approved" },

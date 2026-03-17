@@ -338,6 +338,9 @@ model Reply {
   // Read tracking
   isRead              Boolean  @default(false)
 
+  // Soft delete (hidden from inbox, prevents re-import on sync)
+  deletedAt           DateTime?
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

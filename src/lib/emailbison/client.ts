@@ -18,7 +18,7 @@ import type {
 } from "./types";
 import { EmailBisonError } from "./types";
 
-class EmailBisonApiError extends Error {
+export class EmailBisonApiError extends Error {
   constructor(
     public status: number,
     public body: string,
@@ -37,6 +37,7 @@ class RateLimitError extends EmailBisonApiError {
 
 export class EmailBisonClient {
   private baseUrl = "https://app.outsignal.ai/api";
+
   private token: string;
 
   constructor(token: string) {
@@ -69,7 +70,10 @@ export class EmailBisonClient {
 
       // Success — return immediately
       if (res.ok) {
-        return res.json();
+        if (res.status === 204) return undefined as T;
+        const text = await res.text();
+        if (!text) return undefined as T;
+        return JSON.parse(text) as T;
       }
 
       // Non-retryable status — fail fast
@@ -191,9 +195,19 @@ export class EmailBisonClient {
   }
 
   async getSequenceSteps(campaignId: number): Promise<SequenceStep[]> {
-    return this.getAllPages<SequenceStep>(
+    const res = await this.request<{ data: Record<string, unknown>[] } | Record<string, unknown>[]>(
       `/campaigns/${campaignId}/sequence-steps`,
     );
+    // API returns non-paginated response with snake_case fields
+    const raw = Array.isArray(res) ? res : (res.data ?? []);
+    return raw.map((s) => ({
+      id: s.id as number,
+      campaign_id: (s.campaign_id ?? campaignId) as number,
+      position: (s.order ?? s.position ?? 0) as number,
+      subject: (s.email_subject ?? s.subject ?? "") as string,
+      body: (s.email_body ?? s.body ?? "") as string,
+      delay_days: (s.wait_in_days ?? s.delay_days ?? 0) as number,
+    }));
   }
 
   async createSequenceStep(
@@ -412,5 +426,51 @@ export class EmailBisonClient {
     } catch {
       return null;
     }
+  }
+
+  async markReplyUnread(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ read: false }),
+      revalidate: 0,
+    });
+  }
+
+  async markReplyAutomated(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ automated_reply: true }),
+      revalidate: 0,
+    });
+  }
+
+  async markReplyInterested(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ interested: true }),
+      revalidate: 0,
+    });
+  }
+
+  async deleteReply(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}`, {
+      method: 'DELETE',
+      revalidate: 0,
+    });
+  }
+
+  async addToBlacklist(type: 'email' | 'domain', value: string): Promise<void> {
+    await this.request<unknown>('/blacklists', {
+      method: 'POST',
+      body: JSON.stringify({ type, value }),
+      revalidate: 0,
+    });
+  }
+
+  async deleteLead(leadId: number): Promise<void> {
+    await this.request<unknown>(`/leads/${leadId}`, {
+      method: 'DELETE',
+      revalidate: 0,
+    });
   }
 }

@@ -42,24 +42,18 @@ export default async function PortalCampaignsPage({
 
   // Merge internal campaigns with EB data
   const merged: MergedCampaign[] = internalCampaigns.map((c) => {
-    // Find matching EB campaign by emailBisonCampaignId
-    // We need to look up the EB campaign ID from the internal campaign
-    // Since listCampaigns doesn't include emailBisonCampaignId, we match by name
-    const ebMatch = ebCampaigns.find(
-      (eb) => eb.name === c.name
-    );
+    // Match by EB campaign ID first, fall back to name match
+    const ebMatch = c.emailBisonCampaignId
+      ? ebCampaigns.find((eb) => eb.id === c.emailBisonCampaignId)
+      : ebCampaigns.find((eb) => eb.name === c.name);
 
     return {
       internalId: c.id,
       ebId: ebMatch?.id ?? null,
       name: c.name,
       type: c.type,
-      status: c.status,
-      completionPercentage: ebMatch
-        ? ebMatch.total_leads > 0
-          ? (ebMatch.total_leads_contacted / ebMatch.total_leads) * 100
-          : 0
-        : 0,
+      status: ebMatch?.status ?? c.status,
+      completionPercentage: ebMatch?.completion_percentage ?? 0,
       emailsSent: ebMatch?.emails_sent ?? 0,
       opened: ebMatch?.opened ?? 0,
       uniqueOpens: ebMatch?.unique_opens ?? 0,

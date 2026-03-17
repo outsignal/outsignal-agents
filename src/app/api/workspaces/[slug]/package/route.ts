@@ -100,6 +100,17 @@ export async function PATCH(
         );
       }
       updateData.enabledModules = JSON.stringify(validated.enabledModules);
+      // Derive package from enabled modules
+      const mods = validated.enabledModules as string[];
+      const hasEmail = mods.includes("email");
+      const hasLinkedin = mods.includes("linkedin");
+      if (hasEmail && hasLinkedin) {
+        updateData.package = "email_linkedin";
+      } else if (hasLinkedin) {
+        updateData.package = "linkedin";
+      } else {
+        updateData.package = "email";
+      }
     }
 
     // Validate and set numeric fields

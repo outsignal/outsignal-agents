@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
     const workspaceSlug = request.nextUrl.searchParams.get("workspace");
 
     const senders = await prisma.sender.findMany({
-      where: workspaceSlug ? { workspaceSlug } : undefined,
+      where: {
+        ...(workspaceSlug ? { workspaceSlug } : {}),
+        linkedinProfileUrl: { not: null },
+      },
       include: {
         workspace: {
           select: { name: true },

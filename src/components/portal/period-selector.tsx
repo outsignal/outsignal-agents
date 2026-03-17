@@ -26,7 +26,7 @@ export function PeriodSelector() {
         <button
           key={p.value}
           onClick={() => handleChange(p.value)}
-          className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+          className={`cursor-pointer px-2.5 py-1 rounded-md font-medium transition-colors ${
             current === p.value
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"

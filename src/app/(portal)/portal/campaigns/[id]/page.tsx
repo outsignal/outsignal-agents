@@ -1,17 +1,20 @@
 import { notFound, redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
-import { getCampaign, getCampaignLeadSample } from "@/lib/campaigns/operations";
+import { getCampaign } from "@/lib/campaigns/operations";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { Campaign as EBCampaign, SequenceStep } from "@/lib/emailbison/types";
-import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
-import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
 import { CampaignDetailTabs } from "@/components/portal/campaign-detail-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { EmailActivityPoint } from "@/components/charts/email-activity-chart";
-import { ArrowLeft, Mail, Linkedin, Clock, CalendarDays } from "lucide-react";
+import { ArrowLeft, Mail, Linkedin, Clock, CalendarDays, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { getCampaignLeadSample } from "@/lib/campaigns/operations";
+import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
+import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export default async function PortalCampaignDetailPage({
   params,
@@ -32,21 +35,19 @@ export default async function PortalCampaignDetailPage({
     notFound();
   }
 
-  // Fetch lead sample if campaign has a target list
-  let leadSample: Awaited<ReturnType<typeof getCampaignLeadSample>> | null = null;
-  if (campaign.targetListId) {
-    leadSample = await getCampaignLeadSample(
-      campaign.targetListId,
-      workspaceSlug,
-      500, // fetch up to 500 leads so clients can paginate through them
-    );
+
+  // Fetch lead sample for approval view
+  let leadSample: { leads: Array<{ personId: string; firstName: string | null; lastName: string | null; jobTitle: string | null; company: string | null; location: string | null; linkedinUrl: string | null; icpScore: number | null }>; totalCount: number } | null = null;
+  if (campaign.status === "pending_approval" && campaign.targetListId) {
+    leadSample = await getCampaignLeadSample(campaign.targetListId, session.workspaceSlug, 500);
   }
 
   // Fetch EmailBison campaign stats + sequence steps if campaign has been deployed
   let ebCampaign: EBCampaign | null = null;
   let sequenceSteps: SequenceStep[] = [];
   const hasPerformanceData = ["active", "paused", "completed"].includes(campaign.status);
-  if (hasPerformanceData && campaign.emailBisonCampaignId) {
+  const needsSequenceSteps = hasPerformanceData || campaign.status === "pending_approval";
+  if (needsSequenceSteps && campaign.emailBisonCampaignId) {
     try {
       const workspace = await getWorkspaceBySlug(workspaceSlug);
       if (workspace?.apiToken) {
@@ -65,6 +66,25 @@ export default async function PortalCampaignDetailPage({
       // Silently fail -- stats are non-critical
     }
   }
+
+  // Fetch replies for this campaign
+  const replies = await prisma.reply.findMany({
+    where: { campaignId: campaign.id, workspaceSlug },
+    orderBy: { receivedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      senderEmail: true,
+      senderName: true,
+      subject: true,
+      bodyText: true,
+      receivedAt: true,
+      intent: true,
+      sentiment: true,
+      emailBisonReplyId: true,
+      emailBisonParentId: true,
+    },
+  });
 
   // Fetch chart data from WebhookEvent table (last 30 days, filtered by campaign)
   let chartData: EmailActivityPoint[] = [];
@@ -135,88 +155,263 @@ export default async function PortalCampaignDetailPage({
     `${formatDate(date)} at ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 
 
+  const isPendingApproval = campaign.status === "pending_approval";
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Back link + header */}
+    <div className={isPendingApproval ? "p-4 space-y-4" : "p-6 space-y-6"}>
+      {/* Header — compact for approval, full for other statuses */}
       <div>
         <Link
           href="/portal/campaigns"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back to Campaigns
         </Link>
 
-        {/* Campaign header */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-xl font-medium text-foreground">{campaign.name}</h1>
-              <StatusBadge status={campaign.status} type="campaign" />
+        {isPendingApproval ? (
+          /* Compact two-row header for approval flow */
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-lg font-medium text-foreground">{campaign.name}</h1>
+                <StatusBadge status={campaign.status} type="campaign" />
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-muted-foreground">
+                {campaign.description && (
+                  <span>{campaign.description}</span>
+                )}
+                <span className="inline-flex items-center gap-1">
+                  {campaign.channels.includes("email") && <><Mail className="h-3 w-3" /> Email</>}
+                  {campaign.channels.includes("email") && campaign.channels.includes("linkedin") && <span className="mx-0.5">·</span>}
+                  {campaign.channels.includes("linkedin") && <><Linkedin className="h-3 w-3" /> LinkedIn</>}
+                </span>
+                <span>Created {formatDate(campaign.createdAt)}</span>
+              </div>
             </div>
-            {campaign.description && (
-              <p className="text-sm text-muted-foreground mt-2">
-                {campaign.description}
-              </p>
-            )}
+            {/* Stepper on the right */}
+            <div className="flex items-center gap-0 shrink-0 pt-1">
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                    campaign.leadsApproved
+                      ? "bg-[#635BFF] text-white"
+                      : "border-2 border-[#635BFF] text-[#635BFF]"
+                  }`}
+                >
+                  {campaign.leadsApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "1"}
+                </div>
+                <span className={`text-xs font-medium ${campaign.leadsApproved ? "text-[#635BFF]" : "text-foreground"}`}>
+                  Leads
+                </span>
+              </div>
+              <div className={`mx-2.5 h-px w-8 ${campaign.leadsApproved ? "bg-[#635BFF]" : "bg-border"}`} />
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                    campaign.contentApproved
+                      ? "bg-[#635BFF] text-white"
+                      : campaign.leadsApproved
+                        ? "border-2 border-[#635BFF] text-[#635BFF]"
+                        : "border-2 border-muted-foreground/30 text-muted-foreground"
+                  }`}
+                >
+                  {campaign.contentApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "2"}
+                </div>
+                <span className={`text-xs font-medium ${
+                  campaign.contentApproved ? "text-[#635BFF]" : campaign.leadsApproved ? "text-foreground" : "text-muted-foreground"
+                }`}>
+                  Content
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* Full header for non-approval statuses */
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h1 className="text-xl font-medium text-foreground">{campaign.name}</h1>
+                  <StatusBadge status={campaign.status} type="campaign" />
+                </div>
+                {campaign.description && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {campaign.description}
+                  </p>
+                )}
+              </div>
+            </div>
 
-        {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 text-sm text-muted-foreground">
-          {campaign.channels.includes("email") && (
-            <span className="inline-flex items-center gap-1.5">
-              <Mail className="h-3.5 w-3.5" /> Email
-            </span>
-          )}
-          {campaign.channels.includes("linkedin") && (
-            <span className="inline-flex items-center gap-1.5">
-              <Linkedin className="h-3.5 w-3.5" /> LinkedIn
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarDays className="h-3.5 w-3.5" />
-            Created {formatDate(campaign.createdAt)}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
-            Last updated {formatDateTime(campaign.updatedAt)}
-          </span>
-        </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 text-sm text-muted-foreground">
+              {campaign.channels.includes("email") && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" /> Email
+                </span>
+              )}
+              {campaign.channels.includes("linkedin") && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Linkedin className="h-3.5 w-3.5" /> LinkedIn
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Created {formatDate(campaign.createdAt)}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Last updated {formatDateTime(campaign.updatedAt)}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Campaign Detail Tabs */}
-      <CampaignDetailTabs
-        ebCampaign={ebCampaign}
-        chartData={chartData}
-        openTracking={ebCampaign?.open_tracking ?? false}
-        campaignId={campaign.id}
-        ebCampaignId={campaign.emailBisonCampaignId}
-        sequenceSteps={sequenceSteps}
-        hasPerformanceData={hasPerformanceData}
-      />
+      {/* Status-dependent content */}
+      {(campaign.status === "draft" || campaign.status === "internal_review") && (
+        <Card className="border-border/50">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="rounded-full bg-muted p-3 mb-4">
+              <Clock className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h2 className="text-lg font-medium text-foreground mb-1">Campaign is being prepared</h2>
+            <p className="text-sm text-muted-foreground max-w-md">
+              Our team is setting up your campaign. You&apos;ll be notified when it&apos;s ready for review.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Leads Section */}
-      <CampaignApprovalLeads
-        campaignId={campaign.id}
-        leads={leadSample?.leads ?? []}
-        totalCount={leadSample?.totalCount ?? 0}
-        leadsApproved={campaign.leadsApproved}
-        leadsFeedback={campaign.leadsFeedback}
-        isPending={campaign.status === "pending_approval"}
-      />
+      {isPendingApproval && (
+        <div className="space-y-6">
+          {/* Success banner when both approved */}
+          {campaign.leadsApproved && campaign.contentApproved && (
+            <Card className="border-[#635BFF]/20 bg-[#635BFF]/5">
+              <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="rounded-full bg-[#635BFF]/10 p-3 mb-4">
+                  <CheckCircle2 className="h-6 w-6 text-[#635BFF]" />
+                </div>
+                <h2 className="text-lg font-medium text-foreground mb-1">Campaign Approved!</h2>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Both leads and content have been approved. We&apos;ll get your campaign deployed shortly.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-      {/* Content Section */}
-      <CampaignApprovalContent
-        campaignId={campaign.id}
-        emailSequence={campaign.emailSequence as unknown[] | null}
-        linkedinSequence={campaign.linkedinSequence as unknown[] | null}
-        channels={campaign.channels}
-        contentApproved={campaign.contentApproved}
-        contentFeedback={campaign.contentFeedback}
-        isPending={campaign.status === "pending_approval"}
-        ebSequenceSteps={sequenceSteps}
-      />
+          {/* Section 1: Leads Review */}
+          <div>
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
+                campaign.leadsApproved
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-[#635BFF] text-white"
+              )}>
+                {campaign.leadsApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "1"}
+              </div>
+              <h2 className="text-base font-medium text-foreground">
+                Review Target Leads
+              </h2>
+            </div>
+            <Card className={cn(
+              "border",
+              campaign.leadsApproved && "border-emerald-200/50 bg-emerald-50/20"
+            )}>
+              <CardContent className="pt-5">
+                <CampaignApprovalLeads
+                  campaignId={campaign.id}
+                  leads={leadSample?.leads ?? []}
+                  totalCount={leadSample?.totalCount ?? 0}
+                  leadsApproved={campaign.leadsApproved}
+                  leadsFeedback={campaign.leadsFeedback}
+                  isPending={campaign.status === "pending_approval"}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Section 2: Content Review */}
+          <div className={cn(!campaign.leadsApproved && "opacity-60 pointer-events-none")}>
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
+                campaign.contentApproved
+                  ? "bg-emerald-100 text-emerald-700"
+                  : campaign.leadsApproved
+                    ? "bg-[#635BFF] text-white"
+                    : "border-2 border-muted-foreground/30 text-muted-foreground"
+              )}>
+                {campaign.contentApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "2"}
+              </div>
+              <h2 className="text-base font-medium text-foreground">
+                Review Campaign Content
+              </h2>
+              {!campaign.leadsApproved && (
+                <span className="text-xs text-muted-foreground ml-1">Approve leads first</span>
+              )}
+            </div>
+            <CampaignApprovalContent
+              campaignId={campaign.id}
+              emailSequence={campaign.emailSequence as unknown[] | null}
+              linkedinSequence={campaign.linkedinSequence as unknown[] | null}
+              channels={campaign.channels}
+              contentApproved={campaign.contentApproved}
+              contentFeedback={campaign.contentFeedback}
+              isPending={campaign.status === "pending_approval"}
+              ebSequenceSteps={sequenceSteps}
+            />
+          </div>
+        </div>
+      )}
+
+      {campaign.status === "approved" && (
+        <Card className="border-border/50">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="rounded-full bg-[#635BFF]/10 p-3 mb-4">
+              <CheckCircle2 className="h-6 w-6 text-[#635BFF]" />
+            </div>
+            <h2 className="text-lg font-medium text-foreground mb-1">Campaign Approved!</h2>
+            <p className="text-sm text-muted-foreground max-w-md mb-8">
+              Our team will deploy your campaign shortly. You&apos;ll be notified when it goes live.
+            </p>
+            {/* Timeline */}
+            <div className="flex items-center gap-0 text-sm">
+              <div className="flex items-center gap-1.5 text-[#635BFF] font-medium">
+                <CheckCircle2 className="h-4 w-4" />
+                Approved
+              </div>
+              <div className="mx-3 h-0.5 w-10 rounded-full bg-border" />
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <div className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-pulse" />
+                Deploying
+              </div>
+              <div className="mx-3 h-0.5 w-10 rounded-full bg-border" />
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <div className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                Live
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasPerformanceData && (
+        <CampaignDetailTabs
+          ebCampaign={ebCampaign}
+          chartData={chartData}
+          openTracking={ebCampaign?.open_tracking ?? false}
+          campaignId={campaign.id}
+          ebCampaignId={campaign.emailBisonCampaignId}
+          sequenceSteps={sequenceSteps}
+          hasPerformanceData={hasPerformanceData}
+          replies={replies.map((r) => ({
+            ...r,
+            receivedAt: r.receivedAt.toISOString(),
+          }))}
+        />
+      )}
+
     </div>
   );
 }

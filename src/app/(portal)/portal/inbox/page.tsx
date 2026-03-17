@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Mail, Linkedin, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SkeletonListItem } from "@/components/ui/skeleton";
@@ -28,6 +29,12 @@ function getAvailableChannels(pkg: string): ("email" | "linkedin")[] {
 }
 
 export default function PortalInboxPage() {
+  const searchParams = useSearchParams();
+  const threadParam = useMemo(() => {
+    const t = searchParams.get("thread");
+    return t ? Number(t) : null;
+  }, [searchParams]);
+
   const [workspacePackage, setWorkspacePackage] = useState<string>("email");
   const [activeChannel, setActiveChannel] = useState<ActiveChannel>("email");
 
@@ -112,7 +119,7 @@ export default function PortalInboxPage() {
         fetchLinkedinConversations(),
       ]);
 
-      // Auto-select first email thread — desktop only (>= 768px)
+      // Auto-select thread from URL param, or first thread — desktop only (>= 768px)
       if (
         emailResult &&
         emailResult.length > 0 &&
@@ -120,7 +127,8 @@ export default function PortalInboxPage() {
         typeof window !== "undefined" &&
         window.innerWidth >= 768
       ) {
-        setSelectedThreadId(emailResult[0].threadId);
+        const target = threadParam && emailResult.find((t) => t.threadId === threadParam);
+        setSelectedThreadId(target ? target.threadId : emailResult[0].threadId);
         hasAutoSelectedEmail.current = true;
       }
 

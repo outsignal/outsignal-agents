@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     // Look up the Reply record
     const replyRecord = await prisma.reply.findFirst({
-      where: { id: replyId, workspaceSlug },
+      where: { id: replyId, workspaceSlug, deletedAt: null },
       select: {
         emailBisonReplyId: true,
         ebSenderEmailId: true,

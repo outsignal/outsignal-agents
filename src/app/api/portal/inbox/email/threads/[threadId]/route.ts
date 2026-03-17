@@ -61,6 +61,7 @@ export async function GET(
     const replies = await prisma.reply.findMany({
       where: {
         workspaceSlug,
+        deletedAt: null,
         OR: [
           { emailBisonReplyId: threadId },
           { emailBisonParentId: threadId },

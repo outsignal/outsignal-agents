@@ -12,6 +12,7 @@ export async function POST() {
         workspaceSlug,
         direction: "inbound",
         isRead: false,
+        deletedAt: null,
       },
       data: { isRead: true },
     });

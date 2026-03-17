@@ -246,7 +246,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                     <TableCell>
                       <div className="flex items-center gap-2 min-w-[80px]">
                         <span className="text-sm tabular-nums whitespace-nowrap">
-                          {c.completionPercentage.toFixed(0)}%
+                          {c.completionPercentage % 1 === 0 ? c.completionPercentage.toFixed(0) : c.completionPercentage.toFixed(2)}%
                         </span>
                         <div className="flex-1 h-2.5 rounded-full bg-gray-200 overflow-hidden">
                           <div

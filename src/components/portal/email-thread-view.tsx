@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { RefreshCw, AlertCircle, Linkedin } from "lucide-react";
+import { RefreshCw, AlertCircle, Linkedin, ChevronDown, Mail, Shield, Trash2, Bot, Star, UserMinus, Tag, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { AISuggestionCard } from "@/components/portal/ai-suggestion-card";
 import { EmailReplyComposer } from "@/components/portal/email-reply-composer";
 import { cn } from "@/lib/utils";
@@ -82,6 +85,16 @@ const SENTIMENT_COLORS: Record<string, string> = {
   positive: "text-emerald-600 dark:text-emerald-400",
   negative: "text-red-600 dark:text-red-400",
   neutral: "text-muted-foreground",
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  mark_unread: "Marked as unread",
+  blacklist_domain: "Domain blacklisted",
+  blacklist_email: "Email blacklisted",
+  delete_reply: "Reply deleted",
+  mark_automated: "Marked as automated",
+  mark_interested: "Marked as interested",
+  remove_lead: "Lead removed",
 };
 
 function MessageCard({ msg }: { msg: ThreadMessage }) {
@@ -201,6 +214,8 @@ export function EmailThreadView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [composerText, setComposerText] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ action: string; label: string } | null>(null);
 
   const fetchThread = useCallback(async () => {
     setLoading(true);
@@ -227,6 +242,58 @@ export function EmailThreadView({
     fetchThread();
     onReplySent();
   }, [fetchThread, onReplySent]);
+
+  const handleAction = useCallback(async (action: string, extra?: Record<string, unknown>) => {
+    setActionLoading(action);
+    try {
+      const latestReply = [...(detail?.messages ?? [])].reverse().find(m => m.direction === "inbound");
+      const body: Record<string, unknown> = { action, ...extra };
+
+      // Add leadEmail for remove_lead
+      if (action === "remove_lead") {
+        body.value = detail?.threadMeta.leadEmail;
+      }
+
+      // Add replyId for reply-level actions
+      if (["mark_unread", "delete_reply", "mark_automated", "mark_interested"].includes(action)) {
+        const ebReplyId = latestReply?.emailBisonReplyId;
+        if (!ebReplyId) { toast.error("No reply ID available"); return; }
+        body.replyId = ebReplyId;
+      }
+
+      // Add value for blacklist actions
+      if (action === "blacklist_email") {
+        body.value = detail?.threadMeta.leadEmail;
+      }
+      if (action === "blacklist_domain") {
+        const email = detail?.threadMeta.leadEmail;
+        body.value = email?.split("@")[1];
+      }
+
+      const res = await fetch("/api/portal/inbox/email/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Action failed");
+      }
+
+      toast.success(ACTION_LABELS[action] || "Done");
+      onReplySent(); // refresh thread list
+      if (["delete_reply", "remove_lead"].includes(action)) {
+        // These remove content, so also re-fetch thread
+        fetchThread();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(null);
+      setConfirmAction(null);
+    }
+  }, [detail, onReplySent, fetchThread]);
 
   if (loading) {
     return (
@@ -311,11 +378,76 @@ export function EmailThreadView({
                 Interested
               </Badge>
             )}
-            <span className="text-xs text-muted-foreground">
-              {messages.length} message{messages.length !== 1 ? "s" : ""}
-            </span>
+
+            {/* Actions dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" disabled={!!actionLoading}>
+                  Actions <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleAction("mark_unread")} disabled={!!actionLoading}>
+                  <Mail className="h-4 w-4" /> Mark unread
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAction("blacklist_domain")} disabled={!!actionLoading}>
+                  <Shield className="h-4 w-4" /> Blacklist domain
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAction("blacklist_email")} disabled={!!actionLoading}>
+                  <Shield className="h-4 w-4" /> Blacklist email
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setConfirmAction({ action: "delete_reply", label: "Permanently delete this reply from your inbox? This cannot be undone." })}
+                  disabled={!!actionLoading}
+                >
+                  <Trash2 className="h-4 w-4" /> Permanently Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
+      </div>
+
+      {/* Lead Actions bar */}
+      <div className="px-5 py-2 border-b border-border shrink-0 flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{threadMeta.leadName || threadMeta.leadEmail}</span>
+          {threadMeta.leadName && <span className="ml-1.5">{threadMeta.leadEmail}</span>}
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" disabled={!!actionLoading}>
+              Lead Actions <ChevronDown className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleAction("mark_automated")} disabled={!!actionLoading}>
+              <Bot className="h-4 w-4" /> Mark automated
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled>
+              <ArrowRight className="h-4 w-4" /> Push to followup campaign
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAction("mark_interested")} disabled={!!actionLoading}>
+              <Star className="h-4 w-4" /> Mark as interested
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAction("blacklist_email")} disabled={!!actionLoading}>
+              <Shield className="h-4 w-4" /> Add to blacklist
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled>
+              <Tag className="h-4 w-4" /> Manage lead tags
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => setConfirmAction({ action: "remove_lead", label: "Remove this lead? This cannot be undone." })}
+              disabled={!!actionLoading}
+            >
+              <UserMinus className="h-4 w-4" /> Remove lead
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Messages */}
@@ -357,6 +489,26 @@ export function EmailThreadView({
           extraBody={replyExtraBody}
         />
       </div>
+
+      {/* Confirmation dialog for destructive actions */}
+      <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>{confirmAction?.label}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!actionLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmAction && handleAction(confirmAction.action)}
+              disabled={!!actionLoading}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {actionLoading ? "Processing..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
