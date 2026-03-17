@@ -29,11 +29,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return {
       beforeFiles: [
-        // portal.outsignal.ai/ → /portal/login
+        // portal.outsignal.ai/ → /portal (proxy.ts handles auth redirect)
         {
           source: "/",
           has: [{ type: "host", value: "portal.outsignal.ai" }],
-          destination: "/portal/login",
+          destination: "/portal",
         },
         // portal.outsignal.ai/* → /portal/*
         // Excludes _next, api, and static files
