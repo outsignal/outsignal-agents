@@ -5,8 +5,9 @@ const nextConfig: NextConfig = {
     return {
       beforeFiles: [
         // portal.outsignal.ai/* → /portal/*
+        // Excludes _next, api, and static files
         {
-          source: "/:path*",
+          source: "/((?!_next|api|portal|favicon\\.ico|icon\\.png|sitemap\\.xml|robots\\.txt).*)",
           has: [{ type: "host", value: "portal.outsignal.ai" }],
           destination: "/portal/:path*",
         },
