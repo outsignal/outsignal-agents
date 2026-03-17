@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    return {
+      beforeFiles: [
+        // portal.outsignal.ai/* → /portal/*
+        {
+          source: "/:path*",
+          has: [{ type: "host", value: "portal.outsignal.ai" }],
+          destination: "/portal/:path*",
+        },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
   async headers() {
     return [
       {
