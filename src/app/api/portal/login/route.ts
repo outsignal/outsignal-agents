@@ -77,12 +77,11 @@ export async function POST(req: NextRequest) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-  // Build magic link URL
+  // Build magic link URL — use portal subdomain so clients stay on portal.outsignal.ai
   const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : "http://localhost:3000");
+    process.env.NODE_ENV === "development"
+      ? "http://localhost:3000"
+      : (process.env.NEXT_PUBLIC_PORTAL_URL ?? "https://portal.outsignal.ai");
   const verifyUrl = `${baseUrl}/api/portal/verify?token=${token}`;
 
   // Send branded email
