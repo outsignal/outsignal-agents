@@ -41,7 +41,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-white via-brand/[0.03] to-brand/15">
+    <div className="light relative min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-white via-brand/[0.03] to-brand/15" style={{ colorScheme: "light" }}>
       {/* Secondary gradient wash */}
       <div
         className="pointer-events-none fixed inset-0"
