@@ -25,7 +25,7 @@ export default async function PortalLayout({
   }
 
   return (
-    <ThemeProvider>
+    <ThemeProvider forcedTheme="light">
       <div className="min-h-screen bg-background">{children}</div>
     </ThemeProvider>
   );
