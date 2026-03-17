@@ -179,7 +179,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
       </div>
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
+      <div className="flex-1 min-h-0 overflow-hidden rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -195,7 +195,6 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
               <TableHead className="text-right font-semibold text-foreground">Unsubs</TableHead>
               <TableHead className="text-right font-semibold text-foreground">Bounces</TableHead>
               <TableHead className="text-right font-semibold text-foreground">Interested</TableHead>
-              <TableHead className="font-semibold text-foreground">Tags</TableHead>
               <TableHead className="text-center font-semibold text-foreground">Manage</TableHead>
             </TableRow>
           </TableHeader>
@@ -203,7 +202,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
             {pageItems.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={14}
+                  colSpan={13}
                   className="h-24 text-center text-muted-foreground"
                 >
                   No campaigns found.
@@ -246,7 +245,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                     {/* Progress */}
                     <TableCell>
                       <div className="flex items-center gap-2 min-w-[80px]">
-                        <span className="text-sm tabular-nums font-semibold whitespace-nowrap">
+                        <span className="text-sm tabular-nums whitespace-nowrap">
                           {c.completionPercentage.toFixed(0)}%
                         </span>
                         <div className="flex-1 h-2.5 rounded-full bg-gray-200 overflow-hidden">
@@ -280,7 +279,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       {c.openTracking ? (
                         <span className="inline-flex items-center gap-1.5">
                           {c.opened.toLocaleString()}
-                          <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs font-medium">
+                          <span className="bg-blue-100 text-blue-700 px-1 py-0 rounded text-[11px] font-medium">
                             {pct(c.opened, c.emailsSent)}
                           </span>
                         </span>
@@ -295,7 +294,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                     <TableCell className="text-right tabular-nums">
                       <span className="inline-flex items-center gap-1.5">
                         {c.uniqueReplies.toLocaleString()}
-                        <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded text-xs font-medium">
+                        <span className="bg-green-100 text-green-700 px-1 py-0 rounded text-[11px] font-medium">
                           {pct(c.uniqueReplies, c.emailsSent)}
                         </span>
                       </span>
@@ -306,7 +305,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       <span className="inline-flex items-center gap-1.5">
                         {c.unsubscribed.toLocaleString()}
                         <span
-                          className={`px-1.5 py-0.5 rounded text-xs font-medium ${c.unsubscribed > 0 ? "bg-red-50 text-red-600" : "bg-gray-100 text-muted-foreground"}`}
+                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.unsubscribed > 0 ? "bg-red-50 text-red-600" : "bg-gray-100 text-muted-foreground"}`}
                         >
                           {pct(c.unsubscribed, c.emailsSent)}
                         </span>
@@ -318,7 +317,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       <span className="inline-flex items-center gap-1.5">
                         {c.bounced.toLocaleString()}
                         <span
-                          className={`px-1.5 py-0.5 rounded text-xs font-medium ${bounceRate > 2 ? "bg-red-100 text-red-700" : "bg-gray-100 text-muted-foreground"}`}
+                          className={`px-1 py-0 rounded text-[11px] font-medium ${bounceRate > 2 ? "bg-red-100 text-red-700" : "bg-gray-100 text-muted-foreground"}`}
                         >
                           {pct(c.bounced, c.emailsSent)}
                         </span>
@@ -330,26 +329,11 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       <span className="inline-flex items-center gap-1.5">
                         {c.interested.toLocaleString()}
                         <span
-                          className={`px-1.5 py-0.5 rounded text-xs font-medium ${c.interested > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-muted-foreground"}`}
+                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.interested > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-muted-foreground"}`}
                         >
                           {pct(c.interested, c.emailsSent)}
                         </span>
                       </span>
-                    </TableCell>
-
-                    {/* Tags */}
-                    <TableCell>
-                      {c.tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {c.tags.map((tag) => (
-                            <Badge key={tag} className="bg-gray-100 text-gray-700 border-gray-200" size="xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">&mdash;</span>
-                      )}
                     </TableCell>
 
                     {/* Manage */}

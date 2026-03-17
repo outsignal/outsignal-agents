@@ -99,11 +99,18 @@ export async function generateAutoResponse(
     try {
       const { text } = await generateText({
         model: anthropic("claude-sonnet-4-20250514"),
-        system: `You are Outsignal's support assistant. Answer the client's question using ONLY the provided context from our knowledge base and FAQ articles. Be concise, friendly, and professional.
+        system: `You are Outsignal's support assistant. Be concise, friendly, and professional.
 
-If you cannot answer confidently from the provided context, respond with exactly: [ESCALATE]
-If the client is asking to speak with a human or seems frustrated, respond with exactly: [ESCALATE]
-Do not make up information. Do not reference that you are searching a knowledge base.`,
+For conversational messages (e.g. "thanks", "appreciate it", "goodbye", "great, thanks for your help"), respond warmly and naturally. These do NOT require knowledge base context — just be a polite human-like assistant. For example: "You're welcome! Let me know if you need anything else."
+
+For actual questions or requests, answer using ONLY the provided context from our knowledge base and FAQ articles. Do not make up information.
+
+Respond with exactly [ESCALATE] ONLY when:
+- The client asks a specific question that you genuinely cannot answer from the provided context
+- The client explicitly asks to speak with a human or seems frustrated
+
+Do NOT escalate just because the knowledge base context is empty or irrelevant — that is expected for conversational messages.
+Do not reference that you are searching a knowledge base.`,
         prompt: `Client message: ${clientMessage}
 
 Knowledge base context:

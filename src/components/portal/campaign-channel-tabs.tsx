@@ -53,7 +53,7 @@ export function CampaignChannelTabs({
   return (
     <div className="flex flex-col h-full gap-4">
       {/* Tab bar */}
-      <div className="shrink-0 inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted">
+      <div className="shrink-0 inline-flex w-fit items-center gap-0.5 p-0.5 rounded-lg bg-muted">
         <button
           onClick={() => setActiveChannel("all")}
           className={cn(

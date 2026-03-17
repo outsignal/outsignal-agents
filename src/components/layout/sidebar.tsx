@@ -22,6 +22,7 @@ import {
   Inbox,
   Search,
   LifeBuoy,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
@@ -172,6 +173,11 @@ export function Sidebar({ workspaces }: SidebarProps) {
       return next;
     });
   }, []);
+
+  const handleLogout = async () => {
+    await fetch("/api/admin/logout", { method: "POST" });
+    window.location.href = "/login";
+  };
 
   // Dispatch Cmd+K to open command palette
   const openCommandPalette = useCallback(() => {
@@ -390,6 +396,28 @@ export function Sidebar({ workspaces }: SidebarProps) {
           }
           return cmdKContent;
         })()}
+
+        {/* Logout button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleLogout}
+              aria-label="Log out"
+              className={cn(
+                "flex w-full items-center rounded-lg py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors duration-150",
+                isCollapsed ? "justify-center px-2" : "gap-3 px-3",
+              )}
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              {!isCollapsed && <span>Log Out</span>}
+            </button>
+          </TooltipTrigger>
+          {isCollapsed && (
+            <TooltipContent side="right" sideOffset={8}>
+              Log Out
+            </TooltipContent>
+          )}
+        </Tooltip>
 
         {/* Theme toggle */}
         <ThemeToggle collapsed={isCollapsed} />

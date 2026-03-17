@@ -238,7 +238,7 @@ export default async function PortalDashboardPage({
         <div>
           <h1 className="text-xl font-medium text-foreground">{workspace.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Campaign performance overview · <Link href="/portal/email-health" className="text-brand hover:underline">Email health</Link>{hasLinkedIn && <> · <Link href="/portal/linkedin" className="text-brand hover:underline">LinkedIn</Link></>} · <Link href="/portal/inbox" className="text-brand hover:underline">Replies</Link>
+            Campaign performance overview
           </p>
         </div>
         <div className="flex items-center gap-3">
