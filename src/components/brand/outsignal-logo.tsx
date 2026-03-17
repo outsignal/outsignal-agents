@@ -1,6 +1,6 @@
 interface OutsignalLogoProps {
-  /** Show just the icon mark, or icon + wordmark */
-  variant?: "full" | "mark";
+  /** Show just the icon mark, icon + wordmark, or wordmark only */
+  variant?: "full" | "mark" | "wordmark";
   className?: string;
   /** Color for the icon mark. Defaults to brand lime (#635BFF). Use "currentColor" to inherit text color. */
   iconColor?: string;
@@ -52,6 +52,30 @@ function FullLogo({ className, iconColor = "#635BFF" }: { className?: string; ic
   );
 }
 
+/** Wordmark only: "Outsignal" text without icon mark. */
+function Wordmark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 456 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <text
+        fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+        fontSize="89.85"
+        fontWeight="800"
+        letterSpacing="-3"
+        fill="currentColor"
+        x="0"
+        y="80"
+      >
+        Outsignal
+      </text>
+    </svg>
+  );
+}
+
 export function OutsignalLogo({
   variant = "full",
   className,
@@ -59,6 +83,9 @@ export function OutsignalLogo({
 }: OutsignalLogoProps) {
   if (variant === "mark") {
     return <LogoMark className={className} iconColor={iconColor} />;
+  }
+  if (variant === "wordmark") {
+    return <Wordmark className={className} />;
   }
 
   return <FullLogo className={className} iconColor={iconColor} />;

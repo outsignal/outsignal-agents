@@ -41,23 +41,29 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div
-      className="min-h-screen bg-background flex items-center justify-center px-4"
-      style={{
-        backgroundImage:
-          "radial-gradient(circle, oklch(0.9 0 0) 1px, transparent 1px)",
-        backgroundSize: "24px 24px",
-      }}
-    >
-      <Card className="w-full max-w-sm overflow-hidden">
-        <div className="h-1 bg-brand rounded-t-lg" />
-        <CardContent className="pt-8 pb-8 space-y-8">
+    <div className="relative min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-white via-brand/[0.03] to-brand/15">
+      {/* Secondary gradient wash */}
+      <div
+        className="pointer-events-none fixed inset-0"
+        style={{
+          background: `
+            radial-gradient(ellipse 60% 50% at 75% 90%, oklch(0.55 0.25 280 / 0.12), transparent),
+            radial-gradient(ellipse 40% 40% at 20% 15%, oklch(0.7 0.15 300 / 0.06), transparent)
+          `,
+        }}
+      />
+
+      {/* Top-left logo */}
+      <OutsignalLogo
+        variant="wordmark"
+        className="absolute top-8 left-8 h-7 w-auto text-foreground"
+      />
+
+      {/* Login card */}
+      <Card className="relative w-full max-w-md rounded-xl border border-border/50 shadow-xl">
+        <CardContent className="px-8 pt-10 pb-10 space-y-8">
           <div className="text-center">
-            <OutsignalLogo
-              className="h-8 w-auto text-foreground mx-auto"
-              iconColor="currentColor"
-            />
-            <h1 className="mt-6 text-xl font-medium tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight">
               Admin Dashboard
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -65,7 +71,7 @@ export default function AdminLoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && <ErrorBanner message={error} />}
 
             <div>
@@ -83,6 +89,7 @@ export default function AdminLoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter admin password"
                 autoFocus
+                className="h-11"
               />
             </div>
 
@@ -90,13 +97,18 @@ export default function AdminLoginPage() {
               type="submit"
               variant="brand"
               disabled={loading}
-              className="w-full"
+              className="w-full h-11"
             >
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
         </CardContent>
       </Card>
+
+      {/* Footer */}
+      <p className="absolute bottom-6 text-xs text-muted-foreground/60">
+        &copy; {new Date().getFullYear()} Outsignal
+      </p>
     </div>
   );
 }
