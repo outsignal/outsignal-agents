@@ -28,6 +28,7 @@ import {
   ENRICHMENT_COLORS,
   ENRICHMENT_LABELS,
 } from "@/lib/enrichment/status";
+import { VerifyEmailsButton } from "@/components/lists/verify-emails-button";
 
 interface PersonInList {
   id: string; // TargetListPerson.id
@@ -350,6 +351,14 @@ export function ListDetailPage({ listId }: Props) {
           )}
         </div>
       )}
+
+      {/* Email verification */}
+      <div className="border border-border rounded-lg p-4 bg-card">
+        <h2 className="text-lg font-semibold text-foreground mb-3">
+          Email Verification
+        </h2>
+        <VerifyEmailsButton listId={listId} />
+      </div>
 
       {/* People table */}
       <div className="border border-border rounded-lg overflow-hidden">
