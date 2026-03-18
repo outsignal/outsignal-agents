@@ -27,6 +27,8 @@ import type {
   DnsFailureDigestItem,
 } from "@/lib/domain-health/notifications";
 import { captureAllWorkspaces } from "@/lib/domain-health/snapshots";
+import { syncDomainsToEmailGuard } from "@/lib/emailguard/sync";
+import { emailguard } from "@/lib/emailguard/client";
 
 // PrismaClient at module scope — not inside run()
 const prisma = new PrismaClient();
@@ -265,16 +267,79 @@ async function checkDomain(
 
   // 2. Run blacklist check (conditional per targeting criteria)
   if (shouldCheckBlacklist(priority)) {
-    try {
-      const blResult = await checkBlacklists(domain);
-      blacklistHits = blResult.hits.map((h) => h.list);
-      blacklistChecked = true;
-    } catch (err) {
-      const msg = `Blacklist check failed for ${domain}: ${err instanceof Error ? err.message : String(err)}`;
-      console.error(`${LOG_PREFIX} ${msg}`);
-      errors.push(msg);
-      // Use previous hits if blacklist check fails
-      blacklistHits = priority.previousBlacklistHits;
+    if (process.env.EMAILGUARD_API_TOKEN) {
+      // Use EmailGuard for blacklist + SURBL checks
+      try {
+        const [blResult, surblResult] = await Promise.allSettled([
+          emailguard.runAdHocBlacklist(domain),
+          emailguard.runSurblCheck(domain),
+        ]);
+
+        const egHits: string[] = [];
+
+        if (blResult.status === "fulfilled" && blResult.value.listed) {
+          egHits.push(...blResult.value.lists);
+        }
+        if (surblResult.status === "fulfilled" && surblResult.value.listed) {
+          egHits.push("SURBL");
+        }
+
+        // Log any individual failures but don't block
+        if (blResult.status === "rejected") {
+          console.error(`${LOG_PREFIX} EmailGuard blacklist check failed for ${domain}: ${blResult.reason}`);
+        }
+        if (surblResult.status === "rejected") {
+          console.error(`${LOG_PREFIX} EmailGuard SURBL check failed for ${domain}: ${surblResult.reason}`);
+        }
+
+        // If at least one check succeeded, use EmailGuard results
+        if (blResult.status === "fulfilled" || surblResult.status === "fulfilled") {
+          blacklistHits = egHits;
+          blacklistChecked = true;
+        } else {
+          // Both failed - fall back to legacy DNS checks
+          console.warn(`${LOG_PREFIX} Both EmailGuard checks failed for ${domain}, falling back to DNS blacklist`);
+          const legacyResult = await checkBlacklists(domain);
+          blacklistHits = legacyResult.hits.map((h) => h.list);
+          blacklistChecked = true;
+        }
+
+        // Also fetch domain reputation (informational, stored but doesn't affect health)
+        try {
+          const reputation = await emailguard.checkDomainReputation(domain);
+          console.log(`${LOG_PREFIX} EmailGuard reputation for ${domain}: ${JSON.stringify(reputation)}`);
+        } catch (repErr) {
+          console.error(`${LOG_PREFIX} EmailGuard reputation check failed for ${domain}: ${repErr instanceof Error ? repErr.message : String(repErr)}`);
+        }
+      } catch (err) {
+        // Unexpected error in EmailGuard path - fall back to legacy
+        const msg = `EmailGuard check failed for ${domain}, falling back: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`${LOG_PREFIX} ${msg}`);
+        errors.push(msg);
+        try {
+          const legacyResult = await checkBlacklists(domain);
+          blacklistHits = legacyResult.hits.map((h) => h.list);
+          blacklistChecked = true;
+        } catch (legacyErr) {
+          const legacyMsg = `Legacy blacklist check also failed for ${domain}: ${legacyErr instanceof Error ? legacyErr.message : String(legacyErr)}`;
+          console.error(`${LOG_PREFIX} ${legacyMsg}`);
+          errors.push(legacyMsg);
+          blacklistHits = priority.previousBlacklistHits;
+        }
+      }
+    } else {
+      // No EmailGuard token — use existing DNS blacklist checks
+      try {
+        const blResult = await checkBlacklists(domain);
+        blacklistHits = blResult.hits.map((h) => h.list);
+        blacklistChecked = true;
+      } catch (err) {
+        const msg = `Blacklist check failed for ${domain}: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`${LOG_PREFIX} ${msg}`);
+        errors.push(msg);
+        // Use previous hits if blacklist check fails
+        blacklistHits = priority.previousBlacklistHits;
+      }
     }
   } else {
     // Not due for blacklist check — use previous hits for health computation
@@ -466,6 +531,20 @@ export const domainHealthTask = schedules.task({
   run: async () => {
     const timestamp = new Date().toISOString();
     console.log(`${LOG_PREFIX} Starting domain health check at ${timestamp}`);
+
+    // 0. Sync domains to EmailGuard (if token configured)
+    if (process.env.EMAILGUARD_API_TOKEN) {
+      try {
+        const syncResult = await syncDomainsToEmailGuard();
+        console.log(
+          `${LOG_PREFIX} EmailGuard sync: ${syncResult.registered} registered, ${syncResult.alreadyExists} existing, ${syncResult.failed.length} failed`
+        );
+      } catch (err) {
+        console.error(
+          `${LOG_PREFIX} EmailGuard domain sync failed (continuing with health checks): ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
 
     // 1. Collect all unique sending domains
     const allDomains = await collectSendingDomains();

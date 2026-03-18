@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
+import { emailguard } from "@/lib/emailguard";
 
 // =============================================================================
 // Types
@@ -17,7 +18,8 @@ interface ProviderStatus {
     | "discovery"
     | "scraping"
     | "notifications"
-    | "infrastructure";
+    | "infrastructure"
+    | "deliverability";
   status: ConnectionStatus;
   configured: boolean;
   credits?: { used?: number; remaining?: number; total?: number };
@@ -619,6 +621,52 @@ function checkCheapInboxes(): ProviderStatus {
 }
 
 // =============================================================================
+// Deliverability provider checks
+// =============================================================================
+
+async function checkEmailGuard(): Promise<ProviderStatus> {
+  const now = new Date().toISOString();
+  const token = process.env.EMAILGUARD_API_TOKEN;
+
+  if (!token) {
+    return {
+      id: "emailguard",
+      name: "EmailGuard",
+      category: "deliverability",
+      status: "disconnected",
+      configured: false,
+      dashboardUrl: "https://app.emailguard.io",
+      lastChecked: now,
+    };
+  }
+
+  try {
+    await emailguard.listDomains();
+    return {
+      id: "emailguard",
+      name: "EmailGuard",
+      category: "deliverability",
+      status: "connected",
+      configured: true,
+      dashboardUrl: "https://app.emailguard.io",
+      lastChecked: now,
+    };
+  } catch (err) {
+    console.error("[integrations/status] EmailGuard check failed:", err);
+    return {
+      id: "emailguard",
+      name: "EmailGuard",
+      category: "deliverability",
+      status: "degraded",
+      configured: true,
+      dashboardUrl: "https://app.emailguard.io",
+      error: "Connection check failed",
+      lastChecked: now,
+    };
+  }
+}
+
+// =============================================================================
 // Webhook health checks
 // =============================================================================
 
@@ -675,6 +723,7 @@ export async function GET() {
       checkTriggerDev(),
       checkEmailBison(),
       checkResend(),
+      checkEmailGuard(),
     ]);
 
     // Collect API-checked providers (extract from settled results)
