@@ -106,6 +106,7 @@ export function CommandPalette() {
         { id: "onboarding", label: "Onboarding", icon: UserPlus, onSelect: () => navigate("/onboard") },
         { id: "knowledge-base", label: "Knowledge Base", icon: BookOpen, onSelect: () => navigate("/knowledge-base") },
         { id: "clients", label: "Clients", icon: Briefcase, onSelect: () => navigate("/clients") },
+        { id: "members", label: "Members", icon: Users, onSelect: () => navigate("/workspaces") },
         { id: "classifications", label: "Classifications", icon: MessageSquareText, onSelect: () => navigate("/inbox?view=classifications") },
         { id: "intelligence", label: "Intelligence", icon: Brain, onSelect: () => navigate("/analytics?view=intelligence") },
         { id: "email-health", label: "Email Health", icon: Mail, onSelect: () => navigate("/deliverability?tab=email-health") },

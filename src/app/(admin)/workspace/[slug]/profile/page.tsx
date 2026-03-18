@@ -14,9 +14,10 @@ export default async function WorkspaceProfilePage({
 }: ProfilePageProps) {
   const { slug } = await params;
 
-  const workspace = await prisma.workspace.findUnique({
-    where: { slug },
-  });
+  const [workspace, memberCount] = await Promise.all([
+    prisma.workspace.findUnique({ where: { slug } }),
+    prisma.member.count({ where: { workspaceSlug: slug, status: { not: "disabled" } } }),
+  ]);
 
   if (!workspace) notFound();
 
@@ -44,8 +45,7 @@ export default async function WorkspaceProfilePage({
     senderJobTitle: workspace.senderJobTitle,
     senderPhone: workspace.senderPhone,
     senderAddress: workspace.senderAddress,
-    notificationEmails: workspace.notificationEmails,
-    clientEmails: workspace.clientEmails,
+    memberCount,
     slackChannelId: workspace.slackChannelId,
     billingCompanyName: workspace.billingCompanyName,
     billingRetainerPence: workspace.billingRetainerPence,

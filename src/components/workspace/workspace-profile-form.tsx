@@ -33,8 +33,7 @@ interface ProfileData {
   senderJobTitle: string | null;
   senderPhone: string | null;
   senderAddress: string | null;
-  notificationEmails: string | null;
-  clientEmails: string | null;
+  memberCount: number;
   slackChannelId: string | null;
   billingCompanyName: string | null;
   billingRetainerPence: number | null;
@@ -45,16 +44,6 @@ interface ProfileData {
 
 interface WorkspaceProfileFormProps {
   workspace: ProfileData;
-}
-
-function parseJsonArray(json: string | null): string[] {
-  if (!json) return [];
-  try {
-    const arr = JSON.parse(json);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return json.split(",").map((s) => s.trim()).filter(Boolean);
-  }
 }
 
 function formatCurrency(pence: number | null): string {
@@ -141,8 +130,6 @@ export function WorkspaceProfileForm({ workspace }: WorkspaceProfileFormProps) {
     }
   }
 
-  const notificationEmails = parseJsonArray(workspace.notificationEmails);
-  const clientEmails = parseJsonArray(workspace.clientEmails);
   const createdDate = new Date(workspace.createdAt).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -201,44 +188,21 @@ export function WorkspaceProfileForm({ workspace }: WorkspaceProfileFormProps) {
             )}
           </div>
 
-          {/* Contacts display */}
-          {(notificationEmails.length > 0 || clientEmails.length > 0) && (
-            <>
-              <Separator className="my-4" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                {notificationEmails.length > 0 && (
-                  <div>
-                    <p className="font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                      <Mail className="h-3.5 w-3.5" />
-                      Notification Emails
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {notificationEmails.map((email) => (
-                        <Badge key={email} variant="secondary" className="text-xs">
-                          {email}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {clientEmails.length > 0 && (
-                  <div>
-                    <p className="font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                      <Mail className="h-3.5 w-3.5" />
-                      Portal Access Emails
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {clientEmails.map((email) => (
-                        <Badge key={email} variant="secondary" className="text-xs">
-                          {email}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          {/* Members summary */}
+          <Separator className="my-4" />
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Mail className="h-3.5 w-3.5" />
+              <span className="font-medium">Members:</span>
+              <span>{workspace.memberCount}</span>
+            </div>
+            <a
+              href={`/workspace/${workspace.slug}/members`}
+              className="text-xs text-brand hover:underline"
+            >
+              Manage members
+            </a>
+          </div>
 
           {/* Billing summary */}
           {(workspace.billingCompanyName || workspace.billingRetainerPence) && (

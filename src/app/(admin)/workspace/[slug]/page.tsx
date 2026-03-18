@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getWorkspaceBySlug, getWorkspaceDetails } from "@/lib/workspaces";
+import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { Campaign, Reply } from "@/lib/emailbison/types";
 import { ApiTokenForm } from "@/components/settings/api-token-form";
@@ -33,7 +34,11 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
     const details = await getWorkspaceDetails(slug);
     if (!details) notFound();
 
-    return <PendingWorkspaceView details={details} />;
+    const memberCount = await prisma.member.count({
+      where: { workspaceSlug: slug, status: { not: "disabled" } },
+    });
+
+    return <PendingWorkspaceView details={details} memberCount={memberCount} />;
   }
 
   const client = new EmailBisonClient(workspace.apiToken);
@@ -240,6 +245,7 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
 // Pending workspace view — shows onboarding data and setup checklist
 function PendingWorkspaceView({
   details,
+  memberCount,
 }: {
   details: {
     slug: string;
@@ -247,7 +253,6 @@ function PendingWorkspaceView({
     vertical: string | null;
     status: string;
     slackChannelId: string | null;
-    notificationEmails: string | null;
     senderFullName: string | null;
     senderJobTitle: string | null;
     icpCountries: string | null;
@@ -262,6 +267,7 @@ function PendingWorkspaceView({
     senderEmailDomains: string | null;
     targetVolume: string | null;
   };
+  memberCount: number;
 }) {
   const domains = details.senderEmailDomains
     ? JSON.parse(details.senderEmailDomains)
@@ -289,8 +295,8 @@ function PendingWorkspaceView({
               label="Slack channel created"
             />
             <ChecklistItem
-              done={!!details.notificationEmails}
-              label="Email notifications configured"
+              done={memberCount > 0}
+              label="Members added"
             />
             <ChecklistItem
               done={false}

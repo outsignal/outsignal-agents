@@ -16,67 +16,40 @@ export default async function WorkspacesPage() {
       package: true,
       type: true,
       createdAt: true,
-      clientEmails: true,
       _count: {
         select: {
           senders: true,
           campaigns: true,
+          members: true,
         },
       },
     },
     orderBy: { name: "asc" },
   });
 
-  // Collect all client emails across workspaces to batch-query last activity
-  const allEmails: string[] = [];
-  const workspaceEmails = new Map<string, string[]>();
-  for (const w of workspaces) {
-    let emails: string[] = [];
-    if (w.clientEmails) {
-      try {
-        const parsed = JSON.parse(w.clientEmails);
-        if (Array.isArray(parsed)) emails = parsed;
-      } catch {
-        // ignore malformed JSON
-      }
-    }
-    workspaceEmails.set(w.slug, emails);
-    allEmails.push(...emails);
-  }
+  // Batch-query last login across all members for activity tracking
+  const memberActivity = await prisma.member.findMany({
+    where: {
+      lastLoginAt: { not: null },
+      status: "active",
+    },
+    select: {
+      workspaceSlug: true,
+      lastLoginAt: true,
+    },
+    orderBy: { lastLoginAt: "desc" },
+  });
 
-  // Query most recent used magic link token per email
-  const lastActivityByEmail = new Map<string, Date>();
-  if (allEmails.length > 0) {
-    const tokens = await prisma.magicLinkToken.findMany({
-      where: {
-        email: { in: allEmails },
-        used: true,
-      },
-      select: {
-        email: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    for (const t of tokens) {
-      if (!lastActivityByEmail.has(t.email)) {
-        lastActivityByEmail.set(t.email, t.createdAt);
-      }
+  // Build a map of workspace slug -> most recent login
+  const lastActivityByWorkspace = new Map<string, Date>();
+  for (const m of memberActivity) {
+    if (m.lastLoginAt && !lastActivityByWorkspace.has(m.workspaceSlug)) {
+      lastActivityByWorkspace.set(m.workspaceSlug, m.lastLoginAt);
     }
   }
 
   const rows: WorkspaceRow[] = workspaces.map((w) => {
-    const emails = workspaceEmails.get(w.slug) ?? [];
-    // Find most recent activity across all workspace members
-    let lastActivity: string | null = null;
-    for (const email of emails) {
-      const date = lastActivityByEmail.get(email);
-      if (date) {
-        if (!lastActivity || date.toISOString() > lastActivity) {
-          lastActivity = date.toISOString();
-        }
-      }
-    }
+    const lastLogin = lastActivityByWorkspace.get(w.slug);
 
     return {
       slug: w.slug,
@@ -88,8 +61,8 @@ export default async function WorkspacesPage() {
       createdAt: w.createdAt.toISOString(),
       senderCount: w._count.senders,
       campaignCount: w._count.campaigns,
-      memberCount: emails.length,
-      lastActivity,
+      memberCount: w._count.members,
+      lastActivity: lastLogin?.toISOString() ?? null,
     };
   });
 

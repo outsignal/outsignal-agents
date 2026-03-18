@@ -19,15 +19,21 @@ export async function GET() {
     ops: { channelId: opsId, configured: !!opsId },
   };
 
-  // Per-workspace notification config
+  // Per-workspace notification config — query Member model for notification recipients
   const workspaces = await prisma.workspace.findMany({
     where: { status: "active" },
     select: {
       slug: true,
       name: true,
       slackChannelId: true,
-      notificationEmails: true,
       approvalsSlackChannelId: true,
+      members: {
+        where: {
+          notificationsEnabled: true,
+          status: { not: "disabled" },
+        },
+        select: { email: true },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -36,15 +42,7 @@ export async function GET() {
     const missingConfig: string[] = [];
     if (!ws.slackChannelId) missingConfig.push("slackChannelId");
 
-    // notificationEmails is a JSON string array — check if empty/null
-    let emails: string[] = [];
-    if (ws.notificationEmails) {
-      try {
-        emails = JSON.parse(ws.notificationEmails);
-      } catch {
-        emails = [];
-      }
-    }
+    const emails = ws.members.map((m) => m.email);
     if (emails.length === 0) missingConfig.push("notificationEmails");
 
     return {

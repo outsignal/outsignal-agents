@@ -3,7 +3,7 @@ import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Building, Mail, Globe } from "lucide-react";
+import { Settings, Building, Users, Globe } from "lucide-react";
 
 export default async function PortalSettingsPage() {
   let session;
@@ -14,18 +14,23 @@ export default async function PortalSettingsPage() {
   }
   const { workspaceSlug } = session;
 
-  const workspace = await prisma.workspace.findUnique({
-    where: { slug: workspaceSlug },
-    select: {
-      name: true,
-      slug: true,
-      vertical: true,
-      package: true,
-      clientEmails: true,
-      senderEmailDomains: true,
-      createdAt: true,
-    },
-  });
+  const [workspace, currentMember] = await Promise.all([
+    prisma.workspace.findUnique({
+      where: { slug: workspaceSlug },
+      select: {
+        name: true,
+        slug: true,
+        vertical: true,
+        package: true,
+        senderEmailDomains: true,
+        createdAt: true,
+      },
+    }),
+    prisma.member.findFirst({
+      where: { workspaceSlug, email: session.email, status: { not: "disabled" } },
+      select: { email: true, name: true },
+    }),
+  ]);
 
   if (!workspace) {
     return (
@@ -132,17 +137,28 @@ export default async function PortalSettingsPage() {
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-            {workspace.clientEmails && (
-              <div>
-                <dt className="text-xs text-muted-foreground font-medium">
-                  Contact Email
-                </dt>
-                <dd className="text-sm text-muted-foreground mt-1 font-mono">
-                  {workspace.clientEmails}
-                </dd>
-              </div>
-            )}
-            {!workspace.clientEmails && (
+            {currentMember ? (
+              <>
+                <div>
+                  <dt className="text-xs text-muted-foreground font-medium">
+                    Contact Email
+                  </dt>
+                  <dd className="text-sm text-muted-foreground mt-1 font-mono">
+                    {currentMember.email}
+                  </dd>
+                </div>
+                {currentMember.name && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground font-medium">
+                      Name
+                    </dt>
+                    <dd className="text-sm text-foreground mt-1">
+                      {currentMember.name}
+                    </dd>
+                  </div>
+                )}
+              </>
+            ) : (
               <div className="col-span-2">
                 <p className="text-sm text-muted-foreground">
                   No contact details configured. Contact your Outsignal account manager to update.
