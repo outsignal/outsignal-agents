@@ -55,18 +55,18 @@ export default async function CampaignDetailPage({
     { name: "No Open", value: Math.max(0, sent - opens - bounces) },
   ].filter((d) => d.value > 0);
 
-  const statusColors: Record<string, string> = {
-    active: "bg-emerald-100 text-emerald-800",
-    paused: "bg-yellow-100 text-yellow-800",
-    draft: "bg-gray-100 text-gray-800",
-    completed: "bg-blue-100 text-blue-800",
+  const statusVariant: Record<string, "success" | "warning" | "secondary" | "info"> = {
+    active: "success",
+    paused: "warning",
+    draft: "secondary",
+    completed: "info",
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-heading font-semibold">{campaign.name}</h2>
-        <Badge className={`text-xs ${statusColors[campaign.status] ?? ""}`}>
+        <Badge variant={statusVariant[campaign.status] ?? "secondary"} className="text-xs">
           {campaign.status}
         </Badge>
       </div>

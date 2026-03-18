@@ -192,17 +192,17 @@ export default function DashboardPage() {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="text-sm font-medium text-foreground">Alerts</h3>
-                <span className="inline-flex items-center justify-center rounded-full bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 tabular-nums">
+                <span className="inline-flex items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 text-xs font-semibold px-2 py-0.5 tabular-nums">
                   {alerts.length} {alerts.length === 1 ? "item needs" : "items need"} attention
                 </span>
               </div>
               <AlertsSection alerts={alerts} />
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">
-              <span className="inline-block size-2 rounded-full bg-emerald-500" />
+            <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-3.5 py-2.5 text-sm text-emerald-700 dark:text-emerald-300">
+              <span className="inline-block size-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
               <span className="font-medium">All clear</span>
-              <span className="text-emerald-600/80">— no alerts or issues detected</span>
+              <span className="text-emerald-600/80 dark:text-emerald-400/80">— no alerts or issues detected</span>
             </div>
           )}
 

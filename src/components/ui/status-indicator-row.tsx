@@ -14,9 +14,9 @@ interface StatusIndicatorRowProps {
 }
 
 const dotColors = {
-  green: "bg-emerald-500",
-  amber: "bg-amber-500",
-  red: "bg-red-500",
+  green: "bg-emerald-500 dark:bg-emerald-400",
+  amber: "bg-amber-500 dark:bg-amber-400",
+  red: "bg-red-500 dark:bg-red-400",
   neutral: "bg-muted-foreground/40",
 }
 

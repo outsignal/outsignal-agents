@@ -36,7 +36,7 @@ export function InboxReplyDetail({ reply }: InboxReplyDetailProps) {
       >
         <TableCell className="w-[24px] pr-0">
           {!reply.read && (
-            <div className="h-2 w-2 rounded-full bg-blue-500" />
+            <div className="h-2 w-2 rounded-full bg-brand" />
           )}
         </TableCell>
         <TableCell>
@@ -117,7 +117,7 @@ export function InboxReplyDetail({ reply }: InboxReplyDetailProps) {
                 {reply.read ? (
                   <Badge variant="secondary">Read</Badge>
                 ) : (
-                  <Badge className="bg-blue-100 text-blue-800">Unread</Badge>
+                  <Badge className="bg-brand/10 text-brand">Unread</Badge>
                 )}
                 {reply.interested && (
                   <Badge className="bg-brand text-brand-foreground">

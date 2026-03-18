@@ -46,15 +46,15 @@ function healthDot(ws: WorkspaceSummary): "green" | "amber" | "red" {
 }
 
 const dotColors = {
-  green: "bg-emerald-500",
-  amber: "bg-amber-500",
-  red: "bg-red-500",
+  green: "bg-emerald-500 dark:bg-emerald-400",
+  amber: "bg-amber-500 dark:bg-amber-400",
+  red: "bg-red-500 dark:bg-red-400",
 };
 
 const borderColors = {
   green: "",
-  amber: "border-l-[3px] border-l-amber-400",
-  red: "border-l-[3px] border-l-red-400",
+  amber: "border-l-[3px] border-l-amber-400 dark:border-l-amber-500",
+  red: "border-l-[3px] border-l-red-400 dark:border-l-red-500",
 };
 
 function SentimentBar({ breakdown }: { breakdown: WorkspaceSummary["sentimentBreakdown"] }) {
@@ -72,19 +72,19 @@ function SentimentBar({ breakdown }: { breakdown: WorkspaceSummary["sentimentBre
       <div className="flex h-2 w-16 overflow-hidden rounded-full bg-muted">
         {pPct > 0 && (
           <div
-            className="bg-emerald-500 transition-all"
+            className="bg-emerald-500 dark:bg-emerald-400 transition-all"
             style={{ width: `${pPct}%` }}
           />
         )}
         {nPct > 0 && (
           <div
-            className="bg-gray-400 transition-all"
+            className="bg-stone-400 dark:bg-stone-500 transition-all"
             style={{ width: `${nPct}%` }}
           />
         )}
         {negPct > 0 && (
           <div
-            className="bg-red-500 transition-all"
+            className="bg-red-500 dark:bg-red-400 transition-all"
             style={{ width: `${negPct}%` }}
           />
         )}
@@ -201,7 +201,7 @@ export function WorkspaceScorecard({ summaries }: WorkspaceScorecardProps) {
                     <TableCell className="font-medium">
                       <Link
                         href={`/workspace/${ws.slug}`}
-                        className="hover:text-[#635BFF] transition-colors"
+                        className="hover:text-brand transition-colors"
                       >
                         {ws.name}
                       </Link>
@@ -211,7 +211,7 @@ export function WorkspaceScorecard({ summaries }: WorkspaceScorecardProps) {
                         href={`https://portal.outsignal.ai/portal/${ws.slug}/inbox`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-[#635BFF] transition-colors"
+                        className="text-muted-foreground hover:text-brand transition-colors"
                         title="Open client portal"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -227,9 +227,9 @@ export function WorkspaceScorecard({ summaries }: WorkspaceScorecardProps) {
                       <span
                         className={cn(
                           ws.replyRate < 1 && ws.sends7d > 0
-                            ? "text-red-600"
+                            ? "text-red-600 dark:text-red-400"
                             : ws.replyRate >= 3
-                              ? "text-emerald-600"
+                              ? "text-emerald-600 dark:text-emerald-400"
                               : "",
                         )}
                       >
@@ -240,9 +240,9 @@ export function WorkspaceScorecard({ summaries }: WorkspaceScorecardProps) {
                       <span
                         className={cn(
                           ws.bounceRate > 5
-                            ? "text-red-600"
+                            ? "text-red-600 dark:text-red-400"
                             : ws.bounceRate > 2
-                              ? "text-amber-600"
+                              ? "text-amber-600 dark:text-amber-400"
                               : "",
                         )}
                       >

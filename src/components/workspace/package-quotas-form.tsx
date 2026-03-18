@@ -35,9 +35,9 @@ function UsageBar({ used, total }: { used: number; total: number }) {
         <span>{used.toLocaleString()} used</span>
         <span>{total.toLocaleString()} limit</span>
       </div>
-      <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-stone-800 overflow-hidden">
         <div
-          className={`h-1.5 rounded-full transition-all ${isHigh ? "bg-amber-400" : "bg-brand"}`}
+          className={`h-1.5 rounded-full transition-all ${isHigh ? "bg-amber-400 dark:bg-amber-500" : "bg-brand"}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -317,12 +317,12 @@ export function PackageQuotasForm({ data }: { data: PackageData }) {
             {saving ? "Saving..." : "Save Package Settings"}
           </Button>
           {saved && (
-            <span className="text-sm text-emerald-600 font-medium">
+            <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
               Package settings saved
             </span>
           )}
           {error && (
-            <span className="text-sm text-red-600 font-medium">{error}</span>
+            <span className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</span>
           )}
         </div>
       </CardContent>

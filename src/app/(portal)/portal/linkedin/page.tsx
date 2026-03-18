@@ -228,6 +228,7 @@ export default async function PortalLinkedInPage() {
                             senderId={sender.id}
                             senderName={sender.name}
                             sessionStatus={sender.sessionStatus}
+                            hasProxy={!!sender.proxyUrl}
                           />
                         </TableCell>
                       </TableRow>

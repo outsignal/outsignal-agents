@@ -849,7 +849,8 @@ model Sender {
   // Session management (encrypted cookies)
   sessionData    String? // AES-256-GCM encrypted JSON
   sessionStatus  String  @default("not_setup") // not_setup | active | expired
-  proxyUrl       String? // Dedicated residential proxy URL
+  proxyUrl         String? // Dedicated residential proxy URL
+  iproyalOrderId   String? // IPRoyal proxy order ID
 
   // Account tier
   linkedinTier String @default("free") // "free" | "premium"

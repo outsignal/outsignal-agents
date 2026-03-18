@@ -74,7 +74,7 @@ function OnlineIndicator({ lastPolledAt }: { lastPolledAt: string | null }) {
       <span
         className={cn(
           "h-2 w-2 rounded-full shrink-0",
-          isOnline ? "bg-emerald-500 animate-pulse" : "bg-red-500",
+          isOnline ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse" : "bg-red-500 dark:bg-red-400",
         )}
       />
       <span
@@ -262,7 +262,7 @@ export function WorkspaceSendersContent({
                             href={sender.linkedinProfileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                            className="inline-flex items-center gap-1 text-sm text-brand hover:text-brand-strong dark:text-brand-muted dark:hover:text-brand hover:underline"
                           >
                             {truncateUrl(sender.linkedinProfileUrl)}
                             <ExternalLink className="size-3" />

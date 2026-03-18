@@ -77,11 +77,16 @@ export function CombinedChart({ emailData, linkedInData }: CombinedChartProps) {
     };
   });
 
+  // Chart palette — aligned with brand system
+  // emailSent: dark stone (near-black)
+  // linkedinActions: brand purple (#635BFF)
+  // replies: brand-muted purple
+  // failures: destructive red
   const colors = {
-    emailSent: "oklch(0 0 0)",                // Black
-    linkedinActions: "oklch(0.6 0.17 250)",    // Blue
-    replies: "oklch(0.85 0.12 110)",           // Brand green
-    failures: "oklch(0.577 0.245 27.325)",     // Red
+    emailSent: "oklch(0.20 0.005 60)",           // Dark stone
+    linkedinActions: "oklch(0.55 0.25 275)",     // Brand purple (#635BFF)
+    replies: "oklch(0.7 0.12 275)",              // Brand-muted purple
+    failures: "oklch(0.577 0.245 27.325)",       // Destructive red
   };
 
   return (
@@ -110,7 +115,7 @@ export function CombinedChart({ emailData, linkedInData }: CombinedChartProps) {
         </defs>
         <CartesianGrid
           strokeDasharray="3 3"
-          stroke="oklch(0.92 0 0)"
+          stroke="oklch(0.92 0.002 90)"
           vertical={false}
         />
         <XAxis
@@ -176,9 +181,9 @@ export function CombinedChart({ emailData, linkedInData }: CombinedChartProps) {
 
 export function CombinedChartLegend() {
   const items = [
-    { label: "Email Sent", color: "oklch(0 0 0)" },
-    { label: "LinkedIn Actions", color: "oklch(0.6 0.17 250)" },
-    { label: "Replies", color: "oklch(0.85 0.12 110)" },
+    { label: "Email Sent", color: "oklch(0.20 0.005 60)" },
+    { label: "LinkedIn Actions", color: "oklch(0.55 0.25 275)" },
+    { label: "Replies", color: "oklch(0.7 0.12 275)" },
     { label: "Failures", color: "oklch(0.577 0.245 27.325)" },
   ];
 

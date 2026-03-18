@@ -56,6 +56,7 @@ const SEED_DATA: Array<{
   { service: "trigger-dev", label: "Trigger.dev", monthlyCost: 0, category: "infrastructure", notes: "Free tier", url: "https://cloud.trigger.dev" },
   { service: "neon", label: "Neon", monthlyCost: 0, category: "infrastructure", notes: "Free tier", url: "https://console.neon.tech" },
   { service: "railway", label: "Railway", monthlyCost: 5.00, category: "infrastructure", notes: "LinkedIn worker", url: "https://railway.app/dashboard" },
+  { service: "iproyal", label: "IPRoyal — ISP Proxies (LinkedIn)", monthlyCost: 4.00, category: "infrastructure", notes: "$4/proxy/month, auto-extending 30-day plans", url: "https://iproyal.com", billingDay: 1 },
 ];
 
 // ---------------------------------------------------------------------------

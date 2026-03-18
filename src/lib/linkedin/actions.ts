@@ -113,6 +113,52 @@ export async function connectLinkedIn(
 }
 
 /**
+ * Provision an IPRoyal residential proxy for a sender.
+ * Calls the internal provision API with the server-side API_SECRET.
+ */
+export async function provisionProxy(
+  senderId: string,
+  country?: string,
+): Promise<{ success: boolean; error?: string }> {
+  const apiSecret = process.env.API_SECRET;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
+
+  if (!apiSecret) {
+    return { success: false, error: "API_SECRET not configured" };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/api/iproyal/provision`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiSecret,
+      },
+      body: JSON.stringify({ senderId, country }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || `Provisioning failed (${response.status})`,
+      };
+    }
+
+    revalidatePath("/workspace");
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to provision proxy",
+    };
+  }
+}
+
+/**
  * Get the current session status for a sender.
  */
 export async function getSessionStatus(

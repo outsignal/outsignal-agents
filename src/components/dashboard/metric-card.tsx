@@ -95,7 +95,7 @@ export function MetricCard({
   featured,
   variant: variantProp,
   sparklineData,
-  sparklineColor = "#635BFF",
+  sparklineColor = "#635BFF", // Brand purple — matches --brand token
   prefix,
   suffix,
   loading = false,
@@ -160,12 +160,12 @@ export function MetricCard({
                   className={cn(
                     "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums",
                     trend === "warning"
-                      ? "bg-red-100 text-red-800"
+                      ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
                       : trend === "down"
-                        ? "bg-red-100 text-red-800"
+                        ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
                         : trend === "up"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-gray-200 text-gray-700",
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                          : "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
                   )}
                 >
                   {detail}

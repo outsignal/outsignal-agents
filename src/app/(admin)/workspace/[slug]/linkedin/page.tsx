@@ -12,6 +12,7 @@ import {
 import { prisma } from "@/lib/db";
 import { ConnectButton } from "@/components/linkedin/connect-button";
 import { AddAccountButton } from "@/components/linkedin/add-account-button";
+import { ProxyStatusCell } from "@/components/linkedin/proxy-status-cell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { HealthStatusBadge } from "@/components/portal/health-status-badge";
@@ -28,6 +29,12 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
     where: { slug },
     include: {
       senders: {
+        where: {
+          OR: [
+            { linkedinProfileUrl: { not: null } },
+            { loginMethod: { not: "none" } },
+          ],
+        },
         orderBy: { createdAt: "desc" },
       },
     },
@@ -178,6 +185,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
                     <TableHead className="text-right">Connections</TableHead>
                     <TableHead className="text-right">Messages</TableHead>
                     <TableHead className="text-right">Views</TableHead>
+                    <TableHead>Proxy</TableHead>
                     <TableHead>Session</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -264,10 +272,18 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
                           <span className="text-muted-foreground">/{sender.dailyProfileViewLimit}</span>
                         </TableCell>
                         <TableCell>
+                          <ProxyStatusCell
+                            senderId={sender.id}
+                            proxyUrl={sender.proxyUrl}
+                            iproyalOrderId={sender.iproyalOrderId}
+                          />
+                        </TableCell>
+                        <TableCell>
                           <ConnectButton
                             senderId={sender.id}
                             senderName={sender.name}
                             sessionStatus={sender.sessionStatus}
+                            hasProxy={!!sender.proxyUrl}
                           />
                         </TableCell>
                       </TableRow>

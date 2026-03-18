@@ -8,6 +8,7 @@ interface ConnectButtonProps {
   senderId: string;
   senderName: string;
   sessionStatus: string;
+  hasProxy: boolean;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -16,7 +17,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   not_setup: { label: "Not Set Up", className: "bg-gray-100 text-gray-800" },
 };
 
-export function ConnectButton({ senderId, senderName, sessionStatus }: ConnectButtonProps) {
+export function ConnectButton({ senderId, senderName, sessionStatus, hasProxy }: ConnectButtonProps) {
   const [status, setStatus] = useState(sessionStatus);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -43,12 +44,26 @@ export function ConnectButton({ senderId, senderName, sessionStatus }: ConnectBu
           {config.label}
         </span>
 
-        <button
-          onClick={() => setModalOpen(true)}
-          className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-        >
-          {status === "active" ? "Reconnect" : "Connect LinkedIn"}
-        </button>
+        {hasProxy ? (
+          <button
+            onClick={() => setModalOpen(true)}
+            className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            {status === "active" ? "Reconnect" : "Connect LinkedIn"}
+          </button>
+        ) : (
+          <div className="flex flex-col">
+            <button
+              disabled
+              className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground/50 bg-muted cursor-not-allowed"
+            >
+              Connect LinkedIn
+            </button>
+            <span className="text-[11px] text-muted-foreground mt-1">
+              We&apos;re setting up a proxy for your account
+            </span>
+          </div>
+        )}
       </div>
 
       <ConnectModal

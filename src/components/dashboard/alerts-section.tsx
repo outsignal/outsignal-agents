@@ -33,14 +33,14 @@ export function AlertsSection({ alerts }: AlertsSectionProps) {
             className={cn(
               "flex items-start gap-3 rounded-md px-3.5 py-2.5 text-sm border",
               isError
-                ? "bg-red-50 border-red-200"
-                : "bg-amber-50 border-amber-200"
+                ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"
+                : "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
             )}
           >
             <Icon
               className={cn(
                 "h-4 w-4 mt-0.5 flex-shrink-0",
-                isError ? "text-red-500" : "text-amber-500"
+                isError ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"
               )}
             />
             <div className="flex-1 min-w-0">
@@ -49,8 +49,8 @@ export function AlertsSection({ alerts }: AlertsSectionProps) {
                   className={cn(
                     "text-xs font-medium rounded px-1.5 py-0.5",
                     isError
-                      ? "bg-red-100 text-red-700"
-                      : "bg-amber-100 text-amber-700"
+                      ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                   )}
                 >
                   {alertTypeLabel[alert.type]}
@@ -58,7 +58,7 @@ export function AlertsSection({ alerts }: AlertsSectionProps) {
                 <span
                   className={cn(
                     "font-medium truncate",
-                    isError ? "text-red-900" : "text-amber-900"
+                    isError ? "text-red-900 dark:text-red-100" : "text-amber-900 dark:text-amber-100"
                   )}
                 >
                   {alert.title}
@@ -68,8 +68,8 @@ export function AlertsSection({ alerts }: AlertsSectionProps) {
                 className={cn(
                   "text-xs mt-0.5 truncate",
                   isError
-                    ? "text-red-700/80"
-                    : "text-amber-700/80"
+                    ? "text-red-700/80 dark:text-red-300/80"
+                    : "text-amber-700/80 dark:text-amber-300/80"
                 )}
               >
                 {alert.detail}
@@ -80,7 +80,7 @@ export function AlertsSection({ alerts }: AlertsSectionProps) {
                 href={alert.link}
                 className={cn(
                   "flex-shrink-0 flex items-center gap-1 text-xs font-medium hover:underline",
-                  isError ? "text-red-600" : "text-amber-600"
+                  isError ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
                 )}
               >
                 View

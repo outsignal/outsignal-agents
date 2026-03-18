@@ -197,23 +197,23 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
           {saving ? "Saving..." : "Save Settings"}
         </Button>
         {saved && (
-          <span className="text-sm text-emerald-600 font-medium">
+          <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
             Settings saved
           </span>
         )}
         {error && (
-          <span className="text-sm text-red-600 font-medium">{error}</span>
+          <span className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</span>
         )}
       </div>
 
       {/* EmailBison Provisioning */}
       {(!workspace.apiToken || workspace.status === "pending_emailbison") && (
-        <Card className="border-amber-300 bg-amber-50">
+        <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-amber-900">EmailBison Not Provisioned</p>
-                <p className="text-sm text-amber-700 mt-1">
+                <p className="font-medium text-amber-900 dark:text-amber-100">EmailBison Not Provisioned</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                   This workspace needs an EmailBison account to send emails.
                 </p>
               </div>
@@ -221,13 +221,13 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
                 onClick={handleProvision}
                 disabled={provisioning}
                 variant="outline"
-                className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                className="border-amber-400 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/30"
               >
                 {provisioning ? "Provisioning..." : "Provision EmailBison"}
               </Button>
             </div>
             {provisionError && (
-              <p className="text-sm text-red-600 mt-2">{provisionError}</p>
+              <p className="text-sm text-red-600 dark:text-red-400 mt-2">{provisionError}</p>
             )}
           </CardContent>
         </Card>
@@ -540,12 +540,12 @@ export function WorkspaceSettingsForm({ workspace }: WorkspaceSettingsFormProps)
           {saving ? "Saving..." : "Save Settings"}
         </Button>
         {saved && (
-          <span className="text-sm text-emerald-600 font-medium">
+          <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
             Settings saved
           </span>
         )}
         {error && (
-          <span className="text-sm text-red-600 font-medium">{error}</span>
+          <span className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</span>
         )}
       </div>
     </div>

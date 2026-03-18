@@ -330,17 +330,17 @@ export function WorkspaceProfileForm({ workspace }: WorkspaceProfileFormProps) {
       </Card>
 
       {/* Save bar */}
-      <div className="flex items-center gap-3 sticky bottom-4 bg-background/80 backdrop-blur-sm border border-border rounded-lg p-3">
+      <div className="flex items-center gap-3 sticky bottom-4 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-3">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save Profile"}
         </Button>
         {saved && (
-          <span className="text-sm text-emerald-600 font-medium">
+          <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
             Profile saved
           </span>
         )}
         {error && (
-          <span className="text-sm text-red-600 font-medium">{error}</span>
+          <span className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</span>
         )}
       </div>
     </div>

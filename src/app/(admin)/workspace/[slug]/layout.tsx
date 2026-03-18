@@ -31,7 +31,7 @@ export default async function WorkspaceLayout({
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
           <Link
-            href="/"
+            href="/workspaces"
             className="hover:text-foreground transition-colors"
           >
             Workspaces

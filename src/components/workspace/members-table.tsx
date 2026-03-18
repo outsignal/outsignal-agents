@@ -110,9 +110,9 @@ function isValidEmail(email: string): boolean {
 }
 
 const statusDot: Record<MemberStatus, string> = {
-  active: "bg-[#22c55e]",
-  invited: "bg-[#f59e0b]",
-  disabled: "bg-stone-300",
+  active: "bg-emerald-500 dark:bg-emerald-400",
+  invited: "bg-amber-500 dark:bg-amber-400",
+  disabled: "bg-stone-300 dark:bg-stone-600",
 };
 
 const statusLabel: Record<MemberStatus, string> = {
@@ -122,16 +122,16 @@ const statusLabel: Record<MemberStatus, string> = {
 };
 
 const roleBadge: Record<MemberRole, { bg: string; text: string }> = {
-  owner: { bg: "bg-[#635BFF]", text: "text-white" },
-  admin: { bg: "bg-blue-100", text: "text-blue-700" },
-  viewer: { bg: "bg-stone-200", text: "text-stone-600" },
+  owner: { bg: "bg-brand", text: "text-brand-foreground" },
+  admin: { bg: "bg-blue-100 dark:bg-blue-950", text: "text-blue-700 dark:text-blue-300" },
+  viewer: { bg: "bg-stone-200 dark:bg-stone-700", text: "text-stone-600 dark:text-stone-300" },
 };
 
 // ---------- sub-components ----------
 
 function Avatar({ name, email }: { name: string | null; email: string }) {
   return (
-    <div className="h-8 w-8 rounded-full bg-[#635BFF] flex items-center justify-center text-white text-xs font-semibold shrink-0">
+    <div className="h-8 w-8 rounded-full bg-brand flex items-center justify-center text-brand-foreground text-xs font-semibold shrink-0">
       {getInitials(name, email)}
     </div>
   );
@@ -153,8 +153,8 @@ function Toggle({
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#635BFF] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-[#635BFF]" : "bg-stone-200"
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "bg-brand" : "bg-stone-200 dark:bg-stone-700"
       }`}
     >
       <span
@@ -395,7 +395,7 @@ export function MembersTable({ slug }: MembersTableProps) {
           </Button>
           <Button
             size="sm"
-            className="bg-[#635BFF] hover:bg-[#5249e0] text-white"
+            className="bg-brand hover:bg-brand-strong text-brand-foreground"
             onClick={() => { setAddOpen(true); setAddError(null); setNewEmail(""); setNewName(""); setNewRole("viewer"); }}
           >
             <UserPlus className="h-4 w-4 mr-1.5" />
@@ -428,7 +428,7 @@ export function MembersTable({ slug }: MembersTableProps) {
               <div className="hidden md:block">
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-b border-stone-100 hover:bg-transparent">
+                    <TableRow className="border-b border-stone-100 dark:border-stone-800 hover:bg-transparent">
                       <TableHead className="pl-4">Member</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
@@ -439,7 +439,7 @@ export function MembersTable({ slug }: MembersTableProps) {
                   </TableHeader>
                   <TableBody>
                     {members.map((member) => (
-                      <TableRow key={member.id} className="border-b border-stone-50 hover:bg-stone-50/50">
+                      <TableRow key={member.id} className="border-b border-stone-50 dark:border-stone-900 hover:bg-stone-50/50 dark:hover:bg-stone-800/50">
                         {/* Member */}
                         <TableCell className="pl-4">
                           <div className="flex items-center gap-3">
@@ -535,7 +535,7 @@ export function MembersTable({ slug }: MembersTableProps) {
               </div>
 
               {/* Mobile card layout */}
-              <div className="md:hidden divide-y divide-stone-100">
+              <div className="md:hidden divide-y divide-stone-100 dark:divide-stone-800">
                 {members.map((member) => (
                   <div key={member.id} className="p-4 flex items-start gap-3">
                     <Avatar name={member.name} email={member.email} />
@@ -646,12 +646,12 @@ export function MembersTable({ slug }: MembersTableProps) {
                 </SelectContent>
               </Select>
             </div>
-            {addError && <p className="text-sm text-red-600">{addError}</p>}
+            {addError && <p className="text-sm text-red-600 dark:text-red-400">{addError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button
-              className="bg-[#635BFF] hover:bg-[#5249e0] text-white"
+              className="bg-brand hover:bg-brand-strong text-brand-foreground"
               onClick={handleAdd}
               disabled={addLoading || !newEmail.trim() || !isValidEmail(newEmail)}
             >

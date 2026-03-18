@@ -96,9 +96,9 @@ function computeSenderHealth(senderEmails: SenderEmail[]): SenderHealth[] {
 }
 
 const healthBadgeStyles: Record<string, string> = {
-  healthy: "bg-emerald-100 text-emerald-800",
-  warning: "bg-yellow-100 text-yellow-800",
-  critical: "bg-red-100 text-red-800",
+  healthy: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+  warning: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  critical: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
 };
 
 // ---------------------------------------------------------------------------
@@ -225,7 +225,7 @@ export default async function WorkspaceDeliverabilityPage({
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Deliverability</h2>
+        <h2 className="text-2xl font-heading font-bold tracking-tight">Deliverability</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Domain health, inbox performance, and bounce rates for {workspace.name}
         </p>
@@ -525,8 +525,8 @@ export default async function WorkspaceDeliverabilityPage({
                           variant="secondary"
                           className={`text-xs ${
                             sender.status === "Connected"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-red-100 text-red-800"
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                              : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
                           }`}
                         >
                           {sender.status}
@@ -545,9 +545,9 @@ export default async function WorkspaceDeliverabilityPage({
                         <span
                           className={
                             sender.healthStatus === "critical"
-                              ? "text-red-600 font-bold"
+                              ? "text-red-600 dark:text-red-400 font-bold"
                               : sender.healthStatus === "warning"
-                                ? "text-amber-600 font-medium"
+                                ? "text-amber-600 dark:text-amber-400 font-medium"
                                 : ""
                           }
                         >

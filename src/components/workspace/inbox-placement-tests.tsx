@@ -156,7 +156,7 @@ export function InboxPlacementTests({ slug }: { slug: string }) {
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#635BFF] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#635BFF]/90 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-strong transition-colors"
           >
             <Play className="h-3.5 w-3.5" />
             Run Inbox Test
@@ -242,7 +242,7 @@ export function InboxPlacementTests({ slug }: { slug: string }) {
                   !body.trim() ||
                   !fromEmail.trim()
                 }
-                className="inline-flex items-center gap-1.5 rounded-md bg-[#635BFF] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#635BFF]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {creating ? "Creating..." : "Run Test"}

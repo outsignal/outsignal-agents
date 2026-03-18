@@ -119,7 +119,7 @@ export default async function SendersPage({ params }: SendersPageProps) {
     <>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Senders</h1>
+          <h1 className="text-2xl font-heading font-bold">Senders</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Email and LinkedIn sending accounts for {workspace.name}
           </p>
@@ -193,7 +193,7 @@ export default async function SendersPage({ params }: SendersPageProps) {
                         <TableCell className="text-right text-sm font-mono tabular-nums">{sender.emails_sent_count.toLocaleString()}</TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">{sender.bounced_count.toLocaleString()}</TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">
-                          <span className={sender.healthStatus==="critical"?"text-red-600 font-bold":sender.healthStatus==="warning"?"text-amber-600 font-medium":""}>{sender.computedBounceRate.toFixed(1)}%</span>
+                          <span className={sender.healthStatus==="critical"?"text-red-600 dark:text-red-400 font-bold":sender.healthStatus==="warning"?"text-amber-600 dark:text-amber-400 font-medium":""}>{sender.computedBounceRate.toFixed(1)}%</span>
                         </TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">{sender.computedReplyRate.toFixed(1)}%</TableCell>
                         <TableCell><Badge variant={healthBadgeVariant[sender.healthStatus]} className="text-xs">{sender.healthStatus}</Badge></TableCell>

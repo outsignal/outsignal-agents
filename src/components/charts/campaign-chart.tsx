@@ -23,11 +23,11 @@ export function CampaignBarChart({ data }: { data: BarChartData[] }) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0 0)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.002 90)" />
         <XAxis dataKey="name" fontSize={12} />
         <YAxis fontSize={12} />
         <Tooltip />
-        <Bar dataKey="value" fill="oklch(0.95 0.15 110)" stroke="#000" strokeWidth={1} />
+        <Bar dataKey="value" fill="#635BFF" stroke="oklch(0.48 0.28 275)" strokeWidth={1} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -38,7 +38,8 @@ interface PieChartData {
   value: number;
 }
 
-const COLORS = ["oklch(0.95 0.15 110)", "#000000", "#666666", "#999999", "#cccccc"];
+// Brand-aligned pie palette: brand → brand-muted → brand-light → stone
+const COLORS = ["#635BFF", "oklch(0.7 0.12 275)", "oklch(0.85 0.06 275)", "oklch(0.92 0.002 90)", "oklch(0.78 0.002 90)"];
 
 export function CampaignPieChart({ data }: { data: PieChartData[] }) {
   return (

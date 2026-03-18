@@ -354,7 +354,7 @@ function ChecklistItem({ done, label }: { done: boolean; label: string }) {
   return (
     <div className="flex items-center gap-3">
       <div
-        className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${done ? "border-emerald-500 bg-emerald-500" : "border-muted-foreground/30"}`}
+        className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${done ? "border-emerald-500 bg-emerald-500 dark:border-emerald-400 dark:bg-emerald-400" : "border-muted-foreground/30"}`}
       >
         {done && (
           <svg
