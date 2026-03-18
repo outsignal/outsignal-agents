@@ -5,6 +5,18 @@ import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-gu
 import { audited, auditSkipped } from "@/lib/notification-audit";
 import type { KnownBlock } from "@slack/web-api";
 
+/**
+ * Get notification recipient emails from Member records.
+ * Replaces the legacy workspace.notificationEmails JSON field.
+ */
+async function getMemberNotificationEmails(workspaceSlug: string): Promise<string[]> {
+  const members = await prisma.member.findMany({
+    where: { workspaceSlug, notificationsEnabled: true, status: { not: "disabled" } },
+    select: { email: true },
+  });
+  return members.map((m: { email: string }) => m.email);
+}
+
 export async function notifyApproval(params: {
   workspaceSlug: string;
   campaignId: string;
@@ -121,21 +133,22 @@ export async function notifyApproval(params: {
 
   // ---------- Email ----------
 
-  if (workspace.notificationEmails) {
-    try {
-      const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      const verified = verifyEmailRecipients(recipients, "client", "notifyApproval");
-      if (verified.length > 0) {
-        const subjectLine = isFullyApproved
-          ? `[${workspace.name}] Campaign Fully Approved — ${params.campaignName}`
-          : `[${workspace.name}] ${actionLabel[params.action]} — ${params.campaignName}`;
+  {
+    const recipientEmails = await getMemberNotificationEmails(params.workspaceSlug);
+    if (recipientEmails.length > 0) {
+      try {
+        const verified = verifyEmailRecipients(recipientEmails, "client", "notifyApproval");
+        if (verified.length > 0) {
+          const subjectLine = isFullyApproved
+            ? `[${workspace.name}] Campaign Fully Approved — ${params.campaignName}`
+            : `[${workspace.name}] ${actionLabel[params.action]} — ${params.campaignName}`;
 
-        await audited(
-          { notificationType: "approval", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
-          () => sendNotificationEmail({
-            to: verified,
-            subject: subjectLine,
-            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+          await audited(
+            { notificationType: "approval", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+            () => sendNotificationEmail({
+              to: verified,
+              subject: subjectLine,
+              html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
   <tr>
     <td align="center" style="padding:40px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
@@ -233,20 +246,21 @@ ${
     </td>
   </tr>
 </table>`,
-          }),
-        );
+            }),
+          );
+        }
+      } catch (err) {
+        console.error("Email approval notification failed:", err);
       }
-    } catch (err) {
-      console.error("Email approval notification failed:", err);
+    } else {
+      auditSkipped({
+        notificationType: "approval",
+        channel: "email",
+        recipient: "none",
+        workspaceSlug: params.workspaceSlug,
+        metadata: { reason: "No members with notifications enabled" },
+      });
     }
-  } else {
-    auditSkipped({
-      notificationType: "approval",
-      channel: "email",
-      recipient: "none",
-      workspaceSlug: params.workspaceSlug,
-      metadata: { reason: "No notificationEmails configured on workspace" },
-    });
   }
 }
 
@@ -574,11 +588,11 @@ ${params.suggestedResponse ? `              <!-- Suggested response section -->
   </tr>
 </table>`;
 
-  // Email — client notification emails
-  if (workspace.notificationEmails) {
+  // Email — client notification emails (from Member records)
+  {
+    const recipientEmails = await getMemberNotificationEmails(params.workspaceSlug);
     try {
-      const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      const verified = verifyEmailRecipients(recipients, "client", "notifyReply");
+      const verified = verifyEmailRecipients(recipientEmails, "client", "notifyReply");
       if (verified.length > 0) {
         await audited(
           { notificationType: "reply", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
@@ -1045,11 +1059,11 @@ export async function notifyCampaignLive(params: {
   </tr>
 </table>`;
 
-  // Email — client notification emails
-  if (workspace.notificationEmails) {
+  // Email — client notification emails (from Member records)
+  {
+    const recipientEmails = await getMemberNotificationEmails(params.workspaceSlug);
     try {
-      const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      const verified = verifyEmailRecipients(recipients, "client", "notifyCampaignLive");
+      const verified = verifyEmailRecipients(recipientEmails, "client", "notifyCampaignLive");
       if (verified.length > 0) {
         await audited(
           { notificationType: "campaign_live", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
@@ -2796,11 +2810,11 @@ ${params.participantProfileUrl ? `                    <tr>
   </tr>
 </table>`;
 
-  // Email — client notification emails
-  if (workspace.notificationEmails) {
+  // Email — client notification emails (from Member records)
+  {
+    const recipientEmails = await getMemberNotificationEmails(params.workspaceSlug);
     try {
-      const recipients: string[] = JSON.parse(workspace.notificationEmails);
-      const verified = verifyEmailRecipients(recipients, "client", "notifyLinkedInMessage");
+      const verified = verifyEmailRecipients(recipientEmails, "client", "notifyLinkedInMessage");
       if (verified.length > 0) {
         await audited(
           { notificationType: "linkedin_message", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
