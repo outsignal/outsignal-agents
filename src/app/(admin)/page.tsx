@@ -13,6 +13,7 @@ import { ClientFilter } from "@/components/dashboard/client-filter";
 import { CombinedChart, CombinedChartLegend } from "@/components/dashboard/combined-chart";
 import { AlertsSection } from "@/components/dashboard/alerts-section";
 import { StatusIndicatorRow } from "@/components/ui/status-indicator-row";
+import { WorkspaceScorecard } from "@/components/dashboard/workspace-scorecard";
 import type {
   DashboardStatsResponse,
   DashboardKPIs,
@@ -20,6 +21,7 @@ import type {
   LinkedInTimeSeriesPoint,
   DashboardAlert,
   WorkspaceOption,
+  WorkspaceSummary,
 } from "@/app/api/dashboard/stats/route";
 
 // Fallback empty KPIs
@@ -67,14 +69,21 @@ const emptyKpis: DashboardKPIs = {
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+      {/* Alerts placeholder */}
+      <Skeleton className="h-[44px] rounded-lg" />
+      {/* Status row placeholder */}
+      <Skeleton className="h-[44px] rounded-lg" />
+      {/* Scorecard table placeholder */}
+      <Skeleton className="h-[240px] rounded-lg" />
+      {/* KPI cards placeholder */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="col-span-2">
           <Skeleton className="h-[140px] rounded-lg" />
         </div>
         <Skeleton className="h-[140px] rounded-lg" />
         <Skeleton className="h-[140px] rounded-lg" />
       </div>
-      <Skeleton className="h-[44px] rounded-lg" />
+      {/* Chart placeholder */}
       <Card>
         <CardHeader>
           <div className="h-4 w-32 bg-muted rounded animate-pulse" />
@@ -128,6 +137,7 @@ export default function DashboardPage() {
   const linkedInTimeSeries: LinkedInTimeSeriesPoint[] = data?.linkedInTimeSeries ?? [];
   const alerts: DashboardAlert[] = data?.alerts ?? [];
   const workspaces: WorkspaceOption[] = data?.workspaces ?? [];
+  const workspaceSummaries: WorkspaceSummary[] = data?.workspaceSummaries ?? [];
 
   const totalReplies = kpis.emailReplied + kpis.emailInterested;
   const replyRate =
@@ -167,10 +177,6 @@ export default function DashboardPage() {
         <ClientFilter workspaces={workspaces} />
       </FilterBar>
 
-      {!loading && alerts.length > 0 && (
-        <AlertsSection alerts={alerts} />
-      )}
-
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           {error}
@@ -181,7 +187,40 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : !error ? (
         <>
-          {/* Row 1: Hero metric cards */}
+          {/* Row 1: Alerts — promoted to top with count badge / all-clear state */}
+          {alerts.length > 0 ? (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-sm font-medium text-foreground">Alerts</h3>
+                <span className="inline-flex items-center justify-center rounded-full bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 tabular-nums">
+                  {alerts.length} {alerts.length === 1 ? "item needs" : "items need"} attention
+                </span>
+              </div>
+              <AlertsSection alerts={alerts} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">
+              <span className="inline-block size-2 rounded-full bg-emerald-500" />
+              <span className="font-medium">All clear</span>
+              <span className="text-emerald-600/80">— no alerts or issues detected</span>
+            </div>
+          )}
+
+          {/* Row 2: System health status row */}
+          <StatusIndicatorRow
+            items={[
+              { label: "Senders", value: `${kpis.sendersActiveTotal} active`, status: kpis.sendersActiveTotal > 0 ? "green" : "red", href: "/senders" },
+              { label: "Inboxes", value: `${kpis.inboxesHealthy}/${kpis.inboxesTotal}`, status: disconnectedInboxes > 0 ? "amber" : "green", href: "/email" },
+              { label: "Campaigns", value: `${kpis.campaignsActive} running`, status: kpis.campaignsActive > 0 ? "green" : "neutral" },
+              { label: "Pipeline", value: `${kpis.pipelineContacted} leads`, status: "neutral", href: "/people" },
+              { label: "Worker", value: workerOnline ? "Online" : "Offline", status: workerOnline ? "green" : "red" },
+            ]}
+          />
+
+          {/* Row 3: Workspace scorecard table */}
+          <WorkspaceScorecard summaries={workspaceSummaries} />
+
+          {/* Row 4: Compact KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="col-span-2">
               <MetricCard
@@ -220,18 +259,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Row 2: System health status row */}
-          <StatusIndicatorRow
-            items={[
-              { label: "Senders", value: `${kpis.sendersActiveTotal} active`, status: kpis.sendersActiveTotal > 0 ? "green" : "red", href: "/senders" },
-              { label: "Inboxes", value: `${kpis.inboxesHealthy}/${kpis.inboxesTotal}`, status: disconnectedInboxes > 0 ? "amber" : "green", href: "/email" },
-              { label: "Campaigns", value: `${kpis.campaignsActive} running`, status: kpis.campaignsActive > 0 ? "green" : "neutral" },
-              { label: "Pipeline", value: `${kpis.pipelineContacted} leads`, status: "neutral", href: "/people" },
-              { label: "Worker", value: workerOnline ? "Online" : "Offline", status: workerOnline ? "green" : "red" },
-            ]}
-          />
-
-          {/* Row 3: Activity combined chart */}
+          {/* Row 5: Activity combined chart */}
           <Card>
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle>Activity Overview</CardTitle>
