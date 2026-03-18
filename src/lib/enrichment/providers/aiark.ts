@@ -4,10 +4,7 @@
  * Fetches structured company data (headcount, industry, description, etc.)
  * from the AI Ark API given a company domain.
  *
- * IMPORTANT: AI Ark auth header name is LOW confidence (docs say "Header" security
- * scheme without specifying the literal name). Currently using "X-TOKEN" as the most
- * common pattern. If calls return 401/403, check https://ai-ark.com/docs and update
- * AUTH_HEADER_NAME below to match the actual header name.
+ * Auth: X-TOKEN header with API key.
  */
 
 import { z } from "zod";
@@ -16,11 +13,7 @@ import type { CompanyAdapter, CompanyProviderResult } from "../types";
 
 const AIARK_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
 
-/**
- * Auth header literal name for AI Ark API.
- * LOW CONFIDENCE — update if you get 401/403 responses.
- * Candidates: "X-TOKEN", "Authorization" (Bearer), "X-API-Key"
- */
+/** Auth header name for AI Ark API (confirmed working in production). */
 const AUTH_HEADER_NAME = "X-TOKEN";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -106,10 +99,7 @@ export const aiarkAdapter: CompanyAdapter = async (domain: string): Promise<Comp
     clearTimeout(timeoutId);
 
     if (response.status === 401 || response.status === 403) {
-      console.warn(
-        `AI Ark auth failed (${response.status}) — verify AUTH_HEADER_NAME in aiark.ts matches API docs. ` +
-          `Currently using "${AUTH_HEADER_NAME}". Check https://ai-ark.com/docs for the correct header name.`,
-      );
+      console.warn(`AI Ark auth failed: HTTP ${response.status}`);
       throw new Error(`AI Ark auth error: HTTP ${response.status}`);
     }
 
