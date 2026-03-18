@@ -54,7 +54,7 @@ export function emailLayout({ body, footerNote }: EmailSection): string {
         <!-- Header -->
         <tr>
           <td align="center" style="padding:32px 40px 24px 40px;">
-            <img src="${LOGO_URL}" alt="Outsignal" width="160" height="32" style="display:block;border:0;outline:none;text-decoration:none;" />
+            <img src="${LOGO_URL}" alt="Outsignal" width="240" height="48" style="display:block;border:0;outline:none;text-decoration:none;" />
           </td>
         </tr>
         <!-- Purple accent line -->
