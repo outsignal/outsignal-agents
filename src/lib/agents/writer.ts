@@ -7,6 +7,7 @@ import { runAgent } from "./runner";
 import { writerOutputSchema } from "./types";
 import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
+import { checkCopyQuality, checkSequenceQuality, formatSequenceViolations } from "@/lib/copy-quality";
 
 // --- Writer Agent Tools ---
 
