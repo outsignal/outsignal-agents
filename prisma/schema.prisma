@@ -119,6 +119,7 @@ model Workspace {
   campaigns             Campaign[]
   exclusionEntries      ExclusionEntry[]
   supportConversations  SupportConversation[]
+  members               Member[]
 }
 
 model Person {
@@ -1059,6 +1060,26 @@ model MagicLinkToken {
   used          Boolean  @default(false)
   createdAt     DateTime @default(now())
 
+  @@index([email])
+}
+
+model Member {
+  id                   String    @id @default(cuid())
+  email                String
+  name                 String?
+  role                 String    @default("viewer") // "owner" | "admin" | "viewer"
+  workspaceSlug        String
+  workspace            Workspace @relation(fields: [workspaceSlug], references: [slug])
+  notificationsEnabled Boolean   @default(true)
+  status               String    @default("invited") // "invited" | "active" | "disabled"
+  invitedAt            DateTime  @default(now())
+  invitedBy            String?   // email of who invited them
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([email, workspaceSlug])
+  @@index([workspaceSlug])
   @@index([email])
 }
 
