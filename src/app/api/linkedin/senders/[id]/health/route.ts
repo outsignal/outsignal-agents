@@ -20,18 +20,29 @@ export async function PATCH(
     const body = await request.json();
 
     const validStatuses = ["healthy", "warning", "paused", "blocked", "session_expired"];
-    if (!body.healthStatus || !validStatuses.includes(body.healthStatus)) {
+
+    // Allow keepalive-only updates (no healthStatus required)
+    if (!body.healthStatus && !body.lastKeepaliveAt) {
+      return NextResponse.json(
+        { error: `Must provide healthStatus or lastKeepaliveAt` },
+        { status: 400 },
+      );
+    }
+
+    if (body.healthStatus && !validStatuses.includes(body.healthStatus)) {
       return NextResponse.json(
         { error: `Invalid healthStatus. Must be one of: ${validStatuses.join(", ")}` },
         { status: 400 },
       );
     }
 
+    const updateData: Record<string, unknown> = {};
+    if (body.healthStatus) updateData.healthStatus = body.healthStatus;
+    if (body.lastKeepaliveAt) updateData.lastKeepaliveAt = new Date(body.lastKeepaliveAt);
+
     await prisma.sender.update({
       where: { id },
-      data: {
-        healthStatus: body.healthStatus,
-      },
+      data: updateData,
     });
 
     return NextResponse.json({ ok: true });

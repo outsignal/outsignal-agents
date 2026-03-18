@@ -60,12 +60,21 @@ export async function POST(
     // Encrypt cookies before storing
     const encryptedData = encrypt(JSON.stringify(body.cookies));
 
+    // Check previous status to know if this is a fresh session
+    const existing = await prisma.sender.findUnique({
+      where: { id },
+      select: { sessionStatus: true },
+    });
+
     await prisma.sender.update({
       where: { id },
       data: {
         sessionData: encryptedData,
         sessionStatus: "active",
         lastActiveAt: new Date(),
+        lastKeepaliveAt: new Date(),
+        // Set sessionConnectedAt on fresh session establishment
+        ...(existing?.sessionStatus !== "active" ? { sessionConnectedAt: new Date() } : {}),
       },
     });
 

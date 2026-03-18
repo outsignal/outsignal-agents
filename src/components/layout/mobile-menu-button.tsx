@@ -4,19 +4,7 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Sidebar } from "./sidebar";
 
-interface WorkspaceItem {
-  slug: string;
-  name: string;
-  vertical?: string;
-  status: string;
-  hasApiToken: boolean;
-}
-
-export function MobileMenuButton({
-  workspaces,
-}: {
-  workspaces: WorkspaceItem[];
-}) {
+export function MobileMenuButton() {
   const [open, setOpen] = useState(false);
 
   return (
@@ -42,7 +30,7 @@ export function MobileMenuButton({
           {/* Sidebar panel */}
           <div className="fixed inset-y-0 left-0 z-50 md:hidden">
             <div className="relative">
-              <Sidebar workspaces={workspaces} />
+              <Sidebar />
               <button
                 onClick={() => setOpen(false)}
                 className="absolute top-3 right-3 h-7 w-7 flex items-center justify-center rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"

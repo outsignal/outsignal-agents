@@ -2,7 +2,7 @@ import { prisma } from "./db";
 import { postMessage } from "./slack";
 import { sendNotificationEmail } from "./resend";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
-import { audited } from "@/lib/notification-audit";
+import { audited, auditSkipped } from "@/lib/notification-audit";
 import type { KnownBlock } from "@slack/web-api";
 
 export async function notifyApproval(params: {
@@ -109,6 +109,14 @@ export async function notifyApproval(params: {
     } catch (err) {
       console.error("Slack approval notification failed:", err);
     }
+  } else {
+    auditSkipped({
+      notificationType: "approval",
+      channel: "slack",
+      recipient: "none",
+      workspaceSlug: params.workspaceSlug,
+      metadata: { reason: "No slackChannelId or approvalsSlackChannelId configured" },
+    });
   }
 
   // ---------- Email ----------
@@ -231,6 +239,86 @@ ${
     } catch (err) {
       console.error("Email approval notification failed:", err);
     }
+  } else {
+    auditSkipped({
+      notificationType: "approval",
+      channel: "email",
+      recipient: "none",
+      workspaceSlug: params.workspaceSlug,
+      metadata: { reason: "No notificationEmails configured on workspace" },
+    });
+  }
+}
+
+export async function notifySessionDrop(params: {
+  senderName: string;
+  senderEmail: string | null;
+  workspaceSlug: string;
+  workspaceName: string;
+  sessionDownSince: Date | null;
+}): Promise<void> {
+  const downDuration = params.sessionDownSince
+    ? `${Math.round((Date.now() - params.sessionDownSince.getTime()) / 60_000)}m`
+    : "unknown";
+
+  // ---------- Slack (ops channel) ----------
+  const opsChannelId = process.env.OPS_SLACK_CHANNEL_ID;
+  if (opsChannelId) {
+    try {
+      await audited(
+        { notificationType: "session_drop", channel: "slack", recipient: opsChannelId, workspaceSlug: params.workspaceSlug },
+        () => postMessage(opsChannelId, `CRITICAL: LinkedIn session expired — ${params.senderName}`, [
+          {
+            type: "header",
+            text: { type: "plain_text", text: ":rotating_light: LinkedIn Session Expired" },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: [
+                `*Sender:* ${params.senderName}${params.senderEmail ? ` (${params.senderEmail})` : ""}`,
+                `*Workspace:* ${params.workspaceName} (\`${params.workspaceSlug}\`)`,
+                `*Down for:* ${downDuration}`,
+                `*Severity:* CRITICAL`,
+              ].join("\n"),
+            },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":warning: *Action required:* Reconnect the LinkedIn session in admin dashboard → Senders.",
+            },
+          },
+        ]),
+      );
+    } catch (err) {
+      console.error("Slack session drop notification failed:", err);
+    }
+  } else {
+    auditSkipped({
+      notificationType: "session_drop",
+      channel: "slack",
+      recipient: "none",
+      workspaceSlug: params.workspaceSlug,
+      metadata: { reason: "No OPS_SLACK_CHANNEL_ID configured" },
+    });
+  }
+
+  // ---------- Dashboard notification ----------
+  try {
+    const { notify } = await import("@/lib/notify");
+    await notify({
+      type: "error",
+      severity: "error",
+      title: `LinkedIn session expired — ${params.senderName}`,
+      message: `Session for ${params.senderName} in ${params.workspaceName} has expired. Reconnect in admin dashboard.`,
+      workspaceSlug: params.workspaceSlug,
+      metadata: { senderEmail: params.senderEmail, downDuration },
+    });
+  } catch (err) {
+    console.error("Dashboard session drop notification failed:", err);
   }
 }
 

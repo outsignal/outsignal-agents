@@ -15,11 +15,10 @@ import {
   PanelLeftOpen,
   BarChart3,
   Megaphone,
-  CircleDot,
-  CircleDashed,
   FileText,
   ShieldCheck,
   Inbox,
+  Mail,
   Search,
   LifeBuoy,
   LogOut,
@@ -37,18 +36,6 @@ import {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface WorkspaceItem {
-  slug: string;
-  name: string;
-  vertical?: string;
-  status: string;
-  hasApiToken: boolean;
-}
-
-export interface SidebarProps {
-  workspaces: WorkspaceItem[];
-}
 
 interface NavItem {
   href: string;
@@ -77,6 +64,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     hideLabel: true,
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/workspaces", label: "Workspaces", icon: Building2 },
       { href: "/campaigns", label: "Campaigns", icon: Megaphone },
       { href: "/pipeline", label: "Pipeline", icon: Target },
       { href: "/inbox", label: "Inbox", icon: Inbox },
@@ -96,6 +84,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     label: "Health",
     items: [
       { href: "/senders", label: "LinkedIn Senders", icon: Send },
+      { href: "/inboxes", label: "Inboxes", icon: Mail },
       { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
     ],
@@ -108,37 +97,19 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
       { href: "/financials", label: "Financials", icon: FileText },
     ],
   },
-  // WORKSPACES group is inserted dynamically by buildNavGroups()
 ];
 
-// ---------------------------------------------------------------------------
-// Build nav groups with dynamic WORKSPACES group
-// ---------------------------------------------------------------------------
-
-function buildNavGroups(workspaces: WorkspaceItem[]): NavGroup[] {
-  const workspacesGroup: NavGroup = {
-    key: "workspaces",
-    label: "Workspaces",
-    items: workspaces.map((ws) => ({
-      href: `/workspace/${ws.slug}`,
-      label: ws.name,
-      icon: ws.hasApiToken ? CircleDot : CircleDashed,
-    })),
-  };
-
-  return [...STATIC_NAV_GROUPS, workspacesGroup];
-}
 
 // ---------------------------------------------------------------------------
 // Main Sidebar
 // ---------------------------------------------------------------------------
 
-export function Sidebar({ workspaces }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const navGroups = buildNavGroups(workspaces);
+  const navGroups = STATIC_NAV_GROUPS;
 
   // Support unread badge polling
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);

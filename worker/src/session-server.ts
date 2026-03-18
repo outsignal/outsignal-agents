@@ -73,9 +73,15 @@ export class SessionServer {
       }
 
       if (path === "/health" && req.method === "GET") {
+        // Return honest health status including session info
+        const hasActiveSession = this.sessionState?.status === "logged_in";
         this.jsonResponse(res, 200, {
           ok: true,
-          session: !!this.sessionState,
+          workerHealthy: true,
+          sessionActive: hasActiveSession,
+          sessionState: this.sessionState
+            ? { senderId: this.sessionState.senderId, status: this.sessionState.status }
+            : null,
         });
         return;
       }

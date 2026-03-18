@@ -19,6 +19,7 @@ export async function addLinkedInAccount(
       workspaceSlug,
       name,
       status: "setup",
+      loginMethod: "credentials",
     },
   });
 

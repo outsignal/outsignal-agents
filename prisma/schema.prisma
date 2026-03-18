@@ -869,8 +869,10 @@ model Sender {
   // Warm-up tracking
   warmupDay       Int       @default(0) // 0 = not started, 1-28 = warmup day
   warmupStartedAt DateTime?
-  lastActiveAt    DateTime?
-  lastPolledAt    DateTime?
+  lastActiveAt       DateTime?
+  lastPolledAt       DateTime?
+  lastKeepaliveAt    DateTime? // timestamp of last successful keepalive ping
+  sessionConnectedAt DateTime? // when the current session was first established
 
   // Rate limits (account-level, adjusted by warm-up)
   dailyConnectionLimit  Int @default(5)

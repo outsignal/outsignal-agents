@@ -7,6 +7,7 @@
  * reassigns actions on critical flags, pauses workspace if last sender down.
  */
 import { prisma } from "@/lib/db";
+import { notifySessionDrop } from "@/lib/notifications";
 
 export interface HealthCheckResult {
   senderId: string;
@@ -146,6 +147,7 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
   // Re-fetch senders after auto-recovery updates to get fresh healthStatus
   const freshSenders = await prisma.sender.findMany({
     where: { status: { in: ["active", "setup"] } },
+    include: { workspace: true },
   });
 
   // --- Step 5: Detect and apply new flags ---
@@ -170,12 +172,21 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
       severity = "critical";
     }
 
-    // Check session expiry
+    // Check session expiry (alert on state transition only)
     if (!newStatus && sender.sessionStatus === "expired" && sender.healthStatus !== "session_expired") {
       newStatus = "session_expired";
       reason = "session_expired";
       detail = "LinkedIn session cookie has expired. Re-authentication required.";
       severity = "critical";
+
+      // Alert on transition to expired
+      notifySessionDrop({
+        senderName: sender.name,
+        senderEmail: sender.emailAddress ?? null,
+        workspaceSlug: sender.workspaceSlug,
+        workspaceName: sender.workspace?.name ?? sender.workspaceSlug,
+        sessionDownSince: sender.lastActiveAt,
+      }).catch((err) => console.error("[HealthCheck] Session drop alert failed:", err));
     }
 
     // Check bounce rate (only if no harder flag already detected)

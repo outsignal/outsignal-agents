@@ -52,6 +52,7 @@ export default async function PortalCampaignsPage({
       ebId: ebMatch?.id ?? null,
       name: c.name,
       type: c.type,
+      channels: c.channels,
       status: ebMatch?.status ?? c.status,
       completionPercentage: ebMatch?.completion_percentage ?? 0,
       emailsSent: ebMatch?.emails_sent ?? 0,

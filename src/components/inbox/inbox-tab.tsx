@@ -389,6 +389,12 @@ export default function InboxTab() {
               ? { workspaceSlug: selectedWorkspaceSlug }
               : undefined
           }
+          actionsEndpoint="/api/admin/inbox/email/actions"
+          actionsExtraBody={
+            selectedWorkspaceSlug
+              ? { workspaceSlug: selectedWorkspaceSlug }
+              : undefined
+          }
         />
       );
     }

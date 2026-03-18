@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { DailyLimitsBar } from "./daily-limits-bar";
 import { SenderFormModal } from "./sender-form-modal";
 import { SenderHealthPanel } from "./sender-health-panel";
+import { SessionReconnectDialog } from "./session-reconnect-dialog";
 import type { SenderWithWorkspace } from "./types";
 
 interface BudgetMetric {
@@ -96,6 +97,7 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
   const [toggling, setToggling] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [reactivating, setReactivating] = useState(false);
+  const [reconnectOpen, setReconnectOpen] = useState(false);
   const isPaused = sender.status === "paused";
   const isHardFlagged =
     sender.healthStatus === "blocked" || sender.healthStatus === "session_expired";
@@ -208,12 +210,34 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
             <span className="text-foreground/80 capitalize">{sender.linkedinTier}</span>
           </div>
 
-          {/* Session status */}
+          {/* Session status + keepalive */}
           <div className="flex items-start gap-2">
             <span className="text-muted-foreground w-20 shrink-0">Session</span>
-            <span className="text-foreground/80">
-              {SESSION_LABEL[sender.sessionStatus] ?? sender.sessionStatus}
-            </span>
+            <div className="flex flex-col gap-0.5">
+              <span className={cn(
+                "font-medium",
+                sender.sessionStatus === "expired" && "text-red-500",
+                sender.sessionStatus === "active" && "text-emerald-600",
+              )}>
+                {SESSION_LABEL[sender.sessionStatus] ?? sender.sessionStatus}
+              </span>
+              {sender.sessionConnectedAt && sender.sessionStatus === "active" && (
+                <span className="text-[10px] text-muted-foreground">
+                  Connected since {new Date(sender.sessionConnectedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </span>
+              )}
+              {sender.lastKeepaliveAt && (
+                <span className={cn(
+                  "text-[10px]",
+                  (() => {
+                    const hrs = (Date.now() - new Date(sender.lastKeepaliveAt).getTime()) / 3_600_000;
+                    return hrs < 6 ? "text-emerald-600" : hrs < 12 ? "text-amber-500" : "text-red-500";
+                  })(),
+                )}>
+                  Keepalive {formatTimeAgo(sender.lastKeepaliveAt)}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Warmup day */}
@@ -277,6 +301,17 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
             <Pencil className="h-3 w-3 mr-1" />
             Edit
           </Button>
+          {(sender.sessionStatus === "expired" || sender.sessionStatus === "not_setup") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50"
+              onClick={() => setReconnectOpen(true)}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Reconnect
+            </Button>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -352,6 +387,14 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Reconnect session dialog */}
+      <SessionReconnectDialog
+        senderId={sender.id}
+        senderName={sender.name}
+        open={reconnectOpen}
+        onOpenChange={setReconnectOpen}
+      />
     </>
   );
 }

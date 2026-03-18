@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Plus, Mail, Linkedin, ExternalLink } from "lucide-react";
+import { Search, Plus, Mail, ExternalLink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -54,13 +54,6 @@ interface Sender {
   workspace: { name: string };
 }
 
-function deriveSenderType(sender: Sender): "Email" | "LinkedIn" | "Both" {
-  const hasEmail = !!sender.emailAddress;
-  const hasLinkedIn = !!sender.linkedinProfileUrl;
-  if (hasEmail && hasLinkedIn) return "Both";
-  if (hasLinkedIn) return "LinkedIn";
-  return "Email";
-}
 
 function formatRelativeTime(dateStr: string | null): string {
   if (!dateStr) return "—";
@@ -87,6 +80,18 @@ function truncateUrl(url: string, maxLen = 30): string {
   } catch {
     return url.length > maxLen ? url.slice(0, maxLen) + "…" : url;
   }
+}
+
+/**
+ * Derive a display health status from multiple sender signals.
+ * The raw healthStatus defaults to "healthy" in the DB, which lies for
+ * senders that have never been polled or don't have a session yet.
+ */
+function deriveDisplayHealth(sender: Sender): string {
+  if (sender.sessionStatus === "not_setup") return "not_connected";
+  if (sender.sessionStatus === "expired") return "session_expired";
+  if (!sender.lastPolledAt) return "unknown";
+  return sender.healthStatus;
 }
 
 function SessionStatusBadge({ status }: { status: string }) {
@@ -118,32 +123,6 @@ function SessionStatusBadge({ status }: { status: string }) {
   }
 }
 
-function TypeBadge({ type }: { type: "Email" | "LinkedIn" | "Both" }) {
-  switch (type) {
-    case "Email":
-      return (
-        <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Mail className="size-3.5" />
-          Email
-        </span>
-      );
-    case "LinkedIn":
-      return (
-        <span className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
-          <Linkedin className="size-3.5" />
-          LinkedIn
-        </span>
-      );
-    case "Both":
-      return (
-        <span className="inline-flex items-center gap-1.5 text-sm text-purple-600 dark:text-purple-400">
-          <Mail className="size-3.5" />
-          <Linkedin className="size-3.5" />
-          Both
-        </span>
-      );
-  }
-}
 
 export function SendersOverview() {
   const [senders, setSenders] = useState<Sender[]>([]);
@@ -154,7 +133,6 @@ export function SendersOverview() {
   // Filters
   const [search, setSearch] = useState("");
   const [workspaceFilter, setWorkspaceFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const fetchSenders = useCallback(async () => {
@@ -191,15 +169,6 @@ export function SendersOverview() {
       result = result.filter((s) => s.workspaceSlug === workspaceFilter);
     }
 
-    if (typeFilter !== "all") {
-      result = result.filter((s) => {
-        const t = deriveSenderType(s);
-        if (typeFilter === "email") return t === "Email" || t === "Both";
-        if (typeFilter === "linkedin") return t === "LinkedIn" || t === "Both";
-        return true;
-      });
-    }
-
     if (statusFilter !== "all") {
       result = result.filter((s) => s.sessionStatus === statusFilter);
     }
@@ -214,7 +183,7 @@ export function SendersOverview() {
     }
 
     return result;
-  }, [senders, workspaceFilter, typeFilter, statusFilter, search]);
+  }, [senders, workspaceFilter, statusFilter, search]);
 
   return (
     <>
@@ -242,17 +211,6 @@ export function SendersOverview() {
                   {name}
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger size="sm" className="w-[120px]">
-              <SelectValue placeholder="All Types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="email">Email</SelectItem>
-              <SelectItem value="linkedin">LinkedIn</SelectItem>
             </SelectContent>
           </Select>
 
@@ -313,7 +271,6 @@ export function SendersOverview() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Workspace</TableHead>
-                <TableHead>Type</TableHead>
                 <TableHead>Email Address</TableHead>
                 <TableHead>LinkedIn Profile</TableHead>
                 <TableHead>Session Status</TableHead>
@@ -324,15 +281,11 @@ export function SendersOverview() {
             </TableHeader>
             <TableBody>
               {filtered.map((sender) => {
-                const senderType = deriveSenderType(sender);
                 return (
                   <TableRow key={sender.id}>
                     <TableCell className="font-medium">{sender.name}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {sender.workspace.name}
-                    </TableCell>
-                    <TableCell>
-                      <TypeBadge type={senderType} />
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {sender.emailAddress ?? "—"}
@@ -353,11 +306,7 @@ export function SendersOverview() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {senderType === "LinkedIn" || senderType === "Both" ? (
-                        <SessionStatusBadge status={sender.sessionStatus} />
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
+                      <SessionStatusBadge status={sender.sessionStatus} />
                     </TableCell>
                     <TableCell className="text-muted-foreground capitalize">
                       {sender.loginMethod || "—"}
@@ -366,7 +315,7 @@ export function SendersOverview() {
                       {formatRelativeTime(sender.lastPolledAt)}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={sender.healthStatus} type="health" />
+                      <StatusBadge status={deriveDisplayHealth(sender)} type="health" />
                     </TableCell>
                   </TableRow>
                 );

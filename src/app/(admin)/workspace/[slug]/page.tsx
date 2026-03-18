@@ -19,6 +19,7 @@ import { getWorkspaceBySlug, getWorkspaceDetails } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { Campaign, Reply } from "@/lib/emailbison/types";
 import { ApiTokenForm } from "@/components/settings/api-token-form";
+import { MembersTable } from "@/components/workspace/members-table";
 import { Settings } from "lucide-react";
 
 interface WorkspacePageProps {
@@ -132,6 +133,9 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
           </TabsTrigger>
           <TabsTrigger value="replies">
             Replies ({replies.length})
+          </TabsTrigger>
+          <TabsTrigger value="members">
+            Members
           </TabsTrigger>
         </TabsList>
 
@@ -251,6 +255,10 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="members">
+          <MembersTable slug={slug} />
         </TabsContent>
       </Tabs>
     </PageShell>

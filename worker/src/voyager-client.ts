@@ -117,14 +117,30 @@ export class VoyagerClient {
   ): Promise<Response> {
     const { extraHeaders, ...fetchOptions } = options;
 
+    // Contextual Referer based on endpoint
+    let referer = "https://www.linkedin.com/";
+    if (path.includes("/feed/")) referer = "https://www.linkedin.com/feed/";
+    else if (path.includes("/messaging") || path.includes("Messaging")) referer = "https://www.linkedin.com/messaging/";
+    else if (path.includes("/me") || path.includes("/identity/")) referer = "https://www.linkedin.com/feed/";
+
     const headers: Record<string, string> = {
       "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
       Accept: "application/vnd.linkedin.normalized+json+2.1",
+      "Accept-Encoding": "gzip, deflate, br",
       "Accept-Language": "en-US,en;q=0.9",
       "csrf-token": this.csrfToken,
       "x-restli-protocol-version": "2.0.0",
       "x-li-lang": "en_US",
+      "x-li-track": JSON.stringify({
+        clientVersion: "1.13.9876",
+        mpVersion: "0.338.123",
+        osName: "web",
+        timezoneOffset: 0,
+        deviceFormFactor: "DESKTOP",
+        mpName: "voyager-web",
+      }),
+      Referer: referer,
       Cookie: `li_at=${this.liAt}; JSESSIONID="${this.jsessionId}"`,
       ...extraHeaders,
     };
@@ -185,6 +201,50 @@ export class VoyagerClient {
       // Non-HTTP errors (DNS, timeout, connection refused)
       console.log(`[VoyagerClient] testSession network error: ${err instanceof Error ? err.message : String(err)}`);
       return "network_error";
+    }
+  }
+
+  // ─── Keepalive methods ─────────────────────────────────────────────────────
+  // Lightweight read-only calls that mimic natural browsing patterns.
+  // Each returns true on success, false on auth failure (session dead).
+
+  async keepaliveFetchProfile(): Promise<boolean> {
+    try {
+      await this.request("/me");
+      return true;
+    } catch (err) {
+      if (err instanceof VoyagerError && (err.status === 401 || err.status === 403)) return false;
+      return true; // network errors don't mean session is dead
+    }
+  }
+
+  async keepaliveFetchNotifications(): Promise<boolean> {
+    try {
+      await this.request("/voyagerNotificationsDashNotificationCards?count=1&offset=0");
+      return true;
+    } catch (err) {
+      if (err instanceof VoyagerError && (err.status === 401 || err.status === 403)) return false;
+      return true;
+    }
+  }
+
+  async keepaliveFetchMessaging(): Promise<boolean> {
+    try {
+      await this.request("/voyagerMessagingDashMessengerConversations?count=1");
+      return true;
+    } catch (err) {
+      if (err instanceof VoyagerError && (err.status === 401 || err.status === 403)) return false;
+      return true;
+    }
+  }
+
+  async keepaliveFetchFeed(): Promise<boolean> {
+    try {
+      await this.request("/feed/normUpdate?count=1&q=FEED_UPDATES");
+      return true;
+    } catch (err) {
+      if (err instanceof VoyagerError && (err.status === 401 || err.status === 403)) return false;
+      return true;
     }
   }
 

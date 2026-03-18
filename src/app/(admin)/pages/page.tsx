@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
   SelectContent,
@@ -25,14 +26,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,23 +56,23 @@ function formatDate(dateStr: string): string {
   });
 }
 
-// ─── Skeleton Rows ───────────────────────────────────────────────────────────
+// ─── Skeleton Cards ──────────────────────────────────────────────────────────
 
-function SkeletonRows() {
+function SkeletonCards() {
   return (
     <>
       {Array.from({ length: 6 }).map((_, i) => (
-        <TableRow key={i} className="border-border">
-          <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-40" />
-          </TableCell>
-          <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-24" />
-          </TableCell>
-          <TableCell>
-            <div className="h-3.5 bg-muted rounded animate-pulse w-20" />
-          </TableCell>
-        </TableRow>
+        <Card key={i}>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-md bg-muted animate-pulse shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3.5 bg-muted rounded animate-pulse w-3/4" />
+                <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       ))}
     </>
   );
@@ -261,72 +254,51 @@ export default function PagesListPage() {
           </div>
         )}
 
-        {/* Table */}
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Last Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <SkeletonRows />
-                ) : pages.length > 0 ? (
-                  pages.map((page) => (
-                    <TableRow key={page.id} className="border-border">
-                      <TableCell>
-                        <Link
-                          href={`/pages/${page.slug}`}
-                          className="font-medium text-sm hover:underline"
-                        >
+        {/* Card Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <SkeletonCards />
+          </div>
+        ) : pages.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No pages yet"
+            description="Create your first internal document or knowledge base page to get started."
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pages.map((page) => (
+              <Link key={page.id} href={`/pages/${page.slug}`}>
+                <Card className="hover:border-primary/40 transition-colors cursor-pointer h-full">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center shrink-0">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">
                           {page.title}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
+                        </p>
                         {page.clientName ? (
-                          <Link
-                            href={`/clients/${page.clientId}`}
-                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-                          >
+                          <p className="text-xs text-primary/70 mt-0.5 truncate">
                             {page.clientName}
-                          </Link>
+                          </p>
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            —
-                          </span>
+                          <p className="text-xs text-muted-foreground/50 mt-0.5">
+                            No client
+                          </p>
                         )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDate(page.updatedAt)}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="py-12 text-center text-muted-foreground"
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        <FileText
-                          className="h-8 w-8 text-muted-foreground/40"
-                          aria-hidden="true"
-                        />
-                        <p className="text-sm">
-                          No pages yet. Create your first internal document.
+                        <p className="text-xs font-mono text-muted-foreground mt-1">
+                          Updated {formatDate(page.updatedAt)}
                         </p>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

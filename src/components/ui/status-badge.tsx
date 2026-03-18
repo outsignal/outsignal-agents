@@ -38,6 +38,7 @@ const STATUS_MAPS: Record<StatusType, Record<string, StatusConfig>> = {
     paused: { variant: "secondary", dot: true, label: "Paused" },
     blocked: { variant: "destructive", dot: true, label: "Blocked" },
     session_expired: { variant: "warning", dot: true, label: "Session Expired" },
+    not_connected: { variant: "secondary", dot: true, label: "Not Connected" },
     unknown: { variant: "secondary", label: "Unknown" },
   },
   intent: {

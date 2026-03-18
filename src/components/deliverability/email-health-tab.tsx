@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { MetricCard } from "@/components/dashboard/metric-card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -77,11 +76,6 @@ interface EmailHealthData {
 function EmailHealthSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full rounded-lg" />
-        ))}
-      </div>
       <div className="space-y-2">
         <Skeleton className="h-9 w-full" />
         {Array.from({ length: 5 }).map((_, i) => (
@@ -149,9 +143,7 @@ export function EmailHealthTab() {
 
   if (!data) return null;
 
-  const { senders, workspaces, failedWorkspaces, aggregates, pagination } = data;
-  const bounceTrend =
-    aggregates.avgBounceRate > 5 ? "down" : aggregates.avgBounceRate > 2 ? "warning" : "up";
+  const { senders, workspaces, aggregates, pagination } = data;
 
   return (
     <div className="space-y-6">
@@ -173,72 +165,6 @@ export function EmailHealthTab() {
             ))}
           </SelectContent>
         </Select>
-      </div>
-
-      {/* Alert banners */}
-      {aggregates.disconnectedCount > 0 && (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 flex items-center justify-between">
-          <p className="text-sm font-medium text-red-800">
-            {aggregates.disconnectedCount} inbox
-            {aggregates.disconnectedCount !== 1 ? "es" : ""} disconnected —
-            reconnect immediately
-          </p>
-        </div>
-      )}
-
-      {aggregates.highBounceCount > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between">
-          <p className="text-sm font-medium text-amber-800">
-            {aggregates.highBounceCount} sender
-            {aggregates.highBounceCount !== 1 ? "s" : ""} with bounce rates above
-            5%
-          </p>
-        </div>
-      )}
-
-      {failedWorkspaces.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-          <p className="text-sm text-amber-800">
-            Failed to fetch data from {failedWorkspaces.length} workspace
-            {failedWorkspaces.length !== 1 ? "s" : ""}:{" "}
-            {failedWorkspaces.join(", ")}. Partial data shown.
-          </p>
-        </div>
-      )}
-
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard
-          label="Connected Inboxes"
-          value={`${aggregates.connected}/${aggregates.totalSenders}`}
-          trend={aggregates.disconnectedCount > 0 ? "down" : "up"}
-          detail={
-            aggregates.disconnectedCount > 0
-              ? `${aggregates.disconnectedCount} disconnected`
-              : "All connected"
-          }
-        />
-        <MetricCard
-          label="Avg Bounce Rate"
-          value={`${aggregates.avgBounceRate.toFixed(2)}%`}
-          trend={bounceTrend}
-          detail={
-            bounceTrend === "up"
-              ? "Healthy"
-              : bounceTrend === "warning"
-                ? "Elevated"
-                : "Critical"
-          }
-        />
-        <MetricCard
-          label="Avg Reply Rate"
-          value={`${aggregates.avgReplyRate.toFixed(2)}%`}
-          trend={aggregates.avgReplyRate > 1 ? "up" : "neutral"}
-        />
-        <MetricCard
-          label="Total Emails Sent"
-          value={aggregates.totalSent.toLocaleString()}
-        />
       </div>
 
       {/* Sender Health table */}

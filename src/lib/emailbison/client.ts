@@ -19,12 +19,26 @@ import type {
 import { EmailBisonError } from "./types";
 
 export class EmailBisonApiError extends Error {
+  public parsedBody: Record<string, unknown> | null;
+
   constructor(
     public status: number,
     public body: string,
   ) {
     super(`Email Bison API error ${status}: ${body}`);
     this.name = "EmailBisonApiError";
+    try {
+      this.parsedBody = JSON.parse(body);
+    } catch {
+      this.parsedBody = null;
+    }
+  }
+
+  /** True when EB says the record no longer exists */
+  get isRecordNotFound(): boolean {
+    if (this.status !== 404) return false;
+    const data = this.parsedBody?.data as Record<string, unknown> | undefined;
+    return !!data?.record_not_found;
   }
 }
 
@@ -429,25 +443,56 @@ export class EmailBisonClient {
   }
 
   async markReplyUnread(replyId: number): Promise<void> {
-    await this.request<unknown>(`/replies/${replyId}`, {
+    await this.request<unknown>(`/replies/${replyId}/mark-as-read-or-unread`, {
       method: 'PATCH',
       body: JSON.stringify({ read: false }),
       revalidate: 0,
     });
   }
 
-  async markReplyAutomated(replyId: number): Promise<void> {
-    await this.request<unknown>(`/replies/${replyId}`, {
+  async markReplyRead(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}/mark-as-read-or-unread`, {
       method: 'PATCH',
-      body: JSON.stringify({ automated_reply: true }),
+      body: JSON.stringify({ read: true }),
+      revalidate: 0,
+    });
+  }
+
+  async markReplyAutomated(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}/mark-as-automated-or-not-automated`, {
+      method: 'PATCH',
+      body: JSON.stringify({ automated: true }),
+      revalidate: 0,
+    });
+  }
+
+  async markReplyNotAutomated(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}/mark-as-automated-or-not-automated`, {
+      method: 'PATCH',
+      body: JSON.stringify({ automated: false }),
       revalidate: 0,
     });
   }
 
   async markReplyInterested(replyId: number): Promise<void> {
-    await this.request<unknown>(`/replies/${replyId}`, {
+    await this.request<unknown>(`/replies/${replyId}/mark-as-interested`, {
       method: 'PATCH',
-      body: JSON.stringify({ interested: true }),
+      body: JSON.stringify({ skip_webhooks: true }),
+      revalidate: 0,
+    });
+  }
+
+  async markReplyNotInterested(replyId: number): Promise<void> {
+    await this.request<unknown>(`/replies/${replyId}/mark-as-not-interested`, {
+      method: 'PATCH',
+      body: JSON.stringify({ skip_webhooks: true }),
+      revalidate: 0,
+    });
+  }
+
+  async unsubscribeLead(leadId: number): Promise<void> {
+    await this.request<unknown>(`/leads/${leadId}/unsubscribe`, {
+      method: 'PATCH',
       revalidate: 0,
     });
   }
@@ -459,10 +504,10 @@ export class EmailBisonClient {
     });
   }
 
-  async addToBlacklist(type: 'email' | 'domain', value: string): Promise<void> {
-    await this.request<unknown>('/blacklists', {
+  async addToBlacklist(leadId: number, type: 'email' | 'domain' = 'email'): Promise<void> {
+    await this.request<unknown>(`/leads/${leadId}/blacklist`, {
       method: 'POST',
-      body: JSON.stringify({ type, value }),
+      body: JSON.stringify({ type }),
       revalidate: 0,
     });
   }

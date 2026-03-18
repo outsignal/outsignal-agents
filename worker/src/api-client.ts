@@ -29,6 +29,8 @@ interface SenderItem {
   dailyConnectionLimit: number;
   dailyMessageLimit: number;
   dailyProfileViewLimit: number;
+  lastActiveAt: string | null;
+  lastKeepaliveAt: string | null;
 }
 
 export class ApiClient {
@@ -199,6 +201,16 @@ export class ApiClient {
     await this.request(`/api/linkedin/senders/${senderId}/health`, {
       method: "PATCH",
       body: JSON.stringify({ healthStatus }),
+    });
+  }
+
+  /**
+   * Report a successful keepalive for a sender.
+   */
+  async updateKeepalive(senderId: string): Promise<void> {
+    await this.request(`/api/linkedin/senders/${senderId}/health`, {
+      method: "PATCH",
+      body: JSON.stringify({ lastKeepaliveAt: new Date().toISOString() }),
     });
   }
 

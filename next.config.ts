@@ -38,7 +38,7 @@ const nextConfig: NextConfig = {
         // portal.outsignal.ai/* → /portal/*
         // Excludes _next, api, and static files
         {
-          source: "/:path((?!_next|api|portal|favicon\\.ico|icon\\.png|sitemap\\.xml|robots\\.txt).*)",
+          source: "/:path((?!_next|api|portal|[^/]+\\.(?:ico|png|svg|json|xml|txt|webmanifest)).*)",
           has: [{ type: "host", value: "portal.outsignal.ai" }],
           destination: "/portal/:path",
         },

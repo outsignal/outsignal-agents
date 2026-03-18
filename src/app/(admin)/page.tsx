@@ -57,6 +57,7 @@ const emptyKpis: DashboardKPIs = {
   inboxesCritical: 0,
   workerStatus: "offline" as const,
   workerLastPollAt: null,
+  sessionHealth: { active: 0, expired: 0, notSetup: 0, total: 0 },
 };
 
 // ---------------------------------------------------------------------------

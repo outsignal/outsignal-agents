@@ -46,6 +46,8 @@ export interface DashboardKPIs {
   // Worker status
   workerStatus: "online" | "paused" | "offline";
   workerLastPollAt: string | null;
+  // Session health
+  sessionHealth: { active: number; expired: number; notSetup: number; total: number };
 }
 
 export interface TimeSeriesPoint {
@@ -284,6 +286,18 @@ export async function GET(request: NextRequest) {
       : msSinceLastPoll < 24 * 60 * 60 * 1000 ? "paused"
       : "offline";
 
+    // Session health summary
+    const allSenders = await prisma.sender.findMany({
+      where: workspaceFilter !== "all" ? { workspaceSlug: workspaceFilter } : undefined,
+      select: { sessionStatus: true },
+    });
+    const sessionHealth = {
+      active: allSenders.filter((s) => s.sessionStatus === "active").length,
+      expired: allSenders.filter((s) => s.sessionStatus === "expired").length,
+      notSetup: allSenders.filter((s) => s.sessionStatus === "not_setup").length,
+      total: allSenders.length,
+    };
+
     // 7. Time-series data from WebhookEvent grouped by date
     const webhookEvents = await prisma.webhookEvent.findMany({
       where: {
@@ -497,6 +511,7 @@ export async function GET(request: NextRequest) {
       inboxesCritical,
       workerStatus,
       workerLastPollAt: workerLastPollAt?.toISOString() ?? null,
+      sessionHealth,
     };
 
     // Workspace list for filter dropdown

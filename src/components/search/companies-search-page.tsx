@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryStates, parseAsString, parseAsInteger, parseAsArrayOf } from "nuqs";
 import { useDebounce } from "use-debounce";
-import { Search, Building2 } from "lucide-react";
+import { Search, Building2, Globe } from "lucide-react";
 import {
   getCompanyEnrichmentStatus,
   ENRICHMENT_COLORS,
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Header } from "@/components/layout/header";
+import { Badge } from "@/components/ui/badge";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -246,18 +246,26 @@ export function CompaniesSearchPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header
-        title="Companies"
-        description={
-          data
-            ? `${data.total.toLocaleString()} companies${loading ? " (refreshing...)" : ""}`
-            : loading
-            ? "Loading..."
-            : "Search and filter your company database"
-        }
-      />
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-border/50 px-4 py-4 sm:px-8 sm:py-5">
+        <div className="min-w-0">
+          <h1 className="text-xl font-medium text-foreground">Companies</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {data
+              ? `${data.total.toLocaleString()} companies${loading ? " (refreshing...)" : ""}`
+              : loading
+                ? "Loading..."
+                : "Search and filter your company database"}
+          </p>
+        </div>
+        {data && (
+          <Badge variant="secondary" className="shrink-0 font-mono tabular-nums">
+            {data.total.toLocaleString()}
+          </Badge>
+        )}
+      </header>
 
-      <div className="p-4 sm:p-6 space-y-4">
+      <div className="p-6 space-y-4">
         {/* Filter toggle + collapsed pill bar / expanded sidebar wrapper */}
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Filter area */}
@@ -444,7 +452,7 @@ export function CompaniesSearchPage() {
             <div className="bg-card rounded-lg border border-border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-border hover:bg-transparent">
+                  <TableRow className="border-border bg-muted hover:bg-muted">
                     <SortableTableHead sortKey="name" currentSort={sort} onSort={handleSort}>
                       Name
                     </SortableTableHead>
@@ -490,7 +498,7 @@ export function CompaniesSearchPage() {
                     sortedCompanies.map((company) => (
                       <TableRow
                         key={company.id}
-                        className="border-border cursor-pointer"
+                        className="border-border cursor-pointer hover:bg-muted transition-colors"
                         onClick={() => router.push(`/companies/${company.id}`)}
                       >
                         <TableCell className="font-medium text-foreground text-sm">

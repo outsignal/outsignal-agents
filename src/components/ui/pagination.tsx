@@ -9,7 +9,8 @@ interface PaginationProps {
   totalPages: number;
   totalCount: number;
   pageSize: number;
-  buildHref?: (page: number) => string;
+  basePath?: string;
+  searchParams?: Record<string, string>;
   onPageChange?: (page: number) => void;
 }
 
@@ -18,10 +19,17 @@ export function Pagination({
   totalPages,
   totalCount,
   pageSize,
-  buildHref,
+  basePath,
+  searchParams: extraParams,
   onPageChange,
 }: PaginationProps) {
   if (totalPages <= 1) return null;
+
+  function buildHref(page: number): string {
+    const params = new URLSearchParams(extraParams);
+    params.set("page", String(page));
+    return `${basePath}?${params.toString()}`;
+  }
 
   const from = (currentPage - 1) * pageSize + 1;
   const to = Math.min(currentPage * pageSize, totalCount);
@@ -43,7 +51,7 @@ export function Pagination({
     }, []);
 
   function navButton(page: number, disabled: boolean, children: React.ReactNode) {
-    if (buildHref && !disabled) {
+    if (basePath && !disabled) {
       return (
         <Button variant="outline" size="sm" asChild>
           <Link href={buildHref(page)}>{children}</Link>
@@ -64,7 +72,7 @@ export function Pagination({
 
   function pageButton(page: number) {
     const isActive = page === currentPage;
-    if (buildHref) {
+    if (basePath) {
       return (
         <Link
           key={page}

@@ -21,7 +21,7 @@ import { EnrichmentBadge } from "./enrichment-badge";
 import { BulkActionBar } from "./bulk-action-bar";
 import { AddToListDropdown } from "./add-to-list-dropdown";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Header } from "@/components/layout/header";
+import { Badge } from "@/components/ui/badge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -348,18 +348,26 @@ export function PeopleSearchPage() {
 
   return (
     <div>
-      <Header
-        title="People"
-        description={
-          data
-            ? `${data.total.toLocaleString()} people${loading ? " (refreshing...)" : ""}`
-            : loading
-            ? "Loading..."
-            : "Search and filter your lead database"
-        }
-      />
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-border/50 px-4 py-4 sm:px-8 sm:py-5">
+        <div className="min-w-0">
+          <h1 className="text-xl font-medium text-foreground">People</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {data
+              ? `${data.total.toLocaleString()} people${loading ? " (refreshing...)" : ""}`
+              : loading
+                ? "Loading..."
+                : "Search and filter your lead database"}
+          </p>
+        </div>
+        {data && (
+          <Badge variant="secondary" className="shrink-0 font-mono tabular-nums">
+            {data.total.toLocaleString()}
+          </Badge>
+        )}
+      </header>
 
-      <div className="p-4 sm:p-6 space-y-4">
+      <div className="p-6 space-y-4">
         {/* Filter sidebar / pill bar */}
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           <FilterSidebar
@@ -453,7 +461,7 @@ export function PeopleSearchPage() {
             <div className="bg-card rounded-lg border border-border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-border hover:bg-transparent">
+                  <TableRow className="border-border bg-muted hover:bg-muted">
                     <TableHead className="w-10 py-3">
                       <Checkbox
                         checked={selectAllMatching || (allCurrentPageSelected && currentPageIds.length > 0)}
@@ -525,7 +533,7 @@ export function PeopleSearchPage() {
                       return (
                         <TableRow
                           key={person.id}
-                          className={`border-border cursor-pointer ${isSelected ? "bg-brand/5" : ""}`}
+                          className={`border-border cursor-pointer hover:bg-muted transition-colors ${isSelected ? "bg-brand/5" : ""}`}
                         >
                           <TableCell
                             className="py-2 w-10"

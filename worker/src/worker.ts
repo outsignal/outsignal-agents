@@ -21,6 +21,7 @@ import {
   getPollDelay,
   sleep,
 } from "./scheduler.js";
+import { KeepaliveManager } from "./keepalive.js";
 
 interface SenderConfig {
   id: string;
@@ -61,10 +62,12 @@ export class Worker {
   private reloginAttempts: Map<string, { count: number; date: string }> = new Map();
   private static readonly SESSION_CHECK_INTERVAL_MS = 30 * 60 * 1000;
   private static readonly MAX_RELOGIN_PER_DAY = 2;
+  private keepalive: KeepaliveManager;
 
   constructor(options: WorkerOptions) {
     this.options = options;
     this.api = new ApiClient(options.apiUrl, options.apiSecret);
+    this.keepalive = new KeepaliveManager(this.api);
   }
 
   /**
@@ -107,7 +110,18 @@ export class Worker {
    * Single tick — process all senders.
    */
   private async tick(): Promise<void> {
-    // Check business hours (default schedule)
+    // Run keepalives BEFORE business hours check — keepalives fire 24/7
+    for (const slug of this.options.workspaceSlugs) {
+      if (!this.running) break;
+      try {
+        const senders = await this.api.getSenders(slug);
+        await this.keepalive.checkAndRunKeepalives(senders);
+      } catch (err) {
+        console.error(`[Worker] Keepalive check failed for ${slug}:`, err);
+      }
+    }
+
+    // Check business hours (default schedule) — actions only during business hours
     if (!isWithinBusinessHours()) {
       const waitMs = msUntilBusinessHours();
       const waitMin = Math.round(waitMs / 60_000);

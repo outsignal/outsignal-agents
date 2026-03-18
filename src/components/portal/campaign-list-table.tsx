@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Mail, Linkedin, Layers } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +32,7 @@ export interface MergedCampaign {
   ebId: number | null;
   name: string;
   type: string;
+  channels: string[];
   status: string;
   completionPercentage: number;
   emailsSent: number;
@@ -83,6 +84,33 @@ function formatRelativeTime(dateStr: string): string {
 function pct(numerator: number, denominator: number): string {
   if (denominator === 0) return "0.0%";
   return `${((numerator / denominator) * 100).toFixed(1)}%`;
+}
+
+function channelBadge(channels: string[]) {
+  const hasEmail = channels.includes("email");
+  const hasLinkedin = channels.includes("linkedin");
+  if (hasEmail && hasLinkedin) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+        <Layers className="h-3 w-3" />
+        Multi
+      </span>
+    );
+  }
+  if (hasLinkedin) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+        <Linkedin className="h-3 w-3" />
+        LinkedIn
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-gray-600 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded">
+      <Mail className="h-3 w-3" />
+      Email
+    </span>
+  );
 }
 
 function statusBadgeClass(status: string): string {
@@ -223,9 +251,12 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       >
                         {c.name}
                       </Link>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Last updated {formatRelativeTime(c.updatedAt)}
-                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {channelBadge(c.channels)}
+                        <span className="text-xs text-muted-foreground">
+                          {formatRelativeTime(c.updatedAt)}
+                        </span>
+                      </div>
                     </TableCell>
 
                     {/* Type */}

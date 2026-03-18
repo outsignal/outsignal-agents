@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { RefreshCw, AlertCircle, Linkedin, ChevronDown, Mail, Shield, Trash2, Bot, Star, UserMinus, Tag, ArrowRight } from "lucide-react";
+import { RefreshCw, AlertCircle, Linkedin, ChevronDown, Mail, Shield, Trash2, Bot, Star, UserMinus, Tag, ArrowRight, MailX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -89,11 +89,14 @@ const SENTIMENT_COLORS: Record<string, string> = {
 
 const ACTION_LABELS: Record<string, string> = {
   mark_unread: "Marked as unread",
+  mark_automated: "Marked as automated",
+  mark_not_automated: "Unmarked automated",
+  mark_interested: "Marked as interested",
+  mark_not_interested: "Unmarked interested",
   blacklist_domain: "Domain blacklisted",
   blacklist_email: "Email blacklisted",
   delete_reply: "Reply deleted",
-  mark_automated: "Marked as automated",
-  mark_interested: "Marked as interested",
+  unsubscribe: "Lead unsubscribed",
   remove_lead: "Lead removed",
 };
 
@@ -200,6 +203,10 @@ interface EmailThreadViewProps {
   replyEndpoint?: string;
   /** Extra body fields for reply (admin mode). */
   replyExtraBody?: Record<string, string>;
+  /** Override actions endpoint (admin mode). */
+  actionsEndpoint?: string;
+  /** Extra body fields for actions (admin mode). */
+  actionsExtraBody?: Record<string, string>;
 }
 
 export function EmailThreadView({
@@ -209,6 +216,8 @@ export function EmailThreadView({
   threadDetailBasePath = "/api/portal/inbox/email/threads",
   replyEndpoint,
   replyExtraBody,
+  actionsEndpoint,
+  actionsExtraBody,
 }: EmailThreadViewProps) {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -255,7 +264,7 @@ export function EmailThreadView({
       }
 
       // Add replyId for reply-level actions
-      if (["mark_unread", "delete_reply", "mark_automated", "mark_interested"].includes(action)) {
+      if (["delete_reply", "mark_interested", "mark_not_interested", "mark_unread", "mark_automated", "mark_not_automated"].includes(action)) {
         const ebReplyId = latestReply?.emailBisonReplyId;
         if (!ebReplyId) { toast.error("No reply ID available"); return; }
         body.replyId = ebReplyId;
@@ -270,10 +279,10 @@ export function EmailThreadView({
         body.value = email?.split("@")[1];
       }
 
-      const res = await fetch("/api/portal/inbox/email/actions", {
+      const res = await fetch(actionsEndpoint ?? "/api/portal/inbox/email/actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, leadEmail: detail?.threadMeta.leadEmail, ...actionsExtraBody }),
       });
 
       if (!res.ok) {
@@ -293,7 +302,7 @@ export function EmailThreadView({
       setActionLoading(null);
       setConfirmAction(null);
     }
-  }, [detail, onReplySent, fetchThread]);
+  }, [detail, onReplySent, fetchThread, actionsEndpoint, actionsExtraBody]);
 
   if (loading) {
     return (
@@ -390,6 +399,7 @@ export function EmailThreadView({
                 <DropdownMenuItem onClick={() => handleAction("mark_unread")} disabled={!!actionLoading}>
                   <Mail className="h-4 w-4" /> Mark unread
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => handleAction("blacklist_domain")} disabled={!!actionLoading}>
                   <Shield className="h-4 w-4" /> Blacklist domain
                 </DropdownMenuItem>
@@ -424,13 +434,19 @@ export function EmailThreadView({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => handleAction("mark_automated")} disabled={!!actionLoading}>
-              <Bot className="h-4 w-4" /> Mark automated
+              <Bot className="h-4 w-4" /> Mark as automated
             </DropdownMenuItem>
             <DropdownMenuItem disabled>
               <ArrowRight className="h-4 w-4" /> Push to followup campaign
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleAction("mark_interested")} disabled={!!actionLoading}>
               <Star className="h-4 w-4" /> Mark as interested
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setConfirmAction({ action: "unsubscribe", label: "Unsubscribe this lead from all scheduled emails? The lead record will remain intact." })}
+              disabled={!!actionLoading}
+            >
+              <MailX className="h-4 w-4" /> Unsubscribe
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleAction("blacklist_email")} disabled={!!actionLoading}>
               <Shield className="h-4 w-4" /> Add to blacklist

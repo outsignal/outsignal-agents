@@ -19,6 +19,8 @@ export interface SenderWithWorkspace {
   warmupStartedAt: Date | string | null;
   lastActiveAt: Date | string | null;
   lastPolledAt: Date | string | null;
+  lastKeepaliveAt: Date | string | null;
+  sessionConnectedAt: Date | string | null;
   dailyConnectionLimit: number;
   dailyMessageLimit: number;
   dailyProfileViewLimit: number;
