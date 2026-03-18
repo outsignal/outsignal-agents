@@ -314,10 +314,88 @@ export async function deduplicateAndPromote(
   const duplicateNames: string[] = [];
   const now = new Date();
 
+  // --- Intra-batch dedup (cross-source within the same discovery run) ---
+  // When multiple sources (e.g. Prospeo + AI Ark) return the same person,
+  // keep the record with more non-null fields and mark the rest as duplicates.
+  const seenEmails = new Map<string, number>(); // email -> index in staged
+  const seenLinkedins = new Map<string, number>();
+  const skipIndices = new Set<number>();
+
+  function countNonNullFields(dp: StagedRecord): number {
+    let count = 0;
+    if (dp.email && !dp.email.includes("@discovery.internal")) count++;
+    if (dp.firstName) count++;
+    if (dp.lastName) count++;
+    if (dp.jobTitle) count++;
+    if (dp.company) count++;
+    if (dp.companyDomain) count++;
+    if (dp.linkedinUrl) count++;
+    if (dp.phone) count++;
+    if (dp.location) count++;
+    return count;
+  }
+
+  for (let i = 0; i < staged.length; i++) {
+    const dp = staged[i];
+    const email = dp.email && !dp.email.includes("@discovery.internal") ? dp.email.toLowerCase() : null;
+    const linkedin = dp.linkedinUrl ?? null;
+
+    // Check email match within batch
+    if (email && seenEmails.has(email)) {
+      const prevIdx = seenEmails.get(email)!;
+      if (!skipIndices.has(prevIdx)) {
+        // Keep the record with more data
+        if (countNonNullFields(dp) > countNonNullFields(staged[prevIdx])) {
+          skipIndices.add(prevIdx);
+          seenEmails.set(email, i);
+        } else {
+          skipIndices.add(i);
+        }
+        continue;
+      }
+    }
+
+    // Check LinkedIn match within batch
+    if (linkedin && seenLinkedins.has(linkedin)) {
+      const prevIdx = seenLinkedins.get(linkedin)!;
+      if (!skipIndices.has(prevIdx)) {
+        if (countNonNullFields(dp) > countNonNullFields(staged[prevIdx])) {
+          skipIndices.add(prevIdx);
+          seenLinkedins.set(linkedin, i);
+        } else {
+          skipIndices.add(i);
+        }
+        continue;
+      }
+    }
+
+    if (email) seenEmails.set(email, i);
+    if (linkedin) seenLinkedins.set(linkedin, i);
+  }
+
+  // Mark intra-batch duplicates
+  for (const idx of skipIndices) {
+    const dp = staged[idx];
+    await prisma.discoveredPerson.update({
+      where: { id: dp.id },
+      data: { status: "duplicate" },
+    });
+    duplicatePersonIds.push(dp.id);
+    if (duplicateNames.length < 5) {
+      const displayName =
+        dp.firstName && dp.lastName
+          ? `${dp.firstName} ${dp.lastName}`
+          : dp.email ?? dp.id;
+      duplicateNames.push(`${displayName} (cross-source)`);
+    }
+  }
+
   // Pre-load all potential matches in 3 batch queries
   const dedupMaps = await buildDedupMaps(staged);
 
-  for (const dp of staged) {
+  for (let i = 0; i < staged.length; i++) {
+    if (skipIndices.has(i)) continue; // already handled as intra-batch dupe
+    const dp = staged[i];
     const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps);
 
     if (existingPersonId) {

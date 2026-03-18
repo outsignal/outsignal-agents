@@ -489,7 +489,7 @@ const leadsTools = {
 
   searchAiArk: tool({
     description:
-      "Search AI Ark for people matching ICP filters. Supports title, seniority, industry, location, company size, revenue, funding, technologies, company type, NAICS codes, and company keywords. COSTS CREDITS (~$0.003/call). Returns identity data only (no emails).",
+      "AI Ark B2B people search. 15+ filters including title, seniority, industry, location, company size, revenue, funding, technologies, company type, NAICS codes, and company keywords. Different database to Prospeo — use BOTH for maximum coverage. COSTS CREDITS (~$0.003/call). Returns identity data only (no emails).",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
       jobTitles: z
@@ -519,7 +519,7 @@ const leadsTools = {
       foundedYearMin: z.number().optional().describe("Min company founded year"),
       foundedYearMax: z.number().optional().describe("Max company founded year"),
       naicsCodes: z.array(z.string()).optional().describe("NAICS industry codes"),
-      departments: z.array(z.string()).optional().describe("Person departments (NOTE: AI Ark currently ignores this filter)"),
+      departments: z.array(z.string()).optional().describe("Person departments (may have limited support)"),
       limit: z
         .number()
         .default(25)
@@ -994,7 +994,11 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
 
 ### Step 1: Build the Discovery Plan
 - Analyze the request to determine ICP characteristics (industry, title, seniority, location, company size, etc.)
-- Select the best sources for this ICP type (see Source Selection Guide below)
+- For standard B2B discovery, ALWAYS include all three core sources:
+  1. Apollo (free, broad match)
+  2. Prospeo (paid, same filters)
+  3. AI Ark (paid, same filters)
+  Then add Apify sources (Leads Finder, Google Maps, Ecommerce Stores) when the ICP calls for them.
 - Call buildDiscoveryPlan with your selected sources, filters, and estimated volumes
 - Present the plan to the admin showing:
   * Each source with reasoning, filters, estimated volume, and cost
@@ -1037,14 +1041,9 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 - searchAiArk -- B2B people search, COSTS CREDITS. Advanced filters: revenue, funding stage/amount, technologies, company type, NAICS codes, company keywords, founded year. Equal coverage to Apollo/Prospeo (not a fallback -- a full peer).
 - searchLeadsFinder -- Apify Leads Finder, 300M+ B2B database, returns VERIFIED EMAILS + phones + LinkedIn in one step (~$2/1K leads). Supports: job titles, seniority, location, company size, industry, keywords, domains, revenue, funding, departments. Best when you need leads WITH emails immediately (skips enrichment step). No pagination — single batch. Requires Apify paid plan.
 
-**When to use which paid source:**
-- Need revenue/funding filters? Both Prospeo and AI Ark support them.
-- Need technology stack filters? Both Prospeo and AI Ark support them.
-- Need company keywords (e.g., "fit-out", "interior design")? AI Ark has a working workaround, Prospeo supports it natively.
-- Need NAICS/SIC codes? Both support NAICS; only Prospeo supports SIC.
-- Need years of experience? Only Prospeo.
-- Need departments? Prospeo works; AI Ark's department filter is currently bugged; Leads Finder supports it.
-- Need verified emails in one step (skip enrichment)? Use Leads Finder — it returns validated emails directly.
+Prospeo and AI Ark are PEERS -- always use both. Each has unique records the other misses. Cost difference is negligible (~$0.002/lead).
+- Need SIC codes or years of experience? Only Prospeo supports those specific filters.
+- Need verified emails in one step (skip enrichment)? Use Leads Finder -- it returns validated emails directly.
 
 **Google Ads Check** — Checks if specific domains are running Google Ads. Signal/qualification tool, not people discovery. Use after getting company domains from other sources (Storeleads, Prospeo, etc.) to filter for companies with ad spend budget. Also supports keyword search to find advertisers in a space via searchGoogleAdsAdvertisers. Requires Apify paid plan.
 
@@ -1061,8 +1060,18 @@ You decide which sources to use -- there are no rigid categories. Use these as s
 
 **Mixed/Ambiguous requests:**
 - Make your best guess and build the plan. The plan IS the clarification -- admin reviews and adjusts before execution.
-- For broad B2B requests, default to Apollo (free, no emails) + one paid source that adds unique filters.
-- AI Ark is an equal option alongside Apollo and Prospeo -- consider it when extra coverage or different data sources would help.
+- ALWAYS use ALL available paid sources (Prospeo + AI Ark) for every discovery run. Their databases partially overlap but each returns unique leads the other misses. Running both doubles your coverage at minimal extra cost.
+
+Source execution order:
+1. Apollo (free) -- broad search, no emails, use for initial volume
+2. Prospeo ($0.001/credit) -- full enrichment, 20+ filters
+3. AI Ark (~$0.003/call) -- full enrichment, comparable filters to Prospeo
+
+For Apify sources (Leads Finder, Google Maps, Ecommerce Stores), add these when the ICP specifically calls for:
+- Local/map-based businesses -> searchGoogleMaps
+- Ecommerce companies -> searchEcommerceStores
+- Verified emails at scale -> searchLeadsFinder
+- Web presence signals -> searchGoogle (Serper)
 
 ## Discovery Rules
 - All discovered leads go to the DiscoveredPerson staging table, NOT directly to the Person table. Use deduplicateAndPromote to move them.
