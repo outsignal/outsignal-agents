@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { WorkspaceNav } from "@/components/workspace/workspace-nav";
@@ -42,7 +42,7 @@ export default async function WorkspaceLayout({
           </span>
         </nav>
 
-        {/* Workspace heading + vertical badge */}
+        {/* Workspace heading + vertical badge + portal link */}
         <div className="flex items-center gap-3 mb-3">
           <h1 className="text-2xl font-heading font-bold tracking-tight">
             {workspace.name}
@@ -52,6 +52,15 @@ export default async function WorkspaceLayout({
               {workspace.vertical}
             </Badge>
           )}
+          <a
+            href={`https://portal.outsignal.ai/portal/${slug}/inbox`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand transition-colors"
+          >
+            Open portal
+            <ExternalLink className="size-3.5" />
+          </a>
         </div>
 
         <WorkspaceNav slug={slug} workspaceName={workspace.name} />

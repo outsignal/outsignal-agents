@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, Search } from "lucide-react";
+import { Building2, ExternalLink, Search } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -137,6 +137,7 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
                 <TableHead>Status</TableHead>
                 <TableHead className="hidden lg:table-cell">Last Activity</TableHead>
                 <TableHead className="hidden lg:table-cell">Created</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Portal</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -200,6 +201,18 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                       {formatDate(ws.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <a
+                        href={`https://portal.outsignal.ai/portal/${ws.slug}/inbox`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center size-8 rounded-md text-muted-foreground hover:text-brand hover:bg-muted transition-colors"
+                        title="Open portal"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
                     </TableCell>
                   </TableRow>
                 );
