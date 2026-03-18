@@ -88,9 +88,9 @@ export default async function PortalDeliverabilityPage() {
 
   function dnsBadgeStyle(status: string | null) {
     if (!status || status === "missing" || status === "fail")
-      return "bg-red-100 text-red-800";
-    if (status === "partial") return "bg-yellow-100 text-yellow-800";
-    return "bg-emerald-100 text-emerald-800";
+      return "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-200";
+    if (status === "partial") return "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200";
+    return "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200";
   }
 
   function dnsLabel(status: string | null, prefix: string) {
@@ -214,11 +214,11 @@ export default async function PortalDeliverabilityPage() {
                         </TableCell>
                         <TableCell>
                           {row.blacklistSeverity && row.blacklistSeverity !== "none" ? (
-                            <Badge className="text-xs bg-red-100 text-red-800">
+                            <Badge className="text-xs bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-200">
                               Listed
                             </Badge>
                           ) : (
-                            <Badge className="text-xs bg-emerald-100 text-emerald-800">
+                            <Badge className="text-xs bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200">
                               Clear
                             </Badge>
                           )}

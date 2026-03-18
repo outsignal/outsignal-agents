@@ -70,11 +70,11 @@ function parseChange(change: string | null): { value: number; text: string } | n
 }
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
-  executed: { label: "Executed", className: "bg-green-100 text-green-800" },
-  failed: { label: "Failed", className: "bg-red-100 text-red-800" },
-  dismissed: { label: "Dismissed", className: "bg-gray-100 text-gray-600" },
-  snoozed: { label: "Snoozed", className: "bg-yellow-100 text-yellow-800" },
-  approved: { label: "Approved", className: "bg-blue-100 text-blue-800" },
+  executed: { label: "Executed", className: "bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200" },
+  failed: { label: "Failed", className: "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-200" },
+  dismissed: { label: "Dismissed", className: "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400" },
+  snoozed: { label: "Snoozed", className: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200" },
+  approved: { label: "Approved", className: "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200" },
 };
 
 // ---------------------------------------------------------------------------
@@ -159,8 +159,8 @@ export function InsightCard({ insight, onAction, readOnly = false }: InsightCard
                   <span
                     className={cn(
                       "inline-flex items-center gap-0.5",
-                      isNegative && "text-red-600",
-                      isPositive && "text-green-600",
+                      isNegative && "text-red-600 dark:text-red-400",
+                      isPositive && "text-green-600 dark:text-green-400",
                       !isNegative && !isPositive && "text-muted-foreground",
                     )}
                   >

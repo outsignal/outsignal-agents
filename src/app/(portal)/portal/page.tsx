@@ -220,13 +220,13 @@ export default async function PortalDashboardPage({
     <div className="p-6 space-y-6">
       {/* Pending Approval Banner */}
       {pendingApprovalCount > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between">
-          <p className="text-sm font-medium text-amber-800">
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
             {pendingApprovalCount} campaign{pendingApprovalCount !== 1 ? "s" : ""} awaiting your approval
           </p>
           <Link
             href="/portal/campaigns"
-            className="text-sm font-medium text-amber-900 underline hover:no-underline"
+            className="text-sm font-medium text-amber-900 dark:text-amber-100 underline hover:no-underline"
           >
             Review campaigns
           </Link>
@@ -273,16 +273,16 @@ export default async function PortalDashboardPage({
           {/* Worker Status */}
           <div className={`rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm ${
             linkedInWorkerOnline
-              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-              : "bg-red-50 border border-red-200 text-red-700"
+              ? "bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+              : "bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
           }`}>
             {linkedInWorkerOnline ? (
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 dark:bg-emerald-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 dark:bg-emerald-400"></span>
               </span>
             ) : (
-              <span className="inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              <span className="inline-flex rounded-full h-2 w-2 bg-red-500 dark:bg-red-400"></span>
             )}
             <span className="font-medium">{linkedInWorkerOnline ? "LinkedIn Worker Online" : "LinkedIn Worker Offline"}</span>
             <span className="text-xs opacity-70">
@@ -330,10 +330,10 @@ export default async function PortalDashboardPage({
                       {reply.intent && (
                         <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                           reply.intent === "interested" || reply.intent === "meeting_booked"
-                            ? "bg-emerald-100 text-emerald-700"
+                            ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
                             : reply.intent === "objection" || reply.intent === "unsubscribe"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-stone-100 text-stone-600"
+                              ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300"
+                              : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400"
                         }`}>
                           {reply.intent.replace(/_/g, " ")}
                         </span>

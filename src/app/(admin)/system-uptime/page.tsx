@@ -131,9 +131,9 @@ function formatType(type: string): string {
 
 function creditBarColor(remaining: number, total: number): string {
   const pct = total > 0 ? remaining / total : 0;
-  if (pct > 0.25) return "bg-emerald-500";
-  if (pct > 0.1) return "bg-amber-500";
-  return "bg-red-500";
+  if (pct > 0.25) return "bg-emerald-500 dark:bg-emerald-400";
+  if (pct > 0.1) return "bg-amber-500 dark:bg-amber-400";
+  return "bg-red-500 dark:bg-red-400";
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────

@@ -759,7 +759,7 @@ export default function ClientDetailPage() {
                       <p className="text-xs text-muted-foreground font-medium mb-1">
                         Total Paid
                       </p>
-                      <p className="text-xl font-semibold tabular-nums text-emerald-500">
+                      <p className="text-xl font-semibold tabular-nums text-emerald-500 dark:text-emerald-400">
                         {formatGBP(totalPaid)}
                       </p>
                     </CardContent>
@@ -771,7 +771,7 @@ export default function ClientDetailPage() {
                       </p>
                       <p className={cn(
                         "text-xl font-semibold tabular-nums",
-                        totalOutstanding > 0 && "text-amber-500",
+                        totalOutstanding > 0 && "text-amber-500 dark:text-amber-400",
                       )}>
                         {formatGBP(totalOutstanding)}
                       </p>

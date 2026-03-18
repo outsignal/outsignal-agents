@@ -69,12 +69,12 @@ const SIGNAL_TYPE_LABELS: Record<string, string> = {
 };
 
 const SIGNAL_TYPE_COLORS: Record<string, string> = {
-  funding: "bg-emerald-50 text-emerald-700",
-  job_change: "bg-blue-50 text-blue-700",
-  hiring_spike: "bg-violet-50 text-violet-700",
-  tech_adoption: "bg-amber-50 text-amber-700",
-  news: "bg-slate-50 text-slate-700",
-  social_mention: "bg-rose-50 text-rose-700",
+  funding: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  job_change: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  hiring_spike: "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+  tech_adoption: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  news: "bg-stone-50 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
+  social_mention: "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
 };
 
 // ─── Helper functions ────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ function fmtPct(n: number): string {
 
 function utilizationColor(pct: number): string {
   if (pct >= 100) return "text-destructive font-semibold";
-  if (pct >= 80) return "text-amber-500 font-semibold";
+  if (pct >= 80) return "text-amber-500 dark:text-amber-400 font-semibold";
   return "text-muted-foreground";
 }
 

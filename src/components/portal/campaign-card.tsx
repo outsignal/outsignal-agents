@@ -18,29 +18,29 @@ interface CampaignCardProps {
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-gray-100 text-gray-800" },
+  draft: { label: "Draft", className: "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200" },
   internal_review: {
     label: "In Review",
-    className: "bg-blue-100 text-blue-800",
+    className: "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200",
   },
   pending_approval: {
     label: "Needs Approval",
-    className: "bg-amber-100 text-amber-800",
+    className: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200",
   },
-  approved: { label: "Approved", className: "bg-emerald-100 text-emerald-800" },
-  deployed: { label: "Deployed", className: "bg-purple-100 text-purple-800" },
-  active: { label: "Active", className: "bg-emerald-100 text-emerald-800" },
-  paused: { label: "Paused", className: "bg-amber-100 text-amber-800" },
+  approved: { label: "Approved", className: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200" },
+  deployed: { label: "Deployed", className: "bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-200" },
+  active: { label: "Active", className: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200" },
+  paused: { label: "Paused", className: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200" },
   completed: {
     label: "Completed",
-    className: "bg-blue-100 text-blue-800",
+    className: "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200",
   },
 };
 
 export function CampaignCard({ campaign }: CampaignCardProps) {
   const config = statusConfig[campaign.status] ?? {
     label: campaign.status,
-    className: "bg-gray-100 text-gray-800",
+    className: "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200",
   };
 
   const isPending =

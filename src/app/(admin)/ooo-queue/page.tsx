@@ -96,9 +96,9 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 const REASON_ICONS: Record<string, React.ReactNode> = {
-  holiday: <Sun className="h-3.5 w-3.5 inline-block mr-1 text-amber-500" />,
-  illness: <Heart className="h-3.5 w-3.5 inline-block mr-1 text-red-400" />,
-  conference: <Calendar className="h-3.5 w-3.5 inline-block mr-1 text-blue-400" />,
+  holiday: <Sun className="h-3.5 w-3.5 inline-block mr-1 text-amber-500 dark:text-amber-400" />,
+  illness: <Heart className="h-3.5 w-3.5 inline-block mr-1 text-red-400 dark:text-red-300" />,
+  conference: <Calendar className="h-3.5 w-3.5 inline-block mr-1 text-blue-400 dark:text-blue-300" />,
   generic: <Clock className="h-3.5 w-3.5 inline-block mr-1 text-muted-foreground" />,
 };
 
@@ -119,28 +119,28 @@ function ReasonCell({ reason, eventName }: { reason: string; eventName: string |
 function StatusBadge({ status }: { status: string }) {
   if (status === "pending") {
     return (
-      <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-medium">
+      <Badge variant="warning" className="text-xs font-medium">
         Pending
       </Badge>
     );
   }
   if (status === "sent") {
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+      <Badge variant="success" className="text-xs font-medium">
         Sent
       </Badge>
     );
   }
   if (status === "failed") {
     return (
-      <Badge className="bg-red-100 text-red-800 border-red-200 text-xs font-medium">
+      <Badge variant="destructive" className="text-xs font-medium">
         Failed
       </Badge>
     );
   }
   if (status === "cancelled") {
     return (
-      <Badge className="bg-zinc-100 text-zinc-500 border-zinc-200 text-xs font-medium">
+      <Badge variant="secondary" className="text-xs font-medium">
         Cancelled
       </Badge>
     );
@@ -203,7 +203,7 @@ function EditDateCell({
       <div className="flex items-center gap-2">
         <span className="text-sm">{formatDate(record.oooUntil)}</span>
         {record.needsManualReview && (
-          <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] font-medium">
+          <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 text-[10px] font-medium">
             Review
           </Badge>
         )}
@@ -466,7 +466,7 @@ export default function OooQueuePage() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm">{formatDate(record.oooUntil)}</span>
                               {record.needsManualReview && (
-                                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] font-medium">
+                                <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 text-[10px] font-medium">
                                   Review
                                 </Badge>
                               )}

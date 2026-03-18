@@ -70,18 +70,18 @@ interface OnboardApiResponse {
 // ---------------------------------------------------------------------------
 
 const proposalStatusStyles: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800",
-  sent: "bg-blue-100 text-blue-800",
-  accepted: "bg-amber-100 text-amber-800",
-  paid: "bg-emerald-100 text-emerald-800",
+  draft: "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200",
+  sent: "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200",
+  accepted: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200",
+  paid: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200",
   onboarding_complete: "bg-brand/20 text-brand-foreground",
 };
 
 const inviteStatusStyles: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800",
-  sent: "bg-blue-100 text-blue-800",
-  viewed: "bg-amber-100 text-amber-800",
-  completed: "bg-emerald-100 text-emerald-800",
+  draft: "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200",
+  sent: "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200",
+  viewed: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200",
+  completed: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200",
 };
 
 // ---------------------------------------------------------------------------

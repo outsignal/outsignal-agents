@@ -91,7 +91,7 @@ function channelBadge(channels: string[]) {
   const hasLinkedin = channels.includes("linkedin");
   if (hasEmail && hasLinkedin) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+      <span className="inline-flex items-center gap-1 text-[11px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded">
         <Layers className="h-3 w-3" />
         Multi
       </span>
@@ -99,14 +99,14 @@ function channelBadge(channels: string[]) {
   }
   if (hasLinkedin) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+      <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-1.5 py-0.5 rounded">
         <Linkedin className="h-3 w-3" />
         LinkedIn
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-gray-600 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded">
+    <span className="inline-flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400 bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-700 px-1.5 py-0.5 rounded">
       <Mail className="h-3 w-3" />
       Email
     </span>
@@ -116,17 +116,17 @@ function channelBadge(channels: string[]) {
 function statusBadgeClass(status: string): string {
   switch (status) {
     case "active":
-      return "bg-green-100 text-green-700 border-green-200";
+      return "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800";
     case "paused":
-      return "bg-amber-100 text-amber-800 border-amber-200";
+      return "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800";
     case "draft":
     case "internal_review":
     case "pending_approval":
-      return "bg-gray-100 text-gray-800 border-gray-200";
+      return "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700";
     case "completed":
-      return "bg-blue-100 text-blue-800 border-blue-200";
+      return "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-800";
     default:
-      return "bg-gray-100 text-gray-800 border-gray-200";
+      return "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700";
   }
 }
 
@@ -242,7 +242,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                   c.emailsSent > 0 ? (c.bounced / c.emailsSent) * 100 : 0;
 
                 return (
-                  <TableRow key={c.internalId} className="hover:bg-gray-50 [&>td]:py-3">
+                  <TableRow key={c.internalId} className="hover:bg-stone-50 dark:hover:bg-stone-800/50 [&>td]:py-3">
                     {/* Campaign name */}
                     <TableCell>
                       <Link
@@ -261,7 +261,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
 
                     {/* Type */}
                     <TableCell>
-                      <Badge className="bg-blue-100 text-blue-700 border-blue-200" size="xs">
+                      <Badge className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" size="xs">
                         {c.type.charAt(0).toUpperCase() + c.type.slice(1)}
                       </Badge>
                     </TableCell>
@@ -279,9 +279,9 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                         <span className="text-sm tabular-nums whitespace-nowrap">
                           {c.completionPercentage % 1 === 0 ? c.completionPercentage.toFixed(0) : c.completionPercentage.toFixed(2)}%
                         </span>
-                        <div className="flex-1 h-2.5 rounded-full bg-gray-200 overflow-hidden">
+                        <div className="flex-1 h-2.5 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden">
                           <div
-                            className="h-2.5 rounded-full bg-green-500 transition-all"
+                            className="h-2.5 rounded-full bg-green-500 dark:bg-green-400 transition-all"
                             style={{
                               width: `${Math.min(c.completionPercentage, 100)}%`,
                             }}
@@ -310,7 +310,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       {c.openTracking ? (
                         <span className="inline-flex items-center gap-1.5">
                           {c.opened.toLocaleString()}
-                          <span className="bg-blue-100 text-blue-700 px-1 py-0 rounded text-[11px] font-medium">
+                          <span className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-1 py-0 rounded text-[11px] font-medium">
                             {pct(c.opened, c.emailsSent)}
                           </span>
                         </span>
@@ -325,7 +325,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                     <TableCell className="text-right tabular-nums">
                       <span className="inline-flex items-center gap-1.5">
                         {c.uniqueReplies.toLocaleString()}
-                        <span className="bg-green-100 text-green-700 px-1 py-0 rounded text-[11px] font-medium">
+                        <span className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-1 py-0 rounded text-[11px] font-medium">
                           {pct(c.uniqueReplies, c.emailsSent)}
                         </span>
                       </span>
@@ -336,7 +336,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       <span className="inline-flex items-center gap-1.5">
                         {c.unsubscribed.toLocaleString()}
                         <span
-                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.unsubscribed > 0 ? "bg-red-50 text-red-600" : "bg-gray-100 text-muted-foreground"}`}
+                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.unsubscribed > 0 ? "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
                         >
                           {pct(c.unsubscribed, c.emailsSent)}
                         </span>
@@ -348,7 +348,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       <span className="inline-flex items-center gap-1.5">
                         {c.bounced.toLocaleString()}
                         <span
-                          className={`px-1 py-0 rounded text-[11px] font-medium ${bounceRate > 2 ? "bg-red-100 text-red-700" : "bg-gray-100 text-muted-foreground"}`}
+                          className={`px-1 py-0 rounded text-[11px] font-medium ${bounceRate > 2 ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
                         >
                           {pct(c.bounced, c.emailsSent)}
                         </span>
@@ -360,7 +360,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                       <span className="inline-flex items-center gap-1.5">
                         {c.interested.toLocaleString()}
                         <span
-                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.interested > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-muted-foreground"}`}
+                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.interested > 0 ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
                         >
                           {pct(c.interested, c.emailsSent)}
                         </span>

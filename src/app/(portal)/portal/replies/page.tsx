@@ -130,7 +130,7 @@ export default async function PortalRepliesPage({
                           {reply.senderName || reply.senderEmail || reply.leadEmail || "Unknown sender"}
                         </span>
                         {reply.interested && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-full px-1.5 py-0.5">
                             <Star className="h-2.5 w-2.5" />
                             Interested
                           </span>
@@ -175,7 +175,7 @@ export default async function PortalRepliesPage({
                             {reply.senderName || reply.senderEmail || reply.leadEmail || "Unknown sender"}
                           </span>
                           {reply.interested && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-full px-1.5 py-0.5">
                               <Star className="h-2.5 w-2.5" />
                             </span>
                           )}

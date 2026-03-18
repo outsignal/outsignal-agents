@@ -46,14 +46,14 @@ export function IntentBadge({
 
   if (!effective) {
     return (
-      <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+      <span className="inline-flex items-center rounded-full bg-stone-100 dark:bg-stone-800 px-2.5 py-0.5 text-xs font-medium text-stone-500 dark:text-stone-400">
         Unclassified
       </span>
     );
   }
 
   const label = INTENT_LABELS[effective] ?? effective;
-  const colorClasses = INTENT_COLORS[effective] ?? "bg-gray-100 text-gray-600";
+  const colorClasses = INTENT_COLORS[effective] ?? "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300";
 
   if (!editable) {
     return (

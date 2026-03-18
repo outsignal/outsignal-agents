@@ -146,9 +146,9 @@ export default async function PortalEmailHealthPage() {
 
   function dnsBadgeStyle(status: string | null, type: "spf" | "dkim" | "dmarc") {
     if (!status || status === "missing" || status === "fail")
-      return "bg-red-100 text-red-800";
-    if (type === "dkim" && status === "partial") return "bg-yellow-100 text-yellow-800";
-    return "bg-emerald-100 text-emerald-800";
+      return "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-200";
+    if (type === "dkim" && status === "partial") return "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200";
+    return "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200";
   }
 
   function dnsLabel(status: string | null, prefix: string) {
@@ -170,15 +170,15 @@ export default async function PortalEmailHealthPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm text-red-800 dark:text-red-200">
           <p>{error}</p>
         </div>
       )}
 
       {/* Disconnected inboxes alert */}
       {disconnected.length > 0 && (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3">
-          <p className="text-sm font-medium text-red-800">
+        <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3">
+          <p className="text-sm font-medium text-red-800 dark:text-red-200">
             {disconnected.length} inbox{disconnected.length !== 1 ? "es" : ""} disconnected — contact your account manager to reconnect.
           </p>
         </div>

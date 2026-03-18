@@ -216,8 +216,8 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
             <div className="flex flex-col gap-0.5">
               <span className={cn(
                 "font-medium",
-                sender.sessionStatus === "expired" && "text-red-500",
-                sender.sessionStatus === "active" && "text-emerald-600",
+                sender.sessionStatus === "expired" && "text-red-500 dark:text-red-400",
+                sender.sessionStatus === "active" && "text-emerald-600 dark:text-emerald-400",
               )}>
                 {SESSION_LABEL[sender.sessionStatus] ?? sender.sessionStatus}
               </span>
@@ -231,7 +231,7 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
                   "text-[10px]",
                   (() => {
                     const hrs = (Date.now() - new Date(sender.lastKeepaliveAt).getTime()) / 3_600_000;
-                    return hrs < 6 ? "text-emerald-600" : hrs < 12 ? "text-amber-500" : "text-red-500";
+                    return hrs < 6 ? "text-emerald-600 dark:text-emerald-400" : hrs < 12 ? "text-amber-500 dark:text-amber-400" : "text-red-500 dark:text-red-400";
                   })(),
                 )}>
                   Keepalive {formatTimeAgo(sender.lastKeepaliveAt)}
@@ -261,8 +261,8 @@ export function SenderCard({ sender, workspaces, initialBudget, onMutate }: Send
             <span className={cn(
               "font-medium",
               sender.lastPolledAt && Date.now() - new Date(sender.lastPolledAt).getTime() < 10 * 60_000
-                ? "text-emerald-600"
-                : "text-red-500"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-500 dark:text-red-400"
             )}>
               {sender.lastPolledAt
                 ? Date.now() - new Date(sender.lastPolledAt).getTime() < 10 * 60_000

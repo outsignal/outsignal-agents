@@ -44,15 +44,15 @@ const badgeVariants = cva(
 const dotColorMap: Record<string, string> = {
   default: "bg-primary",
   secondary: "bg-secondary-foreground/50",
-  destructive: "bg-white",
+  destructive: "bg-white dark:bg-stone-200",
   outline: "bg-foreground",
   ghost: "bg-foreground",
   link: "bg-primary",
   brand: "bg-background",
-  success: "bg-emerald-500",
-  warning: "bg-amber-500",
-  info: "bg-blue-500",
-  purple: "bg-purple-500",
+  success: "bg-emerald-500 dark:bg-emerald-400",
+  warning: "bg-amber-500 dark:bg-amber-400",
+  info: "bg-blue-500 dark:bg-blue-400",
+  purple: "bg-purple-500 dark:bg-purple-400",
 }
 
 type BadgeProps = React.ComponentProps<"span"> &

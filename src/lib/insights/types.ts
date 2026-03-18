@@ -50,9 +50,9 @@ export const CATEGORY_COLORS: Record<InsightCategory, string> = {
 };
 
 export const CONFIDENCE_COLORS: Record<ConfidenceLevel, string> = {
-  high: "bg-green-100 text-green-800",
-  medium: "bg-yellow-100 text-yellow-800",
-  low: "bg-gray-100 text-gray-600",
+  high: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  medium: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  low: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
 };
 
 // --- Zod schema for generateObject output ---

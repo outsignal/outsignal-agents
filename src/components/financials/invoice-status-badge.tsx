@@ -22,9 +22,9 @@ export function InvoiceStatusBadge({ status }: InvoiceStatusBadgeProps) {
   return (
     <Badge variant={config.variant} className={
       status === "paid"
-        ? "bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+        ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-950"
         : status === "sent"
-          ? "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100"
+          ? "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950"
           : undefined
     }>
       {config.label}

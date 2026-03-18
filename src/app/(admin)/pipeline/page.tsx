@@ -135,16 +135,16 @@ function getStatusConfig(status: string) {
 
 /** Map pipeline status values to Tailwind classes for badge + dot styling */
 const STATUS_BADGE_CLASSES: Record<string, { badge: string; dot: string }> = {
-  new_lead:     { badge: "bg-muted text-muted-foreground",    dot: "bg-muted-foreground" },
-  contacted:    { badge: "bg-indigo-50 text-indigo-600",   dot: "bg-indigo-500" },
-  qualified:    { badge: "bg-indigo-50 text-indigo-600",   dot: "bg-indigo-500" },
-  demo:         { badge: "bg-violet-50 text-violet-600",   dot: "bg-violet-500" },
-  proposal:     { badge: "bg-amber-50 text-amber-600",     dot: "bg-amber-500" },
-  negotiation:  { badge: "bg-orange-50 text-orange-600",   dot: "bg-orange-500" },
-  closed_won:   { badge: "bg-green-50 text-green-700",     dot: "bg-green-500" },
-  closed_lost:  { badge: "bg-red-50 text-red-700",         dot: "bg-red-500" },
-  unqualified:  { badge: "bg-muted text-muted-foreground",     dot: "bg-muted-foreground" },
-  churned:      { badge: "bg-rose-50 text-rose-700",       dot: "bg-rose-500" },
+  new_lead:     { badge: "bg-muted text-muted-foreground",                                              dot: "bg-muted-foreground" },
+  contacted:    { badge: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300",        dot: "bg-indigo-500 dark:bg-indigo-400" },
+  qualified:    { badge: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300",        dot: "bg-indigo-500 dark:bg-indigo-400" },
+  demo:         { badge: "bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-300",        dot: "bg-violet-500 dark:bg-violet-400" },
+  proposal:     { badge: "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300",           dot: "bg-amber-500 dark:bg-amber-400" },
+  negotiation:  { badge: "bg-orange-50 text-orange-600 dark:bg-orange-950 dark:text-orange-300",        dot: "bg-orange-500 dark:bg-orange-400" },
+  closed_won:   { badge: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",            dot: "bg-green-500 dark:bg-green-400" },
+  closed_lost:  { badge: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",                    dot: "bg-red-500 dark:bg-red-400" },
+  unqualified:  { badge: "bg-muted text-muted-foreground",                                              dot: "bg-muted-foreground" },
+  churned:      { badge: "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300",                dot: "bg-rose-500 dark:bg-rose-400" },
 };
 
 const FALLBACK_BADGE_CLASSES = { badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground" };

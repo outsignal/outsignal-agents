@@ -99,7 +99,7 @@ const RUNNING_STATUSES = new Set(["EXECUTING", "REATTEMPTING"]);
 function StatusBadge({ status }: { status: string }) {
   if (status === "COMPLETED") {
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-medium">
+      <Badge variant="success" className="text-xs font-medium">
         Completed
       </Badge>
     );
@@ -112,35 +112,35 @@ function StatusBadge({ status }: { status: string }) {
           ? "System Failure"
           : "Failed";
     return (
-      <Badge className="bg-red-100 text-red-800 border-red-200 text-xs font-medium">
+      <Badge variant="destructive" className="text-xs font-medium">
         {label}
       </Badge>
     );
   }
   if (RUNNING_STATUSES.has(status)) {
     return (
-      <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-medium">
+      <Badge variant="warning" className="text-xs font-medium">
         Running
       </Badge>
     );
   }
   if (status === "REATTEMPTING") {
     return (
-      <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-medium">
+      <Badge variant="warning" className="text-xs font-medium">
         Retrying
       </Badge>
     );
   }
   if (status === "QUEUED") {
     return (
-      <Badge className="bg-zinc-100 text-zinc-600 border-zinc-200 text-xs font-medium">
+      <Badge variant="secondary" className="text-xs font-medium">
         Queued
       </Badge>
     );
   }
   if (status === "CANCELED") {
     return (
-      <Badge className="bg-zinc-100 text-zinc-500 border-zinc-200 text-xs font-medium">
+      <Badge variant="secondary" className="text-xs font-medium">
         Canceled
       </Badge>
     );

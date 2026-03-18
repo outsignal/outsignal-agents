@@ -47,19 +47,19 @@ export const INTENT_LABELS: Record<Intent, string> = {
 };
 
 export const INTENT_COLORS: Record<Intent, string> = {
-  interested: "bg-green-100 text-green-800",
-  meeting_booked: "bg-emerald-100 text-emerald-800",
-  objection: "bg-red-100 text-red-800",
-  referral: "bg-blue-100 text-blue-800",
-  not_now: "bg-amber-100 text-amber-800",
-  unsubscribe: "bg-rose-100 text-rose-800",
-  out_of_office: "bg-gray-100 text-gray-600",
-  auto_reply: "bg-gray-100 text-gray-600",
-  not_relevant: "bg-slate-100 text-slate-600",
+  interested: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  meeting_booked: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+  objection: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
+  referral: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
+  not_now: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  unsubscribe: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200",
+  out_of_office: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
+  auto_reply: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
+  not_relevant: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
 };
 
 export const SENTIMENT_COLORS: Record<Sentiment, string> = {
-  positive: "bg-green-100 text-green-800",
-  neutral: "bg-gray-100 text-gray-600",
-  negative: "bg-red-100 text-red-800",
+  positive: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  neutral: "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300",
+  negative: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
 };

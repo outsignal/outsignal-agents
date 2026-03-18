@@ -209,17 +209,17 @@ export default async function PortalCampaignDetailPage({
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                     campaign.leadsApproved
-                      ? "bg-[#635BFF] text-white"
-                      : "border-2 border-[#635BFF] text-[#635BFF]"
+                      ? "bg-brand text-white"
+                      : "border-2 border-brand text-brand"
                   }`}
                 >
                   {campaign.leadsApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "1"}
                 </div>
-                <span className={`text-xs font-medium ${activeStep === "leads" ? "text-foreground" : campaign.leadsApproved ? "text-[#635BFF]" : "text-foreground"}`}>
+                <span className={`text-xs font-medium ${activeStep === "leads" ? "text-foreground" : campaign.leadsApproved ? "text-brand" : "text-foreground"}`}>
                   Leads
                 </span>
               </Link>
-              <div className={`mx-2.5 h-px w-8 ${campaign.leadsApproved ? "bg-[#635BFF]" : "bg-border"}`} />
+              <div className={`mx-2.5 h-px w-8 ${campaign.leadsApproved ? "bg-brand" : "bg-border"}`} />
               <Link
                 href={`/portal/campaigns/${campaign.id}?step=content`}
                 className={`flex items-center gap-1.5 transition-opacity ${campaign.leadsApproved ? "hover:opacity-80" : "pointer-events-none"}`}
@@ -227,16 +227,16 @@ export default async function PortalCampaignDetailPage({
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                     campaign.contentApproved
-                      ? "bg-[#635BFF] text-white"
+                      ? "bg-brand text-white"
                       : campaign.leadsApproved
-                        ? "border-2 border-[#635BFF] text-[#635BFF]"
+                        ? "border-2 border-brand text-brand"
                         : "border-2 border-muted-foreground/30 text-muted-foreground"
                   }`}
                 >
                   {campaign.contentApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "2"}
                 </div>
                 <span className={`text-xs font-medium ${
-                  campaign.contentApproved ? "text-[#635BFF]" : campaign.leadsApproved ? "text-foreground" : "text-muted-foreground"
+                  campaign.contentApproved ? "text-brand" : campaign.leadsApproved ? "text-foreground" : "text-muted-foreground"
                 }`}>
                   Content
                 </span>
@@ -304,7 +304,7 @@ export default async function PortalCampaignDetailPage({
           {activeStep === "leads" && (
             campaign.leadsApproved ? (
               /* Reviewing approved leads — green surround, read-only */
-              <Card className="border-emerald-200/50 bg-emerald-50/20">
+              <Card className="border-emerald-200/50 dark:border-emerald-800/50 bg-emerald-50/20 dark:bg-emerald-950/20">
                 <CardContent className="pt-5">
                   <CampaignApprovalLeads
                     campaignId={campaign.id}
@@ -346,8 +346,8 @@ export default async function PortalCampaignDetailPage({
       {campaign.status === "approved" && (
         <Card className="border-border/50">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="rounded-full bg-[#635BFF]/10 p-3 mb-4">
-              <CheckCircle2 className="h-6 w-6 text-[#635BFF]" />
+            <div className="rounded-full bg-brand/10 p-3 mb-4">
+              <CheckCircle2 className="h-6 w-6 text-brand" />
             </div>
             <h2 className="text-lg font-medium text-foreground mb-1">Campaign Approved!</h2>
             <p className="text-sm text-muted-foreground max-w-md mb-8">
@@ -355,7 +355,7 @@ export default async function PortalCampaignDetailPage({
             </p>
             {/* Timeline */}
             <div className="flex items-center gap-0 text-sm">
-              <div className="flex items-center gap-1.5 text-[#635BFF] font-medium">
+              <div className="flex items-center gap-1.5 text-brand font-medium">
                 <CheckCircle2 className="h-4 w-4" />
                 Approved
               </div>

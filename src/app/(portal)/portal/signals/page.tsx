@@ -25,12 +25,12 @@ const SIGNAL_TYPE_LABELS: Record<string, string> = {
 };
 
 const SIGNAL_TYPE_BADGE_STYLES: Record<string, string> = {
-  funding: "bg-emerald-100 text-emerald-800",
-  job_change: "bg-blue-100 text-blue-800",
-  hiring_spike: "bg-violet-100 text-violet-800",
-  tech_adoption: "bg-cyan-100 text-cyan-800",
-  news: "bg-amber-100 text-amber-800",
-  social_mention: "bg-rose-100 text-rose-800",
+  funding: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200",
+  job_change: "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200",
+  hiring_spike: "bg-violet-100 dark:bg-violet-950 text-violet-800 dark:text-violet-200",
+  tech_adoption: "bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-200",
+  news: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200",
+  social_mention: "bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200",
 };
 
 function formatRelativeTime(date: Date): string {
@@ -159,7 +159,7 @@ export default async function PortalSignalsPage() {
                 {signals.map((signal) => {
                   const badgeStyle =
                     SIGNAL_TYPE_BADGE_STYLES[signal.signalType] ??
-                    "bg-gray-100 text-gray-800";
+                    "bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200";
                   const typeLabel =
                     SIGNAL_TYPE_LABELS[signal.signalType] ?? signal.signalType;
                   return (

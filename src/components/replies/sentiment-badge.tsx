@@ -9,9 +9,9 @@ interface SentimentBadgeProps {
 }
 
 const DOT_COLORS: Record<Sentiment, string> = {
-  positive: "bg-green-500",
-  neutral: "bg-gray-400",
-  negative: "bg-red-500",
+  positive: "bg-green-500 dark:bg-green-400",
+  neutral: "bg-stone-400 dark:bg-stone-500",
+  negative: "bg-red-500 dark:bg-red-400",
 };
 
 const SENTIMENT_LABELS: Record<Sentiment, string> = {
@@ -28,8 +28,8 @@ export function SentimentBadge({
 
   if (!effective) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
-        <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 dark:bg-stone-800 px-2.5 py-0.5 text-xs font-medium text-stone-500 dark:text-stone-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-stone-300 dark:bg-stone-600" />
         Unknown
       </span>
     );
@@ -37,8 +37,8 @@ export function SentimentBadge({
 
   const label = SENTIMENT_LABELS[effective] ?? effective;
   const colorClasses =
-    SENTIMENT_COLORS[effective] ?? "bg-gray-100 text-gray-600";
-  const dotColor = DOT_COLORS[effective] ?? "bg-gray-400";
+    SENTIMENT_COLORS[effective] ?? "bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300";
+  const dotColor = DOT_COLORS[effective] ?? "bg-stone-400 dark:bg-stone-500";
 
   return (
     <span

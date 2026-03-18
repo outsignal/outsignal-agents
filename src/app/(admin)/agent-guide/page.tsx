@@ -31,7 +31,7 @@ const AGENTS: AgentDef[] = [
     name: "Orchestrator",
     model: "Sonnet 4",
     icon: Brain,
-    iconColor: "text-violet-500",
+    iconColor: "text-violet-500 dark:text-violet-400",
     description:
       "Central coordinator \u2014 routes requests to specialist agents or answers simple queries directly.",
     howToCall:
@@ -46,7 +46,7 @@ const AGENTS: AgentDef[] = [
     name: "Research Agent",
     model: "Opus 4",
     icon: Search,
-    iconColor: "text-blue-500",
+    iconColor: "text-blue-500 dark:text-blue-400",
     description:
       "Crawls client websites, extracts ICP data, identifies USPs, case studies, and pain points.",
     howToCall: "Via orchestrator \u2014 ask it to research or analyze a website.",
@@ -60,7 +60,7 @@ const AGENTS: AgentDef[] = [
     name: "Writer Agent",
     model: "Opus 4",
     icon: PenTool,
-    iconColor: "text-emerald-500",
+    iconColor: "text-emerald-500 dark:text-emerald-400",
     description:
       "Generates email & LinkedIn sequences, revises copy, analyzes campaign performance.",
     howToCall:
@@ -78,7 +78,7 @@ const AGENTS: AgentDef[] = [
     name: "Leads Agent",
     model: "Sonnet 4",
     icon: Users,
-    iconColor: "text-amber-500",
+    iconColor: "text-amber-500 dark:text-amber-400",
     description:
       "Searches/scores people, builds target lists, discovers new leads via Apollo/Prospeo/AI Ark.",
     howToCall:
