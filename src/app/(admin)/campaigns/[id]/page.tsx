@@ -24,6 +24,7 @@ import {
   Clock,
   Zap,
 } from "lucide-react";
+import { SpamCheckButton } from "@/components/campaigns/spam-check-button";
 
 interface CampaignDetailPageProps {
   params: Promise<{ id: string }>;
@@ -371,6 +372,21 @@ export default async function CampaignDetailPage({
             </div>
           </CardContent>
         </Card>
+
+        {/* ─── Content spam check ──────────────────────────────────── */}
+        {emailStepCount > 0 && (
+          <Card density="compact">
+            <CardHeader>
+              <CardTitle>Content Spam Check</CardTitle>
+              <CardDescription>
+                Scan email copy for spam triggers via EmailGuard
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SpamCheckButton campaignId={campaign.id} />
+            </CardContent>
+          </Card>
+        )}
 
         {/* ─── Signal campaign stats ──────────────────────────────────── */}
         {campaign.type === "signal" && (
