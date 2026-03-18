@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,21 +63,13 @@ export default async function CampaignDetailPage({
   };
 
   return (
-    <PageShell
-      title={campaign.name}
-      description={`${workspace.name} campaign`}
-      breadcrumbs={[
-        { label: "Workspaces", href: "/" },
-        { label: workspace.name, href: `/workspace/${slug}` },
-        { label: "Campaigns" },
-        { label: campaign.name },
-      ]}
-      actions={
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-heading font-semibold">{campaign.name}</h2>
         <Badge className={`text-xs ${statusColors[campaign.status] ?? ""}`}>
           {campaign.status}
         </Badge>
-      }
-    >
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <MetricCard label="Sent" value={sent.toLocaleString()} />
         <MetricCard
@@ -127,6 +118,6 @@ export default async function CampaignDetailPage({
           </CardContent>
         </Card>
       </div>
-    </PageShell>
+    </div>
   );
 }

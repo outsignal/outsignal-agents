@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
-import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
   Table,
@@ -52,15 +50,7 @@ export default async function InboxPage({ params }: InboxPageProps) {
   const autoReplyCount = replies.filter((r) => r.automated_reply).length;
 
   return (
-    <PageShell
-      title="Inbox"
-      description={`${workspace.name} — ${replies.length} total replies`}
-      breadcrumbs={[
-        { label: "Workspaces", href: "/" },
-        { label: workspace.name, href: `/workspace/${slug}` },
-        { label: "Inbox" },
-      ]}
-    >
+    <div className="space-y-6">
       {error && <ErrorBanner message={error} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -99,22 +89,22 @@ export default async function InboxPage({ params }: InboxPageProps) {
         </TabsList>
 
         <TabsContent value="inbox">
-          <ReplyTable replies={inboxReplies} slug={slug} />
+          <ReplyTable replies={inboxReplies} />
         </TabsContent>
 
         <TabsContent value="bounced">
-          <ReplyTable replies={bouncedReplies} slug={slug} />
+          <ReplyTable replies={bouncedReplies} />
         </TabsContent>
 
         <TabsContent value="all">
-          <ReplyTable replies={replies} slug={slug} />
+          <ReplyTable replies={replies} />
         </TabsContent>
       </Tabs>
-    </PageShell>
+    </div>
   );
 }
 
-function ReplyTable({ replies, slug }: { replies: Reply[]; slug: string }) {
+function ReplyTable({ replies }: { replies: Reply[] }) {
   return (
     <Card>
       <CardContent className="pt-6">

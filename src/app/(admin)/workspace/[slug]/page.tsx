@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import {
@@ -19,8 +17,6 @@ import { getWorkspaceBySlug, getWorkspaceDetails } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { Campaign, Reply } from "@/lib/emailbison/types";
 import { ApiTokenForm } from "@/components/settings/api-token-form";
-import { MembersTable } from "@/components/workspace/members-table";
-import { Settings } from "lucide-react";
 
 interface WorkspacePageProps {
   params: Promise<{ slug: string }>;
@@ -80,24 +76,7 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
   };
 
   return (
-    <PageShell
-      title={workspace.name}
-      description={
-        workspace.vertical ? `Vertical: ${workspace.vertical}` : undefined
-      }
-      breadcrumbs={[
-        { label: "Workspaces", href: "/" },
-        { label: workspace.name },
-      ]}
-      actions={
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/workspace/${slug}/settings`}>
-            <Settings className="h-4 w-4 mr-1.5" />
-            Settings
-          </Link>
-        </Button>
-      }
-    >
+    <div className="space-y-6">
       {error && <ErrorBanner message={error} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -133,9 +112,6 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
           </TabsTrigger>
           <TabsTrigger value="replies">
             Replies ({replies.length})
-          </TabsTrigger>
-          <TabsTrigger value="members">
-            Members
           </TabsTrigger>
         </TabsList>
 
@@ -256,12 +232,8 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="members">
-          <MembersTable slug={slug} />
-        </TabsContent>
       </Tabs>
-    </PageShell>
+    </div>
   );
 }
 
@@ -296,25 +268,12 @@ function PendingWorkspaceView({
     : [];
 
   return (
-    <PageShell
-      title={details.name}
-      description={
-        details.vertical ? `Vertical: ${details.vertical}` : "Pending setup"
-      }
-      breadcrumbs={[
-        { label: "Workspaces", href: "/" },
-        { label: details.name },
-      ]}
-      actions={
-        <Badge variant="warning" className="text-xs">
-          {details.status === "pending_emailbison"
-            ? "Pending Email Bison"
-            : details.status}
-        </Badge>
-      }
-      noPadding
-    >
-      <div className="p-6 space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl">
+      <Badge variant="warning" className="text-xs">
+        {details.status === "pending_emailbison"
+          ? "Pending Email Bison"
+          : details.status}
+      </Badge>
         {/* Setup Checklist */}
         <Card>
           <CardHeader>
@@ -381,8 +340,7 @@ function PendingWorkspaceView({
             </div>
           </CardContent>
         </Card>
-      </div>
-    </PageShell>
+    </div>
   );
 }
 

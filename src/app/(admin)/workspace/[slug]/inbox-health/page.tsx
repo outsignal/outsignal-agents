@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { PageShell } from "@/components/layout/page-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -102,15 +101,7 @@ export default async function InboxHealthPage({
   };
 
   return (
-    <PageShell
-      title="Inbox Health"
-      description={`${workspace.name} — ${senderHealth.length} sender emails monitored`}
-      breadcrumbs={[
-        { label: "Workspaces", href: "/" },
-        { label: workspace.name, href: `/workspace/${slug}` },
-        { label: "Inbox Health" },
-      ]}
-    >
+    <div className="space-y-6">
       {error && <ErrorBanner message={error} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -270,6 +261,6 @@ export default async function InboxHealthPage({
           </Table>
         </CardContent>
       </Card>
-    </PageShell>
+    </div>
   );
 }

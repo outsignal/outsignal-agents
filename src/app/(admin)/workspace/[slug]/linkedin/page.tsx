@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { PageShell } from "@/components/layout/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -109,15 +108,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
   );
 
   return (
-    <PageShell
-      title="LinkedIn"
-      description={`Manage LinkedIn senders for ${workspace.name}`}
-      breadcrumbs={[
-        { label: "Workspaces", href: "/" },
-        { label: workspace.name, href: `/workspace/${slug}` },
-        { label: "LinkedIn" },
-      ]}
-    >
+    <div className="space-y-6">
       {/* Session expired alert */}
       {hasExpiredSessions && (
         <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950 px-4 py-3 flex items-center gap-3">
@@ -288,6 +279,6 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
           </Card>
         </>
       )}
-    </PageShell>
+    </div>
   );
 }
