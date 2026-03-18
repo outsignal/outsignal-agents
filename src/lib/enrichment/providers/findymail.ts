@@ -6,10 +6,9 @@
  * Auth: Authorization: Bearer header
  * Docs: https://findymail.com
  *
- * IMPORTANT: API response shape is MEDIUM confidence. This adapter uses:
+ * API response shape validated with:
  * - .passthrough() Zod schema to accept unknown extra fields
  * - Fallback email extraction from common alternative paths
- * - Console logging of rawResponse on EVERY call for initial debugging
  */
 import { z } from "zod";
 import { PROVIDER_COSTS } from "../costs";
@@ -37,7 +36,6 @@ const FindyMailResponseSchema = z
 /**
  * FindyMail adapter — finds email from LinkedIn profile URL.
  * Returns null email (costUsd=0) when no LinkedIn URL is provided.
- * Logs rawResponse on every call for schema discovery during initial use.
  */
 export const findymailAdapter: EmailAdapter = async (
   input
@@ -86,9 +84,6 @@ export const findymailAdapter: EmailAdapter = async (
   } finally {
     clearTimeout(timeout);
   }
-
-  // Always log rawResponse for schema discovery during initial integration
-  console.log("[findymailAdapter] rawResponse:", JSON.stringify(raw));
 
   const parsed = FindyMailResponseSchema.safeParse(raw);
 
