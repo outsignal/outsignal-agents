@@ -11,11 +11,16 @@ const REQUIRED_VARS = [
 ] as const;
 
 const OPTIONAL_VARS = [
-  "CLAY_WEBHOOK_SECRET",
+  "INGEST_WEBHOOK_SECRET",
+  "CLAY_WEBHOOK_SECRET", // legacy fallback — remove after Vercel env var rename
   "EMAILBISON_WEBHOOK_SECRET",
   "EXTENSION_TOKEN_SECRET",
   "WORKER_API_SECRET",
   "EMAILGUARD_API_TOKEN",
+  "AIARK_API_KEY",
+  "PROSPEO_API_KEY",
+  "LEADMAGIC_API_KEY",
+  "FINDYMAIL_API_KEY",
 ] as const;
 
 for (const name of REQUIRED_VARS) {
