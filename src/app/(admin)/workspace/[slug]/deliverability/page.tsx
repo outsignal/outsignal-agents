@@ -15,6 +15,8 @@ import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { SenderEmail } from "@/lib/emailbison/types";
+import { EmailGuardReputation } from "@/components/workspace/emailguard-reputation";
+import { InboxPlacementTests } from "@/components/workspace/inbox-placement-tests";
 
 interface DeliverabilityPageProps {
   params: Promise<{ slug: string }>;
@@ -573,6 +575,16 @@ export default async function WorkspaceDeliverabilityPage({
           )}
         </CardContent>
       </Card>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* EmailGuard Reputation                                             */}
+      {/* ----------------------------------------------------------------- */}
+      <EmailGuardReputation slug={slug} />
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Inbox Placement Tests                                             */}
+      {/* ----------------------------------------------------------------- */}
+      <InboxPlacementTests slug={slug} />
     </div>
   );
 }
