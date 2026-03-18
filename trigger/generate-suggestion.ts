@@ -136,6 +136,12 @@ export const generateSuggestion = task({
         }
       }
 
+      // Force tool usage — ensure the agent grounds its reply in workspace + KB context
+      messageParts.push("");
+      messageParts.push(
+        "IMPORTANT: You MUST call getWorkspaceIntelligence and searchKnowledgeBase before drafting your reply. Ground your response in the client's vertical context and knowledge base intelligence.",
+      );
+
       const userMessage = messageParts.join("\n");
 
       console.log(
@@ -148,8 +154,70 @@ export const generateSuggestion = task({
         workspaceSlug,
       });
 
+      // Log tool usage from agent steps
+      const toolNames = result.steps.map((s) => s.toolName);
+      const uniqueTools = [...new Set(toolNames)];
+      console.log(
+        `[generate-suggestion] Suggestion tools used: [${uniqueTools.join(", ")}] (${toolNames.length} total calls)`,
+      );
+
       // In reply mode the writer returns plain prose — use result.text directly
-      const suggestion = result.text;
+      let suggestion = result.text;
+
+      // ----------------------------------------------------------------
+      // Step 2b: Reply quality validation — ban overused patterns
+      // ----------------------------------------------------------------
+
+      const bannedPatterns = [
+        { pattern: /quick question/i, name: "quick question" },
+        { pattern: /\u2014/, name: "em dash" },
+        { pattern: /\u2013/, name: "en dash" },
+        { pattern: /I'd love to/i, name: "I'd love to" },
+        { pattern: /I hope this email finds you/i, name: "hope this email finds you" },
+        { pattern: /just following up/i, name: "just following up" },
+        { pattern: /let me know/i, name: "let me know" },
+        { pattern: /are you free/i, name: "are you free" },
+        { pattern: /pick your brain/i, name: "pick your brain" },
+        { pattern: /no worries/i, name: "no worries" },
+        { pattern: /we'd love to/i, name: "we'd love to" },
+        { pattern: /feel free to/i, name: "feel free to" },
+      ];
+
+      const violations = bannedPatterns.filter((p) => p.pattern.test(suggestion));
+
+      if (violations.length > 0) {
+        const violationNames = violations.map((v) => v.name).join(", ");
+        console.warn(
+          `[generate-suggestion] Banned patterns detected in suggestion for reply ${replyId}: ${violationNames}. Re-generating...`,
+        );
+
+        // Retry once with correction instruction
+        const correctionMessage = `${userMessage}\n\nCORRECTION: Your previous reply contains banned patterns: ${violationNames}. Rewrite without these patterns. Keep the same intent but use natural, conversational language.`;
+
+        const retryResult = await runAgent(writerConfig, correctionMessage, {
+          triggeredBy: "trigger-task",
+          workspaceSlug,
+        });
+
+        const retrySuggestion = retryResult.text;
+        const retryViolations = bannedPatterns.filter((p) =>
+          p.pattern.test(retrySuggestion),
+        );
+
+        if (retryViolations.length > 0) {
+          console.warn(
+            `[generate-suggestion] Retry still has banned patterns for reply ${replyId}: ${retryViolations.map((v) => v.name).join(", ")}. Using retry result anyway.`,
+          );
+        }
+
+        suggestion = retrySuggestion;
+
+        // Log retry tool usage
+        const retryToolNames = retryResult.steps.map((s) => s.toolName);
+        console.log(
+          `[generate-suggestion] Retry tools used: [${[...new Set(retryToolNames)].join(", ")}]`,
+        );
+      }
 
       // ----------------------------------------------------------------
       // Step 3: Persist aiSuggestedReply
@@ -187,6 +255,8 @@ export const generateSuggestion = task({
         replyId,
         suggestionLength: suggestion.length,
         durationMs: result.durationMs,
+        toolsUsed: uniqueTools,
+        hadBannedPatterns: violations.length > 0,
       };
     } catch (err) {
       console.error(
