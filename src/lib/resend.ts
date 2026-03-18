@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { audited } from "@/lib/notification-audit";
+import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
 
 function getResendClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -38,58 +39,18 @@ export async function sendOnboardingInviteEmail(params: {
     () => sendNotificationEmail({
       to: [params.clientEmail],
       subject: "Complete your onboarding with Outsignal",
-      html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:24px;line-height:1.3;">Complete Your Onboarding</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;padding-bottom:24px;line-height:1.7;">Hi ${params.clientName}, we're ready to get you onboarded. Please complete the short questionnaire below so we can set up your campaigns.</td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${params.inviteUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Complete Onboarding</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;line-height:1.5;">This link is unique to you &mdash; please do not share it.</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; You received this because you were invited to onboard.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+      html: emailLayout({
+          body: `
+            <h1 style="margin:0 0 6px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#2F2F2F;line-height:1.3;">Welcome aboard,</h1>
+            <p style="margin:0 0 28px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#635BFF;line-height:1.3;">${params.clientName}</p>
+            <p style="margin:0 0 32px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;color:#6B6B6B;line-height:1.7;">We're ready to get you set up. Complete the short onboarding questionnaire below so we can configure your campaigns and start generating results.</p>
+            ${emailButton("Complete Onboarding", params.inviteUrl)}
+            <div style="height:32px;"></div>
+            <div style="border-top:1px solid #E8E5E1;margin-bottom:28px;"></div>
+            ${emailNotice("This link is unique to you. Please do not share it with others.")}
+          `,
+          footerNote: "You received this because you were invited to onboard with Outsignal.",
+        }),
     }),
   );
 }

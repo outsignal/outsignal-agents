@@ -24,12 +24,20 @@ interface HealthStatusBadgeProps {
 export function HealthStatusBadge({ status, className }: HealthStatusBadgeProps) {
   const tooltip = healthTooltips[status] ?? status;
 
+  const HEALTH_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
+    healthy: "success",
+    warning: "warning",
+    paused: "warning",
+    blocked: "destructive",
+    session_expired: "destructive",
+  };
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge className={`text-xs cursor-help ${className ?? ""}`}>
-            {status}
+          <Badge variant={HEALTH_VARIANT[status] ?? "secondary"} className={`text-xs cursor-help ${className ?? ""}`}>
+            {status.replace("_", " ")}
           </Badge>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[220px]">

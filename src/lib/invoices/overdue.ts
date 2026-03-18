@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notify";
 import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
+import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
 import { formatGBP, formatInvoiceDate } from "./format";
 import type { InvoiceWithLineItems } from "./types";
 
@@ -23,82 +24,40 @@ export async function sendOverdueReminderEmail(
 
   const subject = `Reminder: Invoice ${invoice.invoiceNumber} is overdue`;
 
-  const html = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
+  const html = emailLayout({
+    body: `
+      <h1 style="margin:0 0 6px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#2F2F2F;line-height:1.3;">Payment Reminder</h1>
+      <p style="margin:0 0 28px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;color:#dc2626;line-height:1.3;">${invoice.invoiceNumber}</p>
+      <p style="margin:0 0 28px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;color:#6B6B6B;line-height:1.7;">This is a friendly reminder that the invoice below is now past due. Please arrange payment at your earliest convenience.</p>
+      <!-- Invoice details box -->
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#F8F7F5;border-radius:8px;">
         <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
+          <td style="padding:20px 24px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
+                <td style="font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#6B6B6B;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding-bottom:4px;">Invoice</td>
+                <td style="font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;color:#2F2F2F;font-weight:600;text-align:right;padding-bottom:4px;">${invoice.invoiceNumber}</td>
+              </tr>
+              <tr>
+                <td style="font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#6B6B6B;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding-bottom:4px;padding-top:12px;">Due Date</td>
+                <td style="font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;color:#dc2626;font-weight:700;text-align:right;padding-bottom:4px;padding-top:12px;">${formatInvoiceDate(invoice.dueDate)}</td>
+              </tr>
+              <tr>
+                <td style="border-top:1px solid #E8E5E1;padding-top:12px;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#6B6B6B;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Amount Due</td>
+                <td style="border-top:1px solid #E8E5E1;padding-top:12px;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:22px;color:#2F2F2F;font-weight:700;text-align:right;">${formatGBP(invoice.totalPence)}</td>
               </tr>
             </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Invoice Overdue</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;padding-bottom:24px;line-height:1.7;">
-                  This is a reminder that invoice <strong>${invoice.invoiceNumber}</strong> is now overdue. Please arrange payment at your earliest convenience.
-                </td>
-              </tr>
-              <!-- Invoice details -->
-              <tr>
-                <td style="background-color:#f4f4f5;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;padding-bottom:4px;">Invoice Number</td>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#18181b;font-weight:600;text-align:right;">${invoice.invoiceNumber}</td>
-                    </tr>
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;padding-bottom:4px;">Due Date</td>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#dc2626;font-weight:600;text-align:right;">${formatInvoiceDate(invoice.dueDate)}</td>
-                    </tr>
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;">Amount Due</td>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;font-weight:700;text-align:right;">${formatGBP(invoice.totalPence)}</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr><td style="height:24px;"></td></tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${viewUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Invoice</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;line-height:1.5;">
-                  If you have already made payment, please disregard this email. Contact us if you have any questions.
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; This is an automated billing reminder.</p>
           </td>
         </tr>
       </table>
-    </td>
-  </tr>
-</table>`;
+      <div style="height:28px;"></div>
+      ${emailButton("View Invoice", viewUrl)}
+      <div style="height:32px;"></div>
+      <div style="border-top:1px solid #E8E5E1;margin-bottom:28px;"></div>
+      ${emailNotice("If you have already made payment, please disregard this email. Contact us if you have any questions.")}
+    `,
+    footerNote: "This is an automated billing reminder.",
+  });
 
   await audited(
     { notificationType: "overdue_reminder", channel: "email", recipient: recipientEmail },

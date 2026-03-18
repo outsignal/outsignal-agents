@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
 
 const portalLoginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 
@@ -83,61 +84,18 @@ export async function POST(req: NextRequest) {
     () => sendNotificationEmail({
       to: [normalizedEmail],
       subject: `Your login link for ${safeName} — Outsignal`,
-      html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Sign In to Your Dashboard</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${safeName}</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;padding-bottom:24px;line-height:1.7;">Click the button below to sign in to your Outsignal dashboard.</td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${verifyUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Sign In to Dashboard</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;line-height:1.5;">This link expires in 30 minutes. If you didn't request this, you can safely ignore this email.</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; This is a one-time login link for your dashboard.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+      html: emailLayout({
+          body: `
+            <h1 style="margin:0 0 6px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#2F2F2F;line-height:1.3;">Secure Sign-In</h1>
+            <p style="margin:0 0 28px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#635BFF;line-height:1.3;">${safeName}</p>
+            <p style="margin:0 0 32px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;color:#6B6B6B;line-height:1.7;">Click the button below to securely sign in to your Outsignal dashboard. No password required.</p>
+            ${emailButton("Sign In to Dashboard", verifyUrl)}
+            <div style="height:32px;"></div>
+            <div style="border-top:1px solid #E8E5E1;margin-bottom:28px;"></div>
+            ${emailNotice('This link expires in <strong style="color:#2F2F2F;">30 minutes</strong>. If you didn\'t request this, you can safely ignore this email.')}
+          `,
+          footerNote: `This is a one-time login link for your ${safeName} dashboard.`,
+        }),
     }),
   );
 

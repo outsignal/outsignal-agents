@@ -101,7 +101,7 @@ export default async function PortalLinkedInPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-medium text-foreground">LinkedIn</h1>
+          <h1 className="text-xl font-heading font-medium text-foreground">LinkedIn</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage your LinkedIn senders and connections
           </p>
@@ -120,9 +120,9 @@ export default async function PortalLinkedInPage() {
       </div>
 
       {senders.some(s => s.sessionStatus === "expired") && (
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950 px-4 py-3 flex items-center gap-3">
-          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-          <p className="text-sm text-yellow-800 dark:text-yellow-200">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-800 dark:text-amber-200">
             Your LinkedIn session has expired. Please reconnect to continue outreach.
           </p>
         </div>

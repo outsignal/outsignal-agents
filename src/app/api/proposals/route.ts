@@ -8,6 +8,7 @@ import { notify } from "@/lib/notify";
 import { parseJsonBody } from "@/lib/parse-json";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { createProposalSchema } from "@/lib/validations/proposals";
+import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
 
 export async function GET() {
   const session = await requireAdminAuth();
@@ -78,55 +79,18 @@ export async function POST(request: Request) {
           () => sendNotificationEmail({
             to: [clientEmail],
             subject: `Your proposal from Outsignal`,
-            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:24px;line-height:1.3;">Your Proposal is Ready</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;padding-bottom:24px;line-height:1.7;">Hi ${clientName}, your proposal from Outsignal is ready to review.</td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${proposalUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Proposal</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; This proposal was created for you.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+            html: emailLayout({
+              body: `
+                <h1 style="margin:0 0 6px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#2F2F2F;line-height:1.3;">Your Custom Plan</h1>
+                <p style="margin:0 0 28px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#635BFF;line-height:1.3;">is Ready</p>
+                <p style="margin:0 0 32px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;color:#6B6B6B;line-height:1.7;">Hi ${clientName}, we've put together a tailored outreach plan for you. Review the details and let us know when you're ready to get started.</p>
+                ${emailButton("View Proposal", proposalUrl)}
+                <div style="height:32px;"></div>
+                <div style="border-top:1px solid #E8E5E1;margin-bottom:28px;"></div>
+                ${emailNotice("This proposal was created specifically for you. If you have any questions, reply to this email.")}
+              `,
+              footerNote: `This proposal was prepared for ${clientName}.`,
+            }),
           }),
         );
         await prisma.proposal.update({
