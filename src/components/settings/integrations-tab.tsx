@@ -1,17 +1,18 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { Loader2 } from "lucide-react";
-
-const IntegrationsPage = dynamic(() => import("@/app/(admin)/integrations/page"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-    </div>
-  ),
-});
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function IntegrationsTab() {
-  return <IntegrationsPage />;
+  const router = useRouter();
+
+  useEffect(() => {
+    router.push("/system-uptime");
+  }, [router]);
+
+  return (
+    <div className="flex items-center justify-center py-12 text-muted-foreground">
+      Redirecting to System Uptime...
+    </div>
+  );
 }
