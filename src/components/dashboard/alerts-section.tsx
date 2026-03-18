@@ -13,6 +13,9 @@ const alertTypeLabel: Record<DashboardAlert["type"], string> = {
   disconnected_inbox: "Inbox",
   disconnected_linkedin: "LinkedIn",
   no_linkedin_senders: "LinkedIn",
+  unclassified_replies: "Replies",
+  low_reply_rate: "Reply Rate",
+  no_activity: "Activity",
 };
 
 export function AlertsSection({ alerts }: AlertsSectionProps) {

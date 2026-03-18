@@ -67,7 +67,7 @@ export interface LinkedInTimeSeriesPoint {
 }
 
 export interface DashboardAlert {
-  type: "flagged_sender" | "failed_agent_run" | "disconnected_inbox" | "disconnected_linkedin" | "no_linkedin_senders";
+  type: "flagged_sender" | "failed_agent_run" | "disconnected_inbox" | "disconnected_linkedin" | "no_linkedin_senders" | "unclassified_replies" | "low_reply_rate" | "no_activity";
   title: string;
   detail: string;
   link?: string;
@@ -79,12 +79,31 @@ export interface WorkspaceOption {
   name: string;
 }
 
+export interface SentimentBreakdown {
+  positive: number;
+  neutral: number;
+  negative: number;
+}
+
+export interface WorkspaceSummary {
+  name: string;
+  slug: string;
+  replies7d: number;
+  sends7d: number;
+  replyRate: number;
+  bounceRate: number;
+  activeCampaigns: number;
+  sentimentBreakdown: SentimentBreakdown;
+  hasAlerts: boolean;
+}
+
 export interface DashboardStatsResponse {
   kpis: DashboardKPIs;
   timeSeries: TimeSeriesPoint[];
   linkedInTimeSeries: LinkedInTimeSeriesPoint[];
   alerts: DashboardAlert[];
   workspaces: WorkspaceOption[];
+  workspaceSummaries: WorkspaceSummary[];
 }
 
 export async function GET(request: NextRequest) {
@@ -475,6 +494,159 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // 9. Workspace summaries: per-workspace metrics for scorecard table
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    // Per-workspace email events (last 7d, non-automated)
+    const perWsEmailEvents = await prisma.webhookEvent.groupBy({
+      by: ["workspace", "eventType"],
+      where: {
+        receivedAt: { gte: sevenDaysAgo },
+        isAutomated: false,
+        eventType: { in: ["EMAIL_SENT", "LEAD_REPLIED", "LEAD_INTERESTED", "BOUNCE"] },
+      },
+      _count: { eventType: true },
+    });
+
+    // Per-workspace reply sentiment (last 7d)
+    const perWsSentiment = await prisma.reply.groupBy({
+      by: ["workspaceSlug", "sentiment"],
+      where: {
+        receivedAt: { gte: sevenDaysAgo },
+        sentiment: { not: null },
+      },
+      _count: { sentiment: true },
+    });
+
+    // Per-workspace active campaign counts
+    const perWsCampaigns = await prisma.campaign.groupBy({
+      by: ["workspaceSlug"],
+      where: { status: "active" },
+      _count: { id: true },
+    });
+
+    // Unclassified replies (no sentiment yet)
+    const unclassifiedReplies = await prisma.reply.count({
+      where: {
+        sentiment: null,
+        classifiedAt: null,
+        receivedAt: { gte: sevenDaysAgo },
+      },
+    });
+
+    // Per-workspace sends in last 48h (for no_activity alert)
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const perWsRecent48h = await prisma.webhookEvent.groupBy({
+      by: ["workspace"],
+      where: {
+        eventType: "EMAIL_SENT",
+        receivedAt: { gte: fortyEightHoursAgo },
+      },
+      _count: { eventType: true },
+    });
+    const recentSendsMap = new Map<string, number>();
+    for (const r of perWsRecent48h) {
+      recentSendsMap.set(r.workspace, r._count.eventType);
+    }
+
+    // Build lookup maps
+    const wsEmailMap = new Map<string, Record<string, number>>();
+    for (const ev of perWsEmailEvents) {
+      if (!wsEmailMap.has(ev.workspace)) wsEmailMap.set(ev.workspace, {});
+      const map = wsEmailMap.get(ev.workspace)!;
+      map[ev.eventType] = (map[ev.eventType] ?? 0) + ev._count.eventType;
+    }
+
+    const wsSentimentMap = new Map<string, SentimentBreakdown>();
+    for (const s of perWsSentiment) {
+      if (!wsSentimentMap.has(s.workspaceSlug)) {
+        wsSentimentMap.set(s.workspaceSlug, { positive: 0, neutral: 0, negative: 0 });
+      }
+      const breakdown = wsSentimentMap.get(s.workspaceSlug)!;
+      if (s.sentiment === "positive") breakdown.positive += s._count.sentiment;
+      else if (s.sentiment === "neutral") breakdown.neutral += s._count.sentiment;
+      else if (s.sentiment === "negative") breakdown.negative += s._count.sentiment;
+    }
+
+    const wsCampaignMap = new Map<string, number>();
+    for (const c of perWsCampaigns) {
+      wsCampaignMap.set(c.workspaceSlug, c._count.id);
+    }
+
+    // Build workspace summaries
+    const workspaceSummaries: WorkspaceSummary[] = allWorkspaces
+      .filter((w) => w.status === "active")
+      .map((w) => {
+        const emailStats = wsEmailMap.get(w.slug) ?? {};
+        const sends7d = emailStats["EMAIL_SENT"] ?? 0;
+        const replies7d = (emailStats["LEAD_REPLIED"] ?? 0) + (emailStats["LEAD_INTERESTED"] ?? 0);
+        const bounces7d = emailStats["BOUNCE"] ?? 0;
+        const replyRate = sends7d > 0 ? Math.round((replies7d / sends7d) * 1000) / 10 : 0;
+        const bounceRateVal = sends7d > 0 ? Math.round((bounces7d / sends7d) * 1000) / 10 : 0;
+        const activeCampaigns = wsCampaignMap.get(w.slug) ?? 0;
+        const sentimentBreakdown = wsSentimentMap.get(w.slug) ?? { positive: 0, neutral: 0, negative: 0 };
+        const wsAlerts = alerts.filter(
+          (a) => a.detail.includes(w.slug) || a.detail.includes(w.name) || a.title.includes(w.name)
+        );
+        return {
+          name: w.name,
+          slug: w.slug,
+          replies7d,
+          sends7d,
+          replyRate,
+          bounceRate: bounceRateVal,
+          activeCampaigns,
+          sentimentBreakdown,
+          hasAlerts: wsAlerts.length > 0,
+        };
+      });
+
+    // 10. New alert types
+    if (unclassifiedReplies > 0) {
+      alerts.push({
+        type: "unclassified_replies",
+        title: `${unclassifiedReplies} replies awaiting classification`,
+        detail: "Replies received in the last 7 days have not been classified yet.",
+        link: "/replies",
+        severity: "warning",
+      });
+    }
+
+    // Low reply rate: workspaces with sends but reply rate below 1%
+    for (const ws of workspaceSummaries) {
+      if (ws.sends7d > 0 && ws.replyRate < 1) {
+        alerts.push({
+          type: "low_reply_rate",
+          title: `Low reply rate: ${ws.name}`,
+          detail: `${ws.replyRate}% reply rate from ${ws.sends7d} sends in 7 days`,
+          link: `/workspace/${ws.slug}`,
+          severity: "warning",
+        });
+      }
+    }
+
+    // No activity: active campaigns but 0 sends in 48h
+    for (const ws of workspaceSummaries) {
+      if (ws.activeCampaigns > 0 && !recentSendsMap.has(ws.slug)) {
+        alerts.push({
+          type: "no_activity",
+          title: `No activity: ${ws.name}`,
+          detail: `${ws.activeCampaigns} active campaigns but 0 sends in 48 hours`,
+          link: `/workspace/${ws.slug}`,
+          severity: "error",
+        });
+      }
+    }
+
+    // Recalculate hasAlerts after adding new alert types
+    for (const ws of workspaceSummaries) {
+      const wsAlerts = alerts.filter(
+        (a) => a.detail.includes(ws.slug) || a.detail.includes(ws.name) || a.title.includes(ws.name)
+      );
+      ws.hasAlerts = wsAlerts.length > 0;
+    }
+
     // Build KPIs
     const kpis: DashboardKPIs = {
       emailSent: emailMap["EMAIL_SENT"] ?? 0,
@@ -526,6 +698,7 @@ export async function GET(request: NextRequest) {
       linkedInTimeSeries,
       alerts,
       workspaces,
+      workspaceSummaries,
     };
 
     return NextResponse.json(response);
