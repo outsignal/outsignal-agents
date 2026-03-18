@@ -1339,6 +1339,9 @@ model DomainHealth {
   bimiLogoUrl  String?   // Logo URL from l= directive
   bimiVmcUrl   String?   // VMC certificate URL from a= directive
 
+  // EmailGuard integration
+  emailguardUuid String?   // UUID from EmailGuard API for this domain
+
   // Blacklist status (populated by Plan 03)
   blacklistHits     String?   // JSON array of DNSBL names where listed
   blacklistSeverity String?   // "none" | "warning" | "critical"

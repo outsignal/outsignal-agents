@@ -37,25 +37,18 @@ export async function POST(req: NextRequest) {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  // Find a workspace where clientEmails JSON array contains this email
-  const workspaces = await prisma.workspace.findMany({
-    where: { clientEmails: { not: null } },
-    select: { slug: true, clientEmails: true, name: true },
+  // Find a workspace where this email is a non-disabled member
+  const member = await prisma.member.findFirst({
+    where: { email: normalizedEmail, status: { not: "disabled" } },
+    include: { workspace: { select: { slug: true, name: true } } },
   });
 
-  const match = workspaces.find((ws) => {
-    try {
-      const emails: string[] = JSON.parse(ws.clientEmails!);
-      return emails.some((e) => e.toLowerCase() === normalizedEmail);
-    } catch {
-      return false;
-    }
-  });
-
-  if (!match) {
+  if (!member) {
     // Don't leak — still return ok
     return NextResponse.json({ ok: true });
   }
+
+  const match = member.workspace;
 
   // Generate magic link token
   const token = randomBytes(24).toString("base64url");

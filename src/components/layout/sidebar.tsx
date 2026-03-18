@@ -14,6 +14,7 @@ import {
   Megaphone,
   FileText,
   ShieldCheck,
+  Activity,
   Search,
   LifeBuoy,
   LogOut,
@@ -74,6 +75,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
       { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/search", label: "Search", icon: Search },
+      { href: "/system-uptime", label: "System Uptime", icon: Activity },
     ],
   },
   {

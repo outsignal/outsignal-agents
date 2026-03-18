@@ -6,23 +6,16 @@ export async function GET() {
   try {
     const { email } = await getPortalSession();
 
-    const allWorkspaces = await prisma.workspace.findMany({
-      where: { status: "active" },
-      select: { slug: true, name: true, notificationEmails: true },
+    const members = await prisma.member.findMany({
+      where: { email: email.toLowerCase(), status: { not: "disabled" } },
+      include: { workspace: { select: { slug: true, name: true, status: true } } },
     });
 
-    const accessible = allWorkspaces.filter((w) => {
-      try {
-        const emails: string[] = JSON.parse(w.notificationEmails || "[]");
-        return emails.some((e) => e.toLowerCase() === email.toLowerCase());
-      } catch {
-        return false;
-      }
-    });
+    const workspaces = members
+      .filter((m) => m.workspace.status === "active")
+      .map((m) => ({ slug: m.workspace.slug, name: m.workspace.name }));
 
-    return NextResponse.json(
-      accessible.map(({ slug, name }) => ({ slug, name })),
-    );
+    return NextResponse.json(workspaces);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unauthorized";
     if (

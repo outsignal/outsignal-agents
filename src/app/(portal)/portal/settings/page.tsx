@@ -14,7 +14,7 @@ export default async function PortalSettingsPage() {
   }
   const { workspaceSlug } = session;
 
-  const [workspace, currentMember] = await Promise.all([
+  const [workspace, members] = await Promise.all([
     prisma.workspace.findUnique({
       where: { slug: workspaceSlug },
       select: {
@@ -26,9 +26,10 @@ export default async function PortalSettingsPage() {
         createdAt: true,
       },
     }),
-    prisma.member.findFirst({
-      where: { workspaceSlug, email: session.email, status: { not: "disabled" } },
-      select: { email: true, name: true },
+    prisma.member.findMany({
+      where: { workspaceSlug, status: { not: "disabled" } },
+      select: { email: true, name: true, role: true },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -127,45 +128,36 @@ export default async function PortalSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Account Contact */}
+      {/* Team Members */}
       <Card>
         <CardHeader>
           <CardTitle className="font-heading flex items-center gap-2">
-            <Mail className="h-4 w-4" />
-            Account Contact
+            <Users className="h-4 w-4" />
+            Team Members
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-            {currentMember ? (
-              <>
-                <div>
-                  <dt className="text-xs text-muted-foreground font-medium">
-                    Contact Email
-                  </dt>
-                  <dd className="text-sm text-muted-foreground mt-1 font-mono">
-                    {currentMember.email}
-                  </dd>
-                </div>
-                {currentMember.name && (
+          {members.length > 0 ? (
+            <div className="space-y-3">
+              {members.map((m) => (
+                <div key={m.email} className="flex items-center justify-between">
                   <div>
-                    <dt className="text-xs text-muted-foreground font-medium">
-                      Name
-                    </dt>
-                    <dd className="text-sm text-foreground mt-1">
-                      {currentMember.name}
-                    </dd>
+                    {m.name && (
+                      <p className="text-sm font-medium text-foreground">{m.name}</p>
+                    )}
+                    <p className="text-sm text-muted-foreground font-mono">{m.email}</p>
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="col-span-2">
-                <p className="text-sm text-muted-foreground">
-                  No contact details configured. Contact your Outsignal account manager to update.
-                </p>
-              </div>
-            )}
-          </dl>
+                  <Badge variant={m.role === "owner" ? "default" : "secondary"} className="text-xs capitalize">
+                    {m.role}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No team members configured. Contact your Outsignal account manager to update.
+            </p>
+          )}
         </CardContent>
       </Card>
 

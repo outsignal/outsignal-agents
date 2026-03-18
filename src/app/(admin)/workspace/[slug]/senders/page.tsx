@@ -10,17 +10,21 @@ import { prisma } from "@/lib/db";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { SenderEmail } from "@/lib/emailbison/types";
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 import { Mail, Linkedin } from "lucide-react";
+
+function formatRelativeTime(date: Date | string | null): string {
+  if (!date) return "Never";
+  const d = typeof date === "string" ? new Date(date) : date;
+  const diffMs = Date.now() - d.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay > 0) return `${diffDay}d ago`;
+  if (diffHr > 0) return `${diffHr}h ago`;
+  if (diffMin > 0) return `${diffMin}m ago`;
+  return "just now";
+}
 
 interface SendersPageProps {
   params: Promise<{ slug: string }>;
@@ -241,7 +245,7 @@ export default async function SendersPage({ params }: SendersPageProps) {
                         <TableCell><Badge variant={linkedinSessionVariant[sender.sessionStatus] ?? "secondary"} className="text-xs">{sender.sessionStatus === "not_setup" ? "Not Setup" : sender.sessionStatus}</Badge></TableCell>
                         <TableCell className="text-sm text-muted-foreground capitalize">{sender.loginMethod || "—"}</TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">{sender.warmupDay > 0 ? "Day " + sender.warmupDay : "Not started"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{sender.lastPolledAt ? timeAgo(new Date(sender.lastPolledAt)) : "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{sender.lastPolledAt ? formatRelativeTime(sender.lastPolledAt) : "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

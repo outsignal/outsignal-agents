@@ -12,26 +12,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing workspaceSlug" }, { status: 400 });
     }
 
-    // Verify the target workspace exists and the user has access
-    const workspace = await prisma.workspace.findUnique({
-      where: { slug: workspaceSlug },
-      select: { notificationEmails: true, status: true },
+    // Verify the target workspace exists and the user has access via Member model
+    const member = await prisma.member.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        workspaceSlug,
+        status: { not: "disabled" },
+      },
+      include: { workspace: { select: { status: true } } },
     });
 
-    if (!workspace || workspace.status !== "active") {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    if (!member || member.workspace.status !== "active") {
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
-    const emails: string[] = JSON.parse(workspace.notificationEmails || "[]");
-    const hasAccess = emails.some((e) => e.toLowerCase() === email.toLowerCase());
-
-    if (!hasAccess) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
-
-    // Create new session cookie for the target workspace
+    // Create new session cookie for the target workspace (include role)
     const exp = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-    const cookie = createSessionCookie({ workspaceSlug, email, exp });
+    const cookie = createSessionCookie({ workspaceSlug, email, role: member.role, exp });
 
     const res = NextResponse.json({ ok: true });
     res.headers.set("Set-Cookie", cookie);
