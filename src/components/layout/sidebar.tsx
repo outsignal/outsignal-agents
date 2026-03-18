@@ -5,11 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Users,
   Settings,
   Building2,
-  ListChecks,
-  Briefcase,
   Target,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,12 +14,12 @@ import {
   Megaphone,
   FileText,
   ShieldCheck,
-  Inbox,
-  Mail,
   Search,
   LifeBuoy,
   LogOut,
-  Send,
+  FileSignature,
+  CheckSquare,
+  MessageSquareText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OutsignalLogo } from "@/components/brand/outsignal-logo";
@@ -59,42 +56,33 @@ const SIDEBAR_STORAGE_KEY = "sidebar-collapsed";
 
 const STATIC_NAV_GROUPS: NavGroup[] = [
   {
-    key: "core",
-    label: "Core",
+    key: "command-center",
+    label: "Command Center",
     hideLabel: true,
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/workspaces", label: "Workspaces", icon: Building2 },
-      { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+      { href: "/replies", label: "Replies", icon: MessageSquareText },
       { href: "/pipeline", label: "Pipeline", icon: Target },
-      { href: "/inbox", label: "Inbox", icon: Inbox },
     ],
   },
   {
-    key: "outreach",
-    label: "Outreach",
+    key: "oversight",
+    label: "Oversight",
     items: [
-      { href: "/people", label: "People", icon: Users },
-      { href: "/companies", label: "Companies", icon: Building2 },
-      { href: "/lists", label: "Lists", icon: ListChecks },
-    ],
-  },
-  {
-    key: "health",
-    label: "Health",
-    items: [
-      { href: "/senders", label: "LinkedIn Senders", icon: Send },
-      { href: "/inboxes", label: "Inboxes", icon: Mail },
+      { href: "/campaigns", label: "Campaigns", icon: Megaphone },
       { href: "/deliverability", label: "Deliverability", icon: ShieldCheck },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/search", label: "Search", icon: Search },
     ],
   },
   {
     key: "business",
     label: "Business",
     items: [
-      { href: "/clients", label: "Clients", icon: Briefcase },
       { href: "/financials", label: "Financials", icon: FileText },
+      { href: "/tasks", label: "Tasks", icon: CheckSquare },
+      { href: "/proposals", label: "Proposals", icon: FileSignature },
     ],
   },
 ];
