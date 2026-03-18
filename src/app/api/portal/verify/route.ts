@@ -48,10 +48,31 @@ export async function GET(req: NextRequest) {
     data: { used: true },
   });
 
+  // Look up the Member record and update login tracking
+  const member = await prisma.member.findUnique({
+    where: {
+      email_workspaceSlug: {
+        email: record.email,
+        workspaceSlug: record.workspaceSlug,
+      },
+    },
+  });
+
+  if (member) {
+    await prisma.member.update({
+      where: { id: member.id },
+      data: {
+        lastLoginAt: new Date(),
+        status: "active",
+      },
+    });
+  }
+
   // Create session
   const session: PortalSession = {
     workspaceSlug: record.workspaceSlug,
     email: record.email,
+    role: member?.role ?? "viewer",
     exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
   };
 

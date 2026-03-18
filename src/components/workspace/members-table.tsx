@@ -16,6 +16,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -33,17 +40,27 @@ import {
   Clock,
   MinusCircle,
   RefreshCw,
+  Send,
 } from "lucide-react";
 
 // ---------- types ----------
 
+type MemberRole = "owner" | "admin" | "viewer";
+type MemberStatus = "active" | "invited" | "disabled";
+
 interface Member {
+  id: string;
   email: string;
-  role: "client";
-  portalAccess: boolean;
-  notifications: boolean;
-  lastLogin: string | null;
-  status: "active" | "invited" | "never_logged_in";
+  name: string | null;
+  role: MemberRole;
+  workspaceSlug: string;
+  notificationsEnabled: boolean;
+  status: MemberStatus;
+  invitedAt: string;
+  invitedBy: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface MembersTableProps {
@@ -65,10 +82,16 @@ function relativeTime(iso: string): string {
   return `${months}mo ago`;
 }
 
-const statusConfig = {
-  active: { label: "Active", variant: "success" as const, icon: CheckCircle2 },
-  invited: { label: "Invited", variant: "warning" as const, icon: Clock },
-  never_logged_in: { label: "Never Logged In", variant: "secondary" as const, icon: MinusCircle },
+const statusConfig: Record<MemberStatus, { label: string; variant: "success" | "warning" | "destructive"; icon: typeof CheckCircle2 }> = {
+  active: { label: "Active", variant: "success", icon: CheckCircle2 },
+  invited: { label: "Invited", variant: "warning", icon: Clock },
+  disabled: { label: "Disabled", variant: "destructive", icon: MinusCircle },
+};
+
+const roleConfig: Record<MemberRole, { label: string; variant: "purple" | "info" | "secondary" }> = {
+  owner: { label: "Owner", variant: "purple" },
+  admin: { label: "Admin", variant: "info" },
+  viewer: { label: "Viewer", variant: "secondary" },
 };
 
 // ---------- component ----------
@@ -81,6 +104,8 @@ export function MembersTable({ slug }: MembersTableProps) {
   // Add member dialog
   const [addOpen, setAddOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState<MemberRole>("viewer");
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -90,6 +115,9 @@ export function MembersTable({ slug }: MembersTableProps) {
 
   // Notification toggle loading
   const [togglingEmail, setTogglingEmail] = useState<string | null>(null);
+
+  // Resend invite loading
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -121,7 +149,11 @@ export function MembersTable({ slug }: MembersTableProps) {
       const res = await fetch(`/api/workspace/${slug}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: newEmail.trim() }),
+        body: JSON.stringify({
+          email: newEmail.trim(),
+          name: newName.trim() || undefined,
+          role: newRole,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -130,6 +162,8 @@ export function MembersTable({ slug }: MembersTableProps) {
       }
       setMembers(data.members);
       setNewEmail("");
+      setNewName("");
+      setNewRole("viewer");
       setAddOpen(false);
     } catch {
       setAddError("Failed to add member");
@@ -138,7 +172,7 @@ export function MembersTable({ slug }: MembersTableProps) {
     }
   }
 
-  // --- Remove member ---
+  // --- Remove (soft-disable) member ---
   async function handleRemove() {
     if (!removeTarget) return;
     setRemoveLoading(true);
@@ -167,7 +201,7 @@ export function MembersTable({ slug }: MembersTableProps) {
       const res = await fetch(`/api/workspace/${slug}/members`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, notifications: !current }),
+        body: JSON.stringify({ email, notificationsEnabled: !current }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -177,6 +211,22 @@ export function MembersTable({ slug }: MembersTableProps) {
       // silently fail
     } finally {
       setTogglingEmail(null);
+    }
+  }
+
+  // --- Resend invite ---
+  async function handleResendInvite(email: string) {
+    setResendingEmail(email);
+    try {
+      await fetch(`/api/workspace/${slug}/members/resend-invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      // silently fail
+    } finally {
+      setResendingEmail(null);
     }
   }
 
@@ -194,7 +244,7 @@ export function MembersTable({ slug }: MembersTableProps) {
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
-            <Button size="sm" onClick={() => { setAddOpen(true); setAddError(null); setNewEmail(""); }}>
+            <Button size="sm" onClick={() => { setAddOpen(true); setAddError(null); setNewEmail(""); setNewName(""); setNewRole("viewer"); }}>
               <UserPlus className="h-4 w-4 mr-1.5" />
               Add Member
             </Button>
@@ -211,54 +261,44 @@ export function MembersTable({ slug }: MembersTableProps) {
             </div>
           ) : members.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground text-sm">
-              No members configured. Add client emails to grant portal access.
+              No members yet. Add team members to grant access and manage notifications.
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead className="text-center">Portal Access</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-center">Notifications</TableHead>
                   <TableHead>Last Login</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
+                  <TableHead>Invited</TableHead>
+                  <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {members.map((member) => {
                   const sc = statusConfig[member.status];
+                  const rc = roleConfig[member.role];
                   const StatusIcon = sc.icon;
                   return (
-                    <TableRow key={member.email}>
-                      <TableCell className="font-medium">
-                        {member.email}
+                    <TableRow key={member.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {member.name || member.email}
+                          </span>
+                          {member.name && (
+                            <span className="text-xs text-muted-foreground">
+                              {member.email}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-xs capitalize">
-                          {member.role}
+                        <Badge variant={rc.variant} className="text-xs capitalize">
+                          {rc.label}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {member.portalAccess ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600 inline-block" />
-                        ) : (
-                          <MinusCircle className="h-4 w-4 text-muted-foreground inline-block" />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Checkbox
-                          checked={member.notifications}
-                          disabled={togglingEmail === member.email}
-                          onCheckedChange={() =>
-                            handleToggleNotifications(member.email, member.notifications)
-                          }
-                          aria-label={`Toggle notifications for ${member.email}`}
-                        />
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {member.lastLogin ? relativeTime(member.lastLogin) : "--"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={sc.variant} className="text-xs gap-1">
@@ -266,15 +306,46 @@ export function MembersTable({ slug }: MembersTableProps) {
                           {sc.label}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={member.notificationsEnabled}
+                          disabled={togglingEmail === member.email || member.status === "disabled"}
+                          onCheckedChange={() =>
+                            handleToggleNotifications(member.email, member.notificationsEnabled)
+                          }
+                          aria-label={`Toggle notifications for ${member.email}`}
+                        />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {member.lastLoginAt ? relativeTime(member.lastLoginAt) : "--"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {relativeTime(member.invitedAt)}
+                      </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
-                          onClick={() => setRemoveTarget(member.email)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {member.status === "invited" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-brand"
+                              onClick={() => handleResendInvite(member.email)}
+                              disabled={resendingEmail === member.email}
+                              title="Resend invite"
+                            >
+                              <Send className={`h-4 w-4 ${resendingEmail === member.email ? "animate-pulse" : ""}`} />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600"
+                            onClick={() => setRemoveTarget(member.email)}
+                            title="Disable member"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -291,7 +362,7 @@ export function MembersTable({ slug }: MembersTableProps) {
           <DialogHeader>
             <DialogTitle>Add Member</DialogTitle>
             <DialogDescription>
-              Add a client email address to grant portal access and enable notifications.
+              Add a team member to this workspace. They will receive an invitation and can access the portal.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -302,7 +373,7 @@ export function MembersTable({ slug }: MembersTableProps) {
               <Input
                 id="new-member-email"
                 type="email"
-                placeholder="client@company.com"
+                placeholder="team@company.com"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 onKeyDown={(e) => {
@@ -310,6 +381,36 @@ export function MembersTable({ slug }: MembersTableProps) {
                 }}
                 autoFocus
               />
+            </div>
+            <div>
+              <Label htmlFor="new-member-name" className="text-sm font-medium mb-1.5 block">
+                Name <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="new-member-name"
+                type="text"
+                placeholder="John Smith"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAdd();
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-member-role" className="text-sm font-medium mb-1.5 block">
+                Role
+              </Label>
+              <Select value={newRole} onValueChange={(v) => setNewRole(v as MemberRole)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="owner">Owner</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {addError && (
               <p className="text-sm text-red-600">{addError}</p>
@@ -326,13 +427,13 @@ export function MembersTable({ slug }: MembersTableProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Remove Member Confirmation */}
+      {/* Disable Member Confirmation */}
       <ControlledConfirmDialog
         open={!!removeTarget}
         onOpenChange={(open) => { if (!open) setRemoveTarget(null); }}
-        title="Remove Member"
-        description={`Are you sure you want to remove ${removeTarget ?? "this member"}? They will lose portal access and notifications.`}
-        confirmLabel="Remove"
+        title="Disable Member"
+        description={`Are you sure you want to disable ${removeTarget ?? "this member"}? They will lose portal access and notifications.`}
+        confirmLabel="Disable"
         variant="destructive"
         onConfirm={handleRemove}
         disabled={removeLoading}

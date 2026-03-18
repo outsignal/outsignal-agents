@@ -13,6 +13,7 @@ const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
 export interface PortalSession {
   workspaceSlug: string;
   email: string;
+  role: string; // "owner" | "admin" | "viewer"
   exp: number; // unix timestamp (seconds)
 }
 
@@ -56,9 +57,15 @@ export function verifySession(cookieValue: string): PortalSession | null {
   }
 
   try {
-    const session: PortalSession = JSON.parse(
+    const raw = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf-8"),
     );
+
+    // Backwards compatibility: old cookies without role default to "viewer"
+    const session: PortalSession = {
+      ...raw,
+      role: raw.role ?? "viewer",
+    };
 
     // Check expiry
     if (session.exp < Date.now() / 1000) return null;
