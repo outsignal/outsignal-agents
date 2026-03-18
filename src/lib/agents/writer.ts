@@ -227,6 +227,19 @@ const writerTools = {
         .describe("The copy strategy used to generate this sequence"),
     }),
     execute: async ({ campaignId, emailSequence, linkedinSequence, copyStrategy }) => {
+      // Quality gate: check email sequence for banned patterns before saving
+      if (emailSequence && emailSequence.length > 0) {
+        const violations = checkSequenceQuality(emailSequence);
+        if (violations.length > 0) {
+          const summary = formatSequenceViolations(violations);
+          return {
+            status: "quality_violation",
+            message: `Banned patterns detected — rewrite these steps to remove violations before saving: ${summary}`,
+            violations,
+          };
+        }
+      }
+
       const { saveCampaignSequences } = await import(
         "@/lib/campaigns/operations"
       );
@@ -285,6 +298,28 @@ const writerTools = {
       bodyHtml,
       delayDays,
     }) => {
+      // Quality gate: check all text fields for banned patterns before saving
+      const allViolations: string[] = [];
+      for (const [field, value] of [
+        ["subject", subjectLine],
+        ["subjectVariantB", subjectVariantB],
+        ["body", bodyText],
+      ] as const) {
+        if (!value) continue;
+        const { violations } = checkCopyQuality(value);
+        if (violations.length > 0) {
+          allViolations.push(`${field}: ${violations.join(", ")}`);
+        }
+      }
+
+      if (allViolations.length > 0) {
+        return {
+          status: "quality_violation",
+          message: `Banned patterns detected in step ${sequenceStep} — rewrite to remove violations before saving: ${allViolations.join("; ")}`,
+          violations: allViolations,
+        };
+      }
+
       const draft = await prisma.emailDraft.create({
         data: {
           workspaceSlug,
