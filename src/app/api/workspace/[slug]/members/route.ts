@@ -13,6 +13,23 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, viewer: 2 };
 
+/** Fetch all members for a workspace, sorted by role priority then name. */
+async function fetchSortedMembers(slug: string) {
+  const members = await prisma.member.findMany({
+    where: { workspaceSlug: slug },
+    orderBy: [{ role: "asc" }, { name: "asc" }, { email: "asc" }],
+  });
+  members.sort((a, b) => {
+    const ra = ROLE_ORDER[a.role] ?? 99;
+    const rb = ROLE_ORDER[b.role] ?? 99;
+    if (ra !== rb) return ra - rb;
+    const nameA = a.name ?? a.email;
+    const nameB = b.name ?? b.email;
+    return nameA.localeCompare(nameB);
+  });
+  return members;
+}
+
 async function createInviteAndSendEmail(
   email: string,
   workspaceSlug: string,
@@ -121,21 +138,7 @@ export async function GET(
     return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
   }
 
-  const members = await prisma.member.findMany({
-    where: { workspaceSlug: slug },
-    orderBy: [{ role: "asc" }, { name: "asc" }, { email: "asc" }],
-  });
-
-  // Sort by role priority (owner first) since Prisma sorts alphabetically
-  members.sort((a, b) => {
-    const ra = ROLE_ORDER[a.role] ?? 99;
-    const rb = ROLE_ORDER[b.role] ?? 99;
-    if (ra !== rb) return ra - rb;
-    const nameA = a.name ?? a.email;
-    const nameB = b.name ?? b.email;
-    return nameA.localeCompare(nameB);
-  });
-
+  const members = await fetchSortedMembers(slug);
   return NextResponse.json({ members });
 }
 
@@ -181,7 +184,7 @@ export async function POST(
     );
   }
 
-  const member = await prisma.member.create({
+  await prisma.member.create({
     data: {
       email,
       name,
@@ -200,7 +203,8 @@ export async function POST(
     // Member was created — don't fail the request, they can resend later
   }
 
-  return NextResponse.json({ member });
+  const members = await fetchSortedMembers(slug);
+  return NextResponse.json({ members });
 }
 
 // ---------- PATCH: update member ----------
@@ -250,12 +254,13 @@ export async function PATCH(
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const updated = await prisma.member.update({
+  await prisma.member.update({
     where: { email_workspaceSlug: { email, workspaceSlug: slug } },
     data: updateData,
   });
 
-  return NextResponse.json({ member: updated });
+  const members = await fetchSortedMembers(slug);
+  return NextResponse.json({ members });
 }
 
 // ---------- DELETE: disable member ----------
@@ -285,12 +290,13 @@ export async function DELETE(
     return NextResponse.json({ error: "Member not found" }, { status: 404 });
   }
 
-  const updated = await prisma.member.update({
+  await prisma.member.update({
     where: { email_workspaceSlug: { email, workspaceSlug: slug } },
     data: { status: "disabled" },
   });
 
-  return NextResponse.json({ member: updated, message: "Member disabled" });
+  const members = await fetchSortedMembers(slug);
+  return NextResponse.json({ members });
 }
 
 export { createInviteAndSendEmail };
