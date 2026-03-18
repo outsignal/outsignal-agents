@@ -105,7 +105,14 @@ export default async function CampaignsPage({
       {/* Header */}
       <header className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-5">
         <div className="min-w-0">
-          <h1 className="text-xl font-medium text-foreground">Campaigns</h1>
+          <h1 className="text-xl font-medium text-foreground flex items-center gap-2">
+            Campaigns
+            {pendingCount > 0 && (
+              <span className="inline-flex items-center justify-center rounded-full bg-[#635BFF] px-2 py-0.5 text-xs font-semibold text-white leading-none">
+                {pendingCount} Pending
+              </span>
+            )}
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {pendingCount > 0
               ? `${pendingCount} campaign${pendingCount !== 1 ? "s" : ""} pending approval`
