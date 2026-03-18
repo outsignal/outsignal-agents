@@ -12,7 +12,7 @@
 
 import { ApiClient } from "./api-client.js";
 import { VoyagerClient } from "./voyager-client.js";
-import type { ActionResult, ConnectionStatus } from "./voyager-client.js";
+import type { ActionResult, ConnectionStatus, VoyagerConversation, VoyagerMessage } from "./voyager-client.js";
 import { LinkedInBrowser } from "./linkedin-browser.js";
 import {
   isWithinBusinessHours,
@@ -63,6 +63,12 @@ export class Worker {
   private static readonly SESSION_CHECK_INTERVAL_MS = 30 * 60 * 1000;
   private static readonly MAX_RELOGIN_PER_DAY = 2;
   private keepalive: KeepaliveManager;
+  /** Tracks lastActivityAt per conversation to detect new activity. */
+  private conversationCache: Map<string, number> = new Map();
+  /** Counts poll cycles to skip conversation checks (check every 3rd cycle). */
+  private pollCycleCount = 0;
+  /** Per-sender backoff counter for conversation fetch failures. */
+  private conversationBackoff: Map<string, number> = new Map();
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -104,6 +110,8 @@ export class Worker {
     this.running = false;
     this.activeClients.clear();
     this.lastSessionCheck.clear();
+    this.conversationCache.clear();
+    this.conversationBackoff.clear();
   }
 
   /**
@@ -134,6 +142,35 @@ export class Worker {
     for (const slug of this.options.workspaceSlugs) {
       if (!this.running) break;
       await this.processWorkspace(slug);
+    }
+
+    // -----------------------------------------------------------------------
+    // LinkedIn conversation check — runs every 3rd cycle (~5-6 min)
+    // -----------------------------------------------------------------------
+    this.pollCycleCount++;
+    if (this.pollCycleCount >= 3) {
+      this.pollCycleCount = 0;
+      console.log("[Worker] Checking LinkedIn conversations for new messages...");
+
+      for (const slug of this.options.workspaceSlugs) {
+        if (!this.running) break;
+        try {
+          const senders = await this.api.getSenders(slug);
+          const activeSenders = senders.filter(
+            (s) =>
+              s.status === "active" &&
+              s.healthStatus !== "blocked" &&
+              s.healthStatus !== "session_expired" &&
+              s.sessionStatus === "active",
+          );
+
+          if (activeSenders.length > 0) {
+            await this.checkConversations(activeSenders);
+          }
+        } catch (err) {
+          console.error(`[Worker] Conversation check failed for ${slug}:`, err);
+        }
+      }
     }
   }
 
@@ -169,6 +206,96 @@ export class Worker {
 
     // After processing action queues, poll pending connections
     await this.pollConnections(workspaceSlug, activeSenders);
+  }
+
+  /**
+   * Check for new LinkedIn messages across all active senders and push to main app.
+   * Runs every 3rd poll cycle (~5-6 minutes) to avoid hammering LinkedIn.
+   * Only fetches full messages for conversations with new activity.
+   */
+  private async checkConversations(
+    activeSenders: SenderConfig[],
+  ): Promise<void> {
+    for (const sender of activeSenders) {
+      if (!this.running) break;
+
+      // Check backoff — skip if sender is in backoff period
+      const backoff = this.conversationBackoff.get(sender.id) ?? 0;
+      if (backoff > 0) {
+        this.conversationBackoff.set(sender.id, backoff - 1);
+        continue;
+      }
+
+      let client: VoyagerClient;
+      try {
+        client = await this.getOrCreateVoyagerClient(sender);
+      } catch {
+        continue; // No cookies available — skip
+      }
+
+      try {
+        const conversations = await client.fetchConversations(10);
+        if (conversations.length === 0) continue;
+
+        // Filter to conversations with new activity since last check
+        const updatedConversations: Array<VoyagerConversation & { messages: VoyagerMessage[] }> = [];
+
+        for (const conv of conversations) {
+          const cachedActivity = this.conversationCache.get(conv.conversationId);
+
+          if (cachedActivity && conv.lastActivityAt <= cachedActivity) {
+            continue; // No new activity
+          }
+
+          // Update cache
+          this.conversationCache.set(conv.conversationId, conv.lastActivityAt);
+
+          // Skip first-time conversations (no baseline to compare against)
+          if (cachedActivity === undefined) continue;
+
+          // Fetch messages for conversations with new activity
+          try {
+            const messages = await client.fetchMessages(conv.conversationId, 10);
+            if (messages.length > 0) {
+              updatedConversations.push({ ...conv, messages });
+            }
+          } catch (msgErr) {
+            console.error(
+              `[Worker] Failed to fetch messages for conversation ${conv.conversationId}:`,
+              msgErr,
+            );
+          }
+        }
+
+        if (updatedConversations.length === 0) {
+          console.log(`[Worker] Conversation check for ${sender.name}: no new activity`);
+          continue;
+        }
+
+        // Push to main app
+        try {
+          const result = await this.api.pushConversations(sender.id, updatedConversations);
+          console.log(
+            `[Worker] Pushed conversations for ${sender.name}: ${result.conversationsProcessed} convs, ${result.newInboundMessages} new inbound`,
+          );
+        } catch (pushErr) {
+          console.error(`[Worker] Failed to push conversations for ${sender.name}:`, pushErr);
+        }
+
+        this.conversationBackoff.delete(sender.id);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (/429|401|403/.test(errMsg)) {
+          this.conversationBackoff.set(sender.id, 5); // ~15-25 min backoff
+          console.warn(
+            `[Worker] Conversation check rate limited/auth error for ${sender.name}, backing off 5 cycles`,
+          );
+        } else {
+          this.conversationBackoff.set(sender.id, 2);
+          console.error(`[Worker] Conversation check failed for ${sender.name}:`, errMsg);
+        }
+      }
+    }
   }
 
   /**

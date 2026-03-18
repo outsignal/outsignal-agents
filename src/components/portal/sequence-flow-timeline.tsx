@@ -32,6 +32,7 @@ interface LinkedInTimelineStep {
   actionType:
     | "profile_view"
     | "connect_request"
+    | "connection_request"
     | "message"
     | "follow_up"
     | "like_post"
@@ -61,6 +62,10 @@ const linkedInActionMeta: Record<
     icon: <Eye className="h-4 w-4" />,
   },
   connect_request: {
+    label: "Connection Request",
+    icon: <UserPlus className="h-4 w-4" />,
+  },
+  connection_request: {
     label: "Connection Request",
     icon: <UserPlus className="h-4 w-4" />,
   },
@@ -209,7 +214,10 @@ function LinkedInCard({
   onToggle: () => void;
   showChannel: boolean;
 }) {
-  const meta = linkedInActionMeta[step.actionType];
+  const meta = linkedInActionMeta[step.actionType] ?? {
+    label: step.actionType?.replace(/_/g, " ") ?? "LinkedIn Action",
+    icon: <MessageSquare className="h-4 w-4" />,
+  };
   const body = step.body ? normaliseBody(step.body) : null;
   const hasBody = !!body;
 

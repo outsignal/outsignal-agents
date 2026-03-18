@@ -250,4 +250,39 @@ export class ApiClient {
       body: JSON.stringify({ status }),
     });
   }
+
+  /**
+   * Push LinkedIn conversations and messages to the main app for processing.
+   * Called by the worker when new inbound messages are detected during the poll loop.
+   */
+  async pushConversations(
+    senderId: string,
+    conversations: Array<{
+      entityUrn: string;
+      conversationId: string;
+      participantName: string | null;
+      participantUrn: string | null;
+      participantProfileUrl: string | null;
+      participantHeadline: string | null;
+      participantProfilePicUrl: string | null;
+      lastActivityAt: number;
+      unreadCount: number;
+      lastMessageSnippet: string | null;
+      messages: Array<{
+        eventUrn: string;
+        senderUrn: string;
+        senderName: string | null;
+        body: string;
+        deliveredAt: number;
+      }>;
+    }>,
+  ): Promise<{ conversationsProcessed: number; newInboundMessages: number }> {
+    return this.request<{ conversationsProcessed: number; newInboundMessages: number }>(
+      "/api/linkedin/sync/push",
+      {
+        method: "POST",
+        body: JSON.stringify({ senderId, conversations }),
+      },
+    );
+  }
 }

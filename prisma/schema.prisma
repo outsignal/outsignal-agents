@@ -333,7 +333,9 @@ model Reply {
   ebSenderEmailId     Int?     // EB reply.sender_email_id — auto-select sender on reply
 
   // AI suggestion
-  aiSuggestedReply    String?  // AI-generated reply text — persisted from webhook/poll
+  aiSuggestedReply      String?    // AI-generated reply text — persisted from webhook/poll
+  suggestionFeedback    String?    // "good" | "bad" | "needs_work"
+  suggestionFeedbackAt  DateTime?
 
   // Read tracking
   isRead              Boolean  @default(false)

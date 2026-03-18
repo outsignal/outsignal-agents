@@ -2613,3 +2613,226 @@ export async function notifyOooReengaged(params: {
     console.error("[notifyOooReengaged] Slack notification failed:", err);
   }
 }
+
+export async function notifyLinkedInMessage(params: {
+  workspaceSlug: string;
+  participantName: string | null;
+  participantProfileUrl: string | null;
+  messageBody: string;
+  conversationId: string; // internal cuid for linking
+}): Promise<void> {
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: params.workspaceSlug },
+  });
+
+  if (!workspace) return;
+
+  const displayName = params.participantName ?? "Unknown";
+  const preview = params.messageBody.slice(0, 300);
+  const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL ?? "https://portal.outsignal.ai";
+  const viewUrl = `${portalBase}/portal/inbox?tab=linkedin&conversation=${params.conversationId}`;
+
+  // ---------- Slack ----------
+
+  const slackBlocks: KnownBlock[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `[${workspace.name}] New LinkedIn Message`,
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*From:* ${displayName}`,
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: preview,
+      },
+    },
+    ...(params.participantProfileUrl
+      ? [
+          {
+            type: "section" as const,
+            text: {
+              type: "mrkdwn" as const,
+              text: `*LinkedIn:* https://linkedin.com${params.participantProfileUrl}`,
+            },
+          },
+        ]
+      : []),
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "View in Portal",
+          },
+          url: viewUrl,
+        },
+      ],
+    },
+  ];
+
+  const slackFallback = `New LinkedIn Message from ${displayName}`;
+
+  // Slack notification — client channel
+  if (workspace.slackChannelId) {
+    if (verifySlackChannel(workspace.slackChannelId, "client", "notifyLinkedInMessage")) {
+      try {
+        await audited(
+          { notificationType: "linkedin_message", channel: "slack", recipient: workspace.slackChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(workspace.slackChannelId!, slackFallback, slackBlocks),
+        );
+      } catch (err) {
+        console.error("[notifyLinkedInMessage] Slack client notification failed:", err);
+      }
+    }
+  }
+
+  // Slack notification — admin replies channel
+  const repliesSlackChannelId = process.env.REPLIES_SLACK_CHANNEL_ID;
+  if (repliesSlackChannelId) {
+    if (verifySlackChannel(repliesSlackChannelId, "admin", "notifyLinkedInMessage")) {
+      try {
+        await audited(
+          { notificationType: "linkedin_message", channel: "slack", recipient: repliesSlackChannelId, workspaceSlug: params.workspaceSlug },
+          () => postMessage(repliesSlackChannelId, slackFallback, slackBlocks),
+        );
+      } catch (err) {
+        console.error("[notifyLinkedInMessage] Slack admin notification failed:", err);
+      }
+    }
+  }
+
+  // ---------- Email ----------
+
+  const emailSubjectLine = `[${workspace.name}] New LinkedIn Message from ${displayName}`;
+  const emailHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
+        <!-- Header -->
+        <tr>
+          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <!-- Title row -->
+              <tr>
+                <td style="padding-bottom:6px;">
+                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;line-height:1.3;margin:0;">New LinkedIn Message</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${workspace.name}</td>
+              </tr>
+              <!-- Sender details card -->
+              <tr>
+                <td style="padding-bottom:24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fafafa;border-radius:8px;border:1px solid #e4e4e7;">
+                    <tr>
+                      <td style="padding:14px 18px 0 18px;">
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">From</p>
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${displayName}</p>
+                      </td>
+                    </tr>
+${params.participantProfileUrl ? `                    <tr>
+                      <td style="padding:12px 18px 0 18px;">
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">LinkedIn Profile</p>
+                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;margin:0;"><a href="https://linkedin.com${params.participantProfileUrl}" style="color:#635BFF;text-decoration:none;">View Profile</a></p>
+                      </td>
+                    </tr>` : ""}
+                    <tr><td style="padding-bottom:14px;"></td></tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Preview section -->
+              <tr>
+                <td style="padding-bottom:24px;">
+                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Message Preview</p>
+                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#3f3f46;margin:0;white-space:pre-wrap;">${preview}</p>
+                </td>
+              </tr>
+              <!-- CTA button -->
+              <tr>
+                <td style="padding-top:8px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="background-color:#635BFF;border-radius:8px;">
+                        <a href="${viewUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View in Portal</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
+            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Sent to ${workspace.name} notification recipients.<br/>You received this because you are subscribed to LinkedIn message notifications.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
+
+  // Email — client notification emails
+  if (workspace.notificationEmails) {
+    try {
+      const recipients: string[] = JSON.parse(workspace.notificationEmails);
+      const verified = verifyEmailRecipients(recipients, "client", "notifyLinkedInMessage");
+      if (verified.length > 0) {
+        await audited(
+          { notificationType: "linkedin_message", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: emailSubjectLine,
+            html: emailHtml,
+          }),
+        );
+      }
+    } catch (err) {
+      console.error("[notifyLinkedInMessage] Email client notification failed:", err);
+    }
+  }
+
+  // Email — admin
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    try {
+      const verified = verifyEmailRecipients([adminEmail], "admin", "notifyLinkedInMessage");
+      if (verified.length > 0) {
+        await audited(
+          { notificationType: "linkedin_message", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
+          () => sendNotificationEmail({
+            to: verified,
+            subject: emailSubjectLine,
+            html: emailHtml,
+          }),
+        );
+      }
+    } catch (err) {
+      console.error("[notifyLinkedInMessage] Email admin notification failed:", err);
+    }
+  }
+}
