@@ -15,20 +15,11 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
-  Skeleton,
   SkeletonText,
   SkeletonMetricCard,
   SkeletonTableRow,
 } from "@/components/ui/skeleton";
 
-const NotificationHealthPage = dynamic(() => import("@/app/(admin)/notification-health/page"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-    </div>
-  ),
-});
 
 const NotificationsPage = dynamic(() => import("@/app/(admin)/notifications/page"), {
   ssr: false,
@@ -275,7 +266,11 @@ export default function NotificationsTab() {
         <div className="px-4 py-3 border-b border-border bg-muted/30">
           <h3 className="text-sm font-medium">Notification Health</h3>
         </div>
-        <NotificationHealthPage />
+        <div className="p-4">
+          <Link href="/system-uptime" className="text-sm text-primary hover:underline">
+            View notification health on System Uptime page →
+          </Link>
+        </div>
       </div>
       <div className="rounded-lg border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-muted/30">
