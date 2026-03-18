@@ -6,7 +6,7 @@
  * Invalid/blocked emails are automatically excluded; only exportable (valid) emails are included.
  *
  * enrichmentData flattening handles both formats found in DB:
- * - Clay person data: [{name, value}] array → enrichment_{name} columns
+ * - Legacy person data: [{name, value}] array → enrichment_{name} columns
  * - Company / provider data: {key: value} object → enrichment_{key} columns
  */
 
@@ -29,7 +29,7 @@ export function flattenEnrichmentData(enrichmentData: string | null): Record<str
   try {
     const parsed: unknown = JSON.parse(enrichmentData);
 
-    // Array format: [{name, value}] (Clay person data)
+    // Array format: [{name, value}] (legacy person data)
     if (Array.isArray(parsed)) {
       const result: Record<string, string> = {};
       for (const entry of parsed as { name: string; value: unknown }[]) {

@@ -173,7 +173,7 @@ export const TASK_TEMPLATES: Record<TemplateType, TaskTemplate[]> = {
       dueDaysFromStart: 7,
       subtasks: [
         { title: "Identify best source for audience", order: 0 },
-        { title: "Pull audience into a Clay table", order: 1 },
+        { title: "Build audience list via discovery agents", order: 1 },
         { title: "Approval of ICP-based list", order: 2 },
       ],
     },
@@ -423,7 +423,7 @@ export const TASK_TEMPLATES: Record<TemplateType, TaskTemplate[]> = {
       dueDaysFromStart: 7,
       subtasks: [
         { title: "Identify best source for audience", order: 0 },
-        { title: "Pull audience into a Clay table", order: 1 },
+        { title: "Build audience list via discovery agents", order: 1 },
         { title: "Approval of ICP-based list", order: 2 },
       ],
     },
@@ -687,7 +687,7 @@ export const TASK_TEMPLATES: Record<TemplateType, TaskTemplate[]> = {
       dueDaysFromStart: 7,
       subtasks: [
         { title: "Identify best source for audience", order: 0 },
-        { title: "Pull audience into a Clay table", order: 1 },
+        { title: "Build audience list via discovery agents", order: 1 },
         { title: "Approval of ICP-based list", order: 2 },
       ],
     },

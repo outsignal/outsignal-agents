@@ -65,7 +65,7 @@ const LINKEDIN_TEMPLATE: PackageTemplate = {
   setupDetails: [
     "LinkedIn Sequencer Setup: Heyreach or LinkedHelper (1 x account connected)",
     "Sending settings",
-    "Leads: Scrape, enrich (with Clay, OpenAI, Claude), add leads to campaign",
+    "Leads: Scrape, enrich (with AI Ark, Prospeo, LeadMagic, FindyMail), add leads to campaign",
     "Copy assets: Social proof, Offer/Lead Magnet, Call to action",
     "Write copy based on above: 2–3 step LinkedIn sequence",
     "Campaign Monitoring: Reply rates, connections accepted, follow up messages sent",
@@ -74,7 +74,7 @@ const LINKEDIN_TEMPLATE: PackageTemplate = {
   ongoingTitle: "On-going Retainer (Month 2+)",
   ongoingDetails: [
     "LinkedIn Sequencer: Maintenance",
-    "Leads: Scrape, enrich (with Clay, OpenAI, Claude), add leads to campaign",
+    "Leads: Scrape, enrich (with AI Ark, Prospeo, LeadMagic, FindyMail), add leads to campaign",
     "Optimise copy: Based on previous months campaign performance",
     "Campaign Monitoring: Reply rates, connections accepted, follow up messages sent",
     "Reporting: Weekly reporting on campaign progress",
@@ -85,7 +85,7 @@ const LINKEDIN_TEMPLATE: PackageTemplate = {
     "Weekly campaign report delivered Friday PM",
   ],
   platformFees:
-    "The platform fees cover the costs of the following platforms: LinkedIn Sequencer (Heyreach/LinkedIn Helper), Leads (A-Leads, Clay, Sales Navigator, Apollo, Apify, Serper), Enrichment (OpenAI API, Claude API).",
+    "The platform fees cover the costs of the following platforms: LinkedIn Sequencer (Heyreach/LinkedIn Helper), Leads (AI Ark, Prospeo, LeadMagic, FindyMail, Sales Navigator, Apify, Serper), Enrichment (OpenAI API, Claude API).",
 };
 
 export function getTemplate(packageType: string): PackageTemplate[] {

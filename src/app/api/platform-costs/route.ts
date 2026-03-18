@@ -37,7 +37,7 @@ const SEED_DATA: Array<{
   // API
   { service: "leadmagic", label: "LeadMagic", monthlyCost: 44.42, category: "api", billingDay: 9 },
   { service: "prospeo", label: "Prospeo", monthlyCost: 36.01, category: "api", billingDay: 12 },
-  { service: "clay", label: "Clay", monthlyCost: 266.31, category: "api", notes: "Cancelling soon", billingDay: 17 },
+  { service: "clay", label: "Clay", monthlyCost: 0, category: "api", notes: "Cancelled 2026-03-18", billingDay: 17 },
   { service: "apify", label: "Apify", monthlyCost: 23.00, category: "api", notes: "Starter plan", url: "https://console.apify.com" },
   { service: "anthropic-api", label: "Anthropic API", monthlyCost: 0, category: "api", notes: "Pay-per-use", url: "https://console.anthropic.com" },
 

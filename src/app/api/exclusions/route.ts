@@ -13,10 +13,10 @@ const exclusionLimiter = rateLimit({ windowMs: 60_000, max: 30 });
 function authenticateRequest(
   request: NextRequest,
 ): { ok: true } | { ok: false; response: NextResponse } {
-  const secret = process.env.CLAY_WEBHOOK_SECRET;
+  const secret = process.env.INGEST_WEBHOOK_SECRET ?? process.env.CLAY_WEBHOOK_SECRET;
   if (!secret) {
     console.warn(
-      "[Exclusions] CLAY_WEBHOOK_SECRET not configured — rejecting all requests",
+      "[Exclusions] INGEST_WEBHOOK_SECRET not configured — rejecting all requests",
     );
     return {
       ok: false,

@@ -40,7 +40,7 @@ const KNOWN_FIELDS = [
   "targetListId",
 ];
 
-// Map snake_case / alternate field names from Clay to our camelCase fields
+// Map snake_case / alternate field names from ingest payload to our camelCase fields
 const FIELD_ALIASES: Record<string, string> = {
   first_name: "firstName",
   last_name: "lastName",
@@ -201,7 +201,7 @@ async function enrichPerson(
           linkedinUrl: payload.linkedinUrl ?? null,
           location: payload.location ?? null,
           vertical: vertical ?? null,
-          source: "clay",
+          source: "webhook",
           enrichmentData: extraJson,
         },
       });
@@ -316,11 +316,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // API key check — reject all requests when CLAY_WEBHOOK_SECRET is not configured
-    const secret = process.env.CLAY_WEBHOOK_SECRET;
+    // API key check — reject all requests when INGEST_WEBHOOK_SECRET is not configured
+    const secret = process.env.INGEST_WEBHOOK_SECRET ?? process.env.CLAY_WEBHOOK_SECRET;
     if (!secret) {
       console.warn(
-        "[Clay Enrich] CLAY_WEBHOOK_SECRET not configured — rejecting all requests",
+        "[Enrich] INGEST_WEBHOOK_SECRET not configured — rejecting all requests",
       );
       return NextResponse.json(
         { error: "Webhook authentication not configured" },
