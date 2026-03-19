@@ -832,18 +832,45 @@ export class VoyagerClient {
 
               // Extract URLs from attachments / renderContent (embedded messages)
               try {
-                const msgRcu = msgEl.renderContentUnions as Array<Record<string, unknown>> | undefined;
-                if (msgRcu) {
-                  const urls: string[] = [];
+                // Debug: dump full message structure for non-empty renderContent or when body is short
+                if (msgBodyText && msgBodyText.length < 20) {
+                  const bodyAttrs = (msgBodyObj && typeof msgBodyObj === "object") ? (msgBodyObj as Record<string, unknown>).attributes : undefined;
+                  if (bodyAttrs) {
+                    console.log(`[VoyagerClient] body.attributes for "${msgBodyText}":`, JSON.stringify(bodyAttrs).slice(0, 500));
+                  }
+                  console.log(`[VoyagerClient] Full msg keys for "${msgBodyText}":`, Object.keys(msgEl).join(", "));
+                  const fallback = msgEl.renderContentFallbackText as string | undefined;
+                  if (fallback) console.log(`[VoyagerClient] fallbackText: ${fallback}`);
+                }
+                // Check renderContent (GraphQL embedded messages) and renderContentUnions
+                const msgRcSources = [
+                  msgEl.renderContent as Array<Record<string, unknown>> | undefined,
+                  msgEl.renderContentUnions as Array<Record<string, unknown>> | undefined,
+                ];
+                const urls: string[] = [];
+                for (const msgRcu of msgRcSources) {
+                  if (!msgRcu) continue;
                   for (const rcu of msgRcu) {
                     const extMedia = rcu.externalMedia as Record<string, unknown> | undefined;
                     if (extMedia?.url) urls.push(extMedia.url as string);
                     const article = rcu.article as Record<string, unknown> | undefined;
                     if (article?.url) urls.push(article.url as string);
+                    // File attachments — include name
+                    const file = rcu.file as Record<string, unknown> | undefined;
+                    if (file?.name) urls.push(`[${file.name}]`);
                   }
-                  if (urls.length > 0) {
-                    msgBodyText = msgBodyText ? `${msgBodyText}\n${urls.join("\n")}` : urls.join("\n");
+                }
+                // Fallback: renderContentFallbackText often contains the URL as plain text
+                if (urls.length === 0) {
+                  const fallback = msgEl.renderContentFallbackText as string | undefined;
+                  if (fallback) {
+                    const urlMatches = fallback.match(/https?:\/\/[^\s]+/g);
+                    if (urlMatches) urls.push(...urlMatches);
+                    else if (fallback.trim()) urls.push(fallback.trim());
                   }
+                }
+                if (urls.length > 0) {
+                  msgBodyText = msgBodyText ? `${msgBodyText}\n${urls.join("\n")}` : urls.join("\n");
                 }
               } catch {
                 // Best-effort
@@ -1197,21 +1224,20 @@ export class VoyagerClient {
           // LinkedIn puts links, images, and media in these fields, not in body.text
           const attachmentUrls: string[] = [];
           try {
-            const renderContentUnions = msg.renderContentUnions as Array<Record<string, unknown>> | undefined;
-            if (renderContentUnions) {
-              for (const rcu of renderContentUnions) {
-                // External media (links)
+            // Check renderContent (GraphQL) and renderContentUnions
+            const rcSources = [
+              msg.renderContent as Array<Record<string, unknown>> | undefined,
+              msg.renderContentUnions as Array<Record<string, unknown>> | undefined,
+            ];
+            for (const rcList of rcSources) {
+              if (!rcList) continue;
+              for (const rcu of rcList) {
                 const extMedia = rcu.externalMedia as Record<string, unknown> | undefined;
-                if (extMedia) {
-                  const url = extMedia.url as string | undefined;
-                  if (url) attachmentUrls.push(url);
-                }
-                // Article/link shares
+                if (extMedia?.url) attachmentUrls.push(extMedia.url as string);
                 const article = rcu.article as Record<string, unknown> | undefined;
-                if (article) {
-                  const url = article.url as string | undefined;
-                  if (url) attachmentUrls.push(url);
-                }
+                if (article?.url) attachmentUrls.push(article.url as string);
+                const file = rcu.file as Record<string, unknown> | undefined;
+                if (file?.name) attachmentUrls.push(`[${file.name}]`);
               }
             }
             // Also check eventContent (older message format)
@@ -1232,6 +1258,15 @@ export class VoyagerClient {
                 const url = (att.url as string | undefined) ??
                   (att.reference as Record<string, unknown> | undefined)?.url as string | undefined;
                 if (url) attachmentUrls.push(url);
+              }
+            }
+            // Fallback: renderContentFallbackText often contains the URL as plain text
+            if (attachmentUrls.length === 0) {
+              const fallback = msg.renderContentFallbackText as string | undefined;
+              if (fallback) {
+                const urlMatches = fallback.match(/https?:\/\/[^\s]+/g);
+                if (urlMatches) attachmentUrls.push(...urlMatches);
+                else if (fallback.trim()) attachmentUrls.push(fallback.trim());
               }
             }
           } catch {
