@@ -27,6 +27,33 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
     linkedInConversationId,
   } = params;
 
+  // Cross-campaign dedup: skip if this person already has an active or recently
+  // completed action of the same type in this workspace (any campaign).
+  // - Pending/running: always block (action is in-flight)
+  // - Completed within last 30 days: block (recent outreach, don't double-tap)
+  // - Completed 30+ days ago: allow (campaign finished, ok to re-target)
+  // Portal replies (linkedInConversationId set) bypass dedup entirely.
+  if (personId && !linkedInConversationId) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const existing = await prisma.linkedInAction.findFirst({
+      where: {
+        personId,
+        workspaceSlug,
+        actionType,
+        OR: [
+          { status: { in: ["pending", "running"] } },
+          { status: "complete", completedAt: { gte: thirtyDaysAgo } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return existing.id;
+    }
+  }
+
   const action = await prisma.linkedInAction.create({
     data: {
       senderId,
