@@ -145,10 +145,10 @@ export class Worker {
     }
 
     // -----------------------------------------------------------------------
-    // LinkedIn conversation check — runs every 3rd cycle (~5-6 min)
+    // LinkedIn conversation check — runs every 2nd cycle (~4 min)
     // -----------------------------------------------------------------------
     this.pollCycleCount++;
-    if (this.pollCycleCount >= 3) {
+    if (this.pollCycleCount >= 2) {
       this.pollCycleCount = 0;
       console.log("[Worker] Checking LinkedIn conversations for new messages...");
 
@@ -235,6 +235,9 @@ export class Worker {
 
       try {
         const conversations = await client.fetchConversations(10);
+        console.log(
+          `[Worker] Fetched ${conversations.length} conversations for ${sender.name}`,
+        );
         if (conversations.length === 0) continue;
 
         // Filter to conversations with new activity since last check
@@ -250,8 +253,15 @@ export class Worker {
           // Update cache
           this.conversationCache.set(conv.conversationId, conv.lastActivityAt);
 
-          // Skip first-time conversations (no baseline to compare against)
-          if (cachedActivity === undefined) continue;
+          // On first cache prime, process conversations with recent activity
+          // (within last 30 minutes) to catch replies that arrived before worker started
+          if (cachedActivity === undefined) {
+            const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
+            if (conv.lastActivityAt < thirtyMinAgo) continue;
+            console.log(
+              `[Worker] First-time conversation ${conv.conversationId} has recent activity (${Math.round((Date.now() - conv.lastActivityAt) / 60000)}m ago), processing`,
+            );
+          }
 
           // Fetch messages for conversations with new activity
           try {

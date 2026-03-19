@@ -561,9 +561,44 @@ export class VoyagerClient {
    */
   async fetchConversations(limit: number = 20): Promise<VoyagerConversation[]> {
     try {
-      const response = await this.request(
-        `/voyagerMessagingDashMessengerConversations?keyVersion=LEGACY_INBOX&q=all&count=${limit}`
-      );
+      let response: Response;
+      let usedLegacyEndpoint = false;
+
+      // Tier 1: New DashMessenger endpoint with LEGACY_INBOX keyVersion
+      try {
+        response = await this.request(
+          `/voyagerMessagingDashMessengerConversations?keyVersion=LEGACY_INBOX&q=all&count=${limit}`
+        );
+      } catch (err) {
+        if (err instanceof VoyagerError && (err.status === 400 || err.status === 404)) {
+          // Tier 2: New DashMessenger endpoint without keyVersion
+          console.log(
+            "[VoyagerClient] LEGACY_INBOX DashMessenger endpoint failed (400/404), trying without keyVersion..."
+          );
+          try {
+            response = await this.request(
+              `/voyagerMessagingDashMessengerConversations?q=all&count=${limit}`
+            );
+          } catch (err2) {
+            if (err2 instanceof VoyagerError && (err2.status === 400 || err2.status === 404)) {
+              // Tier 3: Legacy REST messaging endpoint — requires keyVersion=LEGACY_INBOX,
+              // uses createdBefore (epoch ms) for pagination, no count param.
+              console.log(
+                "[VoyagerClient] DashMessenger failed (400/404), falling back to legacy /messaging/conversations..."
+              );
+              const createdBefore = Date.now();
+              response = await this.request(
+                `/messaging/conversations?keyVersion=LEGACY_INBOX&createdBefore=${createdBefore}`
+              );
+              usedLegacyEndpoint = true;
+            } else {
+              throw err2;
+            }
+          }
+        } else {
+          throw err;
+        }
+      }
 
       // Checkpoint detection
       if (
@@ -581,7 +616,7 @@ export class VoyagerClient {
         JSON.stringify(data).slice(0, 3000)
       );
 
-      return this.parseConversations(data);
+      return this.parseConversations(data, usedLegacyEndpoint);
     } catch (err) {
       if (err instanceof VoyagerError) throw err;
       throw new VoyagerError(0, String(err));
@@ -645,6 +680,104 @@ export class VoyagerClient {
   }
 
   /**
+   * Parse the legacy /messaging/conversations REST response into VoyagerConversation objects.
+   *
+   * This endpoint returns { elements: Conversation[], paging: {} } at the top level.
+   * Participant info is inline — each participant is an object keyed by the full
+   * com.linkedin.voyager.messaging.MessagingMember type string, with a nested miniProfile.
+   * Last message snippet is in the last event's eventContent MessageEvent attributedBody.
+   */
+  private parseLegacyConversations(
+    elements: Array<Record<string, unknown>>
+  ): VoyagerConversation[] {
+    return elements
+      .map((conv): VoyagerConversation | null => {
+        const entityUrn = conv.entityUrn as string | undefined;
+        if (!entityUrn) return null;
+
+        const conversationId = entityUrn.split(":").pop() ?? entityUrn;
+        const lastActivityAt = (conv.lastActivityAt as number | undefined) ?? 0;
+        const unreadCount = (conv.unreadCount as number | undefined) ?? 0;
+
+        // Participants — array of objects keyed by messaging member type
+        const MEMBER_KEY = "com.linkedin.voyager.messaging.MessagingMember";
+        let participantName: string | null = null;
+        let participantUrn: string | null = null;
+        let participantProfileUrl: string | null = null;
+        let participantHeadline: string | null = null;
+        let participantProfilePicUrl: string | null = null;
+
+        const rawParticipants = conv.participants as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(rawParticipants)) {
+          for (const p of rawParticipants) {
+            const member = p[MEMBER_KEY] as Record<string, unknown> | undefined;
+            if (!member) continue;
+
+            participantUrn = (member.entityUrn as string | undefined) ?? null;
+
+            const mini = member.miniProfile as Record<string, unknown> | undefined;
+            if (mini) {
+              const firstName = mini.firstName as string | undefined;
+              const lastName = mini.lastName as string | undefined;
+              if (firstName || lastName) {
+                participantName = `${firstName ?? ""} ${lastName ?? ""}`.trim();
+              }
+              const pub = mini.publicIdentifier as string | undefined;
+              if (pub) participantProfileUrl = `/in/${pub}`;
+              participantHeadline =
+                (mini.occupation as string | undefined) ??
+                (mini.headline as string | undefined) ??
+                null;
+
+              // Profile picture
+              const pic = mini.picture as Record<string, unknown> | undefined;
+              if (pic) {
+                const rootUrl = pic.rootUrl as string | undefined;
+                const artifacts = pic.artifacts as Array<Record<string, unknown>> | undefined;
+                if (rootUrl && artifacts && artifacts.length > 0) {
+                  const last = artifacts[artifacts.length - 1];
+                  participantProfilePicUrl =
+                    rootUrl + ((last.fileIdentifyingUrlPathSegment as string) ?? "");
+                }
+              }
+            }
+            break; // Use first non-self participant
+          }
+        }
+
+        // Last message snippet — from last event in events[]
+        let lastMessageSnippet: string | null = null;
+        const events = conv.events as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(events) && events.length > 0) {
+          const lastEvent = events[events.length - 1];
+          const eventContent = lastEvent.eventContent as Record<string, unknown> | undefined;
+          if (eventContent) {
+            const MSG_KEY = "com.linkedin.voyager.messaging.event.MessageEvent";
+            const msgEvent = eventContent[MSG_KEY] as Record<string, unknown> | undefined;
+            if (msgEvent) {
+              const attributed = msgEvent.attributedBody as Record<string, unknown> | undefined;
+              lastMessageSnippet = (attributed?.text as string | undefined) ?? null;
+            }
+          }
+        }
+
+        return {
+          entityUrn,
+          conversationId,
+          participantName,
+          participantUrn,
+          participantProfileUrl,
+          participantHeadline,
+          participantProfilePicUrl,
+          lastActivityAt,
+          unreadCount,
+          lastMessageSnippet,
+        };
+      })
+      .filter((c): c is VoyagerConversation => c !== null);
+  }
+
+  /**
    * Parse the LinkedIn Voyager normalized response into VoyagerConversation objects.
    *
    * LinkedIn returns a normalized JSON format where conversations and their participant
@@ -652,9 +785,18 @@ export class VoyagerClient {
    * map from participant URNs and then maps each conversation entity to the interface.
    */
   private parseConversations(
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    legacyFormat = false
   ): VoyagerConversation[] {
     try {
+      // Legacy /messaging/conversations endpoint returns { elements: Conversation[], paging: {} }
+      // at the top level — no included[] entity map, participants are inline objects.
+      if (legacyFormat || Array.isArray(data.elements)) {
+        return this.parseLegacyConversations(
+          (data.elements as Array<Record<string, unknown>> | undefined) ?? []
+        );
+      }
+
       const included = (data.included ?? []) as Array<Record<string, unknown>>;
 
       // Build lookup map for participant entities keyed by entityUrn
