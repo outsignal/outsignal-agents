@@ -8,6 +8,7 @@ import {
   Megaphone,
   Inbox,
   LinkedinIcon,
+  Activity,
   Mail,
   ShieldCheck,
   Receipt,
@@ -58,6 +59,7 @@ const navGroups: NavGroup[] = [
       { href: "/portal/campaigns", label: "Campaigns", icon: Megaphone },
       { href: "/portal/inbox", label: "Inbox", icon: Inbox },
       { href: "/portal/linkedin", label: "LinkedIn", icon: LinkedinIcon },
+      { href: "/portal/activity", label: "Activity", icon: Activity },
     ],
   },
   {
