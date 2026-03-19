@@ -230,7 +230,14 @@ export class VoyagerClient {
 
   async keepaliveFetchMessaging(): Promise<boolean> {
     try {
-      await this.request("/voyagerMessagingDashMessengerConversations?count=1");
+      // Use GraphQL endpoint for keepalive — the old DashMessenger REST endpoint returns 400
+      const selfUrn = await this.getSelfUrn();
+      if (!selfUrn) return true; // Can't get URN but session might still be alive
+      const mailboxUrn = encodeURIComponent(selfUrn);
+      await this.request(
+        `/voyagerMessagingGraphQL/graphql?queryId=messengerConversations.0d5e6781bbee71c3e51c8843c6519f48&variables=(mailboxUrn:${mailboxUrn})`,
+        { extraHeaders: { Accept: "application/graphql" } }
+      );
       return true;
     } catch (err) {
       if (err instanceof VoyagerError && (err.status === 401 || err.status === 403)) return false;
@@ -551,75 +558,221 @@ export class VoyagerClient {
   /**
    * Fetch the last N LinkedIn messaging conversations for the authenticated user.
    *
-   * Calls LinkedIn's Voyager messaging API. Returns rich metadata including
-   * participant info (name, profile URL, headline, profile picture) and
-   * a snippet of the last message. Parsing is defensive — returns empty array
-   * on unexpected response shapes rather than crashing.
+   * LinkedIn migrated conversations to a GraphQL endpoint in early 2026.
+   * This method uses the new GraphQL endpoint as primary, with the old
+   * DashMessenger REST endpoint as a fallback for edge cases.
    *
-   * IMPORTANT: Log raw response on first run so parser can be validated against
-   * live data — the Voyager response schema may differ from expectations.
+   * Tier 1 (primary): GraphQL messengerConversations — requires sender's fsd_profile URN
+   * Tier 2 (fallback): DashMessenger REST — may still work for some accounts
    */
   async fetchConversations(limit: number = 20): Promise<VoyagerConversation[]> {
     try {
-      let response: Response;
-      let usedLegacyEndpoint = false;
+      // Resolve sender's own URN for the mailboxUrn parameter
+      const selfUrn = await this.getSelfUrn();
 
-      // Tier 1: New DashMessenger endpoint with LEGACY_INBOX keyVersion
-      try {
-        response = await this.request(
-          `/voyagerMessagingDashMessengerConversations?keyVersion=LEGACY_INBOX&q=all&count=${limit}`
-        );
-      } catch (err) {
-        if (err instanceof VoyagerError && (err.status === 400 || err.status === 404)) {
-          // Tier 2: New DashMessenger endpoint without keyVersion
-          console.log(
-            "[VoyagerClient] LEGACY_INBOX DashMessenger endpoint failed (400/404), trying without keyVersion..."
+      // Tier 1: GraphQL messengerConversations (primary — LinkedIn migrated to this in 2026)
+      if (selfUrn) {
+        try {
+          const mailboxUrn = encodeURIComponent(selfUrn);
+          const response = await this.request(
+            `/voyagerMessagingGraphQL/graphql?queryId=messengerConversations.0d5e6781bbee71c3e51c8843c6519f48&variables=(mailboxUrn:${mailboxUrn})`,
+            { extraHeaders: { Accept: "application/graphql" } }
           );
-          try {
-            response = await this.request(
-              `/voyagerMessagingDashMessengerConversations?q=all&count=${limit}`
-            );
-          } catch (err2) {
-            if (err2 instanceof VoyagerError && (err2.status === 400 || err2.status === 404)) {
-              // Tier 3: Legacy REST messaging endpoint — requires keyVersion=LEGACY_INBOX,
-              // uses createdBefore (epoch ms) for pagination, no count param.
-              console.log(
-                "[VoyagerClient] DashMessenger failed (400/404), falling back to legacy /messaging/conversations..."
-              );
-              const createdBefore = Date.now();
-              response = await this.request(
-                `/messaging/conversations?keyVersion=LEGACY_INBOX&createdBefore=${createdBefore}`
-              );
-              usedLegacyEndpoint = true;
-            } else {
-              throw err2;
-            }
+
+          // Checkpoint detection
+          if (
+            response.url.includes("/checkpoint/") ||
+            response.url.includes("/challenge/")
+          ) {
+            throw new VoyagerError(403, "checkpoint_detected");
           }
-        } else {
-          throw err;
+
+          const data = (await response.json()) as Record<string, unknown>;
+
+          console.log(
+            "[VoyagerClient] fetchConversations GraphQL raw (first 3000 chars):",
+            JSON.stringify(data).slice(0, 3000)
+          );
+
+          const conversations = this.parseGraphQLConversations(data, selfUrn);
+          console.log(
+            `[VoyagerClient] GraphQL parsed ${conversations.length} conversations`
+          );
+          return conversations;
+        } catch (err) {
+          if (err instanceof VoyagerError && err.status === 403) throw err; // checkpoint — don't retry
+          // For other errors (400, 404, 500, network) fall through to tier 2
+          console.warn(
+            `[VoyagerClient] GraphQL conversations endpoint failed (${err instanceof VoyagerError ? err.status : "network"}), falling back to DashMessenger REST...`
+          );
         }
+      } else {
+        console.warn("[VoyagerClient] Could not resolve selfUrn — skipping GraphQL tier, trying REST fallback");
       }
+
+      // Tier 2: DashMessenger REST (fallback)
+      console.log("[VoyagerClient] Trying DashMessenger REST endpoint...");
+      const restResponse = await this.request(
+        `/voyagerMessagingDashMessengerConversations?count=${limit}`
+      );
 
       // Checkpoint detection
       if (
-        response.url.includes("/checkpoint/") ||
-        response.url.includes("/challenge/")
+        restResponse.url.includes("/checkpoint/") ||
+        restResponse.url.includes("/challenge/")
       ) {
         throw new VoyagerError(403, "checkpoint_detected");
       }
 
-      const data = (await response.json()) as Record<string, unknown>;
+      const restData = (await restResponse.json()) as Record<string, unknown>;
 
-      // Log raw response on first call for debugging the actual shape
       console.log(
-        "[VoyagerClient] fetchConversations raw (first 3000 chars):",
-        JSON.stringify(data).slice(0, 3000)
+        "[VoyagerClient] fetchConversations REST raw (first 3000 chars):",
+        JSON.stringify(restData).slice(0, 3000)
       );
 
-      return this.parseConversations(data, usedLegacyEndpoint);
+      return this.parseConversations(restData);
     } catch (err) {
       if (err instanceof VoyagerError) throw err;
       throw new VoyagerError(0, String(err));
+    }
+  }
+
+  /**
+   * Parse the GraphQL messengerConversations response into VoyagerConversation objects.
+   *
+   * LinkedIn's GraphQL response shape (as of 2026):
+   *   data.messengerConversationsBySyncToken.elements[]
+   *
+   * Each element has inline participant objects (conversationParticipants[]),
+   * and the most recent message is in messages.elements[0].
+   *
+   * selfUrn is used to identify which participant is the sender (SELF) so we
+   * can extract the other participant's info.
+   */
+  private parseGraphQLConversations(
+    data: Record<string, unknown>,
+    selfUrn: string
+  ): VoyagerConversation[] {
+    try {
+      // Navigate to elements array
+      const dataInner = data.data as Record<string, unknown> | undefined;
+      const syncData = dataInner?.messengerConversationsBySyncToken as
+        | Record<string, unknown>
+        | undefined;
+      const elements = syncData?.elements as Array<Record<string, unknown>> | undefined;
+
+      if (!Array.isArray(elements)) {
+        console.warn(
+          "[VoyagerClient] parseGraphQLConversations: no elements array found in response"
+        );
+        return [];
+      }
+
+      return elements
+        .map((conv): VoyagerConversation | null => {
+          // entityUrn e.g. "urn:li:msg_conversation:(urn:li:fsd_profile:ACoAAA...,2-base64==)"
+          const entityUrn = conv.entityUrn as string | undefined;
+          if (!entityUrn) return null;
+
+          // conversationId — extract from backendUrn: "urn:li:messagingThread:2-base64=="
+          const backendUrn = conv.backendUrn as string | undefined;
+          const conversationId = backendUrn
+            ? backendUrn.replace("urn:li:messagingThread:", "")
+            : entityUrn.split(":").pop() ?? entityUrn;
+
+          const lastActivityAt = (conv.lastActivityAt as number | undefined) ?? 0;
+          const unreadCount = (conv.unreadCount as number | undefined) ?? 0;
+
+          // Find the non-self participant (distance !== "SELF")
+          const participants = conv.conversationParticipants as
+            | Array<Record<string, unknown>>
+            | undefined;
+
+          let participantName: string | null = null;
+          let participantUrn: string | null = null;
+          let participantProfileUrl: string | null = null;
+          let participantHeadline: string | null = null;
+          let participantProfilePicUrl: string | null = null;
+
+          if (Array.isArray(participants)) {
+            for (const p of participants) {
+              const pType = p.participantType as Record<string, unknown> | undefined;
+              const member = pType?.member as Record<string, unknown> | undefined;
+              if (!member) continue;
+
+              // Identify non-self participant by distance
+              const distance = member.distance as string | undefined;
+              if (distance === "SELF") continue;
+
+              // Also skip if this participant's backendUrn matches our selfUrn member ID
+              // (guard for accounts where distance might not be set correctly)
+              const pBackendUrn = p.backendUrn as string | undefined;
+              const selfMemberId = selfUrn.replace("urn:li:fsd_profile:", "urn:li:member:");
+              if (pBackendUrn && pBackendUrn === selfMemberId) continue;
+
+              participantUrn = (p.entityUrn as string | undefined) ?? null;
+
+              const firstName = (member.firstName as Record<string, unknown> | undefined)?.text as string | undefined;
+              const lastName = (member.lastName as Record<string, unknown> | undefined)?.text as string | undefined;
+              if (firstName || lastName) {
+                participantName = `${firstName ?? ""} ${lastName ?? ""}`.trim();
+              }
+
+              // profileUrl — extract /in/ path from full URL
+              const rawProfileUrl = member.profileUrl as string | undefined;
+              if (rawProfileUrl) {
+                const inMatch = rawProfileUrl.match(/linkedin\.com(\/in\/[^/?#]+)/);
+                participantProfileUrl = inMatch ? inMatch[1] : rawProfileUrl;
+              }
+
+              participantHeadline =
+                (member.headline as Record<string, unknown> | undefined)?.text as string ?? null;
+
+              // Profile picture — rootUrl + largest artifact
+              const pic = member.profilePicture as Record<string, unknown> | undefined;
+              if (pic) {
+                const rootUrl = pic.rootUrl as string | undefined;
+                const artifacts = pic.artifacts as Array<Record<string, unknown>> | undefined;
+                if (rootUrl && artifacts && artifacts.length > 0) {
+                  // Pick largest artifact (last by index, as they're ordered smallest→largest)
+                  const largest = artifacts[artifacts.length - 1];
+                  const segment = largest.fileIdentifyingUrlPathSegment as string | undefined;
+                  if (segment) participantProfilePicUrl = rootUrl + segment;
+                }
+              }
+
+              break; // Found the non-self participant
+            }
+          }
+
+          // Last message snippet — messages.elements[0] is the most recent message
+          let lastMessageSnippet: string | null = null;
+          const messages = conv.messages as Record<string, unknown> | undefined;
+          const messageElements = messages?.elements as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(messageElements) && messageElements.length > 0) {
+            const lastMsg = messageElements[0];
+            const body = lastMsg.body as Record<string, unknown> | undefined;
+            lastMessageSnippet = (body?.text as string | undefined) ?? null;
+          }
+
+          return {
+            entityUrn,
+            conversationId,
+            participantName,
+            participantUrn,
+            participantProfileUrl,
+            participantHeadline,
+            participantProfilePicUrl,
+            lastActivityAt,
+            unreadCount,
+            lastMessageSnippet,
+          };
+        })
+        .filter((c): c is VoyagerConversation => c !== null);
+    } catch (err) {
+      console.error("[VoyagerClient] parseGraphQLConversations error:", err);
+      return [];
     }
   }
 
@@ -680,123 +833,18 @@ export class VoyagerClient {
   }
 
   /**
-   * Parse the legacy /messaging/conversations REST response into VoyagerConversation objects.
-   *
-   * This endpoint returns { elements: Conversation[], paging: {} } at the top level.
-   * Participant info is inline — each participant is an object keyed by the full
-   * com.linkedin.voyager.messaging.MessagingMember type string, with a nested miniProfile.
-   * Last message snippet is in the last event's eventContent MessageEvent attributedBody.
-   */
-  private parseLegacyConversations(
-    elements: Array<Record<string, unknown>>
-  ): VoyagerConversation[] {
-    return elements
-      .map((conv): VoyagerConversation | null => {
-        const entityUrn = conv.entityUrn as string | undefined;
-        if (!entityUrn) return null;
-
-        const conversationId = entityUrn.split(":").pop() ?? entityUrn;
-        const lastActivityAt = (conv.lastActivityAt as number | undefined) ?? 0;
-        const unreadCount = (conv.unreadCount as number | undefined) ?? 0;
-
-        // Participants — array of objects keyed by messaging member type
-        const MEMBER_KEY = "com.linkedin.voyager.messaging.MessagingMember";
-        let participantName: string | null = null;
-        let participantUrn: string | null = null;
-        let participantProfileUrl: string | null = null;
-        let participantHeadline: string | null = null;
-        let participantProfilePicUrl: string | null = null;
-
-        const rawParticipants = conv.participants as Array<Record<string, unknown>> | undefined;
-        if (Array.isArray(rawParticipants)) {
-          for (const p of rawParticipants) {
-            const member = p[MEMBER_KEY] as Record<string, unknown> | undefined;
-            if (!member) continue;
-
-            participantUrn = (member.entityUrn as string | undefined) ?? null;
-
-            const mini = member.miniProfile as Record<string, unknown> | undefined;
-            if (mini) {
-              const firstName = mini.firstName as string | undefined;
-              const lastName = mini.lastName as string | undefined;
-              if (firstName || lastName) {
-                participantName = `${firstName ?? ""} ${lastName ?? ""}`.trim();
-              }
-              const pub = mini.publicIdentifier as string | undefined;
-              if (pub) participantProfileUrl = `/in/${pub}`;
-              participantHeadline =
-                (mini.occupation as string | undefined) ??
-                (mini.headline as string | undefined) ??
-                null;
-
-              // Profile picture
-              const pic = mini.picture as Record<string, unknown> | undefined;
-              if (pic) {
-                const rootUrl = pic.rootUrl as string | undefined;
-                const artifacts = pic.artifacts as Array<Record<string, unknown>> | undefined;
-                if (rootUrl && artifacts && artifacts.length > 0) {
-                  const last = artifacts[artifacts.length - 1];
-                  participantProfilePicUrl =
-                    rootUrl + ((last.fileIdentifyingUrlPathSegment as string) ?? "");
-                }
-              }
-            }
-            break; // Use first non-self participant
-          }
-        }
-
-        // Last message snippet — from last event in events[]
-        let lastMessageSnippet: string | null = null;
-        const events = conv.events as Array<Record<string, unknown>> | undefined;
-        if (Array.isArray(events) && events.length > 0) {
-          const lastEvent = events[events.length - 1];
-          const eventContent = lastEvent.eventContent as Record<string, unknown> | undefined;
-          if (eventContent) {
-            const MSG_KEY = "com.linkedin.voyager.messaging.event.MessageEvent";
-            const msgEvent = eventContent[MSG_KEY] as Record<string, unknown> | undefined;
-            if (msgEvent) {
-              const attributed = msgEvent.attributedBody as Record<string, unknown> | undefined;
-              lastMessageSnippet = (attributed?.text as string | undefined) ?? null;
-            }
-          }
-        }
-
-        return {
-          entityUrn,
-          conversationId,
-          participantName,
-          participantUrn,
-          participantProfileUrl,
-          participantHeadline,
-          participantProfilePicUrl,
-          lastActivityAt,
-          unreadCount,
-          lastMessageSnippet,
-        };
-      })
-      .filter((c): c is VoyagerConversation => c !== null);
-  }
-
-  /**
-   * Parse the LinkedIn Voyager normalized response into VoyagerConversation objects.
+   * Parse the LinkedIn Voyager normalized REST response into VoyagerConversation objects.
    *
    * LinkedIn returns a normalized JSON format where conversations and their participant
    * entities are mixed together in an `included[]` array. This parser builds a lookup
    * map from participant URNs and then maps each conversation entity to the interface.
+   *
+   * Used as a fallback when the GraphQL endpoint is unavailable.
    */
   private parseConversations(
-    data: Record<string, unknown>,
-    legacyFormat = false
+    data: Record<string, unknown>
   ): VoyagerConversation[] {
     try {
-      // Legacy /messaging/conversations endpoint returns { elements: Conversation[], paging: {} }
-      // at the top level — no included[] entity map, participants are inline objects.
-      if (legacyFormat || Array.isArray(data.elements)) {
-        return this.parseLegacyConversations(
-          (data.elements as Array<Record<string, unknown>> | undefined) ?? []
-        );
-      }
-
       const included = (data.included ?? []) as Array<Record<string, unknown>>;
 
       // Build lookup map for participant entities keyed by entityUrn
