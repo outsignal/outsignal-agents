@@ -90,6 +90,7 @@ export async function sendInvoiceEmail(
     async () => { await resend.emails.send({
       from,
       to: [recipientEmail],
+      bcc: ["jonathan@outsignal.ai"],
       subject: `Invoice ${invoice.invoiceNumber} from Outsignal`,
       html: invoiceEmailHtml(invoice),
       attachments: [
