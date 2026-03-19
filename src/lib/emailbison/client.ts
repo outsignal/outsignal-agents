@@ -518,4 +518,24 @@ export class EmailBisonClient {
       revalidate: 0,
     });
   }
+
+  async getWorkspaceStats(startDate: string, endDate: string): Promise<{
+    emails_sent: string;
+    total_leads_contacted: string;
+    opened: string;
+    opened_percentage: string;
+    unique_opens_per_contact: string;
+    unique_opens_per_contact_percentage: string;
+    unique_replies_per_contact: string;
+    unique_replies_per_contact_percentage: string;
+    bounced: string;
+    bounced_percentage: string;
+    unsubscribed: string;
+    unsubscribed_percentage: string;
+    interested: string;
+    interested_percentage: string;
+  }> {
+    const res = await this.request<{ data: any }>(`/workspaces/v1.1/stats?start_date=${startDate}&end_date=${endDate}`, { revalidate: 300 });
+    return res.data;
+  }
 }
