@@ -12,6 +12,30 @@ import { AISuggestionCard } from "@/components/portal/ai-suggestion-card";
 import { EmailReplyComposer } from "@/components/portal/email-reply-composer";
 import { cn } from "@/lib/utils";
 
+/** Render URLs in text as clickable links */
+function Linkify({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.match(/^https?:\/\//) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand underline break-all hover:opacity-80"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 interface ThreadMessage {
   id: string;
   direction: "inbound" | "outbound";
@@ -185,7 +209,7 @@ function MessageCard({ msg }: { msg: ThreadMessage }) {
           />
         ) : (
           <pre className="whitespace-pre-wrap text-sm font-sans text-foreground leading-relaxed">
-            {msg.bodyText}
+            <Linkify text={msg.bodyText} />
           </pre>
         )}
       </div>

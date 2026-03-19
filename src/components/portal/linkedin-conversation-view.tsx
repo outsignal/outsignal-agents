@@ -8,6 +8,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
+/** Render URLs in text as clickable links */
+function Linkify({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.match(/^https?:\/\//) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-all hover:opacity-80"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 interface LinkedInMessageItem {
   id: string;
   eventUrn: string;
@@ -503,7 +527,7 @@ export function LinkedInConversationView({
                       isHighlighted && "ring-2 ring-brand/30"
                     )}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                    <p className="text-sm whitespace-pre-wrap"><Linkify text={msg.body} /></p>
                   </div>
                   <div className="flex items-center justify-end gap-1.5 mt-1">
                     <span className="text-[10px] opacity-60">
@@ -534,7 +558,7 @@ export function LinkedInConversationView({
                     isHighlighted && "ring-2 ring-brand/30"
                   )}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                  <p className="text-sm whitespace-pre-wrap"><Linkify text={msg.body} /></p>
                 </div>
                 <span className="text-[10px] opacity-60 ml-1 mt-1 block">
                   {timeAgo(msg.deliveredAt)}

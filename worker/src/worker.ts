@@ -288,6 +288,53 @@ export class Worker {
           }
         }
 
+        // ---- Link enrichment: fetch full messages for short bodies missing URLs ----
+        for (const conv of updatedConversations) {
+          const needsEnrichment = conv.messages.some(
+            (m) => m.body.length < 30 && !m.body.match(/https?:\/\//)
+          );
+          if (!needsEnrichment) continue;
+
+          try {
+            const fullMessages = await client.fetchMessages(
+              conv.conversationId,
+              20,
+              conv.entityUrn
+            );
+            if (fullMessages.length > 0) {
+              const fullByUrn = new Map(fullMessages.map((m) => [m.eventUrn, m]));
+              let enrichedCount = 0;
+              for (let i = 0; i < conv.messages.length; i++) {
+                const embedded = conv.messages[i];
+                const full = fullByUrn.get(embedded.eventUrn);
+                if (
+                  full &&
+                  full.body !== embedded.body &&
+                  full.body.match(/https?:\/\//)
+                ) {
+                  conv.messages[i] = { ...embedded, body: full.body };
+                  enrichedCount++;
+                }
+              }
+              // Also add any messages from fetchMessages not present in embedded set
+              const embeddedUrns = new Set(conv.messages.map((m) => m.eventUrn));
+              for (const full of fullMessages) {
+                if (!embeddedUrns.has(full.eventUrn) && full.body.match(/https?:\/\//)) {
+                  conv.messages.push(full);
+                  enrichedCount++;
+                }
+              }
+              if (enrichedCount > 0) {
+                console.log(
+                  `[Worker] Link enrichment: found ${enrichedCount} additional messages for ${conv.participantName ?? conv.conversationId}`
+                );
+              }
+            }
+          } catch {
+            // Best-effort — don't break the flow
+          }
+        }
+
         if (updatedConversations.length === 0) {
           console.log(`[Worker] Conversation check for ${sender.name}: no new activity`);
           continue;

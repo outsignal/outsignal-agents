@@ -832,16 +832,6 @@ export class VoyagerClient {
 
               // Extract URLs from attachments / renderContent (embedded messages)
               try {
-                // Debug: dump full message structure for non-empty renderContent or when body is short
-                if (msgBodyText && msgBodyText.length < 20) {
-                  const bodyAttrs = (msgBodyObj && typeof msgBodyObj === "object") ? (msgBodyObj as Record<string, unknown>).attributes : undefined;
-                  if (bodyAttrs) {
-                    console.log(`[VoyagerClient] body.attributes for "${msgBodyText}":`, JSON.stringify(bodyAttrs).slice(0, 500));
-                  }
-                  console.log(`[VoyagerClient] Full msg keys for "${msgBodyText}":`, Object.keys(msgEl).join(", "));
-                  const fallback = msgEl.renderContentFallbackText as string | undefined;
-                  if (fallback) console.log(`[VoyagerClient] fallbackText: ${fallback}`);
-                }
                 // Check renderContent (GraphQL embedded messages) and renderContentUnions
                 const msgRcSources = [
                   msgEl.renderContent as Array<Record<string, unknown>> | undefined,
@@ -922,7 +912,8 @@ export class VoyagerClient {
    */
   async fetchMessages(
     conversationId: string,
-    count: number = 20
+    count: number = 20,
+    entityUrn?: string
   ): Promise<VoyagerMessage[]> {
     // 2-3s random delay before each Voyager API call (account safety)
     await randomDelay();
@@ -936,11 +927,19 @@ export class VoyagerClient {
           )}&count=${count}`
         );
       } catch (err) {
-        // On 404, try the legacy endpoint
-        if (err instanceof VoyagerError && err.status === 404) {
-          response = await this.request(
-            `/messaging/conversations/${conversationId}/events?count=${count}`
-          );
+        // On 400/404, try the legacy endpoint
+        if (err instanceof VoyagerError && (err.status === 400 || err.status === 404)) {
+          try {
+            response = await this.request(
+              `/messaging/conversations/${conversationId}/events?count=${count}`
+            );
+          } catch (legacyErr) {
+            // Legacy also failed — try GraphQL if we have the full entity URN
+            if (entityUrn) {
+              return await this.fetchMessagesGraphQL(entityUrn, count);
+            }
+            throw legacyErr;
+          }
         } else {
           throw err;
         }
@@ -956,13 +955,145 @@ export class VoyagerClient {
 
       const data = (await response.json()) as Record<string, unknown>;
 
-      // Log raw response on first call for debugging
-      console.log(
-        "[VoyagerClient] fetchMessages raw (first 3000 chars):",
-        JSON.stringify(data).slice(0, 3000)
+      return this.parseMessages(data);
+    } catch (err) {
+      if (err instanceof VoyagerError) throw err;
+      throw new VoyagerError(0, String(err));
+    }
+  }
+
+  /**
+   * Fetch messages for a conversation using the GraphQL messaging endpoint.
+   *
+   * Requires the full conversation entity URN (e.g.
+   * "urn:li:msg_conversation:(urn:li:fsd_profile:XXX,2-YYY==)").
+   * Used as a third-tier fallback when both REST endpoints return 400/404.
+   */
+  async fetchMessagesGraphQL(
+    conversationEntityUrn: string,
+    count: number = 20
+  ): Promise<VoyagerMessage[]> {
+    await randomDelay();
+
+    try {
+      const response = await this.request(
+        `/voyagerMessagingGraphQL/graphql?queryId=messengerMessages.d8ea76885a52fd5dc5c317078ab7c977&variables=(deliveredAt:${Date.now()},conversationUrn:${encodeURIComponent(conversationEntityUrn)},countBefore:${count},countAfter:0)`,
+        { extraHeaders: { Accept: "application/graphql" } }
       );
 
-      return this.parseMessages(data);
+      // Checkpoint detection
+      if (
+        response.url.includes("/checkpoint/") ||
+        response.url.includes("/challenge/")
+      ) {
+        throw new VoyagerError(403, "checkpoint_detected");
+      }
+
+      const rawData = (await response.json()) as Record<string, unknown>;
+
+      // Parse GraphQL response: data.messengerMessagesByAnchorTimestamp.elements[]
+      const dataObj = rawData.data as Record<string, unknown> | undefined;
+      const messagesContainer = dataObj?.messengerMessagesByAnchorTimestamp as Record<string, unknown> | undefined;
+      const elements = messagesContainer?.elements as Array<Record<string, unknown>> | undefined;
+
+      if (!elements || elements.length === 0) {
+        return [];
+      }
+
+      console.log(`[VoyagerClient] fetchMessagesGraphQL: found ${elements.length} message elements`);
+
+      // Parse each element using the same approach as embedded messages
+      const messages: VoyagerMessage[] = [];
+      for (const msgEl of elements) {
+        const msgUrn = (msgEl.entityUrn as string | undefined) ?? null;
+        if (!msgUrn) continue;
+
+        // Sender identification
+        let msgSenderUrn = "";
+        let msgSenderName: string | null = null;
+
+        const senderObj = msgEl.sender as Record<string, unknown> | undefined;
+        if (senderObj) {
+          msgSenderUrn = (senderObj.entityUrn as string | undefined) ?? "";
+          const senderPType = senderObj.participantType as Record<string, unknown> | undefined;
+          const senderMember = senderPType?.member as Record<string, unknown> | undefined;
+          if (senderMember) {
+            const sFirstName = (senderMember.firstName as Record<string, unknown> | undefined)?.text as string | undefined;
+            const sLastName = (senderMember.lastName as Record<string, unknown> | undefined)?.text as string | undefined;
+            msgSenderName = `${sFirstName ?? ""} ${sLastName ?? ""}`.trim() || null;
+          }
+          if (!msgSenderName) {
+            msgSenderName = (senderObj.name as string | undefined) ?? null;
+          }
+          const senderBackendUrn = senderObj.backendUrn as string | undefined;
+          if (!msgSenderName && senderBackendUrn) {
+            msgSenderName = null; // No participant map available in this context
+          }
+        }
+
+        // Fallback: actor field
+        if (!msgSenderUrn) {
+          msgSenderUrn = (msgEl.actor as string | undefined) ?? (msgEl.from as string | undefined) ?? "";
+        }
+
+        // Message body
+        const msgBodyObj = msgEl.body as Record<string, unknown> | string | undefined;
+        let msgBodyText = "";
+        if (typeof msgBodyObj === "string") {
+          msgBodyText = msgBodyObj;
+        } else if (msgBodyObj && typeof msgBodyObj === "object") {
+          msgBodyText = (msgBodyObj.text as string | undefined) ?? "";
+        }
+
+        // Extract URLs from renderContent / renderContentUnions
+        try {
+          const msgRcSources = [
+            msgEl.renderContent as Array<Record<string, unknown>> | undefined,
+            msgEl.renderContentUnions as Array<Record<string, unknown>> | undefined,
+          ];
+          const urls: string[] = [];
+          for (const msgRcu of msgRcSources) {
+            if (!msgRcu) continue;
+            for (const rcu of msgRcu) {
+              const extMedia = rcu.externalMedia as Record<string, unknown> | undefined;
+              if (extMedia?.url) urls.push(extMedia.url as string);
+              const article = rcu.article as Record<string, unknown> | undefined;
+              if (article?.url) urls.push(article.url as string);
+              const file = rcu.file as Record<string, unknown> | undefined;
+              if (file?.name) urls.push(`[${file.name}]`);
+            }
+          }
+          if (urls.length === 0) {
+            const fallback = msgEl.renderContentFallbackText as string | undefined;
+            if (fallback) {
+              const urlMatches = fallback.match(/https?:\/\/[^\s]+/g);
+              if (urlMatches) urls.push(...urlMatches);
+              else if (fallback.trim()) urls.push(fallback.trim());
+            }
+          }
+          if (urls.length > 0) {
+            msgBodyText = msgBodyText ? `${msgBodyText}\n${urls.join("\n")}` : urls.join("\n");
+          }
+        } catch {
+          // Best-effort
+        }
+
+        // Timestamp
+        const msgDeliveredAt =
+          (msgEl.deliveredAt as number | undefined) ??
+          (msgEl.createdAt as number | undefined) ??
+          0;
+
+        messages.push({
+          eventUrn: msgUrn,
+          senderUrn: msgSenderUrn,
+          senderName: msgSenderName,
+          body: msgBodyText,
+          deliveredAt: msgDeliveredAt,
+        });
+      }
+
+      return messages;
     } catch (err) {
       if (err instanceof VoyagerError) throw err;
       throw new VoyagerError(0, String(err));
@@ -1197,11 +1328,16 @@ export class VoyagerClient {
 
           // Sender URN — may be in sender.entityUrn, from, or participantUrn
           const senderObj = msg.sender as Record<string, unknown> | undefined;
-          const senderUrn =
+          let senderUrn =
             (senderObj?.entityUrn as string | undefined) ??
             (msg.from as string | undefined) ??
             (msg.senderUrn as string | undefined) ??
             "";
+
+          // Legacy format uses *from field
+          if (!senderUrn) {
+            senderUrn = (msg["*from"] as string | undefined) ?? "";
+          }
 
           // Sender name — may be in sender.name or resolved from entity map
           const senderName =
@@ -1218,6 +1354,18 @@ export class VoyagerClient {
               ((bodyObj.attributes as Array<Record<string, unknown>> | undefined)?.[0]
                 ?.text as string | undefined) ??
               "";
+          }
+
+          // Fallback: legacy format has body in eventContent.attributedBody.text
+          if (!bodyText) {
+            const eventContent = msg.eventContent as Record<string, unknown> | undefined;
+            const attrBody = eventContent?.attributedBody as Record<string, unknown> | undefined;
+            if (attrBody?.text) bodyText = attrBody.text as string;
+            // Also check eventContent.body if it's non-empty
+            if (!bodyText) {
+              const ecBody = eventContent?.body as string | undefined;
+              if (ecBody) bodyText = ecBody;
+            }
           }
 
           // Extract URLs from attachments / renderContent / eventContent
