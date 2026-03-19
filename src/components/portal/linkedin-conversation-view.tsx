@@ -105,6 +105,11 @@ export function LinkedInConversationView({
   const [isMarkedUnread, setIsMarkedUnread] = useState(false);
   const [newMessageIds, setNewMessageIds] = useState<Set<string>>(new Set());
 
+  // Reset read state when switching conversations (opening = reading)
+  useEffect(() => {
+    setIsMarkedUnread(false);
+  }, [conversationId]);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
