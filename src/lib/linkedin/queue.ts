@@ -24,12 +24,13 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
     campaignName,
     emailBisonLeadId,
     sequenceStepRef,
+    linkedInConversationId,
   } = params;
 
   const action = await prisma.linkedInAction.create({
     data: {
       senderId,
-      personId,
+      personId: personId ?? null,
       workspaceSlug,
       actionType,
       messageBody: messageBody ?? null,
@@ -39,6 +40,7 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
       campaignName: campaignName ?? null,
       emailBisonLeadId: emailBisonLeadId ?? null,
       sequenceStepRef: sequenceStepRef ?? null,
+      linkedInConversationId: linkedInConversationId ?? null,
     },
   });
 
@@ -58,12 +60,13 @@ export async function getNextBatch(
   limit: number = 10,
 ): Promise<Array<{
   id: string;
-  personId: string;
+  personId: string | null;
   actionType: LinkedInActionType;
   messageBody: string | null;
   priority: number;
   workspaceSlug: string;
   campaignName: string | null;
+  linkedInConversationId: string | null;
 }>> {
   const now = new Date();
 
@@ -87,6 +90,7 @@ export async function getNextBatch(
       priority: true,
       workspaceSlug: true,
       campaignName: true,
+      linkedInConversationId: true,
     },
   });
 
@@ -101,15 +105,8 @@ export async function getNextBatch(
     }
   }
 
-  return result as Array<{
-    id: string;
-    personId: string;
-    actionType: LinkedInActionType;
-    messageBody: string | null;
-    priority: number;
-    workspaceSlug: string;
-    campaignName: string | null;
-  }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return result as any;
 }
 
 /**

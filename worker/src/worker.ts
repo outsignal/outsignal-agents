@@ -254,26 +254,32 @@ export class Worker {
           this.conversationCache.set(conv.conversationId, conv.lastActivityAt);
 
           // On first cache prime, process conversations with recent activity
-          // (within last 30 minutes) to catch replies that arrived before worker started
+          // (within last 2 hours) to catch replies that arrived before worker started
           if (cachedActivity === undefined) {
-            const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
-            if (conv.lastActivityAt < thirtyMinAgo) continue;
+            const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+            if (conv.lastActivityAt < twoHoursAgo) continue;
             console.log(
               `[Worker] First-time conversation ${conv.conversationId} has recent activity (${Math.round((Date.now() - conv.lastActivityAt) / 60000)}m ago), processing`,
             );
           }
 
-          // Fetch messages for conversations with new activity
-          try {
-            const messages = await client.fetchMessages(conv.conversationId, 10);
-            if (messages.length > 0) {
-              updatedConversations.push({ ...conv, messages });
+          // Use embedded messages from GraphQL response if available, otherwise fetch separately
+          let messages: VoyagerMessage[];
+          if (conv.embeddedMessages && conv.embeddedMessages.length > 0) {
+            messages = conv.embeddedMessages;
+          } else {
+            try {
+              messages = await client.fetchMessages(conv.conversationId, 10);
+            } catch (msgErr) {
+              console.error(
+                `[Worker] Failed to fetch messages for conversation ${conv.conversationId}:`,
+                msgErr,
+              );
+              continue;
             }
-          } catch (msgErr) {
-            console.error(
-              `[Worker] Failed to fetch messages for conversation ${conv.conversationId}:`,
-              msgErr,
-            );
+          }
+          if (messages.length > 0) {
+            updatedConversations.push({ ...conv, messages });
           }
         }
 

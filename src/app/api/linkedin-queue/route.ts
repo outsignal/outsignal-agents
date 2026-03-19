@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     ]);
 
   // Collect unique personIds and batch-fetch person info
-  const personIds = [...new Set(actions.map((a) => a.personId))];
+  const personIds = [...new Set(actions.map((a) => a.personId).filter((id): id is string => id !== null))];
 
   const people =
     personIds.length > 0
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
 
   // Attach person info to each action
   const enrichedActions = actions.map((action) => {
-    const person = personMap.get(action.personId);
+    const person = action.personId ? personMap.get(action.personId) : undefined;
     return {
       ...action,
       personEmail: person?.email ?? null,

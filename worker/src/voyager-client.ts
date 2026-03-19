@@ -44,6 +44,7 @@ export interface VoyagerConversation {
   lastActivityAt: number;                  // Epoch ms from lastActivityAt
   unreadCount: number;                     // Number of unread messages
   lastMessageSnippet: string | null;       // Preview text of the last message
+  embeddedMessages?: VoyagerMessage[];     // Messages embedded in GraphQL conversation response
 }
 
 export interface VoyagerMessage {
@@ -589,11 +590,6 @@ export class VoyagerClient {
 
           const data = (await response.json()) as Record<string, unknown>;
 
-          console.log(
-            "[VoyagerClient] fetchConversations GraphQL raw (first 3000 chars):",
-            JSON.stringify(data).slice(0, 3000)
-          );
-
           const conversations = this.parseGraphQLConversations(data, selfUrn);
           console.log(
             `[VoyagerClient] GraphQL parsed ${conversations.length} conversations`
@@ -719,11 +715,16 @@ export class VoyagerClient {
                 participantName = `${firstName ?? ""} ${lastName ?? ""}`.trim();
               }
 
-              // profileUrl — extract /in/ path from full URL
-              const rawProfileUrl = member.profileUrl as string | undefined;
-              if (rawProfileUrl) {
-                const inMatch = rawProfileUrl.match(/linkedin\.com(\/in\/[^/?#]+)/);
-                participantProfileUrl = inMatch ? inMatch[1] : rawProfileUrl;
+              // profileUrl — prefer publicIdentifier (vanity slug), fall back to profileUrl
+              const publicId = member.publicIdentifier as string | undefined;
+              if (publicId) {
+                participantProfileUrl = `/in/${publicId}`;
+              } else {
+                const rawProfileUrl = member.profileUrl as string | undefined;
+                if (rawProfileUrl) {
+                  const inMatch = rawProfileUrl.match(/linkedin\.com(\/in\/[^/?#]+)/);
+                  participantProfileUrl = inMatch ? inMatch[1] : rawProfileUrl;
+                }
               }
 
               participantHeadline =
@@ -756,6 +757,95 @@ export class VoyagerClient {
             lastMessageSnippet = (body?.text as string | undefined) ?? null;
           }
 
+          // Parse all embedded messages from the GraphQL conversation response
+          // so we can skip the separate fetchMessages() call (which returns 400).
+          const embeddedMessages: VoyagerMessage[] = [];
+          if (Array.isArray(messageElements)) {
+            // Build a participant name lookup from conversationParticipants
+            const participantNameMap = new Map<string, string>();
+            if (Array.isArray(participants)) {
+              for (const p of participants) {
+                const pUrn = p.entityUrn as string | undefined;
+                const pBackendUrn = p.backendUrn as string | undefined;
+                const pType = p.participantType as Record<string, unknown> | undefined;
+                const member = pType?.member as Record<string, unknown> | undefined;
+                if (!member) continue;
+                const firstName = (member.firstName as Record<string, unknown> | undefined)?.text as string | undefined;
+                const lastName = (member.lastName as Record<string, unknown> | undefined)?.text as string | undefined;
+                const name = `${firstName ?? ""} ${lastName ?? ""}`.trim() || null;
+                if (name) {
+                  if (pUrn) participantNameMap.set(pUrn, name);
+                  if (pBackendUrn) participantNameMap.set(pBackendUrn, name);
+                }
+              }
+            }
+
+            for (const msgEl of messageElements) {
+              const msgUrn = (msgEl.entityUrn as string | undefined) ?? null;
+              if (!msgUrn) continue;
+
+              // Sender identification — check sender.participantType.member, sender.entityUrn, actor
+              let msgSenderUrn = "";
+              let msgSenderName: string | null = null;
+
+              const senderObj = msgEl.sender as Record<string, unknown> | undefined;
+              if (senderObj) {
+                // sender may have entityUrn directly
+                msgSenderUrn = (senderObj.entityUrn as string | undefined) ?? "";
+                // sender may have participantType.member for name
+                const senderPType = senderObj.participantType as Record<string, unknown> | undefined;
+                const senderMember = senderPType?.member as Record<string, unknown> | undefined;
+                if (senderMember) {
+                  const sFirstName = (senderMember.firstName as Record<string, unknown> | undefined)?.text as string | undefined;
+                  const sLastName = (senderMember.lastName as Record<string, unknown> | undefined)?.text as string | undefined;
+                  msgSenderName = `${sFirstName ?? ""} ${sLastName ?? ""}`.trim() || null;
+                }
+                // Also check sender.name directly
+                if (!msgSenderName) {
+                  msgSenderName = (senderObj.name as string | undefined) ?? null;
+                }
+                // Try backendUrn for name lookup
+                const senderBackendUrn = senderObj.backendUrn as string | undefined;
+                if (!msgSenderName && senderBackendUrn) {
+                  msgSenderName = participantNameMap.get(senderBackendUrn) ?? null;
+                }
+              }
+
+              // Fallback: actor field
+              if (!msgSenderUrn) {
+                msgSenderUrn = (msgEl.actor as string | undefined) ?? (msgEl.from as string | undefined) ?? "";
+              }
+
+              // Resolve sender name from participant map if not yet found
+              if (!msgSenderName && msgSenderUrn) {
+                msgSenderName = participantNameMap.get(msgSenderUrn) ?? null;
+              }
+
+              // Message body
+              const msgBodyObj = msgEl.body as Record<string, unknown> | string | undefined;
+              let msgBodyText = "";
+              if (typeof msgBodyObj === "string") {
+                msgBodyText = msgBodyObj;
+              } else if (msgBodyObj && typeof msgBodyObj === "object") {
+                msgBodyText = (msgBodyObj.text as string | undefined) ?? "";
+              }
+
+              // Timestamp
+              const msgDeliveredAt =
+                (msgEl.deliveredAt as number | undefined) ??
+                (msgEl.createdAt as number | undefined) ??
+                0;
+
+              embeddedMessages.push({
+                eventUrn: msgUrn,
+                senderUrn: msgSenderUrn,
+                senderName: msgSenderName,
+                body: msgBodyText,
+                deliveredAt: msgDeliveredAt,
+              });
+            }
+          }
+
           return {
             entityUrn,
             conversationId,
@@ -767,6 +857,7 @@ export class VoyagerClient {
             lastActivityAt,
             unreadCount,
             lastMessageSnippet,
+            ...(embeddedMessages.length > 0 ? { embeddedMessages } : {}),
           };
         })
         .filter((c): c is VoyagerConversation => c !== null);

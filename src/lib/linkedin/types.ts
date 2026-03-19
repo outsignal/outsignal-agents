@@ -27,7 +27,7 @@ export type CampaignMode = "email" | "linkedin" | "email_linkedin";
 
 export interface EnqueueActionParams {
   senderId: string;
-  personId: string;
+  personId?: string | null; // Optional for replies to unmatched conversations
   workspaceSlug: string;
   actionType: LinkedInActionType;
   messageBody?: string;
@@ -36,6 +36,7 @@ export interface EnqueueActionParams {
   campaignName?: string;
   emailBisonLeadId?: string;
   sequenceStepRef?: string;
+  linkedInConversationId?: string; // Alternative routing when personId is null
 }
 
 export interface ActionBudget {

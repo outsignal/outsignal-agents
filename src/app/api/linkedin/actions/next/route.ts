@@ -35,7 +35,10 @@ export async function GET(request: NextRequest) {
     }
 
     const actionIds = actions.map((a) => a.id);
-    const personIds = [...new Set(actions.map((a) => a.personId))];
+    const personIds = [...new Set(actions.map((a) => a.personId).filter(Boolean))] as string[];
+    const conversationIds = [
+      ...new Set(actions.map((a) => a.linkedInConversationId).filter(Boolean)),
+    ] as string[];
 
     // Batch mark all actions as running (single UPDATE instead of N)
     await prisma.linkedInAction.updateMany({
@@ -48,16 +51,31 @@ export async function GET(request: NextRequest) {
     });
 
     // Batch fetch all person LinkedIn URLs (single SELECT instead of N)
-    const people = await prisma.person.findMany({
-      where: { id: { in: personIds } },
-      select: { id: true, linkedinUrl: true },
-    });
+    const people = personIds.length > 0
+      ? await prisma.person.findMany({
+          where: { id: { in: personIds } },
+          select: { id: true, linkedinUrl: true },
+        })
+      : [];
     const personUrlMap = new Map(people.map((p) => [p.id, p.linkedinUrl]));
 
+    // Batch fetch conversation participant URLs for actions without personId
+    const conversations = conversationIds.length > 0
+      ? await prisma.linkedInConversation.findMany({
+          where: { id: { in: conversationIds } },
+          select: { id: true, participantProfileUrl: true },
+        })
+      : [];
+    const convUrlMap = new Map(conversations.map((c) => [c.id, c.participantProfileUrl]));
+
     // Build enriched response from in-memory join
+    // Prefer person linkedinUrl; fall back to conversation participantProfileUrl
     const enrichedActions = actions.map((action) => ({
       ...action,
-      linkedinUrl: personUrlMap.get(action.personId) ?? null,
+      linkedinUrl:
+        (action.personId ? personUrlMap.get(action.personId) : null)
+        ?? (action.linkedInConversationId ? convUrlMap.get(action.linkedInConversationId) : null)
+        ?? null,
     }));
 
     return NextResponse.json({ actions: enrichedActions });

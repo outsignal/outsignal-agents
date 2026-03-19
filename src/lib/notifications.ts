@@ -3,6 +3,22 @@ import { postMessage } from "./slack";
 import { sendNotificationEmail } from "./resend";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
 import { audited, auditSkipped } from "@/lib/notification-audit";
+import {
+  emailLayout,
+  emailButton,
+  emailHeading,
+  emailPill,
+  emailDetailCard,
+  emailLabel,
+  emailText,
+  emailCallout,
+  emailStatBox,
+  emailStatRow,
+  emailStatRow3,
+  emailBanner,
+  emailDivider,
+  emailNotice,
+} from "@/lib/email-template";
 import type { KnownBlock } from "@slack/web-api";
 
 /**
@@ -148,104 +164,28 @@ export async function notifyApproval(params: {
             () => sendNotificationEmail({
               to: verified,
               subject: subjectLine,
-              html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">${headerText}</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${params.campaignName}</td>
-              </tr>
-              <!-- Status pill -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:${isFullyApproved ? "#065f46" : isRejection ? "#991b1b" : "#18181b"};background-color:${isFullyApproved ? "#d1fae5" : isRejection ? "#fef2f2" : "#f4f4f5"};padding:6px 14px;border-radius:100px;">${actionLabel[params.action]}</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-${
-  isRejection && params.feedback
-    ? `              <!-- Feedback section -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-                    <tr>
-                      <td style="border-top:1px solid #e4e4e7;padding-top:20px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Client Feedback</p>
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:#fffbeb;border-left:3px solid #f59e0b;padding:14px 18px;border-radius:0 6px 6px 0;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0;color:#92400e;">${params.feedback}</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`
-    : ""
-}
-${
-  isFullyApproved
-    ? `              <!-- Approved banner -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td style="background-color:#f0fdf4;border:1px solid #bbf7d0;padding:16px 20px;border-radius:8px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;margin:0;color:#065f46;font-weight:600;">All approvals received. Campaign is ready for deploy.</p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`
-    : ""
-}
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Campaign</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Sent to ${workspace.name} notification recipients.<br/>You received this because you are subscribed to campaign updates.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+              html: emailLayout({
+                body: [
+                  emailHeading(headerText, params.campaignName),
+                  emailPill(
+                    actionLabel[params.action],
+                    isFullyApproved ? "#065f46" : isRejection ? "#991b1b" : "#18181b",
+                    isFullyApproved ? "#d1fae5" : isRejection ? "#fef2f2" : "#F8F7F5",
+                  ),
+                  ...(isRejection && params.feedback
+                    ? [
+                        emailDivider(),
+                        emailLabel("Client Feedback"),
+                        emailCallout(params.feedback, { borderColor: "#f59e0b", bgColor: "#fffbeb", textColor: "#92400e" }),
+                      ]
+                    : []),
+                  ...(isFullyApproved
+                    ? [emailBanner("All approvals received. Campaign is ready for deploy.", { color: "#065f46", bgColor: "#f0fdf4", borderColor: "#bbf7d0" })]
+                    : []),
+                  emailButton("View Campaign", campaignUrl),
+                ].join(""),
+                footerNote: `Sent to ${workspace.name} notification recipients. You received this because you are subscribed to campaign updates.`,
+              }),
             }),
           );
         }
@@ -478,115 +418,30 @@ export async function notifyReply(params: {
 
   // Email notification — build HTML once, send to both client and admin
   const emailSubjectLine = `[${workspace.name}] ${label} from ${params.leadName ?? params.leadEmail}`;
-  const emailHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <!-- Title row -->
-              <tr>
-                <td style="padding-bottom:6px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;line-height:1.3;">${label} Received</td>
-                      <td style="padding-left:12px;">${params.interested ? `<span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:600;color:#065f46;background-color:#d1fae5;padding:4px 10px;border-radius:100px;">Interested</span>` : ""}</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${workspace.name}</td>
-              </tr>
-              <!-- Sender details card -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fafafa;border-radius:8px;border:1px solid #e4e4e7;">
-${params.leadName ? `                    <tr>
-                      <td style="padding:14px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Name</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${params.leadName}</p>
-                      </td>
-                    </tr>` : ""}
-                    <tr>
-                      <td style="padding:${params.leadName ? "12px" : "14px"} 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">From</p>
-                        <p style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:14px;color:#18181b;margin:0;">${params.leadEmail}</p>
-                      </td>
-                    </tr>
-${params.subject ? `                    <tr>
-                      <td style="padding:12px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Subject</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;margin:0;">${params.subject}</p>
-                      </td>
-                    </tr>` : ""}
-                    <tr><td style="padding-bottom:14px;"></td></tr>
-                  </table>
-                </td>
-              </tr>
-              <!-- Preview section -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Message Preview</p>
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#3f3f46;margin:0;white-space:pre-wrap;">${preview}</p>
-                </td>
-              </tr>
-${params.suggestedResponse ? `              <!-- Suggested response section -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-                    <tr>
-                      <td style="border-top:1px solid #e4e4e7;padding-top:20px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Suggested Response</p>
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:#fafafa;border-left:3px solid #635BFF;padding:14px 18px;border-radius:0 6px 6px 0;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0;color:#374151;">${params.suggestedResponse}</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>` : ""}
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${outsignalInboxUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Reply in Outsignal</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Sent to ${workspace.name} notification recipients.<br/>You received this because you are subscribed to reply notifications.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`;
+  const emailHtml = emailLayout({
+    body: [
+      emailHeading(
+        `${label} Received${params.interested ? ` ${emailPill("Interested", "#065f46", "#d1fae5").replace('margin-bottom:24px;', 'margin-bottom:0;display:inline-block;vertical-align:middle;margin-left:12px;')}` : ""}`,
+        workspace.name,
+      ),
+      emailDetailCard([
+        ...(params.leadName ? [{ label: "Name", value: params.leadName }] : []),
+        { label: "From", value: params.leadEmail, mono: true },
+        ...(params.subject ? [{ label: "Subject", value: params.subject }] : []),
+      ]),
+      emailLabel("Message Preview"),
+      emailText(preview, { preWrap: true }),
+      ...(params.suggestedResponse
+        ? [
+            emailDivider(),
+            emailLabel("Suggested Response"),
+            emailCallout(params.suggestedResponse),
+          ]
+        : []),
+      emailButton("Reply in Outsignal", outsignalInboxUrl),
+    ].join(""),
+    footerNote: `Sent to ${workspace.name} notification recipients. You received this because you are subscribed to reply notifications.`,
+  });
 
   // Email — client notification emails (from Member records)
   {
@@ -779,129 +634,36 @@ export async function notifyDeploy(params: {
               ? "#fffbeb"
               : "#fef2f2";
 
-        const emailChannelRow =
-          params.emailStatus && params.emailStatus !== "skipped"
-            ? `<tr>
-                      <td style="padding:10px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Email</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;margin:0;">${params.emailStepCount} steps &mdash; ${params.emailStatus}</p>
-                      </td>
-                    </tr>`
-            : "";
-
-        const linkedinChannelRow =
-          params.linkedinStatus && params.linkedinStatus !== "skipped"
-            ? `<tr>
-                      <td style="padding:10px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">LinkedIn</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;margin:0;">${params.linkedinStepCount} steps &mdash; ${params.linkedinStatus}</p>
-                      </td>
-                    </tr>`
-            : "";
-
-        const errorSection = params.error
-          ? `              <!-- Error section -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-                    <tr>
-                      <td style="border-top:1px solid #e4e4e7;padding-top:20px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Error</p>
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:#fffbeb;border-left:3px solid #f59e0b;padding:14px 18px;border-radius:0 6px 6px 0;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0;color:#92400e;">${params.error}</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`
-          : "";
+        const detailRows: Array<{ label: string; value: string; mono?: boolean }> = [
+          { label: "Leads", value: `${params.leadCount} pushed` },
+        ];
+        if (params.emailStatus && params.emailStatus !== "skipped") {
+          detailRows.push({ label: "Email", value: `${params.emailStepCount} steps \u2014 ${params.emailStatus}` });
+        }
+        if (params.linkedinStatus && params.linkedinStatus !== "skipped") {
+          detailRows.push({ label: "LinkedIn", value: `${params.linkedinStepCount} steps \u2014 ${params.linkedinStatus}` });
+        }
 
         await audited(
           { notificationType: "deploy", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
           () => sendNotificationEmail({
             to: verified,
             subject,
-            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">${headerText}</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${params.campaignName}</td>
-              </tr>
-              <!-- Status pill -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:${pillColor};background-color:${pillBg};padding:6px 14px;border-radius:100px;">${statusLabel}</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <!-- Stats card -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fafafa;border-radius:8px;border:1px solid #e4e4e7;">
-                    <tr>
-                      <td style="padding:14px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Leads</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${params.leadCount} pushed</p>
-                      </td>
-                    </tr>
-                    ${emailChannelRow}
-                    ${linkedinChannelRow}
-                    <tr><td style="padding-bottom:14px;"></td></tr>
-                  </table>
-                </td>
-              </tr>
-${errorSection}
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Campaign</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Admin deploy notification for ${workspace.name}.<br/>You received this because you are the system administrator.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+            html: emailLayout({
+              body: [
+                emailHeading(headerText, params.campaignName),
+                emailPill(statusLabel, pillColor, pillBg),
+                emailDetailCard(detailRows),
+                ...(params.error
+                  ? [
+                      emailLabel("Error"),
+                      emailCallout(params.error, { borderColor: "#f59e0b", bgColor: "#fffbeb", textColor: "#92400e" }),
+                    ]
+                  : []),
+                emailButton("View Campaign", campaignUrl),
+              ].join(""),
+              footerNote: `Admin deploy notification for ${workspace.name}. You received this because you are the system administrator.`,
+            }),
           }),
         );
       }
@@ -993,71 +755,15 @@ export async function notifyCampaignLive(params: {
   const statusPillBg = params.status === "complete" ? "#d1fae5" : "#fffbeb";
   const statusLabel = params.status === "complete" ? "Live" : "Launching";
 
-  const emailHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">${headerText}</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${params.campaignName}</td>
-              </tr>
-              <!-- Status pill -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:${statusPillColor};background-color:${statusPillBg};padding:6px 14px;border-radius:100px;">${statusLabel}</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <!-- Message -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#3f3f46;margin:0;">${message}</p>
-                </td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${campaignUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Campaign</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Sent to ${workspace.name} notification recipients.<br/>You received this because you are subscribed to campaign updates.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`;
+  const emailHtml = emailLayout({
+    body: [
+      emailHeading(headerText, params.campaignName),
+      emailPill(statusLabel, statusPillColor, statusPillBg),
+      emailText(message, { size: 15 }),
+      emailButton("View Campaign", campaignUrl),
+    ].join(""),
+    footerNote: `Sent to ${workspace.name} notification recipients. You received this because you are subscribed to campaign updates.`,
+  });
 
   // Email — client notification emails (from Member records)
   {
@@ -1152,195 +858,80 @@ export async function notifyInboxDisconnect(params: {
           ? `[${params.workspaceName}] ${subjectParts.join(" + ")}`
           : `Inboxes Reconnected — ${params.workspaceName}`;
 
-        // New disconnections HTML — table rows with red status pill
-        let newDisconnectionsHtml = "";
+        // Build table section for a list of emails with status pills
+        const buildEmailListHtml = (
+          emails: string[],
+          max: number,
+          pillLabel: string,
+          pillColor: string,
+          pillBg: string,
+        ): string => {
+          const rows = emails
+            .slice(0, max)
+            .map(
+              (e) =>
+                `<tr>
+                  <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
+                    <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${e}</span>
+                  </td>
+                  <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:${pillColor};background-color:${pillBg};padding:3px 10px;border-radius:100px;white-space:nowrap;">${pillLabel}</span>
+                  </td>
+                </tr>`,
+            )
+            .join("");
+          const overflow =
+            emails.length > max
+              ? `<tr><td colspan="2" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">...and ${emails.length - max} more</td></tr>`
+              : "";
+          return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${rows}${overflow}</table>`;
+        };
+
+        // Build body sections
+        const bodyParts: string[] = [
+          emailHeading(headerText, params.workspaceName),
+          emailStatRow(
+            emailStatBox(params.totalDisconnected, "Disconnected", "#dc2626", "#fef2f2"),
+            emailStatBox(params.totalConnected, "Connected", "#16a34a", "#f0fdf4"),
+          ),
+        ];
+
         if (hasNew) {
-          const emailRows = params.newDisconnections
-            .slice(0, 20)
-            .map(
-              (e) =>
-                `<tr>
-                  <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${e}</span>
-                  </td>
-                  <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:#991b1b;background-color:#fef2f2;padding:3px 10px;border-radius:100px;white-space:nowrap;">Disconnected</span>
-                  </td>
-                </tr>`,
-            )
-            .join("");
-          const overflowRow =
-            newCount > 20
-              ? `<tr><td colspan="2" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">...and ${newCount - 20} more</td></tr>`
-              : "";
-          newDisconnectionsHtml = `
-              <tr>
-                <td style="padding-bottom:20px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Newly Disconnected (${newCount})</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    ${emailRows}${overflowRow}
-                  </table>
-                </td>
-              </tr>`;
+          bodyParts.push(
+            emailLabel(`Newly Disconnected (${newCount})`),
+            buildEmailListHtml(params.newDisconnections, 20, "Disconnected", "#991b1b", "#fef2f2"),
+            `<div style="margin-bottom:24px;"></div>`,
+          );
         }
 
-        // Persistent disconnections HTML — table rows with amber status pill
-        let persistentDisconnectionsHtml = "";
         if (hasPersistent) {
-          const persistentRows = params.persistentDisconnections
-            .slice(0, 20)
-            .map(
-              (e) =>
-                `<tr>
-                  <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${e}</span>
-                  </td>
-                  <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:#92400e;background-color:#fffbeb;padding:3px 10px;border-radius:100px;white-space:nowrap;">Persistent</span>
-                  </td>
-                </tr>`,
-            )
-            .join("");
-          const persistentOverflowRow =
-            persistentCount > 20
-              ? `<tr><td colspan="2" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">...and ${persistentCount - 20} more</td></tr>`
-              : "";
-          persistentDisconnectionsHtml = `
-              <tr>
-                <td style="padding-bottom:20px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Still Disconnected (${persistentCount})</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    ${persistentRows}${persistentOverflowRow}
-                  </table>
-                </td>
-              </tr>`;
+          bodyParts.push(
+            emailLabel(`Still Disconnected (${persistentCount})`),
+            buildEmailListHtml(params.persistentDisconnections, 20, "Persistent", "#92400e", "#fffbeb"),
+            `<div style="margin-bottom:24px;"></div>`,
+          );
         }
 
-        // Reconnections HTML — table rows with green status pill
-        let reconnectionsHtml = "";
         if (params.reconnections.length > 0) {
-          const reconnRows = params.reconnections
-            .slice(0, 10)
-            .map(
-              (e) =>
-                `<tr>
-                  <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${e}</span>
-                  </td>
-                  <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:#065f46;background-color:#d1fae5;padding:3px 10px;border-radius:100px;white-space:nowrap;">Reconnected</span>
-                  </td>
-                </tr>`,
-            )
-            .join("");
-          const reconnOverflow =
-            params.reconnections.length > 10
-              ? `<tr><td colspan="2" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">...and ${params.reconnections.length - 10} more</td></tr>`
-              : "";
-          reconnectionsHtml = `
-              <tr>
-                <td style="padding-bottom:20px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
-                    <tr>
-                      <td style="border-top:1px solid #e4e4e7;padding-top:20px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Reconnected (${params.reconnections.length})</p>
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          ${reconnRows}${reconnOverflow}
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`;
+          bodyParts.push(
+            emailDivider(),
+            emailLabel(`Reconnected (${params.reconnections.length})`),
+            buildEmailListHtml(params.reconnections, 10, "Reconnected", "#065f46", "#d1fae5"),
+            `<div style="margin-bottom:24px;"></div>`,
+          );
         }
+
+        bodyParts.push(emailButton("View Inbox Health", inboxHealthUrl));
 
         await audited(
           { notificationType: "inbox_disconnect", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
           () => sendNotificationEmail({
             to: verified,
             subject,
-            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <!-- Title -->
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">${headerText}</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${params.workspaceName}</td>
-              </tr>
-              <!-- Summary stats bar -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td width="50%" style="padding-right:8px;" valign="top">
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:#fef2f2;border-radius:8px;padding:16px 20px;text-align:center;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:700;color:#dc2626;margin:0;line-height:1;">${params.totalDisconnected}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#991b1b;margin:6px 0 0 0;font-weight:600;">Disconnected</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                      <td width="50%" style="padding-left:8px;" valign="top">
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:#f0fdf4;border-radius:8px;padding:16px 20px;text-align:center;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:700;color:#16a34a;margin:0;line-height:1;">${params.totalConnected}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#065f46;margin:6px 0 0 0;font-weight:600;">Connected</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-${newDisconnectionsHtml}
-${persistentDisconnectionsHtml}
-${reconnectionsHtml}
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${inboxHealthUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Inbox Health</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Inbox health monitoring alert.<br/>You received this because you are an admin for ${params.workspaceName}.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+            html: emailLayout({
+              body: bodyParts.join(""),
+              footerNote: `Inbox health monitoring alert. You received this because you are an admin for ${params.workspaceName}.`,
+            }),
           }),
         );
       }
@@ -1457,114 +1048,40 @@ export async function notifySenderHealth(params: {
     try {
       const verified = verifyEmailRecipients([adminEmail], "admin", "notifySenderHealth");
       if (verified.length > 0) {
-        const headerColor = "#dc2626";
         const subject = `[${workspace.name}] Sender Flagged: ${params.senderName}`;
+
+        const bodyParts: string[] = [
+          emailHeading(headerText, workspace.name, { titleColor: "#dc2626" }),
+          emailDetailCard([
+            { label: "Sender", value: params.senderName },
+            { label: "Reason", value: reasonText },
+            { label: "Detail", value: params.detail },
+          ]),
+        ];
+
+        if (params.workspacePaused) {
+          bodyParts.push(
+            emailBanner("All campaigns paused — this was the only sender in the workspace", { color: "#991b1b", bgColor: "#fef2f2", borderColor: "#fecaca" }),
+          );
+        }
+
+        if (params.reassignedCount > 0) {
+          bodyParts.push(
+            emailText(`${params.reassignedCount} pending action${params.reassignedCount !== 1 ? "s" : ""} reassigned to another sender.`),
+          );
+        }
+
+        bodyParts.push(emailButton("View Senders", sendersUrl));
 
         await audited(
           { notificationType: "sender_health", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
           () => sendNotificationEmail({
             to: verified,
             subject,
-            html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:${headerColor};padding-bottom:8px;line-height:1.3;">${headerText}</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${workspace.name}</td>
-              </tr>
-              <!-- Sender details card -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fafafa;border-radius:8px;border:1px solid #e4e4e7;">
-                    <tr>
-                      <td style="padding:14px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Sender</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${params.senderName}</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding:12px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Reason</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;margin:0;">${reasonText}</p>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="padding:12px 18px 14px 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">Detail</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0;line-height:1.6;">${params.detail}</p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-${
-  params.workspacePaused
-    ? `              <!-- Workspace paused alert -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td style="background-color:#fef2f2;border:1px solid #fecaca;padding:16px 20px;border-radius:8px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;margin:0;color:#991b1b;font-weight:600;">All campaigns paused &mdash; this was the only sender in the workspace</p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`
-    : ""
-}
-${
-  params.reassignedCount > 0
-    ? `              <!-- Reassignment info -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;margin:0;line-height:1.5;">${params.reassignedCount} pending action${params.reassignedCount !== 1 ? "s" : ""} reassigned to another sender.</p>
-                </td>
-              </tr>`
-    : ""
-}
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${sendersUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Senders</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Admin sender health alert for ${workspace.name}.<br/>You received this because you are the system administrator.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+            html: emailLayout({
+              body: bodyParts.join(""),
+              footerNote: `Admin sender health alert for ${workspace.name}. You received this because you are the system administrator.`,
+            }),
           }),
         );
       }
@@ -1649,7 +1166,7 @@ export async function sendSenderHealthDigest(params: {
     try {
       const verified = verifyEmailRecipients([adminEmail], "admin", "sendSenderHealthDigest");
       if (verified.length > 0) {
-        // Build warning rows for email
+        // Build warning rows for email (keep Arial font inline per rules)
         const warningRowsHtml = params.warnings
           .map(
             (w) =>
@@ -1669,63 +1186,15 @@ export async function sendSenderHealthDigest(params: {
           () => sendNotificationEmail({
             to: verified,
             subject: `[Outsignal] Daily Sender Health Digest \u2014 ${params.warnings.length} warning${params.warnings.length !== 1 ? "s" : ""}`,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Daily Sender Health Digest</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${params.warnings.length} warning${params.warnings.length !== 1 ? "s" : ""} across ${byWorkspace.size} workspace${byWorkspace.size !== 1 ? "s" : ""}</td>
-              </tr>
-              <!-- Warnings list -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    ${warningRowsHtml}
-                  </table>
-                </td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${sendersUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Senders</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Admin sender health digest.<br/>You received this because you are the system administrator.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+            html: emailLayout({
+              body: [
+                emailHeading("Daily Sender Health Digest", `${params.warnings.length} warning${params.warnings.length !== 1 ? "s" : ""} across ${byWorkspace.size} workspace${byWorkspace.size !== 1 ? "s" : ""}`),
+                emailLabel("Warnings"),
+                `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${warningRowsHtml}</table>`,
+                emailButton("View Senders", sendersUrl),
+              ].join(""),
+              footerNote: "Admin sender health digest. You received this because you are the system administrator.",
+            }),
           }),
         );
       }
@@ -1982,6 +1451,7 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
         "notifyDeliverabilityDigest",
       );
       if (verified.length > 0) {
+        // Build problem sender rows (keep Arial font inline per rules)
         const problemSenderRowsHtml =
           problemSenders.length > 0
             ? problemSenders
@@ -2001,6 +1471,7 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
                 .join("")
             : `<tr><td colspan="2" style="padding:10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;">No problem senders this week.</td></tr>`;
 
+        // Build bounce trend rows (keep Arial font inline per rules)
         const trendRowsHtml =
           workspaceTrends.length > 0
             ? workspaceTrends
@@ -2018,22 +1489,29 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
                 .join("")
             : `<tr><td colspan="2" style="padding:10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;">No bounce data available.</td></tr>`;
 
-        const worstDomainHtml = worstDomain
-          ? `              <!-- Worst domain -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fef2f2;border-radius:8px;border:1px solid #fecaca;">
-                    <tr>
-                      <td style="padding:14px 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#991b1b;margin:0 0 4px 0;text-transform:uppercase;">Worst Domain</p>
-                        <p style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:15px;color:#18181b;margin:0;font-weight:600;">${worstDomain.domain}</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#991b1b;margin:4px 0 0 0;font-weight:600;">${worstDomain.overallHealth}</p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`
-          : "";
+        const bodyParts: string[] = [
+          emailHeading("Weekly Deliverability Digest", `Cross-workspace summary — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`),
+          emailStatRow(
+            emailStatBox(healthyDomains, "Healthy Domains", "#16a34a", "#f0fdf4"),
+            emailStatBox(atRiskDomains, "At-Risk Domains", atRiskDomains > 0 ? "#dc2626" : "#a1a1aa", atRiskDomains > 0 ? "#fef2f2" : "#F8F7F5"),
+          ),
+          emailNotice(`Transitions this week: ${transitionCount}`),
+          `<div style="margin-bottom:24px;"></div>`,
+        ];
+
+        if (worstDomain) {
+          bodyParts.push(
+            emailBanner(`Worst Domain: ${worstDomain.domain} (${worstDomain.overallHealth})`, { color: "#991b1b", bgColor: "#fef2f2", borderColor: "#fecaca" }),
+          );
+        }
+
+        bodyParts.push(
+          emailLabel("Problem Senders"),
+          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${problemSenderRowsHtml}</table>`,
+          emailLabel("Bounce Trends by Workspace"),
+          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${trendRowsHtml}</table>`,
+          emailButton("View Deliverability Dashboard", deliverabilityUrl),
+        );
 
         await audited(
           {
@@ -2045,115 +1523,10 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
             sendNotificationEmail({
               to: verified,
               subject: "[Outsignal] Weekly Deliverability Digest",
-              html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Weekly Deliverability Digest</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">Cross-workspace summary &mdash; ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</td>
-              </tr>
-              <!-- Domain summary -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td width="50%" style="padding-right:8px;" valign="top">
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:#f0fdf4;border-radius:8px;padding:16px 20px;text-align:center;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:700;color:#16a34a;margin:0;line-height:1;">${healthyDomains}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#065f46;margin:6px 0 0 0;font-weight:600;">Healthy Domains</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                      <td width="50%" style="padding-left:8px;" valign="top">
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td style="background-color:${atRiskDomains > 0 ? "#fef2f2" : "#f4f4f5"};border-radius:8px;padding:16px 20px;text-align:center;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:700;color:${atRiskDomains > 0 ? "#dc2626" : "#a1a1aa"};margin:0;line-height:1;">${atRiskDomains}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:${atRiskDomains > 0 ? "#991b1b" : "#71717a"};margin:6px 0 0 0;font-weight:600;">At-Risk Domains</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <!-- Transitions -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td style="background-color:#f0f9ff;border-radius:8px;padding:16px 20px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0c4a6e;margin:0;font-weight:600;">Transitions this week: ${transitionCount}</p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-${worstDomainHtml}
-              <!-- Problem senders -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Problem Senders</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    ${problemSenderRowsHtml}
-                  </table>
-                </td>
-              </tr>
-              <!-- Bounce trends -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Bounce Trends by Workspace</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    ${trendRowsHtml}
-                  </table>
-                </td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${deliverabilityUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Deliverability Dashboard</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Weekly deliverability digest.<br/>You received this because you are the system administrator.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+              html: emailLayout({
+                body: bodyParts.join(""),
+                footerNote: "Weekly deliverability digest. You received this because you are the system administrator.",
+              }),
             }),
         );
       }
@@ -2480,87 +1853,20 @@ ${campaignHtml}
         sendNotificationEmail({
           to: verified,
           subject,
-          html: `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:8px;line-height:1.3;">Weekly Intelligence Digest</td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">All Workspaces &mdash; ${workspaces.length} total</td>
-              </tr>
-              <!-- Aggregate Summary -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td style="background-color:#f0f9ff;border-radius:8px;padding:16px 20px;">
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                          <tr>
-                            <td width="33%" align="center" style="padding:4px;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:700;color:#0c4a6e;margin:0;">${totalReplies}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#0c4a6e;margin:4px 0 0 0;font-weight:600;">Total Replies</p>
-                            </td>
-                            <td width="33%" align="center" style="padding:4px;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:700;color:#0c4a6e;margin:0;">${totalInsights}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#0c4a6e;margin:4px 0 0 0;font-weight:600;">Total Insights</p>
-                            </td>
-                            <td width="33%" align="center" style="padding:4px;">
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:700;color:#d97706;margin:0;">${totalPending}</p>
-                              <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#92400e;margin:4px 0 0 0;font-weight:600;">Pending Actions</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#71717a;padding-bottom:8px;">${activeWorkspaces.length} active / ${workspaces.length - activeWorkspaces.length} quiet this week</td>
-              </tr>
-              <!-- Per-workspace sections -->
-${workspaceSectionsHtml}
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${insightsUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View All Insights</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Weekly intelligence digest across all workspaces.<br/>You received this because you are an admin.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`,
+          html: emailLayout({
+            body: [
+              emailHeading("Weekly Intelligence Digest", `All Workspaces — ${workspaces.length} total`),
+              emailStatRow3(
+                emailStatBox(totalReplies, "Total Replies", "#0c4a6e", "#f0f9ff"),
+                emailStatBox(totalInsights, "Total Insights", "#0c4a6e", "#f0f9ff"),
+                emailStatBox(totalPending, "Pending Actions", "#d97706", "#f0f9ff"),
+              ),
+              emailText(`${activeWorkspaces.length} active / ${workspaces.length - activeWorkspaces.length} quiet this week`),
+              `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${workspaceSectionsHtml}</table>`,
+              `<div style="padding-top:24px;">${emailButton("View All Insights", insightsUrl)}</div>`,
+            ].join(""),
+            footerNote: "Weekly intelligence digest across all workspaces. You received this because you are an admin.",
+          }),
         }),
     );
   } catch (err) {
@@ -2730,85 +2036,19 @@ export async function notifyLinkedInMessage(params: {
   // ---------- Email ----------
 
   const emailSubjectLine = `[${workspace.name}] New LinkedIn Message from ${displayName}`;
-  const emailHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <!-- Title row -->
-              <tr>
-                <td style="padding-bottom:6px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;line-height:1.3;margin:0;">New LinkedIn Message</p>
-                </td>
-              </tr>
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;padding-bottom:24px;line-height:1.5;">${workspace.name}</td>
-              </tr>
-              <!-- Sender details card -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#fafafa;border-radius:8px;border:1px solid #e4e4e7;">
-                    <tr>
-                      <td style="padding:14px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">From</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#18181b;margin:0;font-weight:600;">${displayName}</p>
-                      </td>
-                    </tr>
-${params.participantProfileUrl ? `                    <tr>
-                      <td style="padding:12px 18px 0 18px;">
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 4px 0;text-transform:uppercase;">LinkedIn Profile</p>
-                        <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;margin:0;"><a href="https://linkedin.com${params.participantProfileUrl}" style="color:#635BFF;text-decoration:none;">View Profile</a></p>
-                      </td>
-                    </tr>` : ""}
-                    <tr><td style="padding-bottom:14px;"></td></tr>
-                  </table>
-                </td>
-              </tr>
-              <!-- Preview section -->
-              <tr>
-                <td style="padding-bottom:24px;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 10px 0;text-transform:uppercase;">Message Preview</p>
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#3f3f46;margin:0;white-space:pre-wrap;">${preview}</p>
-                </td>
-              </tr>
-              <!-- CTA button -->
-              <tr>
-                <td style="padding-top:8px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="background-color:#635BFF;border-radius:8px;">
-                        <a href="${viewUrl}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View in Portal</a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal &mdash; Sent to ${workspace.name} notification recipients.<br/>You received this because you are subscribed to LinkedIn message notifications.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`;
+  const emailHtml = emailLayout({
+    body: [
+      emailHeading("New LinkedIn Message", workspace.name),
+      emailDetailCard([
+        { label: "From", value: displayName },
+        ...(params.participantProfileUrl ? [{ label: "LinkedIn Profile", value: `<a href="https://linkedin.com${params.participantProfileUrl}" style="color:#635BFF;text-decoration:none;">View Profile</a>` }] : []),
+      ]),
+      emailLabel("Message Preview"),
+      emailText(preview, { preWrap: true }),
+      `<div style="padding-top:8px;">${emailButton("View in Portal", viewUrl)}</div>`,
+    ].join(""),
+    footerNote: `Sent to ${workspace.name} notification recipients. You received this because you are subscribed to LinkedIn message notifications.`,
+  });
 
   // Email — client notification emails (from Member records)
   {

@@ -52,6 +52,7 @@ export async function GET() {
       jobTitle: person?.jobTitle ?? conv.participantHeadline ?? null, // fallback to headline
       company: person?.company ?? null,
       senderId: conv.senderId,
+      initiatedByWorker: conv.initiatedByWorker,
     };
   });
 

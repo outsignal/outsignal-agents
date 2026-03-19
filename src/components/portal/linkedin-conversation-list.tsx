@@ -11,6 +11,7 @@ export interface LinkedInConversationSummary {
   unreadCount: number;
   jobTitle: string | null;
   company: string | null;
+  initiatedByWorker?: boolean;
   workspaceName?: string; // For admin mode
   workspaceSlug?: string; // For admin mode
 }
@@ -120,6 +121,20 @@ export function LinkedInConversationList({
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
                     {subtitle}
                   </p>
+                )}
+
+                {/* Outreach / Organic badge */}
+                {convo.initiatedByWorker != null && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium mt-0.5 mr-auto",
+                      convo.initiatedByWorker
+                        ? "bg-[#635BFF]/10 text-[#635BFF]"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {convo.initiatedByWorker ? "Outreach" : "Organic"}
+                  </span>
                 )}
 
                 {/* Snippet */}

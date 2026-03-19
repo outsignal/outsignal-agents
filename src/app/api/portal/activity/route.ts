@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
     // Collect unique personIds from LinkedIn actions for batch lookup
     if (linkedInActions.length > 0) {
       const personIds = [
-        ...new Set(linkedInActions.map((a) => a.personId).filter(Boolean)),
+        ...new Set(linkedInActions.map((a) => a.personId).filter((id): id is string => id !== null)),
       ];
       const persons = await prisma.person.findMany({
         where: { id: { in: personIds } },
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
         const mappedStatus = STATUS_MAP[action.status];
         if (mappedStatus === null) continue; // skip cancelled/expired/failed
 
-        const person = personMap.get(action.personId);
+        const person = action.personId ? personMap.get(action.personId) : undefined;
         items.push({
           id: action.id,
           channel: "linkedin",

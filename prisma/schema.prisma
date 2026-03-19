@@ -942,8 +942,11 @@ model EmailHealthEvent {
 model LinkedInAction {
   id            String @id @default(cuid())
   senderId      String
-  personId      String
+  personId      String?
   workspaceSlug String
+
+  // Alternative routing: conversation ID for replies where Person is unmatched
+  linkedInConversationId String? // LinkedInConversation.id — used to resolve profileUrl when personId is null
 
   // Action details
   actionType  String  // "connect" | "message" | "profile_view" | "check_connection"
@@ -1480,6 +1483,9 @@ model LinkedInConversation {
   participantProfileUrl  String?           // Normalized to /in/username format
   participantHeadline    String?
   participantProfilePicUrl String?
+
+  // Classification
+  initiatedByWorker      Boolean  @default(false)
 
   // Message preview
   lastMessageSnippet     String?

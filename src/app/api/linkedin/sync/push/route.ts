@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     for (const conv of conversations) {
       const normalizedUrl = normalizeLinkedinUrl(conv.participantProfileUrl);
 
-      // Match participant to Person by LinkedIn URL
+      // Match participant to Person — try LinkedIn URL first, then name via LinkedInAction
       let personId: string | null = null;
       if (normalizedUrl) {
         const person = await prisma.person.findFirst({
@@ -94,6 +94,22 @@ export async function POST(request: NextRequest) {
           select: { id: true },
         });
         personId = person?.id ?? null;
+      }
+      // Fallback: match by participant name against Person records in this workspace
+      if (!personId && conv.participantName) {
+        const nameParts = conv.participantName.trim().split(/\s+/);
+        const firstName = nameParts[0] ?? null;
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
+        if (firstName && lastName) {
+          const person = await prisma.person.findFirst({
+            where: {
+              firstName: { equals: firstName, mode: "insensitive" },
+              lastName: { equals: lastName, mode: "insensitive" },
+            },
+            select: { id: true },
+          });
+          personId = person?.id ?? null;
+        }
       }
 
       // Upsert conversation
@@ -121,13 +137,16 @@ export async function POST(request: NextRequest) {
           participantName: conv.participantName,
           participantHeadline: conv.participantHeadline,
           participantProfilePicUrl: conv.participantProfilePicUrl,
+          participantProfileUrl: normalizedUrl,
+          // Re-match personId on update so late Person records get linked
+          ...(personId ? { personId } : {}),
         },
       });
 
       // Get internal conversation record for FK
       const internalConv = await prisma.linkedInConversation.findUnique({
         where: { conversationId: conv.conversationId },
-        select: { id: true },
+        select: { id: true, personId: true },
       });
 
       if (!internalConv) continue;
@@ -167,6 +186,41 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }
+
+      // Determine if conversation was initiated by worker
+      const resolvedPersonId = internalConv.personId ?? personId;
+      let initiatedByWorker = false;
+
+      if (resolvedPersonId) {
+        // Check if a LinkedInAction exists for this sender+person combo
+        const matchingAction = await prisma.linkedInAction.findFirst({
+          where: {
+            senderId,
+            personId: resolvedPersonId,
+            actionType: { in: ["message", "connect"] },
+            status: "complete",
+          },
+          select: { id: true },
+        });
+        if (matchingAction) initiatedByWorker = true;
+      }
+
+      // Fallback: if the first message in the conversation is outbound, mark as worker-initiated
+      if (!initiatedByWorker && conv.messages.length > 0) {
+        const sorted = [...conv.messages].sort(
+          (a, b) => a.deliveredAt - b.deliveredAt,
+        );
+        const firstMsg = sorted[0];
+        const firstIsOutbound = firstMsg.senderUrn !== conv.participantUrn;
+        if (firstIsOutbound) initiatedByWorker = true;
+      }
+
+      if (initiatedByWorker) {
+        await prisma.linkedInConversation.update({
+          where: { id: internalConvId },
+          data: { initiatedByWorker: true },
+        });
       }
 
       // Notify for new inbound messages

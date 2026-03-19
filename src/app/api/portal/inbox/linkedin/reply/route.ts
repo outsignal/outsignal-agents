@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   // 4. Resolve conversation (scoped to workspace)
   const conv = await prisma.linkedInConversation.findFirst({
     where: { id: conversationId, workspaceSlug },
-    select: { senderId: true, personId: true },
+    select: { id: true, senderId: true, personId: true, participantProfileUrl: true },
   });
 
   // 5. 404 if conversation not found in this workspace
@@ -50,15 +50,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
-  // 6. 422 if personId not matched — can't queue without a Person record
-  if (!conv.personId) {
+  // 6. 422 if no personId AND no participant profile URL — can't route the message
+  if (!conv.personId && !conv.participantProfileUrl) {
     return NextResponse.json(
-      { error: "Cannot queue reply: lead not matched to a Person record" },
+      { error: "Cannot queue reply: no Person record or participant LinkedIn URL available" },
       { status: 422 }
     );
   }
 
   // 7. Enqueue LinkedIn action with priority 1 (warm lead fast-track)
+  //    When personId is null, pass linkedInConversationId so the worker
+  //    can resolve the recipient from the conversation's participantProfileUrl.
   const actionId = await enqueueAction({
     senderId: conv.senderId,
     personId: conv.personId,
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
     messageBody: message,
     priority: 1, // warm lead fast-track
     scheduledFor: new Date(), // immediate
+    linkedInConversationId: conv.personId ? undefined : conv.id,
   });
 
   // 8. Return actionId for polling
