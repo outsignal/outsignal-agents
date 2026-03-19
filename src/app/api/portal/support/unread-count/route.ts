@@ -13,7 +13,7 @@ export async function GET() {
 
   try {
     const count = await prisma.supportConversation.count({
-      where: { workspaceSlug, unreadByClient: true },
+      where: { workspaceSlug, unreadByClient: true, status: "open", messages: { some: {} } },
     });
 
     return NextResponse.json({ count });
