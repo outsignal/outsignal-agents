@@ -162,10 +162,18 @@ export async function POST(request: NextRequest) {
         // Check if message already exists
         const existing = await prisma.linkedInMessage.findUnique({
           where: { eventUrn: msg.eventUrn },
-          select: { id: true },
+          select: { id: true, body: true },
         });
 
-        if (!existing) {
+        if (existing) {
+          // Update body if worker now extracts more content (e.g. URLs from attachments)
+          if (msg.body && msg.body !== existing.body && msg.body.length > (existing.body?.length ?? 0)) {
+            await prisma.linkedInMessage.update({
+              where: { id: existing.id },
+              data: { body: msg.body },
+            });
+          }
+        } else {
           await prisma.linkedInMessage.create({
             data: {
               conversationId: internalConvId,
