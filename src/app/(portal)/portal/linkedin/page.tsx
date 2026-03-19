@@ -28,7 +28,11 @@ export default async function PortalLinkedInPage() {
   const { workspaceSlug } = session;
 
   const senders = await prisma.sender.findMany({
-    where: { workspaceSlug, OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }] },
+    where: {
+      workspaceSlug,
+      emailBisonSenderId: null,
+      OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }],
+    },
     orderBy: { createdAt: "desc" },
   });
 

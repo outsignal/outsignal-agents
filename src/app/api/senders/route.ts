@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const senders = await prisma.sender.findMany({
       where: {
         ...(workspaceSlug ? { workspaceSlug } : {}),
+        emailBisonSenderId: null,
         OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }],
       },
       include: {
