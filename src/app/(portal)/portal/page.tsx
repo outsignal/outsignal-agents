@@ -9,6 +9,8 @@ import { type PerformanceDayPoint } from "@/components/portal/portal-performance
 import { RelativeTimestamp } from "@/components/portal/relative-timestamp";
 import { PeriodSelector } from "@/components/portal/period-selector";
 import { Mail } from "lucide-react";
+import { EmailBisonClient } from "@/lib/emailbison/client";
+import type { Campaign as EBCampaign } from "@/lib/emailbison/types";
 
 import Link from "next/link";
 
@@ -69,6 +71,23 @@ export default async function PortalDashboardPage({
     profileViews: linkedInActions.filter((a) => a.actionType === "profile_view").length,
   };
 
+  // Fetch sent counts from EmailBison API (source of truth for all campaigns,
+  // including those managed directly in EB without webhook events)
+  let ebTotalSent = 0;
+  let ebCampaigns: EBCampaign[] = [];
+  if (workspace.apiToken) {
+    try {
+      const ebClient = new EmailBisonClient(workspace.apiToken);
+      ebCampaigns = await ebClient.getCampaigns();
+      ebTotalSent = ebCampaigns.reduce((sum, c) => sum + (c.emails_sent ?? 0), 0);
+    } catch (err) {
+      console.warn("[portal-dashboard] Failed to fetch EB campaigns for sent count:", err);
+      // Fall back to webhook events below
+    }
+  }
+
+  // Webhook events — still used for bounce/interested/unsubscribed tracking
+  // and as fallback for sent count if EB API is unavailable
   const webhookEvents = await prisma.webhookEvent.findMany({
     where: {
       workspace: workspaceSlug,
@@ -148,7 +167,10 @@ export default async function PortalDashboardPage({
   }
 
   // Period-scoped totals
-  const periodSent = performanceTimeSeries.reduce((sum, d) => sum + d.sent, 0);
+  // Sent count: prefer EmailBison API (source of truth — includes campaigns managed directly in EB).
+  // Fall back to webhook EMAIL_SENT events if EB API was unavailable.
+  const webhookSent = performanceTimeSeries.reduce((sum, d) => sum + d.sent, 0);
+  const periodSent = ebTotalSent > 0 ? ebTotalSent : webhookSent;
   const periodReplyRate = periodSent > 0 ? (periodReplyCount / periodSent) * 100 : 0;
 
   // Pending approval campaigns count
