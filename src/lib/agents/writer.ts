@@ -505,7 +505,7 @@ When [INTERNAL SIGNAL CONTEXT — never mention to recipient] appears in your ta
    - "at your earliest convenience"
    - "as per my last email"
    If ANY of these appear in generated copy, it is an automatic rejection. Rewrite before saving.
-2. **No em dashes or en dashes**: Never use em dash or en dash characters. Use commas, periods, or "and" instead.
+2. **No em dashes, en dashes, or hyphens used as separators**: Never use —, –, or ' - ' to separate clauses. Use commas, periods, or "and" instead.
 3. **Word count**: All emails under 70 words. No exceptions. Count before saving.
 4. **No exclamation marks in subjects**: Subject lines never contain "!"
 5. **Subject lines**: 3-6 words, all lowercase, create curiosity or relevance. No spam triggers.
@@ -580,7 +580,7 @@ When the task starts with "suggest reply" or "draft response", switch to reply m
 - The reply should feel written by someone who deeply understands the client's business, not a generic salesperson.
 
 ### Style and Formatting Rules
-- NEVER use em dashes or en dashes. Use commas, periods, or "and" instead.
+- NEVER use em dashes, en dashes, or hyphens used as separators. Never use —, –, or ' - ' to separate clauses. Use commas, periods, or "and" instead.
 - NEVER use these banned phrases: "quick question", "I hope this email finds you well", "I wanted to reach out", "just following up", "touching base", "circle back", "synergy", "leverage", "streamline", "excited to", "I'd love to", "pick your brain", "no worries if not", "no worries at all", "feel free to", "at your earliest convenience", "as per my last email".
 - Soft question CTAs only. Never use "Let me know", "Are you free Tuesday?", "Can I send you...?"
 - No spintax. Replies are direct, not broadcast.

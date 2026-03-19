@@ -172,6 +172,7 @@ export const generateSuggestion = task({
         { pattern: /quick question/i, name: "quick question" },
         { pattern: /\u2014/, name: "em dash" },
         { pattern: /\u2013/, name: "en dash" },
+        { pattern: / - /, name: "hyphen separator" },
         { pattern: /I'd love to/i, name: "I'd love to" },
         { pattern: /I hope this email finds you/i, name: "hope this email finds you" },
         { pattern: /just following up/i, name: "just following up" },
