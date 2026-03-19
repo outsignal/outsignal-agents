@@ -98,7 +98,14 @@ export default function PortalInboxPage() {
       const data = (await res.json()) as {
         conversations: LinkedInConversationSummary[];
       };
-      setLinkedinConversations(data.conversations);
+      setLinkedinConversations((prev) => {
+        // Preserve local read state for conversations already marked read
+        // to avoid poll overwriting optimistic updates before the API call fires
+        const readIds = new Set(prev.filter((c) => c.unreadCount === 0).map((c) => c.id));
+        return data.conversations.map((c) =>
+          readIds.has(c.id) ? { ...c, unreadCount: 0 } : c
+        );
+      });
       return data.conversations;
     } catch {
       return null;
