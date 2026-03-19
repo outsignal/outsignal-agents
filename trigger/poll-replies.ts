@@ -222,6 +222,7 @@ export const pollRepliesTask = schedules.task({
                   ebSenderEmailId: reply.sender_email_id ?? null,
                   interested: reply.interested ?? false,
                   direction: (reply.folder === "Sent" || reply.type === "Outgoing Email") ? "outbound" : "inbound",
+                  isRead: (reply.folder === "Sent" || reply.type === "Outgoing Email") ? true : false,
                 },
                 update: {
                   bodyText: replyBodyText,

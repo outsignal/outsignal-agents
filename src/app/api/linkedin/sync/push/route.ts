@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         },
         update: {
           lastActivityAt: new Date(conv.lastActivityAt),
-          unreadCount: conv.unreadCount,
+          // Don't overwrite unreadCount — portal controls read state locally
           lastMessageSnippet: conv.lastMessageSnippet,
           participantName: conv.participantName,
           participantHeadline: conv.participantHeadline,
@@ -316,9 +316,13 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Notify for new inbound messages
+      // Increment unread count and notify for new inbound messages
       if (newInboundCount > 0 && latestInboundBody) {
         totalNewInbound += newInboundCount;
+        await prisma.linkedInConversation.update({
+          where: { id: internalConvId },
+          data: { unreadCount: { increment: newInboundCount } },
+        });
         await notifyLinkedInMessage({
           workspaceSlug,
           participantName: conv.participantName,

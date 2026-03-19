@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
         interested: messages.some((m) => m.interested),
         replyStatus,
         hasAiSuggestion: messages.some((m) => m.aiSuggestedReply != null),
-        isRead: messages.every((m) => m.isRead),
+        isRead: messages.filter((m) => m.direction === "inbound").every((m) => m.isRead),
         intent: threadIntent,
         sentiment: threadSentiment,
       });
