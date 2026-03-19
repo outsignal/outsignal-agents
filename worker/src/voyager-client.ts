@@ -830,6 +830,25 @@ export class VoyagerClient {
                 msgBodyText = (msgBodyObj.text as string | undefined) ?? "";
               }
 
+              // Extract URLs from attachments / renderContent (embedded messages)
+              try {
+                const msgRcu = msgEl.renderContentUnions as Array<Record<string, unknown>> | undefined;
+                if (msgRcu) {
+                  const urls: string[] = [];
+                  for (const rcu of msgRcu) {
+                    const extMedia = rcu.externalMedia as Record<string, unknown> | undefined;
+                    if (extMedia?.url) urls.push(extMedia.url as string);
+                    const article = rcu.article as Record<string, unknown> | undefined;
+                    if (article?.url) urls.push(article.url as string);
+                  }
+                  if (urls.length > 0) {
+                    msgBodyText = msgBodyText ? `${msgBodyText}\n${urls.join("\n")}` : urls.join("\n");
+                  }
+                }
+              } catch {
+                // Best-effort
+              }
+
               // Timestamp
               const msgDeliveredAt =
                 (msgEl.deliveredAt as number | undefined) ??
@@ -1172,6 +1191,57 @@ export class VoyagerClient {
               ((bodyObj.attributes as Array<Record<string, unknown>> | undefined)?.[0]
                 ?.text as string | undefined) ??
               "";
+          }
+
+          // Extract URLs from attachments / renderContent / eventContent
+          // LinkedIn puts links, images, and media in these fields, not in body.text
+          const attachmentUrls: string[] = [];
+          try {
+            const renderContentUnions = msg.renderContentUnions as Array<Record<string, unknown>> | undefined;
+            if (renderContentUnions) {
+              for (const rcu of renderContentUnions) {
+                // External media (links)
+                const extMedia = rcu.externalMedia as Record<string, unknown> | undefined;
+                if (extMedia) {
+                  const url = extMedia.url as string | undefined;
+                  if (url) attachmentUrls.push(url);
+                }
+                // Article/link shares
+                const article = rcu.article as Record<string, unknown> | undefined;
+                if (article) {
+                  const url = article.url as string | undefined;
+                  if (url) attachmentUrls.push(url);
+                }
+              }
+            }
+            // Also check eventContent (older message format)
+            const eventContent = msg.eventContent as Record<string, unknown> | undefined;
+            const msgEvent = eventContent?.messageEvent as Record<string, unknown> | undefined;
+            const attachments = msgEvent?.attachments as Array<Record<string, unknown>> | undefined;
+            if (attachments) {
+              for (const att of attachments) {
+                const ref = att.reference as Record<string, unknown> | undefined;
+                const url = (ref?.url as string | undefined) ?? (att.url as string | undefined);
+                if (url) attachmentUrls.push(url);
+              }
+            }
+            // Check top-level attachments field
+            const topAttachments = msg.attachments as Array<Record<string, unknown>> | undefined;
+            if (topAttachments) {
+              for (const att of topAttachments) {
+                const url = (att.url as string | undefined) ??
+                  (att.reference as Record<string, unknown> | undefined)?.url as string | undefined;
+                if (url) attachmentUrls.push(url);
+              }
+            }
+          } catch {
+            // Attachment parsing is best-effort
+          }
+
+          // Append extracted URLs to body text
+          if (attachmentUrls.length > 0) {
+            const urlSuffix = attachmentUrls.join("\n");
+            bodyText = bodyText ? `${bodyText}\n${urlSuffix}` : urlSuffix;
           }
 
           // Timestamp — look for deliveredAt or createdAt (epoch ms)
