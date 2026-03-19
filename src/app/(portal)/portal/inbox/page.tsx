@@ -36,7 +36,7 @@ export default function PortalInboxPage() {
   }, [searchParams]);
 
   const [workspacePackage, setWorkspacePackage] = useState<string>("email");
-  const [activeChannel, setActiveChannel] = useState<ActiveChannel>("email");
+  const [activeChannel, setActiveChannel] = useState<ActiveChannel>("all");
 
   // --- Email state ---
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -64,12 +64,10 @@ export default function PortalInboxPage() {
       .then((d: { package?: string }) => {
         const pkg = d.package || "email";
         setWorkspacePackage(pkg);
+        // Only override channel for single-channel workspaces
         const channels = getAvailableChannels(pkg);
-        // Set initial active channel based on available channels
         if (channels.length === 1) {
           setActiveChannel(channels[0]);
-        } else {
-          setActiveChannel("all");
         }
       })
       .catch(() => {
@@ -176,6 +174,14 @@ export default function PortalInboxPage() {
   // 2-second read timer: fires when email thread is selected
   useEffect(() => {
     if (!selectedThreadId) return;
+
+    // Optimistically mark as read in local state immediately
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.threadId === selectedThreadId ? { ...t, isRead: true } : t
+      )
+    );
+
     const timer = setTimeout(() => {
       fetch(`/api/portal/inbox/email/threads/${selectedThreadId}/read`, {
         method: "POST",
@@ -183,6 +189,26 @@ export default function PortalInboxPage() {
     }, 2000);
     return () => clearTimeout(timer);
   }, [selectedThreadId]);
+
+  // 2-second read timer: fires when LinkedIn conversation is selected
+  useEffect(() => {
+    if (!selectedConversationId) return;
+
+    // Optimistically mark as read in local state immediately
+    setLinkedinConversations((prev) =>
+      prev.map((c) =>
+        c.id === selectedConversationId ? { ...c, unreadCount: 0 } : c
+      )
+    );
+
+    const timer = setTimeout(() => {
+      fetch(
+        `/api/portal/inbox/linkedin/conversations/${selectedConversationId}/read`,
+        { method: "POST" }
+      ).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [selectedConversationId]);
 
   // Mark all as read handler
   const handleMarkAllRead = useCallback(async () => {
@@ -409,6 +435,7 @@ export default function PortalInboxPage() {
                 <LinkedInConversationView
                   conversationId={selectedConversationId}
                   onMessageSent={fetchLinkedinConversations}
+                  onReadStateChange={(isUnread) => setLinkedinConversations((prev) => prev.map((c) => c.id === selectedConversationId ? { ...c, unreadCount: isUnread ? 1 : 0 } : c))}
                   onSwitchChannel={handleSwitchToEmail}
                 />
               ) : (
@@ -472,6 +499,7 @@ export default function PortalInboxPage() {
                 <LinkedInConversationView
                   conversationId={selectedConversationId}
                   onMessageSent={fetchLinkedinConversations}
+                  onReadStateChange={(isUnread) => setLinkedinConversations((prev) => prev.map((c) => c.id === selectedConversationId ? { ...c, unreadCount: isUnread ? 1 : 0 } : c))}
                   onSwitchChannel={handleSwitchToEmail}
                 />
               ) : (

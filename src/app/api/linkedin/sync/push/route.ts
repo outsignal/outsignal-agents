@@ -188,6 +188,99 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Attach outbound messages from completed actions that aren't in embedded messages
+      try {
+        const resolvedPid = internalConv.personId ?? personId;
+        if (resolvedPid) {
+          const completedOutboundActions = await prisma.linkedInAction.findMany({
+            where: {
+              senderId,
+              personId: resolvedPid,
+              actionType: "message",
+              status: "complete",
+              messageBody: { not: null },
+            },
+            select: { id: true, messageBody: true, completedAt: true },
+          });
+
+          for (const act of completedOutboundActions) {
+            const syntheticUrn = `urn:outsignal:outbound:${act.id}`;
+            const exists = await prisma.linkedInMessage.findUnique({
+              where: { eventUrn: syntheticUrn },
+              select: { id: true },
+            });
+            if (exists) continue;
+
+            const bodyMatch = await prisma.linkedInMessage.findFirst({
+              where: {
+                conversationId: internalConvId,
+                body: act.messageBody!,
+                isOutbound: true,
+              },
+              select: { id: true },
+            });
+            if (bodyMatch) continue;
+
+            await prisma.linkedInMessage.create({
+              data: {
+                conversationId: internalConvId,
+                eventUrn: syntheticUrn,
+                senderUrn: "",
+                senderName: null,
+                body: act.messageBody!,
+                isOutbound: true,
+                deliveredAt: act.completedAt ?? new Date(),
+              },
+            });
+          }
+        }
+
+        // Also check by linkedInConversationId (for replies where personId was null)
+        const actionsViaConvId = await prisma.linkedInAction.findMany({
+          where: {
+            senderId,
+            linkedInConversationId: internalConvId,
+            actionType: "message",
+            status: "complete",
+            messageBody: { not: null },
+          },
+          select: { id: true, messageBody: true, completedAt: true },
+        });
+
+        for (const act of actionsViaConvId) {
+          const syntheticUrn = `urn:outsignal:outbound:${act.id}`;
+          const exists = await prisma.linkedInMessage.findUnique({
+            where: { eventUrn: syntheticUrn },
+            select: { id: true },
+          });
+          if (exists) continue;
+
+          const bodyMatch = await prisma.linkedInMessage.findFirst({
+            where: {
+              conversationId: internalConvId,
+              body: act.messageBody!,
+              isOutbound: true,
+            },
+            select: { id: true },
+          });
+          if (bodyMatch) continue;
+
+          await prisma.linkedInMessage.create({
+            data: {
+              conversationId: internalConvId,
+              eventUrn: syntheticUrn,
+              senderUrn: "",
+              senderName: null,
+              body: act.messageBody!,
+              isOutbound: true,
+              deliveredAt: act.completedAt ?? new Date(),
+            },
+          });
+        }
+      } catch (outboundErr) {
+        console.error("[linkedin/sync/push] Failed to attach outbound messages:", outboundErr);
+      }
+
       // Determine if conversation was initiated by worker
       const resolvedPersonId = internalConv.personId ?? personId;
       let initiatedByWorker = false;

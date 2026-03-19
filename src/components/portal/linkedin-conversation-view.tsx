@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { RefreshCw, AlertCircle, Linkedin, Loader2, Mail } from "lucide-react";
+import { RefreshCw, AlertCircle, Linkedin, Loader2, Mail, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,6 +69,7 @@ const QUEUE_STATUS_BADGE: Record<
 interface LinkedInConversationViewProps {
   conversationId: string;
   onMessageSent: () => void;
+  onReadStateChange?: (isUnread: boolean) => void;
   onSwitchChannel?: (threadId: number) => void;
   crossChannel?: { type: "email"; threadId: number } | null;
   /** Override messages API path (admin mode). */
@@ -82,6 +83,7 @@ interface LinkedInConversationViewProps {
 export function LinkedInConversationView({
   conversationId,
   onMessageSent,
+  onReadStateChange,
   onSwitchChannel,
   crossChannel,
   messagesBasePath = "/api/portal/inbox/linkedin/conversations",
@@ -100,6 +102,7 @@ export function LinkedInConversationView({
   const [composerText, setComposerText] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [isMarkedUnread, setIsMarkedUnread] = useState(false);
   const [newMessageIds, setNewMessageIds] = useState<Set<string>>(new Set());
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -415,6 +418,26 @@ export function LinkedInConversationView({
               </p>
             )}
           </div>
+          <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={async () => {
+              const newUnread = !isMarkedUnread;
+              setIsMarkedUnread(newUnread);
+              await fetch(`/api/portal/inbox/linkedin/conversations/${conversationId}/read`, {
+                method: newUnread ? "DELETE" : "POST",
+              });
+              onReadStateChange?.(newUnread);
+            }}
+          >
+            {isMarkedUnread ? (
+              <><Eye className="h-3.5 w-3.5" /> Mark read</>
+            ) : (
+              <><EyeOff className="h-3.5 w-3.5" /> Mark unread</>
+            )}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -427,6 +450,7 @@ export function LinkedInConversationView({
             />
             <span className="sr-only">Refresh</span>
           </Button>
+          </div>
         </div>
       </div>
 

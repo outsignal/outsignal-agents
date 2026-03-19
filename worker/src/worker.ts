@@ -247,7 +247,12 @@ export class Worker {
           const cachedActivity = this.conversationCache.get(conv.conversationId);
 
           if (cachedActivity && conv.lastActivityAt <= cachedActivity) {
-            continue; // No new activity
+            // Even if no new activity, push embedded messages to backfill any missing messages
+            // (push endpoint deduplicates by eventUrn, so this is safe)
+            if (conv.embeddedMessages && conv.embeddedMessages.length > 0) {
+              updatedConversations.push({ ...conv, messages: conv.embeddedMessages });
+            }
+            continue;
           }
 
           // Update cache

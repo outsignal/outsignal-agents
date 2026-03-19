@@ -52,6 +52,43 @@ export async function POST(
       });
     }
 
+    // Store outbound message as LinkedInMessage for conversation history
+    if (action.actionType === "message" && action.messageBody) {
+      try {
+        let targetConversationId: string | null = action.linkedInConversationId;
+
+        // If no direct conversation link, try to find one via sender+person
+        if (!targetConversationId && action.personId) {
+          const existingConv = await prisma.linkedInConversation.findFirst({
+            where: {
+              senderId: action.senderId,
+              personId: action.personId,
+            },
+            select: { id: true },
+          });
+          targetConversationId = existingConv?.id ?? null;
+        }
+
+        if (targetConversationId) {
+          const syntheticUrn = `urn:outsignal:outbound:${action.id}`;
+          await prisma.linkedInMessage.create({
+            data: {
+              conversationId: targetConversationId,
+              eventUrn: syntheticUrn,
+              senderUrn: "",
+              senderName: null,
+              body: action.messageBody,
+              isOutbound: true,
+              deliveredAt: new Date(),
+            },
+          });
+        }
+      } catch (msgErr) {
+        // Don't block action completion if message storage fails
+        console.error("[complete] Failed to store outbound message:", msgErr);
+      }
+    }
+
     // Update sender's lastActiveAt
     await prisma.sender.update({
       where: { id: action.senderId },
