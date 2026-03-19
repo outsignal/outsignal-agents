@@ -72,20 +72,41 @@ export default async function PortalDashboardPage({
 
   // Fetch sent counts from EmailBison API (source of truth for all campaigns,
   // including those managed directly in EB without webhook events).
-  // Filter campaigns by created_at to respect the selected time period.
+  // EB only provides all-time totals per campaign, not per-day breakdowns.
+  // We include a campaign's sent total if it has replies in the selected period
+  // OR is actively sending. This gives a meaningful sent/reply ratio.
   let ebPeriodSent = 0;
   if (workspace.apiToken) {
     try {
       const ebClient = new EmailBisonClient(workspace.apiToken);
       const ebCampaigns = await ebClient.getCampaigns();
+
+      // Find which Outsignal campaign IDs have replies in the selected period
+      const campaignsWithReplies = await prisma.reply.findMany({
+        where: {
+          workspaceSlug,
+          direction: "inbound",
+          receivedAt: { gte: sinceDate },
+          campaignId: { not: null },
+        },
+        select: { campaignId: true },
+        distinct: ["campaignId"],
+      });
+      const outsignalCampaignIds = campaignsWithReplies.map((r) => r.campaignId).filter(Boolean) as string[];
+
+      // Map Outsignal campaign IDs → EB campaign IDs
+      const campaignMappings = outsignalCampaignIds.length > 0
+        ? await prisma.campaign.findMany({
+            where: { id: { in: outsignalCampaignIds }, emailBisonCampaignId: { not: null } },
+            select: { emailBisonCampaignId: true },
+          })
+        : [];
+      const activeEbIds = new Set(campaignMappings.map((c) => c.emailBisonCampaignId));
+
       for (const c of ebCampaigns) {
-        const campaignCreated = new Date(c.created_at);
-        // Include campaign if it was created before the period ends (now)
-        // AND is either still active/paused OR was created within the period
-        const createdBeforeNow = campaignCreated <= new Date();
-        const createdInPeriod = campaignCreated >= sinceDate;
-        const isActiveOrCompleted = ["active", "paused", "completed"].includes(c.status);
-        if (createdBeforeNow && (createdInPeriod || isActiveOrCompleted)) {
+        const isActivelySending = c.status === "active" || c.status === "paused";
+        const hasRepliesInPeriod = activeEbIds.has(c.id);
+        if (isActivelySending || hasRepliesInPeriod) {
           ebPeriodSent += c.emails_sent ?? 0;
         }
       }
