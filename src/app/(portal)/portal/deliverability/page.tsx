@@ -252,7 +252,7 @@ export default async function PortalDeliverabilityPage() {
                 <EmptyState
                   icon={Activity}
                   title="No recent events"
-                  description="Email health events will appear here when changes are detected in your sender accounts."
+                  description="Email health events will appear here when changes are detected in your email inboxes."
                   variant="compact"
                 />
               ) : (

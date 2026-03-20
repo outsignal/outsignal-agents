@@ -103,7 +103,7 @@ export function DomainHealthCards({ domains }: DomainHealthCardsProps) {
             <TableHead className="bg-muted">DKIM</TableHead>
             <TableHead className="bg-muted">DMARC</TableHead>
             <TableHead className="bg-muted hidden md:table-cell">Blacklists</TableHead>
-            <TableHead className="bg-muted text-right">Senders</TableHead>
+            <TableHead className="bg-muted text-right">Inboxes</TableHead>
             <TableHead className="bg-muted hidden lg:table-cell">Last Checked</TableHead>
           </TableRow>
         </TableHeader>

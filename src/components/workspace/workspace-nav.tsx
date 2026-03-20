@@ -32,7 +32,7 @@ export function WorkspaceNav({ slug }: WorkspaceNavProps) {
   const tabs: TabItem[] = [
     { label: "Overview", href: `/workspace/${slug}`, icon: LayoutDashboard, exact: true },
     { label: "Inbox", href: `/workspace/${slug}/inbox`, icon: Mail },
-    { label: "Senders", href: `/workspace/${slug}/senders`, icon: Send },
+    { label: "Inboxes", href: `/workspace/${slug}/senders`, icon: Send },
     { label: "LinkedIn", href: `/workspace/${slug}/linkedin`, icon: Linkedin },
     { label: "Deliverability", href: `/workspace/${slug}/deliverability`, icon: ShieldCheck },
     { label: "Members", href: `/workspace/${slug}/members`, icon: Users },

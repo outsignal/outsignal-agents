@@ -9,9 +9,9 @@ import {
 } from "@/components/ui/tooltip";
 
 const healthTooltips: Record<string, string> = {
-  healthy: "Sender is active and operating normally",
-  warning: "Sender has reduced activity — may need attention",
-  paused: "Sender has been temporarily paused",
+  healthy: "Account is active and operating normally",
+  warning: "Account has reduced activity — may need attention",
+  paused: "Account has been temporarily paused",
   blocked: "LinkedIn has restricted this account — our team is working on it",
   session_expired: "Session needs to be refreshed — our team has been notified",
 };

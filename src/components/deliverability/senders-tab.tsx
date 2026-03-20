@@ -136,7 +136,7 @@ export function SendersTab() {
       <div className="flex items-center justify-between">
         <div />
         <Button size="sm" onClick={() => setAddOpen(true)}>
-          Add Sender
+          Add LinkedIn Account
         </Button>
       </div>
 
@@ -180,9 +180,9 @@ export function SendersTab() {
       {!loading && !error && visibleSenders.length === 0 && (
         <EmptyState
           icon={LinkedinIcon}
-          title="No senders connected"
-          description="Add your first LinkedIn sender account to start automating outreach across your workspaces."
-          action={{ label: "Add Sender", onClick: () => setAddOpen(true) }}
+          title="No LinkedIn accounts connected"
+          description="Add your first LinkedIn account to start automating outreach across your workspaces."
+          action={{ label: "Add LinkedIn Account", onClick: () => setAddOpen(true) }}
         />
       )}
 

@@ -241,10 +241,10 @@ export default function LinkedInQueuePage() {
               onValueChange={(v) => setSenderFilter(v)}
             >
               <SelectTrigger className="h-8 text-xs w-[160px]">
-                <SelectValue placeholder="All Senders" />
+                <SelectValue placeholder="All Accounts" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all" className="text-xs">All Senders</SelectItem>
+                <SelectItem value="all" className="text-xs">All Accounts</SelectItem>
                 {senders.map((s) => (
                   <SelectItem key={s.id} value={s.id} className="text-xs">
                     {s.name}

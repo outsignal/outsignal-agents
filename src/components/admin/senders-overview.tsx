@@ -252,15 +252,15 @@ export function SendersOverview() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Mail}
-          title="No senders found"
+          title="No LinkedIn accounts found"
           description={
             senders.length === 0
-              ? "No senders have been added yet. Add a LinkedIn sender to get started."
-              : "No senders match your current filters. Try adjusting your search or filters."
+              ? "No LinkedIn accounts have been added yet. Add a LinkedIn account to get started."
+              : "No LinkedIn accounts match your current filters. Try adjusting your search or filters."
           }
           action={
             senders.length === 0
-              ? { label: "Add LinkedIn Sender", onClick: () => setShowAddDialog(true) }
+              ? { label: "Add LinkedIn Account", onClick: () => setShowAddDialog(true) }
               : undefined
           }
         />

@@ -18,10 +18,12 @@ export default async function WorkspacesPage() {
       createdAt: true,
       _count: {
         select: {
-          senders: true,
           campaigns: true,
           members: true,
         },
+      },
+      senders: {
+        select: { emailBisonSenderId: true },
       },
     },
     orderBy: { name: "asc" },
@@ -59,7 +61,8 @@ export default async function WorkspacesPage() {
       package: w.package,
       type: w.type,
       createdAt: w.createdAt.toISOString(),
-      senderCount: w._count.senders,
+      inboxCount: w.senders.filter((s) => s.emailBisonSenderId != null).length,
+      linkedinAccountCount: w.senders.filter((s) => s.emailBisonSenderId == null).length,
       campaignCount: w._count.campaigns,
       memberCount: w._count.members,
       lastActivity: lastLogin?.toISOString() ?? null,

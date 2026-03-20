@@ -249,19 +249,18 @@ function ProspectCard({
   return (
     <div
       ref={isDragOverlay ? undefined : setNodeRef}
+      {...(isDragOverlay ? {} : listeners)}
+      {...(isDragOverlay ? {} : attributes)}
       className={cn(
-        "group flex items-stretch rounded-xl border border-border bg-background shadow-sm transition-all hover:shadow-md cursor-pointer",
+        "group flex items-stretch rounded-xl border border-border bg-background shadow-sm transition-all hover:shadow-md cursor-grab active:cursor-grabbing",
         isDragging && "opacity-40",
         isDragOverlay && "shadow-lg ring-2 ring-brand/20 rotate-[2deg]",
       )}
       onClick={onEdit}
     >
-      {/* Drag handle zone */}
+      {/* Drag grip indicator */}
       <div
-        {...(isDragOverlay ? {} : listeners)}
-        {...(isDragOverlay ? {} : attributes)}
-        className="flex items-center justify-center w-6 shrink-0 cursor-grab active:cursor-grabbing"
-        onClick={(e) => e.stopPropagation()}
+        className="flex items-center justify-center w-6 shrink-0"
       >
         <DragGrip />
       </div>

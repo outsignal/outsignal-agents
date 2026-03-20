@@ -66,7 +66,7 @@ const TAB_VALUES = [
   "overview",
   "domains",
   "email-health",
-  "linkedin-senders",
+  "linkedin-accounts",
   "activity",
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -78,7 +78,7 @@ const TAB_CONFIG: Record<
   overview: { label: "Overview", icon: LayoutDashboard },
   domains: { label: "Domains", icon: Globe },
   "email-health": { label: "Email Health", icon: Mail },
-  "linkedin-senders": { label: "LinkedIn Senders", icon: Send },
+  "linkedin-accounts": { label: "LinkedIn Accounts", icon: Send },
   activity: { label: "Activity", icon: Activity },
 };
 
@@ -131,7 +131,7 @@ export default function DeliverabilityPage() {
           {tab === "overview" && <OverviewTab />}
           {tab === "domains" && <DomainsTab />}
           {tab === "email-health" && <EmailHealthTab />}
-          {tab === "linkedin-senders" && <LinkedInSendersTab />}
+          {tab === "linkedin-accounts" && <LinkedInSendersTab />}
           {tab === "activity" && <ActivityTab />}
         </div>
       </div>

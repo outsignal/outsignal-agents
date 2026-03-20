@@ -209,7 +209,7 @@ export default function DashboardPage() {
           {/* Row 2: System health status row */}
           <StatusIndicatorRow
             items={[
-              { label: "Senders", value: `${kpis.sendersActiveTotal} active`, status: kpis.sendersActiveTotal > 0 ? "green" : "red", href: "/senders" },
+              { label: "LinkedIn Accounts", value: `${kpis.linkedinAccountsActive}/${kpis.linkedinAccountsTotal} active`, status: kpis.linkedinAccountsActive < kpis.linkedinAccountsTotal ? "amber" : kpis.linkedinAccountsActive > 0 ? "green" : "red", href: "/senders" },
               { label: "Inboxes", value: `${kpis.inboxesHealthy}/${kpis.inboxesTotal}`, status: disconnectedInboxes > 0 ? "amber" : "green", href: "/email" },
               { label: "Campaigns", value: `${kpis.campaignsActive} running`, status: kpis.campaignsActive > 0 ? "green" : "neutral" },
               { label: "Pipeline", value: `${kpis.pipelineContacted} leads`, status: "neutral", href: "/people" },

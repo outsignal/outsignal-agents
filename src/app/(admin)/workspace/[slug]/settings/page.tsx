@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { getWorkspaceBySlug, getWorkspaceDetails } from "@/lib/workspaces";
 import { WorkspaceSettingsForm } from "@/components/workspace/workspace-settings-form";
-import { PackageQuotasForm } from "@/components/workspace/package-quotas-form";
 import { prisma } from "@/lib/db";
 import { parseModules, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
 
@@ -61,7 +60,7 @@ export default async function WorkspaceSettingsPage({
     clientEmails: details?.clientEmails ?? null,
   };
 
-  // Build package data for the PackageQuotasForm (only if DB record exists)
+  // Build package data (only if DB record exists)
   const packageData = dbWorkspace && usage
     ? {
         slug,
@@ -75,9 +74,8 @@ export default async function WorkspaceSettingsPage({
     : null;
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <WorkspaceSettingsForm workspace={workspace} />
-      {packageData && <PackageQuotasForm data={packageData} />}
+    <div className="max-w-4xl">
+      <WorkspaceSettingsForm workspace={workspace} packageData={packageData} />
     </div>
   );
 }

@@ -62,7 +62,7 @@ const TASKS = [
   { id: "process-reply", label: "Process Reply", type: "event", schedule: "On webhook" },
   { id: "retry-classification", label: "Retry Classification", type: "scheduled", schedule: "Every 10 min" },
   { id: "smoke-test", label: "Smoke Test", type: "scheduled", schedule: "Daily 8am UTC" },
-  { id: "sync-senders", label: "Sync Senders", type: "scheduled", schedule: "Daily 8am UTC" },
+  { id: "sync-senders", label: "Sync Inboxes", type: "scheduled", schedule: "Daily 8am UTC" },
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -274,7 +274,7 @@ export function AddLinkedInSenderDialog({
               disabled={loading || !name || !workspaceSlug}
             >
               {loading && <Loader2 className="animate-spin" />}
-              {loading ? "Creating..." : "Add Sender"}
+              {loading ? "Creating..." : "Add Account"}
             </Button>
           </DialogFooter>
         </form>

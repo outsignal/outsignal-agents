@@ -164,7 +164,7 @@ export default async function PortalEmailHealthPage() {
       <div>
         <h1 className="text-xl font-medium text-foreground">Email Health</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Sender inbox health and deliverability metrics
+          Inbox health and deliverability metrics
         </p>
       </div>
 
@@ -290,14 +290,14 @@ export default async function PortalEmailHealthPage() {
       {/* Sender Health Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="">Sender Health</CardTitle>
+          <CardTitle className="">Inbox Health</CardTitle>
         </CardHeader>
         <CardContent>
           {senders.length === 0 && !error ? (
             <EmptyState
               icon={ShieldCheck}
-              title="No senders configured"
-              description="Sender inboxes will appear here once they are connected to your workspace."
+              title="No inboxes configured"
+              description="Email inboxes will appear here once they are connected to your workspace."
               variant="compact"
             />
           ) : senders.length > 0 ? (

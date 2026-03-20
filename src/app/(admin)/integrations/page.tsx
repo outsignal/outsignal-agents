@@ -230,7 +230,7 @@ export default async function IntegrationsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Sender</TableHead>
+                    <TableHead>Inbox</TableHead>
                     <TableHead>Workspace</TableHead>
                     <TableHead>Order ID</TableHead>
                     <TableHead>Expiry</TableHead>

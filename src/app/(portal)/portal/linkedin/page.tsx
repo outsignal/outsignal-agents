@@ -107,7 +107,7 @@ export default async function PortalLinkedInPage() {
         <div>
           <h1 className="text-xl font-heading font-medium text-foreground">LinkedIn</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your LinkedIn senders and connections
+            Manage your LinkedIn accounts and connections
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -136,7 +136,7 @@ export default async function PortalLinkedInPage() {
         <EmptyState
           icon={LinkedinIcon}
           title="No LinkedIn accounts connected"
-          description="To add LinkedIn senders to your account, please contact your account manager."
+          description="To add LinkedIn accounts, please contact your account manager."
         />
       ) : (
         <>
@@ -153,7 +153,7 @@ export default async function PortalLinkedInPage() {
           {/* Senders Table */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="font-heading">Senders</CardTitle>
+              <CardTitle className="font-heading">LinkedIn Accounts</CardTitle>
               <AddAccountButton workspaceSlug={workspaceSlug} />
             </CardHeader>
             <CardContent>

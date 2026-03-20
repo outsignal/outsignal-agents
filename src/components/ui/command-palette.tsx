@@ -100,7 +100,7 @@ export function CommandPalette() {
         { id: "people", label: "People", icon: Users, onSelect: () => navigate("/people") },
         { id: "companies", label: "Companies", icon: Building2, onSelect: () => navigate("/companies") },
         { id: "lists", label: "Lists", icon: ListChecks, onSelect: () => navigate("/lists") },
-        { id: "senders", label: "Senders", icon: Send, onSelect: () => navigate("/senders") },
+        { id: "senders", label: "LinkedIn Accounts", icon: Send, onSelect: () => navigate("/senders") },
         { id: "inboxes", label: "Inboxes", icon: Mail, onSelect: () => navigate("/inboxes") },
         { id: "suggestions", label: "AI Suggestions", icon: Sparkles, onSelect: () => navigate("/suggestions") },
         { id: "onboarding", label: "Onboarding", icon: UserPlus, onSelect: () => navigate("/onboard") },

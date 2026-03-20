@@ -130,7 +130,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
       {workspace.senders.length === 0 ? (
         <EmptyState
           icon={LinkedinIcon}
-          title="No LinkedIn senders configured"
+          title="No LinkedIn accounts configured"
           description="Add a LinkedIn account to start sending connection requests and messages."
         />
       ) : (
@@ -171,7 +171,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
           {/* Senders Table */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="font-heading">Senders</CardTitle>
+              <CardTitle className="font-heading">LinkedIn Accounts</CardTitle>
               <AddAccountButton workspaceSlug={slug} />
             </CardHeader>
             <CardContent>

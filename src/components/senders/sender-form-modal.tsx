@@ -139,7 +139,7 @@ export function SenderFormModal({ open, onOpenChange, sender, workspaces, onSave
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Sender" : "Add Sender"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit LinkedIn Account" : "Add LinkedIn Account"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">

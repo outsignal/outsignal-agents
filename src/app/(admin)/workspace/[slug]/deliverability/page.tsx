@@ -257,7 +257,7 @@ export default async function WorkspaceDeliverabilityPage({
           }
         />
         <MetricCard
-          label="Sender Emails"
+          label="Email Inboxes"
           value={senderHealth.length}
           icon="Mail"
           detail={
@@ -354,7 +354,7 @@ export default async function WorkspaceDeliverabilityPage({
                     <TableHead className="bg-muted hidden md:table-cell">
                       Blacklists
                     </TableHead>
-                    <TableHead className="bg-muted text-right">Senders</TableHead>
+                    <TableHead className="bg-muted text-right">Inboxes</TableHead>
                     <TableHead className="bg-muted hidden lg:table-cell">
                       Last Checked
                     </TableHead>
@@ -448,7 +448,7 @@ export default async function WorkspaceDeliverabilityPage({
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <MetricCard label="Total Senders" value={senderHealth.length} density="compact" />
+            <MetricCard label="Total Inboxes" value={senderHealth.length} density="compact" />
             <MetricCard
               label="Overall Bounce Rate"
               value={`${overallBounceRate.toFixed(2)}%`}

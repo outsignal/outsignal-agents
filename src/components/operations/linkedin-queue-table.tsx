@@ -193,7 +193,7 @@ export function QueueTableSkeleton() {
             <TableHead className="w-8 py-2 text-xs text-muted-foreground font-medium">P</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Type</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Person</TableHead>
-            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Sender</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Account</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Workspace</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Scheduled</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Status</TableHead>
@@ -254,7 +254,7 @@ export function LinkedInQueueTable({ actions }: LinkedInQueueTableProps) {
               <TableHead className="w-8 py-2 text-xs text-muted-foreground font-medium">P</TableHead>
               <TableHead className="py-2 text-xs text-muted-foreground font-medium">Type</TableHead>
               <TableHead className="py-2 text-xs text-muted-foreground font-medium">Person</TableHead>
-              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Sender</TableHead>
+              <TableHead className="py-2 text-xs text-muted-foreground font-medium">Account</TableHead>
               <TableHead className="py-2 text-xs text-muted-foreground font-medium">Workspace</TableHead>
               <TableHead className="py-2 text-xs text-muted-foreground font-medium">Scheduled</TableHead>
               <TableHead className="py-2 text-xs text-muted-foreground font-medium">Status</TableHead>
@@ -284,7 +284,7 @@ export function LinkedInQueueTable({ actions }: LinkedInQueueTableProps) {
             <TableHead className="w-8 py-2 px-3 text-xs text-muted-foreground font-medium">P</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Type</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Person</TableHead>
-            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Sender</TableHead>
+            <TableHead className="py-2 text-xs text-muted-foreground font-medium">Account</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Workspace</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Scheduled</TableHead>
             <TableHead className="py-2 text-xs text-muted-foreground font-medium">Status</TableHead>

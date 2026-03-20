@@ -26,7 +26,8 @@ export interface WorkspaceRow {
   package: string | null;
   type: string | null;
   createdAt: string;
-  senderCount: number;
+  inboxCount: number;
+  linkedinAccountCount: number;
   campaignCount: number;
   memberCount: number;
   lastActivity: string | null;
@@ -132,7 +133,8 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
                 <TableHead className="hidden md:table-cell">Vertical</TableHead>
                 <TableHead className="hidden sm:table-cell">Package</TableHead>
                 <TableHead className="text-right hidden sm:table-cell">Members</TableHead>
-                <TableHead className="text-right">Senders</TableHead>
+                <TableHead className="text-right">Inboxes</TableHead>
+                <TableHead className="text-right hidden sm:table-cell">LinkedIn</TableHead>
                 <TableHead className="text-right">Campaigns</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="hidden lg:table-cell">Last Activity</TableHead>
@@ -183,7 +185,12 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="font-mono text-sm text-foreground">
-                        {ws.senderCount}
+                        {ws.inboxCount}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right hidden sm:table-cell">
+                      <span className="font-mono text-sm text-foreground">
+                        {ws.linkedinAccountCount}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
