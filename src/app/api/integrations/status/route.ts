@@ -483,11 +483,14 @@ async function checkResend(): Promise<ProviderStatus> {
     return { id: "resend", name: "Resend", category: "notifications", status: "disconnected", configured: false, dashboardUrl: "https://resend.com/overview", lastChecked: now };
   }
   try {
+    // POST /emails with empty body — returns 422 (key valid, missing fields) or 401 (key invalid).
+    // The /domains endpoint requires full-access keys, but our key is sending-only.
     const res = await fetchWithTimeout(
-      "https://api.resend.com/domains",
-      { headers: { Authorization: `Bearer ${key}` } },
+      "https://api.resend.com/emails",
+      { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: "{}" },
     );
-    if (res.ok) {
+    // 422 = key is valid, just missing required fields (expected)
+    if (res.status === 422 || res.ok) {
       return { id: "resend", name: "Resend", category: "notifications", status: "connected", configured: true, dashboardUrl: "https://resend.com/overview", lastChecked: now };
     }
     return { id: "resend", name: "Resend", category: "notifications", status: "degraded", configured: true, dashboardUrl: "https://resend.com/overview", error: `API returned ${res.status}`, lastChecked: now };

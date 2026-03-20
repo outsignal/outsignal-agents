@@ -27,7 +27,7 @@ export async function POST(
     // Fetch workspace to get billing email
     const workspace = await prisma.workspace.findUnique({
       where: { slug: invoice.workspaceSlug },
-      select: { billingClientEmail: true },
+      select: { billingClientEmail: true, billingCcEmails: true },
     });
 
     const recipientEmail = workspace?.billingClientEmail;
@@ -39,7 +39,10 @@ export async function POST(
     }
 
     // Send email with PDF attachment
-    await sendInvoiceEmail(invoice, recipientEmail);
+    const ccEmails = workspace?.billingCcEmails
+      ? workspace.billingCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+      : [];
+    await sendInvoiceEmail(invoice, recipientEmail, ccEmails);
 
     // Update invoice status to "sent" (also sets sentAt timestamp)
     await updateInvoiceStatus(id, "sent");
@@ -49,10 +52,10 @@ export async function POST(
       entityType: "Invoice",
       entityId: id,
       adminEmail: session.email,
-      metadata: { invoiceNumber: invoice.invoiceNumber, workspaceSlug: invoice.workspaceSlug, recipientEmail },
+      metadata: { invoiceNumber: invoice.invoiceNumber, workspaceSlug: invoice.workspaceSlug, recipientEmail, ccEmails },
     });
 
-    return NextResponse.json({ sent: true, to: recipientEmail });
+    return NextResponse.json({ sent: true, to: recipientEmail, cc: ccEmails });
   } catch (err) {
     console.error("[POST /api/invoices/[id]/send] Error:", err);
     return NextResponse.json({ error: "Failed to send invoice" }, { status: 500 });

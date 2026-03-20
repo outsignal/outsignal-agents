@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, Linkedin, ArrowLeft } from "lucide-react";
+import { Mail, Linkedin, ArrowLeft, BotMessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SkeletonListItem } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ import { LinkedInConversationView } from "@/components/portal/linkedin-conversat
 const ACTIVE_INTERVAL = 15_000;
 const BACKGROUND_INTERVAL = 60_000;
 
-type ActiveChannel = "all" | "email" | "linkedin";
+type ActiveChannel = "all" | "email" | "linkedin" | "auto-replies";
 
 function getAvailableChannels(pkg: string): ("email" | "linkedin")[] {
   if (pkg === "email") return ["email"];
@@ -43,6 +43,10 @@ export default function PortalInboxPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // --- Auto-replies state ---
+  const [autoReplies, setAutoReplies] = useState<ThreadSummary[]>([]);
+  const [autoRepliesLoading, setAutoRepliesLoading] = useState(true);
 
   // --- LinkedIn state ---
   const [linkedinConversations, setLinkedinConversations] = useState<
@@ -91,6 +95,20 @@ export default function PortalInboxPage() {
     }
   }, []);
 
+  const fetchAutoReplies = useCallback(async () => {
+    try {
+      const res = await fetch("/api/portal/inbox/email/threads?filter=auto");
+      if (!res.ok) throw new Error("Failed to load");
+      const data = (await res.json()) as { threads: ThreadSummary[] };
+      setAutoReplies(data.threads);
+      return data.threads;
+    } catch {
+      return null;
+    } finally {
+      setAutoRepliesLoading(false);
+    }
+  }, []);
+
   const fetchLinkedinConversations = useCallback(async () => {
     try {
       const res = await fetch("/api/portal/inbox/linkedin/conversations");
@@ -122,6 +140,7 @@ export default function PortalInboxPage() {
       const [emailResult, linkedinResult] = await Promise.all([
         fetchThreads(),
         fetchLinkedinConversations(),
+        fetchAutoReplies(),
       ]);
 
       // Auto-select thread from URL param, or first thread — desktop only (>= 768px)
@@ -160,6 +179,7 @@ export default function PortalInboxPage() {
     timer = setInterval(() => {
       fetchThreads();
       fetchLinkedinConversations();
+      fetchAutoReplies();
     }, getInterval());
 
     const handleVisibility = () => {
@@ -167,6 +187,7 @@ export default function PortalInboxPage() {
       timer = setInterval(() => {
         fetchThreads();
         fetchLinkedinConversations();
+        fetchAutoReplies();
       }, getInterval());
     };
 
@@ -176,7 +197,7 @@ export default function PortalInboxPage() {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [fetchThreads, fetchLinkedinConversations]);
+  }, [fetchThreads, fetchLinkedinConversations, fetchAutoReplies]);
 
   // 2-second read timer: fires when email thread is selected
   useEffect(() => {
@@ -216,6 +237,18 @@ export default function PortalInboxPage() {
     }, 2000);
     return () => clearTimeout(timer);
   }, [selectedConversationId]);
+
+  // Auto-select first auto-reply on desktop when switching to auto-replies tab
+  useEffect(() => {
+    if (
+      activeChannel === "auto-replies" &&
+      autoReplies.length > 0 &&
+      typeof window !== "undefined" &&
+      window.innerWidth >= 768
+    ) {
+      setSelectedThreadId(autoReplies[0].threadId);
+    }
+  }, [activeChannel, autoReplies]);
 
   // Mark all as read handler
   const handleMarkAllRead = useCallback(async () => {
@@ -271,7 +304,7 @@ export default function PortalInboxPage() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-medium">Inbox</h1>
           {/* Mark all as read — only shown on email/all tabs */}
-          {(activeChannel === "email" || activeChannel === "all") && (
+          {(activeChannel === "email" || activeChannel === "all" || activeChannel === "auto-replies") && (
             <Button
               variant="outline"
               size="sm"
@@ -299,7 +332,7 @@ export default function PortalInboxPage() {
               </button>
             )}
             <button
-              onClick={() => setActiveChannel("email")}
+              onClick={() => { setActiveChannel("email"); setSelectedConversationId(null); }}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                 activeChannel === "email"
@@ -316,7 +349,7 @@ export default function PortalInboxPage() {
               )}
             </button>
             <button
-              onClick={() => setActiveChannel("linkedin")}
+              onClick={() => { setActiveChannel("linkedin"); setSelectedThreadId(null); }}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
                 activeChannel === "linkedin"
@@ -332,13 +365,107 @@ export default function PortalInboxPage() {
                 </span>
               )}
             </button>
+            {channels.includes("email") && (
+              <button
+                onClick={() => { setActiveChannel("auto-replies"); setSelectedThreadId(null); setSelectedConversationId(null); }}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all duration-150",
+                  activeChannel === "auto-replies"
+                    ? "bg-background text-foreground font-medium shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <BotMessageSquare className="h-3.5 w-3.5" />
+                Auto-Replies
+                {autoReplies.filter((t) => t.isRead === false).length > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-brand text-white text-[10px] font-medium px-1">
+                    {autoReplies.filter((t) => t.isRead === false).length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Two-panel layout — mobile: single panel with back button */}
       <div className="flex flex-1 overflow-hidden">
-        {activeChannel === "email" || activeChannel === "all" ? (
+        {activeChannel === "auto-replies" ? (
+          <>
+            {/* Left panel: auto-reply thread list */}
+            <div
+              className={cn(
+                "shrink-0 border-r border-border overflow-y-auto",
+                "md:w-[380px]",
+                hasSelection ? "hidden md:flex md:flex-col" : "flex flex-col w-full md:w-[380px]"
+              )}
+            >
+              {autoRepliesLoading ? (
+                <div className="px-4">
+                  {[...Array(4)].map((_, i) => (
+                    <SkeletonListItem key={i} withAvatar={false} lines={3} />
+                  ))}
+                </div>
+              ) : autoReplies.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full py-16 text-center px-4">
+                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                    <BotMessageSquare className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">No auto-replies</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When leads send out-of-office responses, we automatically detect them and schedule follow-ups for when they return.
+                  </p>
+                </div>
+              ) : (
+                <EmailThreadList
+                  threads={autoReplies}
+                  selectedThreadId={selectedThreadId}
+                  onSelectThread={(id) => {
+                    setSelectedThreadId(id);
+                    setSelectedConversationId(null);
+                  }}
+                  hideIntentBadge
+                />
+              )}
+            </div>
+
+            {/* Right panel: auto-reply thread detail */}
+            <div
+              className={cn(
+                "flex-1 overflow-hidden flex flex-col",
+                hasSelection ? "flex" : "hidden md:flex"
+              )}
+            >
+              <button
+                onClick={() => {
+                  setSelectedThreadId(null);
+                  setSelectedConversationId(null);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground md:hidden border-b border-border"
+              >
+                <ArrowLeft className="h-4 w-4" /> Back to auto-replies
+              </button>
+
+              {selectedThreadId !== null ? (
+                <EmailThreadView
+                  threadId={selectedThreadId}
+                  onReplySent={() => { fetchThreads(); fetchAutoReplies(); }}
+                  onSwitchChannel={handleSwitchToLinkedIn}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                  <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <BotMessageSquare className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium">Auto-Replies</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                    Select an auto-reply to see the return date and re-engagement plan.
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        ) : activeChannel === "email" || activeChannel === "all" ? (
           <>
             {/* Left panel: thread list */}
             <div

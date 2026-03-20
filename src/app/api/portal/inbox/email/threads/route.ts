@@ -18,6 +18,11 @@ interface ThreadSummary {
   isRead: boolean;
   intent: string | null;
   sentiment: string | null;
+  // OOO fields (only present when filter=auto)
+  oooUntil?: string | null;
+  oooReason?: string | null;
+  reengagementStatus?: string | null;
+  reengagementDate?: string | null;
 }
 
 // GET /api/portal/inbox/email/threads — returns replies grouped into threads
@@ -27,15 +32,26 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const cursor = searchParams.get("cursor");
+    const filter = searchParams.get("filter"); // "auto" | "real" | null
 
-    const where: {
-      workspaceSlug: string;
-      deletedAt: null;
-      receivedAt?: { lt: Date };
-    } = { workspaceSlug, deletedAt: null };
+    const isAutoFilter = filter === "auto";
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: Record<string, any> = { workspaceSlug, deletedAt: null };
 
     if (cursor) {
       where.receivedAt = { lt: new Date(cursor) };
+    }
+
+    // Apply intent filter at the Prisma query level
+    if (isAutoFilter) {
+      where.intent = { in: ["out_of_office", "auto_reply"] };
+    } else {
+      // Default: exclude auto-replies but include unclassified (null intent)
+      where.OR = [
+        { intent: { notIn: ["out_of_office", "auto_reply"] } },
+        { intent: null },
+      ];
     }
 
     const replies = await prisma.reply.findMany({
@@ -127,6 +143,37 @@ export async function GET(request: NextRequest) {
         new Date(b.lastMessageAt).getTime() -
         new Date(a.lastMessageAt).getTime(),
     );
+
+    // When filter=auto, enrich threads with OOO data from Person + OooReengagement
+    if (isAutoFilter && threads.length > 0) {
+      const uniqueEmails = [...new Set(threads.map((t) => t.leadEmail).filter(Boolean))];
+
+      const [people, reengagements] = await Promise.all([
+        prisma.person.findMany({
+          where: { email: { in: uniqueEmails } },
+          select: { email: true, oooUntil: true, oooReason: true, oooDetectedAt: true },
+        }),
+        prisma.oooReengagement.findMany({
+          where: { personEmail: { in: uniqueEmails }, workspaceSlug },
+          orderBy: { createdAt: "desc" },
+          distinct: ["personEmail"],
+          select: { personEmail: true, status: true, oooUntil: true },
+        }),
+      ]);
+
+      const personMap = new Map(people.map((p) => [p.email, p]));
+      const reengagementMap = new Map(reengagements.map((r) => [r.personEmail, r]));
+
+      for (const thread of threads) {
+        const person = personMap.get(thread.leadEmail);
+        const reengagement = reengagementMap.get(thread.leadEmail);
+
+        thread.oooUntil = person?.oooUntil?.toISOString() ?? null;
+        thread.oooReason = person?.oooReason ?? null;
+        thread.reengagementStatus = reengagement?.status ?? null;
+        thread.reengagementDate = reengagement?.oooUntil?.toISOString() ?? null;
+      }
+    }
 
     // Pagination: include nextCursor if we fetched exactly 200 replies (may be more)
     const nextCursor =

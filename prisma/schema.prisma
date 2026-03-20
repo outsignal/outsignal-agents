@@ -111,6 +111,7 @@ model Workspace {
   billingPaymentTermsDays   Int       @default(5)     // Due date = issue date + N days
   billingDaysBeforeRenewal  Int       @default(7)     // Generate invoice N days before renewal
   billingClientEmail        String?   // Email address to send invoices to (may differ from clientEmails)
+  billingCcEmails           String?   // Comma-separated CC emails for invoice sending
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

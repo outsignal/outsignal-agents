@@ -67,6 +67,7 @@ export function invoiceEmailHtml(invoice: InvoiceWithLineItems): string {
 export async function sendInvoiceEmail(
   invoice: InvoiceWithLineItems,
   recipientEmail: string,
+  ccEmails?: string[],
 ): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -90,6 +91,7 @@ export async function sendInvoiceEmail(
     async () => { await resend.emails.send({
       from,
       to: [recipientEmail],
+      ...(ccEmails?.length ? { cc: ccEmails } : {}),
       bcc: ["jonathan@outsignal.ai"],
       subject: `Invoice ${invoice.invoiceNumber} from Outsignal`,
       html: invoiceEmailHtml(invoice),

@@ -19,6 +19,11 @@ export interface ThreadSummary {
   sentiment?: string | null;
   workspaceName?: string; // For admin mode
   workspaceSlug?: string; // For admin mode
+  // OOO enrichment (auto-reply tab only)
+  oooUntil?: string | null;
+  oooReason?: string | null;
+  reengagementStatus?: string | null;
+  reengagementDate?: string | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -89,12 +94,14 @@ interface EmailThreadListProps {
   threads: ThreadSummary[];
   selectedThreadId: number | null;
   onSelectThread: (threadId: number) => void;
+  hideIntentBadge?: boolean;
 }
 
 export function EmailThreadList({
   threads,
   selectedThreadId,
   onSelectThread,
+  hideIntentBadge,
 }: EmailThreadListProps) {
   if (threads.length === 0) {
     return (
@@ -192,7 +199,7 @@ export function EmailThreadList({
                       Interested
                     </span>
                   )}
-                  {thread.intent && (
+                  {thread.intent && !hideIntentBadge && (
                     <span
                       className={cn(
                         "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",
@@ -205,6 +212,21 @@ export function EmailThreadList({
                   {thread.hasAiSuggestion && (
                     <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-purple-50 text-purple-600 border border-purple-200">
                       AI ready
+                    </span>
+                  )}
+                  {thread.oooUntil && (
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800">
+                      {new Date(thread.oooUntil) < new Date() ? "Returned" : "Returns"} {new Date(thread.oooUntil).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    </span>
+                  )}
+                  {thread.reengagementStatus === "pending" && (
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-violet-50 text-violet-600 border border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800">
+                      Re-engages {thread.reengagementDate ? new Date(thread.reengagementDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "soon"}
+                    </span>
+                  )}
+                  {thread.reengagementStatus === "sent" && (
+                    <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800">
+                      Re-engaged
                     </span>
                   )}
                 </div>
