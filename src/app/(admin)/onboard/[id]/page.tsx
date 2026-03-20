@@ -36,6 +36,11 @@ export default async function ProposalDetailPage({
   const proposal = await prisma.proposal.findUnique({ where: { id } });
   if (!proposal) notFound();
 
+  const linkedInvite = await prisma.onboardingInvite.findFirst({
+    where: { proposalId: proposal.id },
+    select: { id: true, clientName: true, status: true },
+  });
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const proposalUrl = `${appUrl}/p/${proposal.token}`;
   const currentStepIndex = STEPS.indexOf(
@@ -46,7 +51,7 @@ export default async function ProposalDetailPage({
     <div>
       <Breadcrumb
         items={[
-          { label: "Proposals", href: "/onboard" },
+          { label: "Sales", href: "/sales" },
           { label: proposal.clientName },
         ]}
       />
@@ -176,6 +181,14 @@ export default async function ProposalDetailPage({
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <CopyLinkButton url={proposalUrl} />
+            {linkedInvite && (
+              <Link
+                href={`/onboard/invite/${linkedInvite.id}`}
+                className="inline-flex items-center rounded-md bg-blue-100 px-4 py-2 text-sm font-medium text-blue-800 hover:bg-blue-200"
+              >
+                View Onboarding Invite
+              </Link>
+            )}
             {proposal.status === "accepted" && (
               <MarkPaidButton proposalId={proposal.id} />
             )}

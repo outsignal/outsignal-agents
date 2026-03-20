@@ -39,7 +39,8 @@ export interface OnboardingInviteData {
 interface OnboardingFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  invite: OnboardingInviteData;
+  invite?: OnboardingInviteData;
+  mode?: "create" | "edit";
 }
 
 // ---------------------------------------------------------------------------
@@ -61,27 +62,36 @@ export function OnboardingFormModal({
   open,
   onOpenChange,
   invite,
+  mode = invite ? "edit" : "create",
 }: OnboardingFormModalProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [clientName, setClientName] = useState(invite.clientName);
-  const [clientEmail, setClientEmail] = useState(invite.clientEmail ?? "");
-  const [status, setStatus] = useState(invite.status);
-  const [createWorkspace, setCreateWorkspace] = useState(invite.createWorkspace);
-  const [workspaceSlug, setWorkspaceSlug] = useState(invite.workspaceSlug ?? "");
+  const [clientName, setClientName] = useState(invite?.clientName ?? "");
+  const [clientEmail, setClientEmail] = useState(invite?.clientEmail ?? "");
+  const [status, setStatus] = useState(invite?.status ?? "draft");
+  const [createWorkspace, setCreateWorkspace] = useState(invite?.createWorkspace ?? true);
+  const [workspaceSlug, setWorkspaceSlug] = useState(invite?.workspaceSlug ?? "");
 
   // Sync when invite or open changes
   useEffect(() => {
     if (!open) return;
-    setClientName(invite.clientName);
-    setClientEmail(invite.clientEmail ?? "");
-    setStatus(invite.status);
-    setCreateWorkspace(invite.createWorkspace);
-    setWorkspaceSlug(invite.workspaceSlug ?? "");
+    if (mode === "edit" && invite) {
+      setClientName(invite.clientName);
+      setClientEmail(invite.clientEmail ?? "");
+      setStatus(invite.status);
+      setCreateWorkspace(invite.createWorkspace);
+      setWorkspaceSlug(invite.workspaceSlug ?? "");
+    } else {
+      setClientName("");
+      setClientEmail("");
+      setStatus("draft");
+      setCreateWorkspace(true);
+      setWorkspaceSlug("");
+    }
     setError(null);
-  }, [open, invite]);
+  }, [open, invite, mode]);
 
   function handleClose() {
     if (saving) return;
@@ -100,7 +110,6 @@ export function OnboardingFormModal({
     const payload: Record<string, unknown> = {
       clientName: clientName.trim(),
       clientEmail: clientEmail.trim() || null,
-      status,
       createWorkspace,
     };
 
@@ -109,15 +118,27 @@ export function OnboardingFormModal({
     }
 
     try {
-      const res = await fetch(`/api/onboarding-invites/${invite.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Failed to save onboarding invite");
+      if (mode === "create") {
+        const res = await fetch("/api/onboarding-invites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Failed to create onboarding invite");
+        }
+      } else {
+        payload.status = status;
+        const res = await fetch(`/api/onboarding-invites/${invite!.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Failed to save onboarding invite");
+        }
       }
 
       onOpenChange(false);
@@ -129,13 +150,17 @@ export function OnboardingFormModal({
     }
   }
 
+  const isCreate = mode === "create";
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Onboarding Invite</DialogTitle>
+          <DialogTitle>{isCreate ? "New Onboarding Invite" : "Edit Onboarding Invite"}</DialogTitle>
           <DialogDescription>
-            Update onboarding invite details for {invite.clientName}.
+            {isCreate
+              ? "Create an onboarding invite to send to a new client."
+              : `Update onboarding invite details for ${invite?.clientName}.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -164,22 +189,24 @@ export function OnboardingFormModal({
             />
           </div>
 
-          {/* Status */}
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Status (edit mode only) */}
+          {!isCreate && (
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Create Workspace toggle */}
           <div className="flex items-center gap-2">
@@ -227,10 +254,10 @@ export function OnboardingFormModal({
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  {isCreate ? "Creating..." : "Saving..."}
                 </>
               ) : (
-                "Save Changes"
+                isCreate ? "Create Invite" : "Save Changes"
               )}
             </Button>
           </DialogFooter>

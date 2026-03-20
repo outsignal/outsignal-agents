@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Step } from "./onboarding-steps";
+import type { Step, StepField } from "./onboarding-steps";
 import { DomainStep } from "./domain-step";
 
 interface TypeformEngineProps {
@@ -28,8 +28,9 @@ export function TypeformEngine({
   const step = steps[currentStep];
   const isLast = currentStep === steps.length - 1;
   const progress = ((currentStep + 1) / steps.length) * 100;
+  const isMultiField = step?.fields && step.fields.length > 0;
 
-  // Focus input on step change
+  // Focus first input on step change
   useEffect(() => {
     const timer = setTimeout(() => {
       inputRef.current?.focus();
@@ -40,8 +41,15 @@ export function TypeformEngine({
   const goNext = useCallback(() => {
     if (!step) return;
 
-    // Validate required
-    if (step.required && !answers[step.id]) {
+    // Validate required fields
+    if (step.fields && step.fields.length > 0) {
+      for (const field of step.fields) {
+        if (field.required && !answers[field.id]) {
+          setError(`${field.label} is required`);
+          return;
+        }
+      }
+    } else if (step.required && !answers[step.id]) {
       setError("This field is required");
       return;
     }
@@ -69,22 +77,21 @@ export function TypeformEngine({
     setCurrentStep((s) => s - 1);
   }, [currentStep]);
 
-  // Keyboard handler
+  // Keyboard handler — disable Enter-to-submit for multi-field and textarea steps
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Enter" && !e.shiftKey) {
-        // Don't submit on Enter in textareas (Shift+Enter is newline)
-        if (step?.type === "textarea") return;
+        if (step?.type === "textarea" || isMultiField) return;
         e.preventDefault();
         goNext();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goNext, step?.type]);
+  }, [goNext, step?.type, isMultiField]);
 
-  function updateAnswer(value: unknown) {
-    setAnswers((prev) => ({ ...prev, [step.id]: value }));
+  function updateAnswer(fieldId: string, value: unknown) {
+    setAnswers((prev) => ({ ...prev, [fieldId]: value }));
     setError(null);
   }
 
@@ -119,14 +126,63 @@ export function TypeformEngine({
 
   if (!step) return null;
 
+  // Render a single field input
+  function renderField(
+    field: { id: string; type: string; placeholder?: string; label?: string; description?: string },
+    ref?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
+  ) {
+    const isReadOnly = readOnlyFields.includes(field.id);
+
+    if (field.type === "checkbox") {
+      return (
+        <label className="flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={!!answers[field.id]}
+            onChange={(e) => updateAnswer(field.id, e.target.checked)}
+            className="h-5 w-5 rounded border-gray-300 accent-[#635BFF]"
+          />
+          <span className="text-base text-gray-700">{field.label || "Yes"}</span>
+        </label>
+      );
+    }
+
+    if (field.type === "textarea") {
+      return (
+        <textarea
+          ref={ref as React.RefObject<HTMLTextAreaElement>}
+          value={(answers[field.id] as string) || ""}
+          onChange={(e) => updateAnswer(field.id, e.target.value)}
+          placeholder={field.placeholder}
+          readOnly={isReadOnly}
+          rows={3}
+          className="w-full resize-none border-0 border-b-2 border-gray-300 bg-transparent px-0 pb-2 text-lg text-gray-900 placeholder:text-gray-300 focus:border-[#635BFF] focus:outline-none focus:ring-0"
+        />
+      );
+    }
+
+    return (
+      <input
+        ref={ref as React.RefObject<HTMLInputElement>}
+        type={field.type === "email" ? "email" : "text"}
+        value={(answers[field.id] as string) || ""}
+        onChange={(e) => updateAnswer(field.id, e.target.value)}
+        placeholder={field.placeholder}
+        readOnly={isReadOnly}
+        className="w-full border-0 border-b-2 border-gray-300 bg-transparent px-0 pb-2 text-lg text-gray-900 placeholder:text-gray-300 focus:border-[#635BFF] focus:outline-none focus:ring-0"
+      />
+    );
+  }
+
   const isReadOnly = readOnlyFields.includes(step.id);
+  const hasRequiredFields = step.fields?.some((f) => f.required) || step.required;
 
   return (
     <div className="relative min-h-screen">
       {/* Progress bar */}
       <div className="fixed left-0 right-0 top-0 z-50 h-1 bg-gray-200">
         <div
-          className="h-full bg-gray-900 transition-all duration-500 ease-out"
+          className="h-full bg-[#635BFF] transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -177,43 +233,53 @@ export function TypeformEngine({
             <p className="mt-2 text-base text-gray-500">{step.description}</p>
           )}
 
-          {/* Input */}
+          {/* Input(s) */}
           <div className="mt-8">
             {step.type === "custom" && step.id === "domains" ? (
               <DomainStep
                 website={(answers.website as string) || ""}
                 selectedDomains={(answers.domains as string[]) || []}
-                onChange={(domains) => updateAnswer(domains)}
+                onChange={(domains) => updateAnswer("domains", domains)}
               />
+            ) : isMultiField ? (
+              <div className="space-y-6">
+                {step.fields!.map((field: StepField, i: number) => (
+                  <div key={field.id}>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                      {field.label}
+                      {field.required && <span className="ml-1 text-red-500">*</span>}
+                    </label>
+                    {field.description && (
+                      <p className="mb-1.5 text-xs text-gray-400">{field.description}</p>
+                    )}
+                    {renderField(
+                      field,
+                      i === 0 ? inputRef : undefined,
+                    )}
+                  </div>
+                ))}
+              </div>
             ) : step.type === "checkbox" ? (
-              <label className="flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={!!answers[step.id]}
-                  onChange={(e) => updateAnswer(e.target.checked)}
-                  className="h-5 w-5 rounded border-gray-300"
-                />
-                <span className="text-lg text-gray-700">Yes</span>
-              </label>
+              renderField({ id: step.id, type: "checkbox", label: "Yes" })
             ) : step.type === "textarea" ? (
               <textarea
                 ref={inputRef as React.RefObject<HTMLTextAreaElement>}
                 value={(answers[step.id] as string) || ""}
-                onChange={(e) => updateAnswer(e.target.value)}
+                onChange={(e) => updateAnswer(step.id, e.target.value)}
                 placeholder={step.placeholder}
                 readOnly={isReadOnly}
                 rows={4}
-                className="w-full resize-none border-0 border-b-2 border-gray-300 bg-transparent px-0 pb-2 text-xl text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none focus:ring-0"
+                className="w-full resize-none border-0 border-b-2 border-gray-300 bg-transparent px-0 pb-2 text-xl text-gray-900 placeholder:text-gray-300 focus:border-[#635BFF] focus:outline-none focus:ring-0"
               />
             ) : (
               <input
                 ref={inputRef as React.RefObject<HTMLInputElement>}
                 type={step.type === "email" ? "email" : "text"}
                 value={(answers[step.id] as string) || ""}
-                onChange={(e) => updateAnswer(e.target.value)}
+                onChange={(e) => updateAnswer(step.id, e.target.value)}
                 placeholder={step.placeholder}
                 readOnly={isReadOnly}
-                className="w-full border-0 border-b-2 border-gray-300 bg-transparent px-0 pb-2 text-xl text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none focus:ring-0"
+                className="w-full border-0 border-b-2 border-gray-300 bg-transparent px-0 pb-2 text-xl text-gray-900 placeholder:text-gray-300 focus:border-[#635BFF] focus:outline-none focus:ring-0"
               />
             )}
           </div>
@@ -228,7 +294,7 @@ export function TypeformEngine({
             <button
               onClick={goNext}
               disabled={submitting}
-              className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50"
+              className="rounded-lg bg-[#635BFF] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#5548e0] disabled:opacity-50"
             >
               {submitting
                 ? "Submitting..."
@@ -236,25 +302,33 @@ export function TypeformEngine({
                   ? "Complete"
                   : "OK"}
             </button>
-            {step.type !== "textarea" && !isLast && (
+            {!isMultiField && step.type !== "textarea" && !isLast && (
               <span className="text-xs text-gray-400">
                 press <kbd className="rounded border border-gray-300 px-1.5 py-0.5 font-mono">Enter ↵</kbd>
               </span>
             )}
-            {step.type === "textarea" && (
+            {(step.type === "textarea" || isMultiField) && (
               <span className="text-xs text-gray-400">
-                <kbd className="rounded border border-gray-300 px-1.5 py-0.5 font-mono">Shift + Enter</kbd> for new line
+                Fill in the fields above, then click OK
               </span>
             )}
           </div>
 
-          {/* Skip hint for optional fields */}
-          {!step.required && step.type !== "checkbox" && step.type !== "custom" && (
+          {/* Skip hint for optional steps */}
+          {!hasRequiredFields && !isMultiField && step.type !== "checkbox" && (
             <button
               onClick={goNext}
               className="mt-4 text-xs text-gray-400 hover:text-gray-600"
             >
               Skip this question
+            </button>
+          )}
+          {!hasRequiredFields && isMultiField && (
+            <button
+              onClick={goNext}
+              className="mt-4 text-xs text-gray-400 hover:text-gray-600"
+            >
+              Skip this section
             </button>
           )}
         </div>

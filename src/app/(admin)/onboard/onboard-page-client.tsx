@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
   DocumentUpload,
   type ParsedDocumentFields,
 } from "@/components/proposals/document-upload";
-import { Pencil, Trash2 } from "lucide-react";
+import { FileSignature, Mail, Pencil, Plus, Trash2 } from "lucide-react";
 import { ControlledConfirmDialog } from "@/components/ui/confirm-dialog";
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,7 @@ export function OnboardPageClient({
   const [editingInvite, setEditingInvite] = useState<OnboardingInviteRow | null>(
     null,
   );
+  const [inviteMode, setInviteMode] = useState<"create" | "edit">("create");
 
   // Delete confirmation state
   const [proposalToDelete, setProposalToDelete] = useState<ProposalRow | null>(null);
@@ -140,19 +142,27 @@ export function OnboardPageClient({
       const res = await fetch(`/api/proposals/${p.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Failed to delete proposal");
+        toast.error(data.error ?? "Failed to delete proposal");
         return;
       }
+      toast.success("Proposal deleted");
       router.refresh();
     } catch {
-      alert("Failed to delete proposal. Please try again.");
+      toast.error("Failed to delete proposal. Please try again.");
     }
   }
 
   // ---- Onboarding invite actions ----
 
+  function openCreateInvite() {
+    setEditingInvite(null);
+    setInviteMode("create");
+    setInviteModalOpen(true);
+  }
+
   function openEditInvite(inv: OnboardingInviteRow) {
     setEditingInvite(inv);
+    setInviteMode("edit");
     setInviteModalOpen(true);
   }
 
@@ -168,12 +178,13 @@ export function OnboardPageClient({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Failed to delete invite");
+        toast.error(data.error ?? "Failed to delete invite");
         return;
       }
+      toast.success("Onboarding invite deleted");
       router.refresh();
     } catch {
-      alert("Failed to delete invite. Please try again.");
+      toast.error("Failed to delete invite. Please try again.");
     }
   }
 
@@ -264,9 +275,18 @@ export function OnboardPageClient({
                   <TableRow>
                     <TableCell
                       colSpan={6}
-                      className="py-8 text-center text-muted-foreground"
+                      className="h-32"
                     >
-                      No proposals yet. Create your first one to get started.
+                      <div className="flex flex-col items-center justify-center gap-2 text-center">
+                        <FileSignature className="h-8 w-8 text-muted-foreground/40" />
+                        <p className="text-sm text-muted-foreground">No proposals yet</p>
+                        <Link href="/onboard/new">
+                          <Button variant="outline" size="sm">
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Create Proposal
+                          </Button>
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -278,7 +298,13 @@ export function OnboardPageClient({
 
       {/* Onboarding invites table */}
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Onboarding Invites</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Onboarding Invites</h2>
+          <Button variant="outline" size="sm" onClick={openCreateInvite}>
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            New Invite
+          </Button>
+        </div>
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -294,8 +320,13 @@ export function OnboardPageClient({
               <TableBody>
                 {onboardingInvites.map((inv) => (
                   <TableRow key={inv.id}>
-                    <TableCell className="font-medium">
-                      {inv.clientName}
+                    <TableCell>
+                      <Link
+                        href={`/onboard/invite/${inv.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {inv.clientName}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -342,9 +373,16 @@ export function OnboardPageClient({
                   <TableRow>
                     <TableCell
                       colSpan={5}
-                      className="py-8 text-center text-muted-foreground"
+                      className="h-32"
                     >
-                      No onboarding invites yet.
+                      <div className="flex flex-col items-center justify-center gap-2 text-center">
+                        <Mail className="h-8 w-8 text-muted-foreground/40" />
+                        <p className="text-sm text-muted-foreground">No onboarding invites yet</p>
+                        <Button variant="outline" size="sm" onClick={openCreateInvite}>
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Create Invite
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -366,18 +404,23 @@ export function OnboardPageClient({
       )}
 
       {/* Onboarding invite form modal */}
-      {inviteModalOpen && editingInvite && (
+      {inviteModalOpen && (
         <OnboardingFormModal
           open={inviteModalOpen}
           onOpenChange={setInviteModalOpen}
-          invite={{
-            id: editingInvite.id,
-            clientName: editingInvite.clientName,
-            clientEmail: editingInvite.clientEmail,
-            status: editingInvite.status,
-            createWorkspace: editingInvite.createWorkspace,
-            workspaceSlug: editingInvite.workspaceSlug,
-          } as OnboardingInviteData}
+          mode={inviteMode}
+          invite={
+            editingInvite
+              ? {
+                  id: editingInvite.id,
+                  clientName: editingInvite.clientName,
+                  clientEmail: editingInvite.clientEmail,
+                  status: editingInvite.status,
+                  createWorkspace: editingInvite.createWorkspace,
+                  workspaceSlug: editingInvite.workspaceSlug,
+                } as OnboardingInviteData
+              : undefined
+          }
         />
       )}
 

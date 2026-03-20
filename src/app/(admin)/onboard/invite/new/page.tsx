@@ -76,8 +76,8 @@ export default function CreateOnboardingInvitePage() {
                 </Button>
               </div>
               <div className="flex gap-2 pt-2">
-                <Button onClick={() => router.push("/onboard")}>
-                  Back to Onboarding
+                <Button onClick={() => router.push("/sales")}>
+                  Back to Sales
                 </Button>
                 <Button
                   variant="outline"

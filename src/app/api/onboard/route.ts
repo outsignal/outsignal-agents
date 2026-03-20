@@ -9,6 +9,7 @@ import {
   ADMIN_COOKIE_NAME,
 } from "@/lib/admin-auth";
 import { onboardSchema } from "@/lib/validations/onboarding";
+import { populateClientTasks } from "@/lib/clients/operations";
 
 function slugify(text: string): string {
   return text
@@ -246,6 +247,39 @@ export async function POST(request: NextRequest) {
         workspaceSlug: slug,
         metadata: { status: workspaceStatus },
       }).catch(() => {});
+
+      // Create Client record and populate onboarding tasks for portal
+      try {
+        const client = await prisma.client.create({
+          data: {
+            name: parseResult.data.name,
+            contactEmail: parseResult.data.notificationEmails
+              ? parseResult.data.notificationEmails.split(",")[0]?.trim() || null
+              : null,
+            contactName: parseResult.data.senderFullName,
+            website: parseResult.data.website || null,
+            pipelineStatus: "closed_won",
+            campaignType: "email_linkedin",
+            workspaceSlug: slug,
+          },
+        });
+
+        await populateClientTasks(client.id, "email_linkedin");
+
+        // Mark first onboarding task as complete since form was just submitted
+        await prisma.clientTask.updateMany({
+          where: {
+            clientId: client.id,
+            stage: "onboarding",
+            order: 0,
+          },
+          data: { status: "complete" },
+        });
+
+        console.log(`[Onboard] Client record + tasks created for ${slug}`);
+      } catch (err) {
+        console.error("[Onboard] Client/task creation failed (non-blocking):", err);
+      }
     }
 
     // If submitted from a proposal, update the proposal status

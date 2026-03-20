@@ -112,8 +112,8 @@ export default function CreateProposalPage() {
                 </Button>
               </div>
               <div className="flex gap-2 pt-2">
-                <Button onClick={() => router.push("/onboard")}>
-                  Back to Proposals
+                <Button onClick={() => router.push("/sales")}>
+                  Back to Sales
                 </Button>
                 <Button
                   variant="outline"

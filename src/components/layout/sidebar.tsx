@@ -84,7 +84,7 @@ const STATIC_NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/financials", label: "Financials", icon: FileText },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
-      { href: "/proposals", label: "Proposals", icon: FileSignature },
+      { href: "/sales", label: "Sales", icon: FileSignature },
     ],
   },
 ];
