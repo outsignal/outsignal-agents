@@ -164,6 +164,25 @@ export const generateSuggestion = task({
       // In reply mode the writer returns plain prose — use result.text directly
       let suggestion = result.text;
 
+      // Strip any reasoning/preamble the model may have included before the actual reply
+      // Common patterns: "Here's my suggested reply:\n\n...", "Based on the workspace context...\n\nHere's..."
+      const replyMarkers = [
+        /^[\s\S]*?(?:here(?:'s| is) (?:my |the |a )?suggested reply[:\s]*\n+)/i,
+        /^[\s\S]*?(?:here(?:'s| is) (?:my |the |a )?(?:draft|response)[:\s]*\n+)/i,
+        /^[\s\S]*?(?:suggested reply[:\s]*\n+)/i,
+      ];
+
+      for (const marker of replyMarkers) {
+        const match = suggestion.match(marker);
+        if (match) {
+          suggestion = suggestion.slice(match[0].length).trim();
+          console.log(
+            `[generate-suggestion] Stripped reasoning preamble from suggestion for reply ${replyId}`,
+          );
+          break;
+        }
+      }
+
       // ----------------------------------------------------------------
       // Step 2b: Reply quality validation — ban overused patterns
       // ----------------------------------------------------------------
