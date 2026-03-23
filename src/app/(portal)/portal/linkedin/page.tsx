@@ -16,7 +16,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { HealthStatusBadge } from "@/components/portal/health-status-badge";
-import { LinkedinIcon, Clock, AlertTriangle } from "lucide-react";
+import { WarmupBadge } from "@/components/portal/warmup-badge";
+import { LinkedinIcon, Clock, AlertTriangle, TrendingUp } from "lucide-react";
 
 export default async function PortalLinkedInPage() {
   let session;
@@ -132,6 +133,15 @@ export default async function PortalLinkedInPage() {
         </div>
       )}
 
+      {senders.some(s => s.warmupDay >= 1 && s.warmupDay <= 21) && (
+        <div className="rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-900 px-4 py-3 flex items-center gap-3">
+          <TrendingUp className="h-4 w-4 text-stone-500 dark:text-stone-400 shrink-0" />
+          <p className="text-sm text-stone-600 dark:text-stone-300">
+            New accounts are gradually ramped up to protect your sending reputation. Volumes will increase automatically over 21 days.
+          </p>
+        </div>
+      )}
+
       {senders.length === 0 ? (
         <EmptyState
           icon={LinkedinIcon}
@@ -174,17 +184,20 @@ export default async function PortalLinkedInPage() {
                     return (
                       <TableRow key={sender.id} className="hover:bg-muted border-border">
                         <TableCell className="font-medium">
-                          {sender.name}
-                          {sender.linkedinProfileUrl && (
-                            <a
-                              href={sender.linkedinProfileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="ml-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              Profile
-                            </a>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{sender.name}</span>
+                            {sender.linkedinProfileUrl && (
+                              <a
+                                href={sender.linkedinProfileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                Profile
+                              </a>
+                            )}
+                            <WarmupBadge warmupDay={sender.warmupDay} />
+                          </div>
                         </TableCell>
                         <TableCell>
                           <HealthStatusBadge

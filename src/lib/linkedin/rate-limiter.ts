@@ -14,9 +14,16 @@ const PRIORITY_RESERVE_FRACTION = 0.2;
 /** Daily volume randomisation — actual limit = base ± this fraction */
 const VOLUME_JITTER_FRACTION = 0.2;
 
+/** Per-account warmup schedule jitter — tier boundaries shift ± this many days */
+const TIER_BOUNDARY_JITTER_DAYS = 2;
+
+/** Per-account warmup schedule jitter — base limits vary ± this fraction */
+const BASE_LIMIT_JITTER_FRACTION = 0.15;
+
 /**
  * Warm-up schedule: maps warmup day ranges to daily connection limits.
  * Messages and profile views scale proportionally.
+ * These are the base values — actual per-account values are jittered by getAccountWarmupSchedule.
  */
 const WARMUP_SCHEDULE: Array<{ maxDay: number; connections: number; messages: number; profileViews: number }> = [
   { maxDay: 7, connections: 5, messages: 5, profileViews: 10 },
@@ -26,13 +33,58 @@ const WARMUP_SCHEDULE: Array<{ maxDay: number; connections: number; messages: nu
 ];
 
 /**
- * Get the warm-up limits for a given day.
+ * Deterministic hash of a string, returning a signed 32-bit integer.
  */
-export function getWarmupLimits(warmupDay: number): WarmupLimits {
+function deterministicHash(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
+
+/**
+ * Get a per-account warmup schedule with jittered tier boundaries and base limits.
+ * Uses a deterministic hash of the senderId so results are stable for each account.
+ */
+export function getAccountWarmupSchedule(
+  senderId: string,
+): Array<{ maxDay: number; connections: number; messages: number; profileViews: number }> {
+  return WARMUP_SCHEDULE.map((tier, index) => {
+    // Jitter tier boundary (skip the final Infinity tier)
+    let maxDay = tier.maxDay;
+    if (maxDay !== Infinity) {
+      const boundaryHash = deterministicHash(`${senderId}:boundary:${index}`);
+      // Map hash to [-TIER_BOUNDARY_JITTER_DAYS, +TIER_BOUNDARY_JITTER_DAYS]
+      const jitterDays = (boundaryHash % (TIER_BOUNDARY_JITTER_DAYS * 2 + 1));
+      maxDay = Math.max(maxDay + jitterDays, (index === 0 ? 3 : WARMUP_SCHEDULE[index - 1].maxDay + 2));
+    }
+
+    // Jitter base limits ±15%
+    const limitHash = deterministicHash(`${senderId}:limits:${index}`);
+    const limitFactor = 1 + ((limitHash % 1000) / 1000) * BASE_LIMIT_JITTER_FRACTION * 2 - BASE_LIMIT_JITTER_FRACTION;
+
+    return {
+      maxDay,
+      connections: Math.max(1, Math.round(tier.connections * limitFactor)),
+      messages: Math.max(1, Math.round(tier.messages * limitFactor)),
+      profileViews: Math.max(1, Math.round(tier.profileViews * limitFactor)),
+    };
+  });
+}
+
+/**
+ * Get the warm-up limits for a given day.
+ * When senderId is provided, uses a per-account jittered schedule to avoid
+ * identical ramp patterns across accounts.
+ */
+export function getWarmupLimits(warmupDay: number, senderId?: string): WarmupLimits {
   if (warmupDay <= 0) {
     return { connections: 5, messages: 10, profileViews: 15 };
   }
-  const tier = WARMUP_SCHEDULE.find((t) => warmupDay <= t.maxDay)!;
+
+  const schedule = senderId ? getAccountWarmupSchedule(senderId) : WARMUP_SCHEDULE;
+  const tier = schedule.find((t) => warmupDay <= t.maxDay)!;
   return {
     connections: tier.connections,
     messages: tier.messages,
@@ -54,13 +106,8 @@ function todayUTC(): Date {
  * jittered limit within a single day.
  */
 function applyJitter(baseLimit: number, senderId: string): number {
-  // Simple deterministic hash from senderId + today's date
   const today = todayUTC().toISOString().slice(0, 10);
-  const seed = `${senderId}:${today}`;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
-  }
+  const hash = deterministicHash(`${senderId}:${today}`);
   // Normalise to [-1, 1] range
   const factor = ((hash % 1000) / 1000) * VOLUME_JITTER_FRACTION;
   return Math.max(1, Math.round(baseLimit * (1 + factor)));
@@ -218,7 +265,7 @@ export async function progressWarmup(senderId: string): Promise<void> {
   }
 
   const newDay = sender.warmupDay + 1;
-  const limits = getWarmupLimits(newDay);
+  const limits = getWarmupLimits(newDay, senderId);
 
   await prisma.sender.update({
     where: { id: senderId },

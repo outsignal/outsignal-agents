@@ -127,7 +127,7 @@ export async function assignSenderForPerson(
  * Activate a sender and start warm-up.
  */
 export async function activateSender(senderId: string) {
-  const limits = getWarmupLimits(1);
+  const limits = getWarmupLimits(1, senderId);
 
   return prisma.sender.update({
     where: { id: senderId },
