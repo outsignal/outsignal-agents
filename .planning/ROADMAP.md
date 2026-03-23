@@ -449,7 +449,7 @@ Plans:
 **Depends on**: Phase 46 (memory governance rules depend on dual-mode strategy decided in Phase 46)
 **Requirements**: MEM-01, MEM-02, MEM-03, MEM-04, MEM-05, MEM-06, MEM-07, MEM-08
 **Success Criteria** (what must be TRUE):
-  1. .nova/memory/{slug}/ directories exist for all 8 client workspaces and contain named section files (profile.md, tone.md, icp-learnings.md, copy-wins.md, campaign-history.md, feedback.md, approval-patterns.md)
+  1. .nova/memory/{slug}/ directories exist for all managed workspaces and contain 4 memory files: profile.md (company/ICP/tone), campaigns.md (history/performance/copy wins), feedback.md (approval patterns/preferences), learnings.md (ICP learnings/vertical insights)
   2. Each workspace memory file is pre-populated with real content drawn from existing DB fields — ICP description, tone prompt, and at least 3 recent campaign names are present before any agent session runs
   3. Memory files are gitignored (no client intelligence leaks to version control) while directory structure is preserved via .gitkeep files so new machines get the scaffolding
   4. A global-insights.md file exists at .nova/memory/global-insights.md with schema for cross-client patterns and at least one seeded entry
