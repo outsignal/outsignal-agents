@@ -35,14 +35,14 @@ const SECRET_PATTERNS: SecretPattern[] = [
     pattern: /sk-ant-[A-Za-z0-9_-]+/g,
     type: "ANTHROPIC_KEY",
   },
-  // OpenAI API key
+  // OpenAI API key (may contain hyphens e.g. sk-proj-...)
   {
-    pattern: /sk-[A-Za-z0-9]{20,}/g,
+    pattern: /sk-[A-Za-z0-9_-]{20,}/g,
     type: "OPENAI_KEY",
   },
-  // Trigger.dev secret key
+  // Trigger.dev secret key (may contain underscores e.g. tr_dev_...)
   {
-    pattern: /tr_[A-Za-z0-9]{20,}/g,
+    pattern: /tr_[A-Za-z0-9_]{20,}/g,
     type: "TRIGGER_KEY",
   },
   // Resend API key
