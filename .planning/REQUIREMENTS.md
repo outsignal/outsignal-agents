@@ -1,107 +1,129 @@
-# Requirements: Outsignal Lead Engine
+# Requirements: Outsignal Lead Engine — v7.0
 
-**Defined:** 2026-03-12
-**Core Value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
+**Defined:** 2026-03-23
+**Core Value:** Convert Nova agents from paid API calls to Claude Code CLI skills with persistent client-specific memory, eliminating Opus API costs while accumulating intelligence per workspace.
 
-## v6.0 Requirements
+## v7.0 Requirements
 
-Requirements for Trigger.dev Migration — Background Jobs Infrastructure. Each maps to roadmap phases.
+### Security & Architecture
 
-### Foundation
+- [ ] **SEC-01**: `.claudeignore` prevents `.env*` files and secrets from being loaded into agent context
+- [ ] **SEC-02**: `sanitize-output.ts` utility strips credentials, DB URLs, and API keys from all CLI wrapper stdout
+- [ ] **SEC-03**: Skill content budget documented and enforced (200-line max per skill file)
+- [ ] **SEC-04**: Dual-mode strategy decided and documented (shared rules vs time-boxed fallback)
+- [ ] **SEC-05**: `.claude/rules/` directory houses shared behavioral rules importable by both CLI skills and API agents
 
-- [x] **FOUND-01**: Trigger.dev SDK installed and `trigger.config.ts` configured with Prisma 6 legacy mode extension
-- [x] **FOUND-02**: Vercel integration set up for bidirectional env var sync
-- [x] **FOUND-03**: Prisma schema updated with `debian-openssl-3.0.x` binary target
-- [x] **FOUND-04**: Neon DATABASE_URL configured with `connection_limit=1` for Trigger.dev tasks
-- [x] **FOUND-05**: Smoke test task deployed and verified (Prisma read + Anthropic call)
-- [x] **FOUND-06**: Shared concurrency queues defined (Anthropic rate limit queue, EmailBison queue)
+### Client Memory
 
-### Webhook Tasks
+- [ ] **MEM-01**: Per-workspace memory directory structure exists for all 8 client workspaces (`.nova/memory/{slug}/`)
+- [ ] **MEM-02**: Memory schema defined with named sections (profile, tone, icp-learnings, copy-wins, campaign-history, feedback, approval-patterns)
+- [ ] **MEM-03**: All 8 workspace memory files seeded with initial content from existing DB fields (ICP, tone prompt, recent campaigns)
+- [ ] **MEM-04**: Memory files gitignored with directory structure preserved via `.gitkeep`
+- [ ] **MEM-05**: Memory read at skill invocation start via shell injection — every session is client-aware from first turn
+- [ ] **MEM-06**: Memory accumulation instructions wired into all specialist skills — agents write learnings after sessions
+- [ ] **MEM-07**: Approval pattern tracking in per-client feedback memory (what copy/leads the client approved or rejected)
+- [ ] **MEM-08**: Cross-client global learning namespace (`global-insights.md`) for patterns that apply across all workspaces
 
-- [x] **WHOOK-01**: Reply classification moved from inline webhook to Trigger.dev task
-- [x] **WHOOK-02**: AI reply suggestion restored to full writer agent (Opus + KB + quality rules) via Trigger.dev task
-- [x] **WHOOK-03**: LinkedIn fast-track actions moved to Trigger.dev task
-- [x] **WHOOK-04**: Webhook handler reduced to: verify → write event → trigger task → return 200
-- [x] **WHOOK-05**: Fallback pattern for task trigger failure (inline classification if Trigger.dev unavailable)
+### CLI Wrappers
 
-### Cron Migration
+- [ ] **CLI-01**: `scripts/cli/` wrapper scripts created for tool functions across all 7 agents (workspace-get, campaign-list, people-search, kb-search, campaign-performance, workspace-intelligence, sequence-steps, existing-drafts, campaign-context, save-sequence, sender-health, domain-health, bounce-stats, inbox-status, workspace-create, member-invite, notification-health, cached-metrics, insight-list)
+- [ ] **CLI-02**: All wrapper scripts compiled to `dist/cli/*.js` to avoid npx tsx cold-start latency
+- [ ] **CLI-03**: All wrapper scripts import and apply `sanitize-output.ts` to stdout
+- [ ] **CLI-04**: Each wrapper script independently testable via `node dist/cli/<script>.js <args>`
 
-- [x] **CRON-01**: retry-classification migrated to `schedules.task()` with no batch size limit
-- [x] **CRON-02**: generate-insights migrated with per-workspace parallelization
-- [x] **CRON-03**: snapshot-metrics migrated with AI body element classification
-- [x] **CRON-04**: poll-replies migrated with all-workspace concurrent fetching
-- [x] **CRON-05**: domain-health migrated with full DNSBL checking (no 4-domain cap)
-- [x] **CRON-06**: bounce-monitor migrated to scheduled task
-- [x] **CRON-07**: sync-senders migrated to scheduled task
-- [x] **CRON-08**: bounce-snapshots migrated to scheduled task
-- [x] **CRON-09**: deliverability-digest migrated to scheduled task
-- [x] **CRON-10**: inbox-health split into separate tasks (inbox checks, sender health, invoices, LinkedIn maintenance)
+### Skill Definitions
 
-### Decommission & Observability
+- [ ] **SKL-01**: `nova-writer.md` skill file with writer agent prompt, tool invocation instructions, and memory read/write rules
+- [ ] **SKL-02**: `nova-research.md` skill file with research agent prompt and tool invocation instructions
+- [ ] **SKL-03**: `nova-leads.md` skill file with leads agent prompt and tool invocation instructions
+- [ ] **SKL-04**: `nova-campaign.md` skill file with campaign agent prompt and tool invocation instructions
+- [ ] **SKL-05**: `nova-deliverability.md` skill file for inbox health monitoring, domain diagnostics, warmup strategy, and sender rotation recommendations
+- [ ] **SKL-06**: `nova-onboarding.md` skill file for new client workspace setup, domain configuration, inbox provisioning, and initial campaign scaffolding
+- [ ] **SKL-07**: `nova-intelligence.md` skill file for analytics, cross-client benchmarking, performance insights, and campaign analysis
+- [ ] **SKL-08**: Existing `nova.md` updated with memory injection via `!` syntax and delegation to all 7 specialist skills
+- [ ] **SKL-09**: All skill files within 200-line budget with overflow content in `.claude/rules/` reference files
 
-- [x] **DECOMM-01**: All cron-job.org jobs disabled after Trigger.dev crons verified stable
-- [x] **DECOMM-02**: Fire-and-forget `.then()` patterns removed from webhook handlers
-- [x] **DECOMM-03**: `after()` campaign deploy pattern migrated to Trigger.dev task
-- [x] **DECOMM-04**: Background task status visible in admin dashboard (task runs, failures, durations)
+### Dashboard Bridge
+
+- [ ] **BRG-01**: Dashboard chat delegates to CLI agents for writer and orchestrator paths
+- [ ] **BRG-02**: API agent fallback preserved and verified working when `USE_CLI_AGENTS=false`
+- [ ] **BRG-03**: Dashboard bridge extended to all 7 specialist agents
+- [ ] **BRG-04**: `cli-spawn.ts` utility handles subprocess creation, 300s timeout, stdout buffering, error translation
+- [ ] **BRG-05**: AgentRun audit logging preserved for CLI-invoked agent sessions
+
+### Validation
+
+- [ ] **VAL-01**: End-to-end campaign generation session tested via CLI (research → leads → writer → campaign)
+- [ ] **VAL-02**: Dashboard chat verified working with CLI delegation enabled
+- [ ] **VAL-03**: API fallback verified working with `USE_CLI_AGENTS=false`
+- [ ] **VAL-04**: Memory accumulation verified — run 2+ sessions and confirm memory files grow with relevant intelligence
+- [ ] **VAL-05**: No context overflow during full orchestrated session with memory loaded
 
 ## Future Requirements
 
-### LinkedIn Worker Migration
+### Memory Intelligence (v7.1+)
 
-- **LNKD-01**: LinkedIn Voyager worker migrated from Railway to Trigger.dev long-running task
-- **LNKD-02**: VoyagerClient refactored to stateless (cookies from DB per call)
-
-### Advanced Observability
-
-- **OBS-01**: Per-workspace task queue isolation
-- **OBS-02**: Real-time task status via React hooks (`useRealtimeRun`) in portal/admin UI
-- **OBS-03**: Task cost tracking and budget alerts
+- **MINT-01**: Copy wins feedback loop — correlate campaign metrics with copy patterns stored in memory
+- **MINT-02**: Memory-driven copy strategy auto-selection based on historical approval patterns
+- **MINT-03**: Automated memory pruning beyond inline agent instructions (staleness detection, dedup)
+- **MINT-04**: Memory search/query tool for agents to find specific past learnings
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| LinkedIn worker migration to Trigger.dev | Railway worker uses stateful ProxyAgent — requires VoyagerClient refactor first (future milestone) |
-| Self-hosting Trigger.dev | Cloud managed service is simpler, Hobby tier is $20/mo — not worth ops overhead |
-| Trigger.dev staging environment | Pro plan ($150/mo) required — Dev + Prod sufficient for current needs |
-| WebSocket/SSE real-time updates | Vercel serverless incompatible — polling pattern stays for portal inbox |
-| Replacing Vercel native daily cron | Only one Vercel cron exists (inbox-health) — migrating to Trigger.dev covers it |
+| Delete existing API agent code | Kept as fallback per user decision — evaluate deletion after 30 days of stable CLI usage |
+| Database-backed memory | Flat files are simpler, inspectable, correctable by admin. DB adds operational overhead without clear benefit |
+| Custom agent runtime | Claude Code's skill system + Agent tool handles all orchestration needs |
+| Real-time memory sync across machines | Gitignored memory is machine-local by design. Backup via separate mechanism if needed |
+| Signal campaign runtime conversion | Signal auto-fire stays on lightweight Haiku API — only setup/copy moves to CLI |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 38 | Complete |
-| FOUND-02 | Phase 38 | Complete |
-| FOUND-03 | Phase 38 | Complete |
-| FOUND-04 | Phase 38 | Complete |
-| FOUND-05 | Phase 38 | Complete |
-| FOUND-06 | Phase 38 | Complete |
-| WHOOK-01 | Phase 39 | Complete |
-| WHOOK-03 | Phase 39 | Complete |
-| WHOOK-04 | Phase 39 | Complete |
-| WHOOK-05 | Phase 39 | Complete |
-| WHOOK-02 | Phase 40 | Complete |
-| CRON-01 | Phase 41 | Complete (2026-03-12) |
-| CRON-02 | Phase 41 | Complete (2026-03-12) |
-| CRON-03 | Phase 41 | Complete (2026-03-12) |
-| CRON-04 | Phase 42 | Complete (2026-03-12) |
-| CRON-05 | Phase 42 | Complete (2026-03-12) |
-| CRON-06 | Phase 42 | Complete (2026-03-12) |
-| CRON-07 | Phase 42 | Complete (2026-03-12) |
-| CRON-08 | Phase 42 | Complete (2026-03-12) |
-| CRON-09 | Phase 42 | Complete (2026-03-12) |
-| CRON-10 | Phase 42 | Complete (2026-03-12) |
-| DECOMM-03 | Phase 42 | Complete (2026-03-12) |
-| DECOMM-01 | Phase 43 | Complete |
-| DECOMM-02 | Phase 43 | Complete |
-| DECOMM-04 | Phase 43 | Complete |
+| SEC-01 | — | Pending |
+| SEC-02 | — | Pending |
+| SEC-03 | — | Pending |
+| SEC-04 | — | Pending |
+| SEC-05 | — | Pending |
+| MEM-01 | — | Pending |
+| MEM-02 | — | Pending |
+| MEM-03 | — | Pending |
+| MEM-04 | — | Pending |
+| MEM-05 | — | Pending |
+| MEM-06 | — | Pending |
+| MEM-07 | — | Pending |
+| MEM-08 | — | Pending |
+| CLI-01 | — | Pending |
+| CLI-02 | — | Pending |
+| CLI-03 | — | Pending |
+| CLI-04 | — | Pending |
+| SKL-01 | — | Pending |
+| SKL-02 | — | Pending |
+| SKL-03 | — | Pending |
+| SKL-04 | — | Pending |
+| SKL-05 | — | Pending |
+| SKL-06 | — | Pending |
+| SKL-07 | — | Pending |
+| SKL-08 | — | Pending |
+| SKL-09 | — | Pending |
+| BRG-01 | — | Pending |
+| BRG-02 | — | Pending |
+| BRG-03 | — | Pending |
+| BRG-04 | — | Pending |
+| BRG-05 | — | Pending |
+| VAL-01 | — | Pending |
+| VAL-02 | — | Pending |
+| VAL-03 | — | Pending |
+| VAL-04 | — | Pending |
+| VAL-05 | — | Pending |
 
 **Coverage:**
-- v6.0 requirements: 25 total
-- Mapped to phases: 25
-- Unmapped: 0 ✓
+- v7.0 requirements: 36 total
+- Mapped to phases: 0
+- Unmapped: 36
 
 ---
-*Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 — traceability complete after roadmap creation*
+*Requirements defined: 2026-03-23*
+*Last updated: 2026-03-23 after initial definition*
