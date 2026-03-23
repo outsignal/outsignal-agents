@@ -1,0 +1,164 @@
+# Nova Architecture
+
+Nova is the CLI agent team for Outsignal. It runs via Claude Code skills (zero API cost) with API agent fallback (controlled by `USE_CLI_AGENTS` env var).
+
+---
+
+## 1. Overview
+
+**Two execution modes (dual-mode strategy):**
+
+| Mode | How it runs | Cost |
+|------|-------------|------|
+| CLI skills (primary) | Claude Code Max Plan via `/nova-*` commands | $0 API cost — uses Claude Code subscription |
+| API agents (fallback) | Anthropic API direct calls via `runAgent()` | ~$15/MTok for Opus |
+
+Mode selection: `USE_CLI_AGENTS=true` (default when Claude Code is available) or `false` (API fallback). Existing API agent code is preserved — it is not deleted.
+
+---
+
+## 2. Dual-Mode Strategy (LOCKED DECISION)
+
+**Single source of truth:** `.claude/rules/*.md` files contain all agent behavioral rules.
+
+**How each mode consumes rules:**
+- CLI skills: `!` (file include) syntax in `.claude/commands/nova-*.md` — rules loaded at skill read time
+- API agents: `loadRules(filename)` from `src/lib/agents/load-rules.ts` — rules loaded at prompt-build time
+
+**Zero drift by design:** Both modes get identical behavioral rules. If a rule changes, edit the `.claude/rules/*.md` file once — both modes pick it up automatically. Never duplicate rules in TypeScript agent configs.
+
+**Per-agent rules files:**
+
+| File | Agent | Status |
+|------|-------|--------|
+| `writer-rules.md` | Writer (copy generation) | Extracted from writer.ts |
+| `leads-rules.md` | Leads (discovery pipeline) | Extracted from leads.ts |
+| `campaign-rules.md` | Campaign + Orchestrator (lifecycle + delegation) | Extracted from campaign.ts + orchestrator.ts |
+| `research-rules.md` | Research (website intelligence) | Extracted from research.ts |
+| `deliverability-rules.md` | Deliverability monitoring | Stub — Phase 49 |
+| `onboarding-rules.md` | Client onboarding | Stub — Phase 49 |
+| `intelligence-rules.md` | Analytics and benchmarking | Stub — Phase 49 |
+
+**API agent refactor:** All 4 existing agents (`writer.ts`, `leads.ts`, `orchestrator.ts`, `campaign.ts`, `research.ts`) have been refactored to load rules from `.claude/rules/` at prompt-build time rather than keeping hardcoded prompt blocks in TypeScript.
+
+---
+
+## 3. Secret Handling
+
+- **`.claudeignore`** blocks `.env*`, build artifacts, and database files from Claude Code context — prevents CVE-2025-59536 credential exposure
+- **`sanitize-output.ts`** strips credentials from CLI wrapper stdout using `[REDACTED:type]` format
+- **PII (emails, names) is NOT stripped** — agents need it to do their job (locked decision)
+
+---
+
+## 4. 200-Line Skill Content Budget (ENFORCED)
+
+Each skill file (`.claude/commands/nova-*.md`) must stay under 200 lines.
+
+**What goes in skill files:**
+- Identity preamble (who the agent is, what mode it runs in)
+- Tools list (what tools are available)
+- Invocation patterns (how to call this skill)
+- Memory read/write instructions
+
+**What goes in rules files (`.claude/rules/*.md`):**
+- All behavioral rules, quality gates, and process flows
+- Included via `!` syntax: `!.claude/rules/writer-rules.md`
+
+**Enforcement:**
+- Comment at top of each skill file noting its line count: `<!-- lines: N -->`
+- Automated enforcement: deferred to Phase 49
+
+**Rules file splitting:** If a rules file exceeds 200 lines and causes readability issues, split it:
+- `writer-rules.md` → `writer-copy-rules.md` + `writer-strategies.md`
+- Both halves referenced via two `!` includes in the skill file
+
+---
+
+## 5. Skill Registry
+
+8 Nova CLI skills, all invoked from Claude Code:
+
+| Command | Skill file | Agent role |
+|---------|-----------|-----------|
+| `/nova {slug}` | `nova.md` | Orchestrator — delegates to specialists |
+| `/nova-writer {slug}` | `nova-writer.md` | Copy writing (email + LinkedIn sequences) |
+| `/nova-research {slug}` | `nova-research.md` | ICP extraction, website analysis |
+| `/nova-leads {slug}` | `nova-leads.md` | Lead discovery, list building, export |
+| `/nova-campaign {slug}` | `nova-campaign.md` | Campaign lifecycle management |
+| `/nova-deliver {slug}` | `nova-deliver.md` | Deliverability monitoring and inbox health |
+| `/nova-onboard {slug}` | `nova-onboard.md` | Client workspace setup and provisioning |
+| `/nova-intel {slug}` | `nova-intel.md` | Analytics, benchmarks, performance insights |
+
+No slug = workspace picker (agent prompts for workspace selection).
+
+---
+
+## 6. Memory Namespace (Phase 47)
+
+Client intelligence stored as flat markdown files — inspectable and correctable by admin.
+
+```
+.nova/memory/{slug}/
+  icp.md          # ICP profile and targeting criteria
+  campaigns.md    # Active campaign context and history
+  contacts.md     # Key prospect context
+  notes.md        # Admin notes and standing instructions
+```
+
+**Gitignored** — no client intelligence in version control.
+Directory structure preserved via `.nova/memory/.gitkeep`.
+Backup and restore via Vercel Blob: `nova-memory backup/restore/seed`.
+
+---
+
+## 7. Directory Structure
+
+Full layout after v7.0 completion:
+
+```
+.claude/
+  commands/
+    nova.md                  # Orchestrator skill
+    nova-writer.md           # Writer skill
+    nova-research.md         # Research skill
+    nova-leads.md            # Leads skill
+    nova-campaign.md         # Campaign skill
+    nova-deliver.md          # Deliverability skill
+    nova-onboard.md          # Onboarding skill
+    nova-intel.md            # Intelligence skill
+  rules/
+    writer-rules.md          # Writer behavioral rules (single source of truth)
+    leads-rules.md           # Leads behavioral rules
+    campaign-rules.md        # Campaign + orchestrator behavioral rules
+    research-rules.md        # Research behavioral rules
+    deliverability-rules.md  # Deliverability rules (Phase 49)
+    onboarding-rules.md      # Onboarding rules (Phase 49)
+    intelligence-rules.md    # Intelligence rules (Phase 49)
+
+.nova/
+  ARCHITECTURE.md            # This file
+  memory/
+    .gitkeep                 # Preserves directory structure
+    {slug}/                  # Per-workspace memory (gitignored)
+
+src/lib/agents/
+  load-rules.ts              # loadRules() utility for API agents
+  writer.ts                  # Writer API agent (uses loadRules)
+  leads.ts                   # Leads API agent (uses loadRules)
+  orchestrator.ts            # Orchestrator API agent (uses loadRules)
+  campaign.ts                # Campaign API agent (uses loadRules)
+  research.ts                # Research API agent (uses loadRules)
+
+scripts/cli/
+  nova-writer.ts             # CLI wrapper for writer agent (Phase 48)
+  nova-research.ts           # CLI wrapper for research agent (Phase 48)
+  nova-leads.ts              # CLI wrapper for leads agent (Phase 48)
+  nova-campaign.ts           # CLI wrapper for campaign agent (Phase 48)
+
+dist/cli/
+  nova-writer.js             # Compiled CLI wrappers (Phase 48)
+  nova-research.js
+  nova-leads.js
+  nova-campaign.js
+```
