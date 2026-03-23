@@ -114,7 +114,7 @@ export class EmailGuardClient {
       "/domains",
       {
         method: "POST",
-        body: JSON.stringify({ domain }),
+        body: JSON.stringify({ domain, name: domain }),
       },
     );
     return res.data;
