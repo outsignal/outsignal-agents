@@ -9,8 +9,8 @@ import {
   Inbox,
   LinkedinIcon,
   Activity,
-  Mail,
-  ShieldCheck,
+  CalendarClock,
+  HeartPulse,
   Receipt,
   LifeBuoy,
   LogOut,
@@ -60,13 +60,13 @@ const navGroups: NavGroup[] = [
       { href: "/portal/inbox", label: "Inbox", icon: Inbox },
       { href: "/portal/linkedin", label: "LinkedIn", icon: LinkedinIcon },
       { href: "/portal/activity", label: "Activity", icon: Activity },
+      { href: "/portal/ooo", label: "Out of Office", icon: CalendarClock },
     ],
   },
   {
     label: "Health",
     items: [
-      { href: "/portal/email-health", label: "Email Health", icon: Mail },
-      { href: "/portal/deliverability", label: "Deliverability", icon: ShieldCheck },
+      { href: "/portal/sender-health", label: "Sender Health", icon: HeartPulse },
     ],
   },
   {
