@@ -11,6 +11,7 @@ import { postMessage } from "@/lib/slack";
 import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
+import { emailLayout, emailHeading, emailButton, emailText, emailPill, emailBanner, emailDetailCard, emailDivider } from "@/lib/email-template";
 import type { KnownBlock } from "@slack/web-api";
 
 const LOG_PREFIX = "[bounce-notifications]";
@@ -164,7 +165,37 @@ function buildSlackMessage(params: {
   return { headerText, blocks };
 }
 
-function buildEmailHtml(params: {
+/** Status pill colors */
+const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
+  healthy:  { color: "#16a34a", bg: "#f0fdf4" },
+  elevated: { color: "#d97706", bg: "#fffbeb" },
+  warning:  { color: "#d97706", bg: "#fffbeb" },
+  critical: { color: "#dc2626", bg: "#fef2f2" },
+};
+
+function getStatusPillColors(status: string): { color: string; bg: string } {
+  return STATUS_COLORS[status] ?? { color: "#71717a", bg: "#f4f4f5" };
+}
+
+function getActionText(action?: string): string {
+  switch (action) {
+    case "daily_limit_reduced":           return "Daily sending limit reduced by 50%";
+    case "campaign_removal_pending":      return "Sender removed from active campaigns. Warmup remains active.";
+    case "daily_limit_restored":          return "Daily sending limit restored to original value";
+    case "critical_remediation_complete": return "Throttled to 1/day, campaigns redistributed";
+    case "critical_daily_limit_reduced":  return "Throttled to 1/day";
+    case "critical_recovery_complete":    return "Daily limit + warmup restored";
+    case "skipped_mgmt_disabled":         return "Remediation SKIPPED — EMAILBISON_SENDER_MGMT_ENABLED not set";
+    case "skipped_no_sender_id":          return "Remediation SKIPPED — no EmailBison sender ID";
+    default:                              return "";
+  }
+}
+
+function isSkippedAction(action?: string): boolean {
+  return action === "skipped_mgmt_disabled" || action === "skipped_no_sender_id";
+}
+
+function buildTransitionEmailHtml(params: {
   senderEmail: string;
   workspaceSlug: string;
   fromStatus: string;
@@ -176,122 +207,80 @@ function buildEmailHtml(params: {
 }): string {
   const {
     senderEmail, workspaceSlug, fromStatus, toStatus,
-    bouncePct, action, replacementEmail,
+    reason, bouncePct, action, replacementEmail,
   } = params;
 
   const label = statusLabel(toStatus);
   const recovery = isRecovery(fromStatus, toStatus);
-
-  // Status badge color
-  const badgeColor: Record<string, string> = {
-    healthy: "#16a34a",
-    elevated: "#ca8a04",
-    warning: "#d97706",
-    critical: "#dc2626",
-  };
-  const color = badgeColor[toStatus] ?? "#71717a";
-
-  const bounceLine = bouncePct !== undefined
-    ? `<tr><td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;"><strong>Bounce Rate:</strong> ${(bouncePct * 100).toFixed(1)}%</td></tr>`
-    : "";
-
-  let actionHtml = "";
-  if (action === "daily_limit_reduced") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;margin:12px 0 0 0;"><strong>Action Taken:</strong> Daily sending limit has been reduced by 50% automatically.</p>`;
-  } else if (action === "campaign_removal_pending") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;margin:12px 0 0 0;"><strong>Action Taken:</strong> Sender removed from active campaigns. Warmup sequence remains active.</p>`;
-  } else if (action === "daily_limit_restored") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#16a34a;margin:12px 0 0 0;"><strong>Action Taken:</strong> Daily sending limit has been restored to the original value.</p>`;
-  } else if (action === "critical_remediation_complete") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;margin:12px 0 0 0;"><strong>Action Taken:</strong> Throttled to 1/day, campaigns redistributed.</p>`;
-  } else if (action === "critical_daily_limit_reduced") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;margin:12px 0 0 0;"><strong>Action Taken:</strong> Throttled to 1/day.</p>`;
-  } else if (action === "critical_recovery_complete") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#16a34a;margin:12px 0 0 0;"><strong>Action Taken:</strong> Daily limit + warmup restored.</p>`;
-  } else if (action === "skipped_mgmt_disabled") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#dc2626;font-weight:700;margin:12px 0 0 0;">&#x26A0;&#xFE0F; Remediation SKIPPED &mdash; EMAILBISON_SENDER_MGMT_ENABLED not set.</p>`;
-  } else if (action === "skipped_no_sender_id") {
-    actionHtml = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#dc2626;font-weight:700;margin:12px 0 0 0;">&#x26A0;&#xFE0F; Remediation SKIPPED &mdash; no EmailBison sender ID.</p>`;
-  }
-
-  let replacementHtml = "";
-  if (toStatus === "critical" && !recovery) {
-    replacementHtml = replacementEmail
-      ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;margin:12px 0 0 0;"><strong>Healthiest Alternative:</strong> <code style="background:#f4f4f5;padding:2px 6px;border-radius:4px;">${replacementEmail}</code></p>`
-      : `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#dc2626;font-weight:700;margin:12px 0 0 0;">No healthy alternative senders in this workspace.</p>`;
-  }
+  const { color: pillColor, bg: pillBg } = getStatusPillColors(toStatus);
 
   const title = recovery
-    ? `Sender Health Recovery: ${senderEmail}`
-    : `Sender Health ${label}: ${senderEmail}`;
+    ? `Sender Health Recovery`
+    : `Sender Health Alert`;
 
-  const bodyContent = `
-    <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-      ${recovery
-        ? `Sender <strong>${senderEmail}</strong> has recovered from <strong>${statusLabel(fromStatus)}</strong> to the status below.`
-        : `Sender <strong>${senderEmail}</strong> in workspace <strong>${workspaceSlug}</strong> has transitioned to a new health status.`
-      }
-    </p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr>
-        <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-          <strong>Status:</strong>
-          <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:6px;">${label.toUpperCase()}</span>
-          <span style="margin-left:6px;color:#71717a;">(was: ${statusLabel(fromStatus)})</span>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;"><strong>Workspace:</strong> ${workspaceSlug}</td>
-      </tr>
-      ${bounceLine}
-    </table>
-    ${actionHtml}
-    ${replacementHtml}
-    <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:16px 0 0 0;">
-      Checked at ${new Date().toUTCString()}
-    </p>`;
+  const subtitle = recovery
+    ? `${senderEmail} has recovered from ${statusLabel(fromStatus)} to ${label}.`
+    : `${senderEmail} in workspace ${workspaceSlug} has transitioned to a new health status.`;
 
-  return buildEmailWrapper({ title, bodyContent });
-}
+  // Build detail card rows
+  const detailRows: Array<{ label: string; value: string; mono?: boolean }> = [
+    { label: "Sender", value: senderEmail, mono: true },
+    { label: "Workspace", value: workspaceSlug },
+  ];
+  if (bouncePct !== undefined) {
+    detailRows.push({ label: "Bounce Rate", value: `${(bouncePct * 100).toFixed(1)}%` });
+  }
+  detailRows.push({ label: "Reason", value: reason === "blacklist" ? "Domain is blacklisted" : reason });
 
-function buildEmailWrapper(params: { title: string; bodyContent: string }): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:24px;line-height:1.3;">${params.title}</td>
-              </tr>
-              <tr>
-                <td>${params.bodyContent}</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal Admin &mdash; Sender bounce health monitoring alert.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`;
+  const actionText = getActionText(action);
+
+  let body = "";
+  body += emailHeading(title, subtitle);
+
+  // Status pills: old → new
+  body += emailPill(`${statusLabel(fromStatus)} → ${label.toUpperCase()}`, pillColor, pillBg);
+
+  // Escalation banner for critical non-recovery
+  if (toStatus === "critical" && !recovery) {
+    body += emailBanner("This sender requires immediate attention.", {
+      color: "#dc2626",
+      bgColor: "#fef2f2",
+      borderColor: "#fecaca",
+    });
+  }
+
+  body += emailDetailCard(detailRows);
+
+  // Action taken
+  if (actionText) {
+    if (isSkippedAction(action)) {
+      body += emailBanner(actionText, { color: "#dc2626", bgColor: "#fef2f2", borderColor: "#fecaca" });
+    } else {
+      const actionColor = action === "daily_limit_restored" || action === "critical_recovery_complete"
+        ? { color: "#16a34a", bgColor: "#f0fdf4", borderColor: "#bbf7d0" }
+        : { color: "#3f3f46", bgColor: "#F8F7F5" };
+      body += emailBanner(`Action Taken: ${actionText}`, actionColor);
+    }
+  }
+
+  // Replacement sender info for critical
+  if (toStatus === "critical" && !recovery) {
+    if (replacementEmail) {
+      body += emailText(`<strong>Healthiest Alternative:</strong> ${replacementEmail}`);
+    } else {
+      body += emailBanner("No healthy alternative senders in this workspace.", {
+        color: "#dc2626",
+        bgColor: "#fef2f2",
+        borderColor: "#fecaca",
+      });
+    }
+  }
+
+  body += emailDivider();
+  body += emailButton("View Dashboard", "https://admin.outsignal.ai/workspace/" + workspaceSlug + "/senders");
+  body += emailText(`Checked at ${new Date().toUTCString()}`, { size: 12 });
+
+  return emailLayout({ body, footerNote: "Sender health alert from Outsignal bounce monitoring." });
 }
 
 // ---------------------------------------------------------------------------
@@ -452,7 +441,7 @@ export async function notifySenderHealthTransition(params: {
     if (adminEmail) {
       const verified = verifyEmailRecipients([adminEmail], "admin", "notifySenderHealthTransition");
       if (verified.length > 0) {
-        const html = buildEmailHtml({
+        const html = buildTransitionEmailHtml({
           senderEmail, workspaceSlug, fromStatus, toStatus,
           reason, bouncePct, action, replacementEmail,
         });
@@ -509,22 +498,22 @@ export async function sendSenderHealthDigestEmail(
     (a, b) => (severityOrder[a.toStatus] ?? 4) - (severityOrder[b.toStatus] ?? 4),
   );
 
-  const badgeColor: Record<string, string> = {
-    healthy: "#16a34a",
-    elevated: "#ca8a04",
-    warning: "#d97706",
-    critical: "#dc2626",
-  };
+  const hasCritical = items.some((i) => i.toStatus === "critical");
+  const hasRecovery = items.some((i) => isRecovery(i.fromStatus, i.toStatus));
+
+  const FONT_STACK = "'Geist Sans', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+
+  const thStyle = `padding:8px 8px;font-family:${FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0.5px;color:#A1A1A1;text-transform:uppercase;text-align:left;border-bottom:2px solid #E8E6E3;`;
 
   const rowsHtml = sorted
     .map((item) => {
-      const color = badgeColor[item.toStatus] ?? "#71717a";
+      const { color: pillColor, bg: pillBg } = getStatusPillColors(item.toStatus);
       const label = statusLabel(item.toStatus);
       const recovery = isRecovery(item.fromStatus, item.toStatus);
 
       const bounceTd = item.bouncePct != null
         ? `${(item.bouncePct * 100).toFixed(1)}%`
-        : "—";
+        : "\u2014";
 
       const reasonLabel = item.reason === "blacklist"
         ? "Blacklist"
@@ -532,83 +521,75 @@ export async function sendSenderHealthDigestEmail(
           ? "Bounce"
           : item.reason === "step_down"
             ? "Recovery"
-            : item.reason || "—";
+            : item.reason || "\u2014";
 
-      let actionText = "";
-      if (item.action === "daily_limit_reduced") {
-        actionText = "Daily limit reduced 50%";
-      } else if (item.action === "campaign_removal_pending") {
-        actionText = "Removed from campaigns";
-      } else if (item.action === "daily_limit_restored") {
-        actionText = "Daily limit restored";
-      } else if (item.action === "critical_remediation_complete") {
-        actionText = "Throttled to 1/day, campaigns redistributed";
-      } else if (item.action === "critical_daily_limit_reduced") {
-        actionText = "Throttled to 1/day";
-      } else if (item.action === "critical_recovery_complete") {
-        actionText = "Daily limit + warmup restored";
-      } else if (item.action === "skipped_mgmt_disabled") {
-        actionText = '<span style="color:#dc2626;font-weight:700;">Remediation SKIPPED</span>';
-      } else if (item.action === "skipped_no_sender_id") {
-        actionText = '<span style="color:#dc2626;font-weight:700;">SKIPPED — no sender ID</span>';
+      let actionText = getActionText(item.action);
+      if (isSkippedAction(item.action)) {
+        actionText = `<span style="color:#dc2626;font-weight:700;">${actionText}</span>`;
       }
+      // Shorten for table display
+      if (item.action === "daily_limit_reduced") actionText = "Daily limit reduced 50%";
+      if (item.action === "campaign_removal_pending") actionText = "Removed from campaigns";
 
       let replacementText = "";
       if (item.toStatus === "critical" && !recovery && item.replacementEmail) {
-        replacementText = `<br/><span style="font-size:11px;color:#71717a;">Alternative: <code style="background:#f4f4f5;padding:1px 4px;border-radius:3px;">${item.replacementEmail}</code></span>`;
+        replacementText = `<br/><span style="font-size:11px;color:#71717a;">Alt: ${item.replacementEmail}</span>`;
       } else if (item.toStatus === "critical" && !recovery && !item.replacementEmail) {
-        replacementText = `<br/><span style="font-size:11px;color:#dc2626;font-weight:700;">No alternative available</span>`;
+        replacementText = `<br/><span style="font-size:11px;color:#dc2626;font-weight:700;">No alternative</span>`;
       }
 
-      return `<tr style="border-bottom:1px solid #e4e4e7;">
-        <td style="padding:8px 8px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-          <code style="background:#f4f4f5;padding:2px 6px;border-radius:4px;">${item.senderEmail}</code>${replacementText}
+      const tdStyle = `padding:10px 8px;font-family:${FONT_STACK};font-size:13px;color:#3f3f46;border-bottom:1px solid #E8E6E3;`;
+
+      return `<tr>
+        <td style="${tdStyle}">${item.senderEmail}${replacementText}</td>
+        <td style="${tdStyle}font-size:12px;color:#71717a;">${item.workspaceSlug}</td>
+        <td style="${tdStyle}font-size:12px;color:#71717a;">${statusLabel(item.fromStatus)}</td>
+        <td style="${tdStyle}">
+          <span style="display:inline-block;background-color:${pillBg};color:${pillColor};font-size:11px;font-weight:600;padding:3px 10px;border-radius:100px;">${label}</span>
+          ${recovery ? '<span style="margin-left:4px;font-size:11px;color:#16a34a;">Recovery</span>' : ""}
         </td>
-        <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#71717a;">${item.workspaceSlug}</td>
-        <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#71717a;">${statusLabel(item.fromStatus)}</td>
-        <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
-          <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;">${label.toUpperCase()}</span>
-          ${recovery ? '<span style="margin-left:4px;font-size:11px;color:#16a34a;">&#x2191; Recovery</span>' : ""}
-        </td>
-        <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#3f3f46;">${bounceTd}</td>
-        <td style="padding:8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#3f3f46;">${reasonLabel}</td>
-        <td style="padding:8px 0 8px 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#3f3f46;">${actionText || "—"}</td>
+        <td style="${tdStyle}font-size:12px;">${bounceTd}</td>
+        <td style="${tdStyle}font-size:12px;">${reasonLabel}</td>
+        <td style="${tdStyle}font-size:12px;">${actionText || "\u2014"}</td>
       </tr>`;
     })
     .join("");
 
-  const hasCritical = items.some((i) => i.toStatus === "critical");
-  const hasRecovery = items.some((i) => isRecovery(i.fromStatus, i.toStatus));
+  let body = "";
+  body += emailHeading(
+    `Sender Health Digest`,
+    `${items.length} sender${items.length !== 1 ? "s" : ""} changed health status during this bounce monitor run${hasRecovery ? " (includes recoveries)" : ""}.`,
+  );
 
-  let summaryNote = "";
   if (hasCritical) {
-    summaryNote = `<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#dc2626;font-weight:700;margin:16px 0 0 0;">Critical senders require immediate attention.</p>`;
+    body += emailBanner("Critical senders require immediate attention.", {
+      color: "#dc2626",
+      bgColor: "#fef2f2",
+      borderColor: "#fecaca",
+    });
   }
 
-  const title = `Sender Health Digest: ${items.length} Transition${items.length !== 1 ? "s" : ""}`;
+  body += emailPill(`${items.length} Transition${items.length !== 1 ? "s" : ""}`, "#635BFF", "#F0EFFF");
 
-  const bodyContent = `
-    <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-      ${items.length} sender${items.length !== 1 ? "s" : ""} changed health status during this bounce monitor run${hasRecovery ? " (includes recoveries)" : ""}.
-    </p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr style="border-bottom:2px solid #e4e4e7;">
-        <td style="padding:4px 8px 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Sender</td>
-        <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Workspace</td>
-        <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Was</td>
-        <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Now</td>
-        <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Bounce %</td>
-        <td style="padding:4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Reason</td>
-        <td style="padding:4px 0 4px 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#71717a;text-transform:uppercase;">Action</td>
-      </tr>
-      ${rowsHtml}
-    </table>
-    ${summaryNote}
-    <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:16px 0 0 0;">
-      Checked at ${new Date().toUTCString()}
-    </p>`;
+  // Digest table
+  body += `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">
+    <tr>
+      <td style="${thStyle}">Sender</td>
+      <td style="${thStyle}">Workspace</td>
+      <td style="${thStyle}">Was</td>
+      <td style="${thStyle}">Now</td>
+      <td style="${thStyle}">Bounce %</td>
+      <td style="${thStyle}">Reason</td>
+      <td style="${thStyle}">Action</td>
+    </tr>
+    ${rowsHtml}
+  </table>`;
 
-  const html = buildEmailWrapper({ title, bodyContent });
+  body += emailDivider();
+  body += emailButton("View Senders", "https://admin.outsignal.ai");
+  body += emailText(`Checked at ${new Date().toUTCString()}`, { size: 12 });
+
+  const html = emailLayout({ body, footerNote: "Sender health digest from Outsignal bounce monitoring." });
 
   try {
     await audited(

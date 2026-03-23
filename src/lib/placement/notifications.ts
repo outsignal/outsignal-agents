@@ -10,6 +10,7 @@ import { postMessage } from "@/lib/slack";
 import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
+import { emailLayout, emailHeading, emailText, emailLabel, emailPill, emailBanner, emailDetailCard, emailStatBox } from "@/lib/email-template";
 import type { KnownBlock } from "@slack/web-api";
 
 const LOG_PREFIX = "[placement/notifications]";
@@ -133,65 +134,28 @@ export async function notifyPlacementResult(
     const verified = verifyEmailRecipients([adminEmail], "admin", "notifyPlacementResult");
     if (verified.length > 0) {
       const scoreColor = classification === "critical" ? "#dc2626" : "#d97706";
+      const scoreBg = classification === "critical" ? "#fef2f2" : "#fffbeb";
       const classificationLabel = classification === "critical" ? "CRITICAL" : "WARNING";
 
-      const html = buildEmailHtml({
-        title: `Placement Test ${classificationLabel}: ${senderEmail}`,
-        bodyContent: `
-          <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 24px 0;">
-            An inbox placement test for <strong>${senderEmail}</strong> returned a ${classification} score.
-          </p>
-
-          <!-- Score block -->
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-            style="background-color:#f9fafb;border:1px solid #e4e4e7;border-radius:8px;margin-bottom:24px;">
-            <tr>
-              <td style="padding:20px 24px;text-align:center;">
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:48px;font-weight:700;color:${scoreColor};line-height:1;">
-                  ${scoreFormatted}
-                </div>
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin-top:4px;">
-                  out of 10
-                </div>
-                <div style="display:inline-block;background-color:${scoreColor};color:#fff;font-size:12px;font-weight:700;
-                  padding:4px 12px;border-radius:4px;margin-top:12px;letter-spacing:0.5px;">
-                  ${classificationLabel}
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          <!-- Details table -->
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
-            style="border-collapse:collapse;margin-bottom:24px;">
-            <tr>
-              <td style="padding:8px 0;border-bottom:1px solid #e4e4e7;font-family:Arial,Helvetica,sans-serif;
-                font-size:13px;color:#71717a;width:120px;">Sender</td>
-              <td style="padding:8px 0;border-bottom:1px solid #e4e4e7;font-family:Arial,Helvetica,sans-serif;
-                font-size:13px;color:#1a1a1a;font-weight:500;">${senderEmail}</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 0;border-bottom:1px solid #e4e4e7;font-family:Arial,Helvetica,sans-serif;
-                font-size:13px;color:#71717a;">Workspace</td>
-              <td style="padding:8px 0;border-bottom:1px solid #e4e4e7;font-family:Arial,Helvetica,sans-serif;
-                font-size:13px;color:#1a1a1a;">${workspaceSlug}</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;">Test ID</td>
-              <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;
-                font-family:monospace;">${testId}</td>
-            </tr>
-          </table>
-
-          <!-- Recommended action -->
-          <div style="background-color:${classification === "critical" ? "#fef2f2" : "#fffbeb"};
-            border-left:4px solid ${scoreColor};padding:16px;border-radius:0 4px 4px 0;margin-bottom:24px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;
-              color:${scoreColor};margin:0 0 8px 0;">Recommended Action</p>
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;margin:0;">
-              ${action}
-            </p>
-          </div>`,
+      const html = emailLayout({
+        body: [
+          emailHeading(`Placement Test ${classificationLabel}`, `${senderEmail}`),
+          emailText(`An inbox placement test for <strong>${senderEmail}</strong> returned a ${classification} score.`),
+          emailStatBox(scoreFormatted, "out of 10", scoreColor, scoreBg),
+          emailPill(classificationLabel, "#ffffff", scoreColor),
+          emailDetailCard([
+            { label: "Sender", value: senderEmail },
+            { label: "Workspace", value: workspaceSlug },
+            { label: "Test ID", value: testId, mono: true },
+          ]),
+          emailLabel("Recommended Action"),
+          emailBanner(action, {
+            color: scoreColor,
+            bgColor: scoreBg,
+            borderColor: scoreColor,
+          }),
+        ].join(""),
+        footerNote: "Outsignal Admin &mdash; Inbox placement monitoring alert.",
       });
 
       try {
@@ -219,46 +183,3 @@ export async function notifyPlacementResult(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Email HTML helper
-// ---------------------------------------------------------------------------
-
-function buildEmailHtml(params: { title: string; bodyContent: string }): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:24px;line-height:1.3;">${params.title}</td>
-              </tr>
-              <tr>
-                <td>${params.bodyContent}</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal Admin &mdash; Inbox placement monitoring alert.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`;
-}

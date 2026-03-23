@@ -8,9 +8,13 @@ import { postMessage } from "@/lib/slack";
 import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
+import { emailLayout, emailHeading, emailButton, emailText, emailPill, emailBanner, emailDivider, emailLabel } from "@/lib/email-template";
 import type { KnownBlock } from "@slack/web-api";
 
 const LOG_PREFIX = "[domain-health/notifications]";
+const FONT_STACK = "'Geist Sans', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+const DASHBOARD_URL = "https://admin.outsignal.ai";
+const FOOTER_NOTE = "Domain health monitoring alert from Outsignal.";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,34 +110,35 @@ export async function notifyBlacklistHit(params: {
       if (verified.length > 0) {
         const hitRowsHtml = hits
           .map((h) => {
-            const color = h.tier === "critical" ? "#dc2626" : "#d97706";
-            const label = h.tier === "critical" ? "CRITICAL" : "WARNING";
+            const pillColor = h.tier === "critical" ? "#dc2626" : "#d97706";
+            const pillBg = h.tier === "critical" ? "#fef2f2" : "#fffbeb";
+            const pillLabel = h.tier === "critical" ? "CRITICAL" : "WARNING";
             const delistLink = h.delistUrl
-              ? ` &mdash; <a href="${h.delistUrl}" style="color:#8B85FF;">Request Removal</a>`
+              ? ` &mdash; <a href="${h.delistUrl}" style="color:#635BFF;text-decoration:none;font-weight:600;">Request Removal</a>`
               : "";
             return `<tr>
-              <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-                <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:8px;">${label}</span>
+              <td style="padding:6px 0;font-family:${FONT_STACK};font-size:13px;color:#3f3f46;">
+                <span style="display:inline-block;background-color:${pillBg};color:${pillColor};font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;margin-right:8px;">${pillLabel}</span>
                 ${h.list}${delistLink}
               </td>
             </tr>`;
           })
           .join("");
 
-        const html = buildEmailHtml({
-          title: `Domain Blacklisted: ${domain}`,
-          bodyContent: `
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-              The domain <strong>${domain}</strong> has been detected on ${hits.length} DNSBL${hits.length !== 1 ? "s" : ""}.
-              This may impact email deliverability for all senders on this domain.
-            </p>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              ${hitRowsHtml}
-            </table>
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
-              Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.
-            </p>`,
-        });
+        const severityBanner = hasCritical
+          ? emailBanner("Critical blacklisting detected. Deliverability is at immediate risk.", { color: "#dc2626", bgColor: "#fef2f2", borderColor: "#fecaca" })
+          : emailBanner("Domain blacklisted. Deliverability may be impacted.", { color: "#d97706", bgColor: "#fffbeb", borderColor: "#fde68a" });
+
+        const body = [
+          emailHeading(`Domain Blacklisted: ${domain}`),
+          severityBanner,
+          emailText(`The domain <strong>${domain}</strong> has been detected on ${hits.length} DNSBL${hits.length !== 1 ? "s" : ""}. This may impact email deliverability for all senders on this domain.`),
+          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${hitRowsHtml}</table>`,
+          emailText("Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.", { size: 13 }),
+          emailButton("View Domain Health", `${DASHBOARD_URL}/domain-health`),
+        ].join("");
+
+        const html = emailLayout({ body, footerNote: FOOTER_NOTE });
 
         try {
           await audited(
@@ -305,36 +310,30 @@ export async function notifyDnsFailure(params: {
     if (adminEmail) {
       const verified = verifyEmailRecipients([adminEmail], "admin", "notifyDnsFailure");
       if (verified.length > 0) {
-        const failureRowsHtml = failures
-          .map(
-            (f) => `<tr>
-              <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-                <strong>${checkLabels[f.check] ?? f.check}:</strong> <code style="background:#f4f4f5;padding:2px 6px;border-radius:4px;">${f.status}</code>
-              </td>
-            </tr>`,
-          )
+        const failurePillsHtml = failures
+          .map((f) => {
+            const label = checkLabels[f.check] ?? f.check;
+            return emailPill(`${label}: ${f.status}`, "#dc2626", "#fef2f2");
+          })
           .join("");
 
-        const escalationHtml = persistent
-          ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#dc2626;font-weight:700;margin:16px 0 0 0;">
-              This DNS misconfiguration has been present for over 48 hours. Immediate action required.
-             </p>`
+        const escalationBanner = persistent
+          ? emailBanner("This DNS misconfiguration has been present for over 48 hours. Immediate action required.", { color: "#dc2626", bgColor: "#fef2f2", borderColor: "#fecaca" })
           : "";
 
-        const html = buildEmailHtml({
-          title: `DNS ${severityLabel}: ${domain}`,
-          bodyContent: `
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-              DNS validation failed for <strong>${domain}</strong>. The following checks did not pass:
-            </p>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              ${failureRowsHtml}
-            </table>
-            ${escalationHtml}
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
-              DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.
-            </p>`,
-        });
+        const body = [
+          emailHeading(`DNS ${severityLabel}: ${domain}`),
+          persistent
+            ? emailPill("CRITICAL — 48h+ PERSISTENT", "#dc2626", "#fef2f2")
+            : emailPill("WARNING", "#d97706", "#fffbeb"),
+          emailText(`DNS validation failed for <strong>${domain}</strong>. The following checks did not pass:`),
+          failurePillsHtml,
+          escalationBanner,
+          emailText("DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.", { size: 13 }),
+          emailButton("View Domain Health", `${DASHBOARD_URL}/domain-health`),
+        ].join("");
+
+        const html = emailLayout({ body, footerNote: FOOTER_NOTE });
 
         try {
           await audited(
@@ -394,44 +393,38 @@ export async function sendBlacklistDigestEmail(
     .map((item) => {
       const hitRowsHtml = item.hits
         .map((h) => {
-          const color = h.tier === "critical" ? "#dc2626" : "#d97706";
-          const label = h.tier === "critical" ? "CRITICAL" : "WARNING";
+          const pillColor = h.tier === "critical" ? "#dc2626" : "#d97706";
+          const pillBg = h.tier === "critical" ? "#fef2f2" : "#fffbeb";
+          const pillLabel = h.tier === "critical" ? "CRITICAL" : "WARNING";
           const delistLink = h.delistUrl
-            ? ` &mdash; <a href="${h.delistUrl}" style="color:#8B85FF;">Request Removal</a>`
+            ? ` &mdash; <a href="${h.delistUrl}" style="color:#635BFF;text-decoration:none;font-weight:600;">Request Removal</a>`
             : "";
           return `<tr>
-            <td style="padding:4px 0 4px 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-              <span style="display:inline-block;background-color:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:8px;">${label}</span>
+            <td style="padding:4px 0 4px 16px;font-family:${FONT_STACK};font-size:13px;color:#3f3f46;">
+              <span style="display:inline-block;background-color:${pillBg};color:${pillColor};font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;margin-right:8px;">${pillLabel}</span>
               ${h.list}${delistLink}
             </td>
           </tr>`;
         })
         .join("");
 
-      return `
-        <tr>
-          <td style="padding:16px 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#18181b;border-top:1px solid #e4e4e7;">
-            ${item.domain} &mdash; ${item.hits.length} listing${item.hits.length !== 1 ? "s" : ""}
-          </td>
-        </tr>
-        ${hitRowsHtml}`;
+      return [
+        emailDivider(),
+        emailLabel(`${item.domain} — ${item.hits.length} listing${item.hits.length !== 1 ? "s" : ""}`),
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:16px;">${hitRowsHtml}</table>`,
+      ].join("");
     })
     .join("");
 
-  const html = buildEmailHtml({
-    title: `Blacklist Alert: ${items.length} Domain${items.length !== 1 ? "s" : ""} Listed`,
-    bodyContent: `
-      <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-        ${items.length} domain${items.length !== 1 ? "s have" : " has"} been detected on DNSBLs (${totalHits} total listing${totalHits !== 1 ? "s" : ""}).
-        This may impact email deliverability.
-      </p>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-        ${domainSectionsHtml}
-      </table>
-      <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
-        Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.
-      </p>`,
-  });
+  const body = [
+    emailHeading(`Blacklist Alert: ${items.length} Domain${items.length !== 1 ? "s" : ""} Listed`),
+    emailText(`${items.length} domain${items.length !== 1 ? "s have" : " has"} been detected on DNSBLs (${totalHits} total listing${totalHits !== 1 ? "s" : ""}). This may impact email deliverability.`),
+    domainSectionsHtml,
+    emailText("Use the removal links above to request delisting. Critical listings should be resolved within 24 hours.", { size: 13 }),
+    emailButton("View Domain Health", `${DASHBOARD_URL}/domain-health`),
+  ].join("");
+
+  const html = emailLayout({ body, footerNote: FOOTER_NOTE });
 
   try {
     await audited(
@@ -478,50 +471,40 @@ export async function sendDnsFailureDigestEmail(
 
   const domainSectionsHtml = items
     .map((item) => {
-      const persistentBadge = item.persistent
-        ? ` <span style="display:inline-block;background-color:#dc2626;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:8px;">48h+ PERSISTENT</span>`
-        : "";
-
-      const failureRowsHtml = item.failures
-        .map(
-          (f) => `<tr>
-            <td style="padding:4px 0 4px 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#3f3f46;">
-              <strong>${checkLabels[f.check] ?? f.check}:</strong> <code style="background:#f4f4f5;padding:2px 6px;border-radius:4px;">${f.status}</code>
-            </td>
-          </tr>`,
-        )
+      const failurePillsHtml = item.failures
+        .map((f) => {
+          const label = checkLabels[f.check] ?? f.check;
+          return emailPill(`${label}: ${f.status}`, "#dc2626", "#fef2f2");
+        })
         .join("");
 
-      return `
-        <tr>
-          <td style="padding:16px 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#18181b;border-top:1px solid #e4e4e7;">
-            ${item.domain}${persistentBadge}
-          </td>
-        </tr>
-        ${failureRowsHtml}`;
+      const persistentPill = item.persistent
+        ? emailPill("48h+ PERSISTENT", "#dc2626", "#fef2f2")
+        : "";
+
+      return [
+        emailDivider(),
+        emailLabel(item.domain),
+        persistentPill,
+        failurePillsHtml,
+      ].join("");
     })
     .join("");
 
-  const escalationHtml = hasPersistent
-    ? `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#dc2626;font-weight:700;margin:16px 0 0 0;">
-        One or more domains have had DNS misconfigurations for over 48 hours. Immediate action required.
-       </p>`
+  const escalationBanner = hasPersistent
+    ? emailBanner("One or more domains have had DNS misconfigurations for over 48 hours. Immediate action required.", { color: "#dc2626", bgColor: "#fef2f2", borderColor: "#fecaca" })
     : "";
 
-  const html = buildEmailHtml({
-    title: `DNS ${severityLabel}: ${items.length} Domain${items.length !== 1 ? "s" : ""} Failing`,
-    bodyContent: `
-      <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#3f3f46;margin:0 0 16px 0;">
-        DNS validation failed for ${items.length} domain${items.length !== 1 ? "s" : ""}. The following checks did not pass:
-      </p>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-        ${domainSectionsHtml}
-      </table>
-      ${escalationHtml}
-      <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#71717a;margin:16px 0 0 0;">
-        DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.
-      </p>`,
-  });
+  const body = [
+    emailHeading(`DNS ${severityLabel}: ${items.length} Domain${items.length !== 1 ? "s" : ""} Failing`),
+    emailText(`DNS validation failed for ${items.length} domain${items.length !== 1 ? "s" : ""}. The following checks did not pass:`),
+    domainSectionsHtml,
+    escalationBanner,
+    emailText("DNS changes may take up to 24 hours to propagate. Verify records using a DNS lookup tool.", { size: 13 }),
+    emailButton("View Domain Health", `${DASHBOARD_URL}/domain-health`),
+  ].join("");
+
+  const html = emailLayout({ body, footerNote: FOOTER_NOTE });
 
   try {
     await audited(
@@ -547,46 +530,3 @@ export async function sendDnsFailureDigestEmail(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Email HTML helper
-// ---------------------------------------------------------------------------
-
-function buildEmailHtml(params: { title: string; bodyContent: string }): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:40px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
-        <!-- Header -->
-        <tr>
-          <td style="background-color:#18181b;padding:20px 32px;border-radius:8px 8px 0 0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:#635BFF;">OUTSIGNAL</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 24px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#18181b;padding-bottom:24px;line-height:1.3;">${params.title}</td>
-              </tr>
-              <tr>
-                <td>${params.bodyContent}</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background-color:#fafafa;padding:20px 32px;border-top:1px solid #e4e4e7;border-radius:0 0 8px 8px;">
-            <p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;margin:0;line-height:1.5;">Outsignal Admin &mdash; Domain health monitoring alert.</p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>`;
-}
