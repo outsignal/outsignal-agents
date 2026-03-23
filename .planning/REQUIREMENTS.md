@@ -82,47 +82,47 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | — | Pending |
-| SEC-02 | — | Pending |
-| SEC-03 | — | Pending |
-| SEC-04 | — | Pending |
-| SEC-05 | — | Pending |
-| MEM-01 | — | Pending |
-| MEM-02 | — | Pending |
-| MEM-03 | — | Pending |
-| MEM-04 | — | Pending |
-| MEM-05 | — | Pending |
-| MEM-06 | — | Pending |
-| MEM-07 | — | Pending |
-| MEM-08 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
-| CLI-04 | — | Pending |
-| SKL-01 | — | Pending |
-| SKL-02 | — | Pending |
-| SKL-03 | — | Pending |
-| SKL-04 | — | Pending |
-| SKL-05 | — | Pending |
-| SKL-06 | — | Pending |
-| SKL-07 | — | Pending |
-| SKL-08 | — | Pending |
-| SKL-09 | — | Pending |
-| BRG-01 | — | Pending |
-| BRG-02 | — | Pending |
-| BRG-03 | — | Pending |
-| BRG-04 | — | Pending |
-| BRG-05 | — | Pending |
-| VAL-01 | — | Pending |
-| VAL-02 | — | Pending |
-| VAL-03 | — | Pending |
-| VAL-04 | — | Pending |
-| VAL-05 | — | Pending |
+| SEC-01 | Phase 46 | Pending |
+| SEC-02 | Phase 46 | Pending |
+| SEC-03 | Phase 46 | Pending |
+| SEC-04 | Phase 46 | Pending |
+| SEC-05 | Phase 46 | Pending |
+| MEM-01 | Phase 47 | Pending |
+| MEM-02 | Phase 47 | Pending |
+| MEM-03 | Phase 47 | Pending |
+| MEM-04 | Phase 47 | Pending |
+| MEM-05 | Phase 47 | Pending |
+| MEM-06 | Phase 47 | Pending |
+| MEM-07 | Phase 47 | Pending |
+| MEM-08 | Phase 47 | Pending |
+| CLI-01 | Phase 48 | Pending |
+| CLI-02 | Phase 48 | Pending |
+| CLI-03 | Phase 48 | Pending |
+| CLI-04 | Phase 48 | Pending |
+| SKL-01 | Phase 49 | Pending |
+| SKL-02 | Phase 49 | Pending |
+| SKL-03 | Phase 49 | Pending |
+| SKL-04 | Phase 49 | Pending |
+| SKL-05 | Phase 49 | Pending |
+| SKL-06 | Phase 49 | Pending |
+| SKL-07 | Phase 49 | Pending |
+| SKL-08 | Phase 49 | Pending |
+| SKL-09 | Phase 49 | Pending |
+| BRG-01 | Phase 50 | Pending |
+| BRG-02 | Phase 50 | Pending |
+| BRG-03 | Phase 50 | Pending |
+| BRG-04 | Phase 50 | Pending |
+| BRG-05 | Phase 50 | Pending |
+| VAL-01 | Phase 51 | Pending |
+| VAL-02 | Phase 51 | Pending |
+| VAL-03 | Phase 51 | Pending |
+| VAL-04 | Phase 51 | Pending |
+| VAL-05 | Phase 51 | Pending |
 
 **Coverage:**
 - v7.0 requirements: 36 total
-- Mapped to phases: 0
-- Unmapped: 36
+- Mapped to phases: 36
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-23*

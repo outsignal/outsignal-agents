@@ -8,7 +8,8 @@
 - ✅ **v3.0 Campaign Intelligence Hub** — Phases 23-28 (shipped 2026-03-10) — [archive](milestones/v3.0-ROADMAP.md)
 - ✅ **v4.0 Email Deliverability & Domain Infrastructure Monitoring** — Phases 29-32 (shipped 2026-03-11)
 - ✅ **v5.0 Client Portal Inbox** — Phases 33-37 (shipped 2026-03-11)
-- 🚧 **v6.0 Trigger.dev Migration — Background Jobs Infrastructure** — Phases 38-43 (in progress)
+- ✅ **v6.0 Trigger.dev Migration — Background Jobs Infrastructure** — Phases 38-45 (shipped 2026-03-23)
+- 🚧 **v7.0 Nova CLI Agent Teams — Client-Specific Intelligence** — Phases 46-51 (in progress)
 
 ## Phases
 
@@ -95,7 +96,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 </details>
 
-### v6.0 Trigger.dev Migration — Background Jobs Infrastructure (In Progress)
+### v6.0 Trigger.dev Migration — Background Jobs Infrastructure (Shipped 2026-03-23)
 
 **Milestone Goal:** Migrate all background operations from cron-job.org + Vercel fire-and-forget to Trigger.dev managed infrastructure, eliminating silent failures caused by 30s/60s serverless timeout constraints and providing full task observability.
 
@@ -106,6 +107,18 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 42: Remaining Cron Lift-and-Shift** — poll-replies, domain-health, bounce-monitor, sync-senders, bounce-snapshots, deliverability-digest, and inbox-health (split) migrated; campaign deploy after() pattern replaced (completed 2026-03-12)
 - [x] **Phase 43: Decommission + Observability Validation** — cron-job.org fully retired, fire-and-forget patterns removed, background task observability live in admin dashboard (completed 2026-03-12)
 - [x] **Phase 44: OOO Re-engagement Pipeline** — AI-extracted return dates from OOO replies, Trigger.dev delayed tasks, auto-enrolment into personalised Welcome Back campaigns, OOO queue dashboard (completed 2026-03-12)
+- [x] **Phase 45: Multi-Channel Sequencing Fix & If/Else Upgrade** — triggerStepRef bug, bounce/unsub cancellation, connection dedup, if/else branching conditions, per-campaign connection timeout (completed 2026-03-23)
+
+### 🚧 v7.0 Nova CLI Agent Teams — Client-Specific Intelligence (In Progress)
+
+**Milestone Goal:** Convert Nova agents from paid Anthropic API calls to Claude Code CLI skills with persistent client-specific memory — eliminating Opus API costs while each workspace accumulates intelligence over time.
+
+- [ ] **Phase 46: Skill Architecture Foundation** — .claudeignore, sanitize-output.ts, shared rules directory, 200-line skill budget, dual-mode strategy decision; security gates that cannot be retrofitted once agents run
+- [ ] **Phase 47: Client Memory Namespace** — per-workspace memory directory structure, schema with named sections, seeded content from DB, gitignore rules; memory governance before any agent writes
+- [ ] **Phase 48: CLI Wrapper Scripts** — scripts/cli/ wrapper scripts for all 7 agents, compiled dist/cli/ output, sanitize-output applied, each independently testable
+- [ ] **Phase 49: Specialist CLI Skill Files** — 7 new specialist skill files (writer, research, leads, campaign, deliverability, onboarding, intelligence) + updated nova.md with memory injection; all within 200-line budget
+- [ ] **Phase 50: Orchestrator CLI Spawn Integration** — cli-spawn.ts utility, feature-flagged orchestrator modification, dashboard bridge for writer and orchestrator paths; API fallback preserved
+- [ ] **Phase 51: Memory Accumulation and Full Validation** — memory write instructions in all skills, approval pattern tracking, bridge extended to all 7 agents, end-to-end campaign generation validated
 
 ## Phase Details
 
@@ -375,8 +388,15 @@ Plans:
 | 40. Writer Agent Restoration | 1/2 | Complete    | 2026-03-12 | - |
 | 41. AI Cron Migration | v6.0 | 2/2 | Complete | 2026-03-12 |
 | 42. Remaining Cron Lift-and-Shift | v6.0 | 5/5 | Complete | 2026-03-12 |
-| 43. Decommission + Observability Validation | 3/3 | Complete    | 2026-03-12 | - |
-| 44. OOO Re-engagement Pipeline | 3/3 | Complete    | 2026-03-12 | - |
+| 43. Decommission + Observability Validation | v6.0 | 3/3 | Complete | 2026-03-12 |
+| 44. OOO Re-engagement Pipeline | v6.0 | 3/3 | Complete | 2026-03-12 |
+| 45. Multi-Channel Sequencing Fix & If/Else Upgrade | v6.0 | 2/2 | Complete | 2026-03-23 |
+| 46. Skill Architecture Foundation | v7.0 | 0/TBD | Not started | - |
+| 47. Client Memory Namespace | v7.0 | 0/TBD | Not started | - |
+| 48. CLI Wrapper Scripts | v7.0 | 0/TBD | Not started | - |
+| 49. Specialist CLI Skill Files | v7.0 | 0/TBD | Not started | - |
+| 50. Orchestrator CLI Spawn Integration | v7.0 | 0/TBD | Not started | - |
+| 51. Memory Accumulation and Full Validation | v7.0 | 0/TBD | Not started | - |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
@@ -408,3 +428,74 @@ Plans:
 Plans:
 - [ ] 45-01-PLAN.md — Tier 1 bug fixes (triggerStepRef derivation, bounce/unsub cancellation, connect dedup, cascade delete)
 - [ ] 45-02-PLAN.md — Tier 2 schema migration + if/else evaluation engine + per-campaign connection timeout
+
+
+### Phase 46: Skill Architecture Foundation
+**Goal**: The security and architectural decisions that gate every downstream phase are made, documented, and implemented — no skill file can be safely written until these exist
+**Depends on**: Phase 45 (existing codebase baseline)
+**Requirements**: SEC-01, SEC-02, SEC-03, SEC-04, SEC-05
+**Success Criteria** (what must be TRUE):
+  1. Running any Claude Code session in this project directory does not expose .env contents to the agent — .claudeignore blocks .env* files and any wrapper script stdout is passed through sanitize-output.ts before Claude sees it
+  2. A skill content budget of 200 lines is documented in .claude/rules/ and the dual-mode strategy (shared rules vs time-boxed fallback) is recorded as a locked decision in PROJECT.md
+  3. .claude/rules/ directory exists with at least one shared behavioral rules file demonstrating the structure both CLI skills and API agents can reference
+  4. sanitize-output.ts utility exists, exports a sanitize() function, and strips DATABASE_URL, API keys, and secrets from any string passed to it — verified by unit test
+**Plans**: TBD
+
+### Phase 47: Client Memory Namespace
+**Goal**: Every workspace has a named memory directory seeded with real intelligence from the database — agents have zero cold-start from their first session
+**Depends on**: Phase 46 (memory governance rules depend on dual-mode strategy decided in Phase 46)
+**Requirements**: MEM-01, MEM-02, MEM-03, MEM-04, MEM-05, MEM-06, MEM-07, MEM-08
+**Success Criteria** (what must be TRUE):
+  1. .nova/memory/{slug}/ directories exist for all 8 client workspaces and contain named section files (profile.md, tone.md, icp-learnings.md, copy-wins.md, campaign-history.md, feedback.md, approval-patterns.md)
+  2. Each workspace memory file is pre-populated with real content drawn from existing DB fields — ICP description, tone prompt, and at least 3 recent campaign names are present before any agent session runs
+  3. Memory files are gitignored (no client intelligence leaks to version control) while directory structure is preserved via .gitkeep files so new machines get the scaffolding
+  4. A global-insights.md file exists at .nova/memory/global-insights.md with schema for cross-client patterns and at least one seeded entry
+  5. Memory schema includes timestamp requirements and write governance rules that prevent agents from overwriting sections with stale or contradictory content
+**Plans**: TBD
+
+### Phase 48: CLI Wrapper Scripts
+**Goal**: Every tool function the specialist agents need is callable as a standalone script with sanitized JSON output — agents can do real work without any direct DB or API access
+**Depends on**: Phase 46 (sanitize-output.ts must exist before any wrapper script is written)
+**Requirements**: CLI-01, CLI-02, CLI-03, CLI-04
+**Success Criteria** (what must be TRUE):
+  1. scripts/cli/ contains wrapper scripts covering all 7 agent domains: workspace-get, campaign-list, people-search, kb-search, campaign-performance, workspace-intelligence, sequence-steps, existing-drafts, campaign-context, save-sequence, sender-health, domain-health, bounce-stats, inbox-status and related scripts
+  2. All wrapper scripts are compiled to dist/cli/*.js — running node dist/cli/workspace-get.js rise returns a valid JSON response with no npx tsx cold-start latency
+  3. Every wrapper script output passes through sanitize-output.ts — no DATABASE_URL, API keys, or secrets appear in any script's stdout
+  4. Each wrapper script is independently testable: node dist/cli/<script>.js <args> returns valid JSON or a well-formed error object with no external dependencies other than the compiled dist/
+**Plans**: TBD
+
+### Phase 49: Specialist CLI Skill Files
+**Goal**: All 7 specialist agents and the orchestrator have skill files that inject client memory at startup and reference compiled CLI wrappers for tool calls — every agent is client-aware from the first turn
+**Depends on**: Phase 47 (memory files must exist to be referenced), Phase 48 (wrapper scripts must be compiled before skill files reference them)
+**Requirements**: SKL-01, SKL-02, SKL-03, SKL-04, SKL-05, SKL-06, SKL-07, SKL-08, SKL-09
+**Success Criteria** (what must be TRUE):
+  1. .claude/commands/ contains nova-writer.md, nova-research.md, nova-leads.md, nova-campaign.md, nova-deliverability.md, nova-onboarding.md, and nova-intelligence.md — all loadable by Claude Code without errors
+  2. Invoking /nova-writer rise in Claude Code terminal injects the rise workspace memory into the session context before any user prompt — the agent references Rise tone and ICP in its first response
+  3. Every skill file is within the 200-line budget — no skill file exceeds 200 lines; overflow content lives in .claude/rules/ reference files
+  4. All tool invocation instructions in skill files reference node dist/cli/ paths — no npx tsx references that would add cold-start latency
+  5. The updated nova.md orchestrator skill delegates to all 7 specialist skills and injects appropriate workspace memory via the ! shell injection syntax
+**Plans**: TBD
+
+### Phase 50: Orchestrator CLI Spawn Integration
+**Goal**: The dashboard chat delegates agent work to CLI skills via a feature-flagged spawn utility — writer and orchestrator paths use CLI by default while the API fallback remains fully operational
+**Depends on**: Phase 49 (cli-spawn.ts requires actual skill names and expected stdout format defined in Phase 49)
+**Requirements**: BRG-01, BRG-02, BRG-03, BRG-04, BRG-05
+**Success Criteria** (what must be TRUE):
+  1. Typing a campaign generation request in the dashboard chat with USE_CLI_AGENTS=true routes to the CLI writer agent — the AgentRun record shows the CLI path was taken, not the direct API call
+  2. Setting USE_CLI_AGENTS=false in .env causes the same dashboard chat to route through the original API agent path — no regression in output quality or structure
+  3. cli-spawn.ts exists in src/lib/agents/ and handles subprocess creation, 300s timeout, stdout buffering, and translates non-zero exit codes to user-facing error messages
+  4. AgentRun audit logs are written for CLI-invoked sessions — the audit trail is preserved regardless of which execution path is taken
+  5. Dashboard bridge covers all 7 specialist agents — any agent type can be delegated via the CLI path when USE_CLI_AGENTS=true
+**Plans**: TBD
+
+### Phase 51: Memory Accumulation and Full Validation
+**Goal**: Agents write intelligence back to memory after every session and the full system is validated end-to-end — no regression in dashboard chat quality, no context overflow, memory growing with real learnings
+**Depends on**: Phase 50 (stable working CLI path required before accumulation features are added)
+**Requirements**: VAL-01, VAL-02, VAL-03, VAL-04, VAL-05
+**Success Criteria** (what must be TRUE):
+  1. A full campaign generation session run via CLI (research → leads → writer → campaign) completes without errors — the output campaign has copy, a lead list, and a workspace assignment matching the target client
+  2. Dashboard chat with USE_CLI_AGENTS=true produces a campaign draft comparable in quality to the API agent path — the copy references client-specific tone and ICP from memory
+  3. After running 2 CLI agent sessions for the same workspace, the client's memory files contain new timestamped entries in icp-learnings, copy-wins, or campaign-history — memory is accumulating
+  4. A full orchestrated session with memory loaded (all 7 agents, all memory files for one workspace) does not hit context overflow — Claude Code compact threshold is not triggered before the session completes
+  5. Setting USE_CLI_AGENTS=false after v7.0 is live routes correctly to API agents with no errors — fallback is fully functional for emergency use
+**Plans**: TBD
