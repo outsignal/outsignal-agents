@@ -39,6 +39,16 @@ export default async function PortalLinkedInPage() {
 
   const senderIds = senders.map((s) => s.id);
 
+  // Check if workspace has any live LinkedIn campaigns
+  const liveCampaignCount = await prisma.campaign.count({
+    where: {
+      workspaceSlug,
+      status: "deployed",
+      channels: { contains: "linkedin" },
+    },
+  });
+  const hasLiveCampaign = liveCampaignCount > 0;
+
   // Get today's usage per sender
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -133,7 +143,7 @@ export default async function PortalLinkedInPage() {
         </div>
       )}
 
-      {senders.some(s => s.warmupDay >= 1 && s.warmupDay <= 21) && (
+      {senders.some(s => s.warmupDay < 22) && (
         <div className="rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-900 px-4 py-3 flex items-center gap-3">
           <TrendingUp className="h-4 w-4 text-stone-500 dark:text-stone-400 shrink-0" />
           <p className="text-sm text-stone-600 dark:text-stone-300">
@@ -196,7 +206,7 @@ export default async function PortalLinkedInPage() {
                                 Profile
                               </a>
                             )}
-                            <WarmupBadge warmupDay={sender.warmupDay} />
+                            <WarmupBadge warmupDay={sender.warmupDay} sessionStatus={sender.sessionStatus} hasLiveCampaign={hasLiveCampaign} />
                           </div>
                         </TableCell>
                         <TableCell>

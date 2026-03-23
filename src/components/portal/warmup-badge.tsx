@@ -7,15 +7,59 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Link2Off, FileSearch } from "lucide-react";
 
 interface WarmupBadgeProps {
   warmupDay: number;
+  sessionStatus: string;
+  hasLiveCampaign: boolean;
 }
 
-export function WarmupBadge({ warmupDay }: WarmupBadgeProps) {
-  if (warmupDay <= 0 || warmupDay >= 22) return null;
+export function WarmupBadge({ warmupDay, sessionStatus, hasLiveCampaign }: WarmupBadgeProps) {
+  // Fully ramped — no badge needed
+  if (warmupDay >= 22) return null;
 
+  const isConnected = sessionStatus === "active";
+
+  // Not connected yet
+  if (!isConnected) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="secondary" className="text-xs cursor-help gap-1.5">
+              <Link2Off className="h-3 w-3" />
+              Awaiting connection
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[240px]">
+            This account needs to be connected before warmup can begin. Once connected, daily limits will gradually increase over 21 days.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Connected but no live campaign
+  if (!hasLiveCampaign) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="secondary" className="text-xs cursor-help gap-1.5">
+              <FileSearch className="h-3 w-3" />
+              Awaiting campaign
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[240px]">
+            This account is connected and ready. Warmup will begin once a LinkedIn campaign is live.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Active warmup
   const progress = Math.round((warmupDay / 21) * 100);
 
   return (
