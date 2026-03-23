@@ -137,6 +137,18 @@ export function emailStatRow3(col1: string, col2: string, col3: string): string 
   </table>`;
 }
 
+/** Generate a four-column stat row */
+export function emailStatRow4(col1: string, col2: string, col3: string, col4: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">
+    <tr>
+      <td width="25%" align="center" style="padding:4px;">${col1}</td>
+      <td width="25%" align="center" style="padding:4px;">${col2}</td>
+      <td width="25%" align="center" style="padding:4px;">${col3}</td>
+      <td width="25%" align="center" style="padding:4px;">${col4}</td>
+    </tr>
+  </table>`;
+}
+
 /** Generate a banner/alert box */
 export function emailBanner(text: string, options: { color: string; bgColor: string; borderColor?: string }): string {
   const border = options.borderColor ? `border:1px solid ${options.borderColor};` : "";

@@ -14,10 +14,9 @@ import {
   emailCallout,
   emailStatBox,
   emailStatRow,
-  emailStatRow3,
+  emailStatRow4,
   emailBanner,
   emailDivider,
-  emailNotice,
 } from "@/lib/email-template";
 import type { KnownBlock } from "@slack/web-api";
 
@@ -1440,100 +1439,7 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
     }
   }
 
-  // ---------- Email ----------
-
-  const adminEmail = process.env.ADMIN_EMAIL;
-  if (adminEmail) {
-    try {
-      const verified = verifyEmailRecipients(
-        [adminEmail],
-        "admin",
-        "notifyDeliverabilityDigest",
-      );
-      if (verified.length > 0) {
-        // Build problem sender rows (keep Arial font inline per rules)
-        const problemSenderRowsHtml =
-          problemSenders.length > 0
-            ? problemSenders
-                .slice(0, 10)
-                .map(
-                  (s) =>
-                    `<tr>
-                <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                  <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${s.emailAddress}</span>
-                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a1a1aa;"> &mdash; ${s.workspaceSlug}</span>
-                </td>
-                <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:${s.emailBounceStatus === "critical" ? "#991b1b" : "#92400e"};background-color:${s.emailBounceStatus === "critical" ? "#fef2f2" : "#fffbeb"};padding:3px 10px;border-radius:100px;white-space:nowrap;">${s.emailBounceStatus}</span>
-                </td>
-              </tr>`,
-                )
-                .join("")
-            : `<tr><td colspan="2" style="padding:10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;">No problem senders this week.</td></tr>`;
-
-        // Build bounce trend rows (keep Arial font inline per rules)
-        const trendRowsHtml =
-          workspaceTrends.length > 0
-            ? workspaceTrends
-                .map(
-                  (t) =>
-                    `<tr>
-                <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:#18181b;">${t.name}</span>
-                </td>
-                <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                  <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${t.avgRate != null ? (t.avgRate * 100).toFixed(2) + "%" : "N/A"} ${t.arrow}</span>
-                </td>
-              </tr>`,
-                )
-                .join("")
-            : `<tr><td colspan="2" style="padding:10px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;">No bounce data available.</td></tr>`;
-
-        const bodyParts: string[] = [
-          emailHeading("Weekly Deliverability Digest", `Cross-workspace summary — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`),
-          emailStatRow(
-            emailStatBox(healthyDomains, "Healthy Domains", "#16a34a", "#f0fdf4"),
-            emailStatBox(atRiskDomains, "At-Risk Domains", atRiskDomains > 0 ? "#dc2626" : "#a1a1aa", atRiskDomains > 0 ? "#fef2f2" : "#F8F7F5"),
-          ),
-          emailNotice(`Transitions this week: ${transitionCount}`),
-          `<div style="margin-bottom:24px;"></div>`,
-        ];
-
-        if (worstDomain) {
-          bodyParts.push(
-            emailBanner(`Worst Domain: ${worstDomain.domain} (${worstDomain.overallHealth})`, { color: "#991b1b", bgColor: "#fef2f2", borderColor: "#fecaca" }),
-          );
-        }
-
-        bodyParts.push(
-          emailLabel("Problem Senders"),
-          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${problemSenderRowsHtml}</table>`,
-          emailLabel("Bounce Trends by Workspace"),
-          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${trendRowsHtml}</table>`,
-          emailButton("View Deliverability Dashboard", deliverabilityUrl),
-        );
-
-        await audited(
-          {
-            notificationType: "deliverability_digest",
-            channel: "email",
-            recipient: verified.join(","),
-          },
-          () =>
-            sendNotificationEmail({
-              to: verified,
-              subject: "[Outsignal] Weekly Deliverability Digest",
-              html: emailLayout({
-                body: bodyParts.join(""),
-                footerNote: "Weekly deliverability digest. You received this because you are the system administrator.",
-              }),
-            }),
-        );
-      }
-    } catch (err) {
-      console.error("[notifyDeliverabilityDigest] Email failed:", err);
-    }
-  }
+  // Email removed — now bundled into notifyWeeklyDigestCombined()
 }
 
 export async function notifyWeeklyDigest(params: {
@@ -1690,10 +1596,11 @@ export async function notifyWeeklyDigest(params: {
 }
 
 /**
- * Send a single bundled weekly digest email covering ALL workspaces.
- * Slack stays per-workspace via notifyWeeklyDigest().
+ * Send a single combined weekly digest email covering intelligence + deliverability
+ * across ALL workspaces. Slack stays per-workspace via notifyWeeklyDigest().
+ * Replaces both notifyWeeklyDigestBundled() and the email portion of notifyDeliverabilityDigest().
  */
-export async function notifyWeeklyDigestBundled(workspaces: Array<{
+export async function notifyWeeklyDigestCombined(workspaces: Array<{
   workspaceName: string;
   workspaceSlug: string;
   topInsights: Array<{ observation: string; category: string; confidence: string }>;
@@ -1710,141 +1617,263 @@ export async function notifyWeeklyDigestBundled(workspaces: Array<{
   const verified = verifyEmailRecipients(
     [adminEmail],
     "admin",
-    "notifyWeeklyDigestBundled",
+    "notifyWeeklyDigestCombined",
   );
   if (verified.length === 0) return;
 
   const adminBaseUrl =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
-  const insightsUrl = `${adminBaseUrl}/intelligence`;
 
-  // Aggregate totals
+  const FONT = "'Geist Sans', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+  const MONO = "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace";
+
+  // ---- Aggregate intelligence totals ----
   const totalReplies = workspaces.reduce((s, w) => s + (w.replyCount ?? 0), 0);
-  const totalInsights = workspaces.reduce((s, w) => s + (w.insightCount ?? 0), 0);
   const totalPending = workspaces.reduce((s, w) => s + w.pendingActions, 0);
-  const activeWorkspaces = workspaces.filter(
+  const activeWs = workspaces.filter(
     (w) => (w.replyCount ?? 0) > 0 || (w.insightCount ?? 0) > 0 || w.pendingActions > 0,
   );
+  const quietWs = workspaces.filter(
+    (w) => (w.replyCount ?? 0) === 0 && (w.insightCount ?? 0) === 0 && w.pendingActions === 0,
+  );
 
-  // Build per-workspace HTML sections
-  const workspaceSectionsHtml = workspaces
-    .map((ws) => {
-      const isQuiet =
-        (ws.replyCount ?? 0) === 0 &&
-        (ws.insightCount ?? 0) === 0 &&
-        ws.pendingActions === 0;
+  // ---- Fetch deliverability data (same queries as notifyDeliverabilityDigest) ----
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-      if (isQuiet) {
-        // Compact row for quiet workspaces
-        return `
-              <tr>
-                <td style="padding:12px 0;border-bottom:1px solid #f4f4f5;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>
-                      <td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;color:#18181b;">${ws.workspaceName}</td>
-                      <td align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;font-style:italic;">No activity this week</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>`;
-      }
+  const allDomains = await prisma.domainHealth.findMany({
+    select: { domain: true, overallHealth: true },
+  });
+  const healthyDomains = allDomains.filter((d) => d.overallHealth === "healthy").length;
+  const atRiskDomains = allDomains.filter((d) => ["warning", "critical"].includes(d.overallHealth)).length;
 
-      // KPI line for this workspace
+  const worstDomain =
+    allDomains.find((d) => d.overallHealth === "critical") ??
+    allDomains.find((d) => d.overallHealth === "warning") ??
+    null;
+
+  const transitionCount = await prisma.emailHealthEvent.count({
+    where: { createdAt: { gte: sevenDaysAgo } },
+  });
+
+  const problemSenders = await prisma.sender.findMany({
+    where: {
+      emailBounceStatus: { in: ["warning", "critical"] },
+      emailAddress: { not: null },
+    },
+    select: {
+      emailAddress: true,
+      emailBounceStatus: true,
+      workspaceSlug: true,
+    },
+    orderBy: [{ emailBounceStatus: "asc" }, { emailAddress: "asc" }],
+  });
+
+  // Per-workspace bounce trends
+  const allWorkspaceSlugs = await prisma.workspace.findMany({
+    select: { slug: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
+  interface BounceTrend {
+    name: string;
+    avgRate: number | null;
+    arrow: string;
+  }
+  const bounceTrends: BounceTrend[] = [];
+
+  for (const ws of allWorkspaceSlugs) {
+    const recentSnapshots = await prisma.bounceSnapshot.findMany({
+      where: {
+        workspaceSlug: ws.slug,
+        bounceRate: { not: null },
+        snapshotDate: { gte: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
+      },
+      select: { bounceRate: true },
+    });
+    const olderSnapshots = await prisma.bounceSnapshot.findMany({
+      where: {
+        workspaceSlug: ws.slug,
+        bounceRate: { not: null },
+        snapshotDate: {
+          gte: sevenDaysAgo,
+          lte: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        },
+      },
+      select: { bounceRate: true },
+    });
+
+    const avgRecent = recentSnapshots.length > 0
+      ? recentSnapshots.reduce((s, r) => s + (r.bounceRate ?? 0), 0) / recentSnapshots.length
+      : null;
+    const avgOlder = olderSnapshots.length > 0
+      ? olderSnapshots.reduce((s, r) => s + (r.bounceRate ?? 0), 0) / olderSnapshots.length
+      : null;
+
+    let arrow = "-";
+    if (avgRecent != null && avgOlder != null) {
+      arrow = avgRecent > avgOlder + 0.005 ? "\u2191" : avgRecent < avgOlder - 0.005 ? "\u2193" : "\u2192";
+    }
+    if (avgRecent != null) {
+      bounceTrends.push({ name: ws.name, avgRate: avgRecent, arrow });
+    }
+  }
+
+  // Workspace name lookup for problem senders
+  const wsNameMap = new Map(allWorkspaceSlugs.map((w) => [w.slug, w.name]));
+
+  // ---- Build email sections ----
+  const bodyParts: string[] = [];
+
+  // Section 1: Header
+  const weekDate = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  bodyParts.push(
+    emailHeading("Weekly Outsignal Digest", `Week of ${weekDate} \u2014 ${workspaces.length} workspaces`),
+  );
+
+  // Section 2: Executive Summary (4-stat row)
+  const domainHealthColor = atRiskDomains > 0 ? "#dc2626" : "#16a34a";
+  const domainHealthBg = atRiskDomains > 0 ? "#fef2f2" : "#f0fdf4";
+  const pendingColor = totalPending > 0 ? "#d97706" : "#16a34a";
+  const pendingBg = totalPending > 0 ? "#fffbeb" : "#f0fdf4";
+
+  bodyParts.push(
+    emailStatRow4(
+      emailStatBox(totalReplies, "Total Replies", "#635BFF", "#f5f3ff"),
+      emailStatBox(`${activeWs.length} / ${workspaces.length}`, "Active Workspaces", "#57534e", "#F8F7F5"),
+      emailStatBox(`${healthyDomains} / ${allDomains.length}`, "Healthy Domains", domainHealthColor, domainHealthBg),
+      emailStatBox(totalPending, "Pending Actions", pendingColor, pendingBg),
+    ),
+  );
+
+  // Section 3: Alerts (only if problem senders exist)
+  if (problemSenders.length > 0) {
+    bodyParts.push(emailLabel("Needs Attention"));
+    const senderRows = problemSenders.slice(0, 5).map((s) => {
+      const wsName = wsNameMap.get(s.workspaceSlug ?? "") ?? s.workspaceSlug ?? "Unknown";
+      const statusColor = s.emailBounceStatus === "critical" ? "#991b1b" : "#92400e";
+      const statusBg = s.emailBounceStatus === "critical" ? "#fef2f2" : "#fffbeb";
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
+          <span style="font-family:${MONO};font-size:13px;color:#18181b;">${s.emailAddress}</span>
+          <span style="font-family:${FONT};font-size:12px;color:#a1a1aa;"> \u2014 ${wsName}</span>
+        </td>
+        <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
+          <span style="font-family:${FONT};font-size:11px;font-weight:600;color:${statusColor};background-color:${statusBg};padding:3px 10px;border-radius:100px;white-space:nowrap;">${s.emailBounceStatus}</span>
+        </td>
+      </tr>`;
+    }).join("");
+
+    let alertFooter = "";
+    if (problemSenders.length > 5) {
+      alertFooter = `<tr><td colspan="2" style="padding:8px 0;font-family:${FONT};font-size:13px;color:#635BFF;"><a href="${adminBaseUrl}/senders" style="color:#635BFF;text-decoration:none;">View all ${problemSenders.length} problem senders</a></td></tr>`;
+    }
+
+    bodyParts.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${senderRows}${alertFooter}</table>`,
+    );
+  }
+
+  // Section 4: Active Workspaces
+  if (activeWs.length > 0) {
+    bodyParts.push(emailDivider());
+    bodyParts.push(emailLabel("Active Workspaces"));
+
+    for (const ws of activeWs) {
+      // Workspace name
+      bodyParts.push(
+        `<p style="font-family:${FONT};font-size:16px;font-weight:700;color:#18181b;margin:16px 0 4px 0;">${ws.workspaceName}</p>`,
+      );
+
+      // KPI line
       const kpiParts: string[] = [];
       if (ws.replyCount != null) kpiParts.push(`${ws.replyCount} replies`);
       if (ws.avgReplyRate != null) kpiParts.push(`${ws.avgReplyRate.toFixed(1)}% avg reply rate`);
-      if (ws.insightCount != null) kpiParts.push(`${ws.insightCount} insights pending`);
-      const kpiLine = kpiParts.length > 0 ? kpiParts.join(" | ") : null;
-
-      // Insights rows
-      const insightRowsHtml = ws.topInsights
-        .map(
-          (i) =>
-            `<tr>
-              <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.5px;color:#a1a1aa;text-transform:uppercase;">${i.category}</span>
-                <br/>
-                <span style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;line-height:1.5;">${i.observation}</span>
-                <br/>
-                <span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#71717a;">${i.confidence} confidence</span>
-              </td>
-            </tr>`,
-        )
-        .join("");
-
-      // Campaign cards
-      let campaignHtml = "";
-      if (ws.bestCampaign || ws.worstCampaign) {
-        const cells: string[] = [];
-        if (ws.bestCampaign) {
-          cells.push(`
-            <td width="50%" style="padding-right:8px;" valign="top">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="background-color:#f0fdf4;border-radius:8px;padding:12px 16px;">
-                    <p style="font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;color:#065f46;margin:0 0 4px 0;text-transform:uppercase;">Best Campaign</p>
-                    <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;margin:0;font-weight:600;">${ws.bestCampaign.name}</p>
-                    <p style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#16a34a;margin:4px 0 0 0;">${ws.bestCampaign.replyRate}%</p>
-                  </td>
-                </tr>
-              </table>
-            </td>`);
-        }
-        if (ws.worstCampaign) {
-          cells.push(`
-            <td width="50%" style="padding-left:8px;" valign="top">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="background-color:#fef2f2;border-radius:8px;padding:12px 16px;">
-                    <p style="font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;color:#991b1b;margin:0 0 4px 0;text-transform:uppercase;">Needs Attention</p>
-                    <p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#18181b;margin:0;font-weight:600;">${ws.worstCampaign.name}</p>
-                    <p style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#dc2626;margin:4px 0 0 0;">${ws.worstCampaign.replyRate}%</p>
-                  </td>
-                </tr>
-              </table>
-            </td>`);
-        }
-        campaignHtml = `
-              <tr>
-                <td style="padding-bottom:16px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    <tr>${cells.join("")}</tr>
-                  </table>
-                </td>
-              </tr>`;
+      if (ws.pendingActions > 0) kpiParts.push(`${ws.pendingActions} pending`);
+      if (kpiParts.length > 0) {
+        bodyParts.push(
+          `<p style="font-family:${FONT};font-size:13px;color:#57534e;margin:0 0 8px 0;">${kpiParts.join(" | ")}</p>`,
+        );
       }
 
-      return `
-              <!-- Workspace: ${ws.workspaceName} -->
-              <tr>
-                <td style="padding:24px 0 8px 0;border-bottom:2px solid #e4e4e7;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#18181b;margin:0;">${ws.workspaceName}</p>
-${kpiLine ? `                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0c4a6e;margin:6px 0 0 0;">${kpiLine}</p>` : ""}
-                </td>
-              </tr>
-${campaignHtml}
-              <tr>
-                <td style="padding:12px 0 16px 0;">
-                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;color:#a1a1aa;margin:0 0 8px 0;text-transform:uppercase;">Top Insights</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                    ${insightRowsHtml || '<tr><td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#71717a;">No new insights this week.</td></tr>'}
-                  </table>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding-bottom:8px;">
-                  <span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#d97706;font-weight:600;">${ws.pendingActions} pending action${ws.pendingActions !== 1 ? "s" : ""}</span>
-                </td>
-              </tr>`;
-    })
-    .join("");
+      // Best/worst campaign on one line
+      const campaignParts: string[] = [];
+      if (ws.bestCampaign) {
+        campaignParts.push(`<span style="color:#16a34a;font-weight:600;">Best:</span> ${ws.bestCampaign.name} (${ws.bestCampaign.replyRate}%)`);
+      }
+      if (ws.worstCampaign && ws.worstCampaign.name !== ws.bestCampaign?.name) {
+        campaignParts.push(`<span style="color:#dc2626;font-weight:600;">Worst:</span> ${ws.worstCampaign.name} (${ws.worstCampaign.replyRate}%)`);
+      }
+      if (campaignParts.length > 0) {
+        bodyParts.push(
+          `<p style="font-family:${FONT};font-size:13px;color:#3f3f46;margin:0 0 8px 0;">${campaignParts.join("&nbsp;&nbsp;&nbsp;&nbsp;")}</p>`,
+        );
+      }
 
-  const subject = `Weekly Intelligence Digest — All Workspaces (${workspaces.length})`;
+      // Top 2 insights
+      const topTwo = ws.topInsights.slice(0, 2);
+      if (topTwo.length > 0) {
+        const insightLines = topTwo.map((i) => {
+          const pillColor = i.category === "performance" ? "#635BFF" : i.category === "copy" ? "#0891b2" : "#57534e";
+          const pillBg = i.category === "performance" ? "#f5f3ff" : i.category === "copy" ? "#ecfeff" : "#F8F7F5";
+          return `<p style="font-family:${FONT};font-size:13px;color:#3f3f46;margin:0 0 4px 0;"><span style="font-size:11px;font-weight:600;color:${pillColor};background-color:${pillBg};padding:2px 8px;border-radius:100px;margin-right:6px;">${i.category}</span>${i.observation}</p>`;
+        }).join("");
+        bodyParts.push(insightLines);
+      }
+
+      // Spacer between workspaces
+      bodyParts.push(`<div style="border-bottom:1px solid #E8E6E3;margin:12px 0;"></div>`);
+    }
+  }
+
+  // Section 5: Deliverability
+  bodyParts.push(emailLabel("Deliverability"));
+  const delivSummaryParts = [
+    `Healthy: ${healthyDomains}`,
+    `At-Risk: ${atRiskDomains}`,
+    `Transitions: ${transitionCount}`,
+  ];
+  bodyParts.push(
+    `<p style="font-family:${FONT};font-size:14px;color:#3f3f46;margin:0 0 8px 0;">${delivSummaryParts.join(" | ")}</p>`,
+  );
+  if (worstDomain) {
+    bodyParts.push(
+      `<p style="font-family:${FONT};font-size:13px;color:#991b1b;margin:0 0 12px 0;">Worst domain: <span style="font-family:${MONO};font-size:13px;">${worstDomain.domain}</span> (${worstDomain.overallHealth})</p>`,
+    );
+  }
+
+  // Bounce trends table
+  if (bounceTrends.length > 0) {
+    const trendRows = bounceTrends.map((t) => {
+      const arrowColor = t.arrow === "\u2191" ? "#dc2626" : t.arrow === "\u2193" ? "#16a34a" : "#a1a1aa";
+      return `<tr>
+        <td style="padding:6px 0;border-bottom:1px solid #f4f4f5;font-family:${FONT};font-size:13px;font-weight:600;color:#18181b;">${t.name}</td>
+        <td align="right" style="padding:6px 0;border-bottom:1px solid #f4f4f5;font-family:${MONO};font-size:13px;color:#18181b;">${t.avgRate != null ? (t.avgRate * 100).toFixed(2) + "%" : "N/A"}</td>
+        <td align="center" style="padding:6px 0;border-bottom:1px solid #f4f4f5;font-family:${FONT};font-size:14px;font-weight:700;color:${arrowColor};width:30px;">${t.arrow}</td>
+      </tr>`;
+    }).join("");
+
+    bodyParts.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${trendRows}</table>`,
+    );
+  }
+
+  // Section 6: Quiet Workspaces
+  if (quietWs.length > 0) {
+    const quietNames = quietWs.map((w) => w.workspaceName).join(", ");
+    bodyParts.push(
+      `<p style="font-family:${FONT};font-size:13px;color:#a1a1aa;margin:0 0 24px 0;">${quietWs.length} quiet this week: ${quietNames}</p>`,
+    );
+  }
+
+  // Section 7: CTA
+  bodyParts.push(emailButton("View Dashboard", adminBaseUrl));
+
+  const subject = `[Outsignal] Weekly Digest \u2014 ${workspaces.length} Workspaces`;
 
   try {
     await audited(
       {
-        notificationType: "weekly_digest_bundled",
+        notificationType: "weekly_digest_combined",
         channel: "email",
         recipient: verified.join(","),
         workspaceSlug: "all",
@@ -1854,23 +1883,13 @@ ${campaignHtml}
           to: verified,
           subject,
           html: emailLayout({
-            body: [
-              emailHeading("Weekly Intelligence Digest", `All Workspaces — ${workspaces.length} total`),
-              emailStatRow3(
-                emailStatBox(totalReplies, "Total Replies", "#0c4a6e", "#f0f9ff"),
-                emailStatBox(totalInsights, "Total Insights", "#0c4a6e", "#f0f9ff"),
-                emailStatBox(totalPending, "Pending Actions", "#d97706", "#f0f9ff"),
-              ),
-              emailText(`${activeWorkspaces.length} active / ${workspaces.length - activeWorkspaces.length} quiet this week`),
-              `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${workspaceSectionsHtml}</table>`,
-              `<div style="padding-top:24px;">${emailButton("View All Insights", insightsUrl)}</div>`,
-            ].join(""),
-            footerNote: "Weekly intelligence digest across all workspaces. You received this because you are an admin.",
+            body: bodyParts.join(""),
+            footerNote: "Weekly digest \u2014 Mondays at 8am UTC. You received this as the system administrator.",
           }),
         }),
     );
   } catch (err) {
-    console.error("[notifyWeeklyDigestBundled] Email failed:", err);
+    console.error("[notifyWeeklyDigestCombined] Email failed:", err);
   }
 }
 

@@ -1,7 +1,7 @@
 import { schedules } from "@trigger.dev/sdk";
 import { PrismaClient } from "@prisma/client";
 import { generateInsights } from "@/lib/insights/generate";
-import { notifyWeeklyDigest, notifyWeeklyDigestBundled } from "@/lib/notifications";
+import { notifyWeeklyDigest, notifyWeeklyDigestCombined } from "@/lib/notifications";
 import { anthropicQueue } from "./queues";
 import { progressWarmup } from "@/lib/linkedin/rate-limiter";
 import { updateAcceptanceRate } from "@/lib/linkedin/sender";
@@ -210,9 +210,9 @@ export const generateInsightsTask = schedules.task({
 
       if (allDigestData.length > 0) {
         try {
-          await notifyWeeklyDigestBundled(allDigestData);
+          await notifyWeeklyDigestCombined(allDigestData);
           console.log(
-            `[generate-insights] Bundled digest email sent for ${allDigestData.length} workspaces`,
+            `[generate-insights] Combined digest email sent for ${allDigestData.length} workspaces`,
           );
         } catch (err) {
           console.error("[generate-insights] Bundled digest email failed:", err);
