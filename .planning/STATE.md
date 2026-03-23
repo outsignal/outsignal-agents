@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 46 of 51 (Skill Architecture Foundation)
-Plan: 01 of 3 complete
+Plan: 02 of 3 complete
 Status: In progress
-Last activity: 2026-03-23 — Phase 46 Plan 01 complete (.claudeignore + sanitize-output.ts)
+Last activity: 2026-03-23 — Phase 46 Plan 02 complete (shared rules architecture + loadRules + ARCHITECTURE.md)
 
 Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
 
@@ -55,6 +55,10 @@ Key v7.0 pre-milestone decisions:
 - [v7.0 Pre-Milestone]: Dual-mode strategy decision gates Phase 46 — shared rules vs time-boxed fallback must be locked before any skill file is authored
 - [Phase 46]: Secrets-only sanitization scope: PII preserved intentionally
 - [Phase 46]: sanitizeOutput is a pure function — no process.env access
+- [Phase 46-02]: Dual-mode strategy locked: .claude/rules/ is single source of truth for both CLI skills and API agents
+- [Phase 46-02]: loadRules reads at invocation time so prompts always pick up latest rules
+- [Phase 46-02]: USER_INPUT_GUARD kept in TS agent configs, not in rules files (security boundary, not behavioral rule)
+- [Phase 46-02]: campaign-rules.md combines orchestrator + campaign behavioral rules (same workflow)
 
 ### Pending Todos
 
@@ -78,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-23
-Stopped at: Completed 46-01-PLAN.md (security foundation)
+Stopped at: Completed 46-02-PLAN.md (shared rules architecture)
 Resume file: None
