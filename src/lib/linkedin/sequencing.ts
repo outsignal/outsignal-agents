@@ -47,6 +47,9 @@ export function buildTemplateContext(
     opened?: boolean;
     clicked?: boolean;
   },
+  outreachContext?: {
+    lastEmailMonth?: string;
+  },
 ): Record<string, unknown> {
   return {
     // Person fields
@@ -61,6 +64,9 @@ export function buildTemplateContext(
     emailSubject: emailContext?.subject ?? "",
     emailOpened: emailContext?.opened ?? false,
     emailClicked: emailContext?.clicked ?? false,
+
+    // Outreach history
+    lastEmailMonth: outreachContext?.lastEmailMonth ?? "",
   };
 }
 
@@ -172,12 +178,33 @@ export async function evaluateSequenceRules(
 
   const descriptors: SequenceActionDescriptor[] = [];
 
+  // Resolve {{lastEmailMonth}} from this campaign's description field.
+  // When setting up LinkedIn retargeting campaigns, store the source email
+  // completion month in description as "lastEmailMonth:February" (or similar).
+  // This avoids fragile date lookups on synced email campaigns whose DB
+  // timestamps don't reflect the real EB completion dates.
+  let lastEmailMonth = "";
+  try {
+    const thisCampaign = await prisma.campaign.findUnique({
+      where: { workspaceSlug_name: { workspaceSlug, name: campaignName } },
+      select: { description: true },
+    });
+    if (thisCampaign?.description) {
+      const monthMatch = thisCampaign.description.match(/lastEmailMonth:(\w+)/);
+      if (monthMatch) {
+        lastEmailMonth = monthMatch[1];
+      }
+    }
+  } catch (err) {
+    console.warn("[sequencing] Failed to look up lastEmailMonth:", err);
+  }
+
   for (const rule of rules) {
     // 2. Evaluate condition (supports both legacy requireConnected and new conditionType)
     const conditionPassed = await evaluateCondition(rule, personId, workspaceSlug);
 
     // 3. Build template context
-    const context = buildTemplateContext(person, emailContext);
+    const context = buildTemplateContext(person, emailContext, { lastEmailMonth });
 
     if (conditionPassed) {
       // Main path — condition passes, use primary action

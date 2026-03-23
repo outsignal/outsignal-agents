@@ -19,7 +19,7 @@ export interface IcpScoreResult {
 }
 
 const IcpScoreSchema = z.object({
-  score: z.number().min(0).max(100),
+  score: z.number().describe("ICP fit score from 0 to 100"),
   reasoning: z.string().describe("1-3 sentence explanation of ICP fit"),
   confidence: z.enum(["high", "medium", "low"]).describe(
     "Data completeness: high=all signals, medium=2/3, low=sparse"

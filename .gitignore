@@ -54,3 +54,6 @@ worker-signals/node_modules/
 
 # Trigger.dev local dev cache
 /.trigger/
+
+# Lead data exports
+/data/

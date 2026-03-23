@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const { workspaceSlug } = await getPortalSession();
 
-    const [emailCount, linkedinAgg] = await Promise.all([
+    const [emailCount, linkedinCount] = await Promise.all([
       prisma.reply.count({
         where: {
           workspaceSlug,
@@ -16,13 +16,10 @@ export async function GET() {
           deletedAt: null,
         },
       }),
-      prisma.linkedInConversation.aggregate({
-        _sum: { unreadCount: true },
-        where: { workspaceSlug },
+      prisma.linkedInConversation.count({
+        where: { workspaceSlug, unreadCount: { gt: 0 } },
       }),
     ]);
-
-    const linkedinCount = linkedinAgg._sum.unreadCount ?? 0;
     const total = emailCount + linkedinCount;
 
     return NextResponse.json({ email: emailCount, linkedin: linkedinCount, total });
