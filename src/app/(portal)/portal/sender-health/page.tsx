@@ -274,7 +274,7 @@ export default async function PortalSenderHealthPage() {
   const domainAuthPass = domainHealthRecords.filter(
     (d) =>
       d.spfStatus === "pass" &&
-      (d.dkimStatus === "pass" || d.dkimStatus === "partial") &&
+      d.dkimStatus === "pass" &&
       d.dmarcStatus === "pass",
   ).length;
   const domainAuthPassRate =

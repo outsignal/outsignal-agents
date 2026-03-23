@@ -336,6 +336,17 @@ export class EmailBisonClient {
     return res.data;
   }
 
+  async addSenderToCampaign(campaignId: number, senderEmailIds: number[]): Promise<void> {
+    await this.request<unknown>(
+      `/campaigns/${campaignId}/add-sender-emails`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ sender_email_ids: senderEmailIds }),
+        revalidate: 0,
+      },
+    );
+  }
+
   async removeSenderFromCampaign(campaignId: number, senderEmailId: number): Promise<void> {
     await this.request<unknown>(
       `/campaigns/${campaignId}/remove-sender-emails`,

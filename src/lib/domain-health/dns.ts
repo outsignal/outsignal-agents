@@ -114,11 +114,8 @@ export async function checkDkim(domain: string): Promise<DkimResult> {
     return { status: "missing", passedSelectors: [] };
   }
 
-  if (passedSelectors.length === DKIM_SELECTORS.length) {
-    return { status: "pass", passedSelectors };
-  }
-
-  return { status: "partial", passedSelectors };
+  // At least 1 valid DKIM selector = pass (domains only need one signing selector)
+  return { status: "pass", passedSelectors };
 }
 
 /**
@@ -344,18 +341,17 @@ export async function checkAllDns(domain: string): Promise<DnsCheckResult> {
  *
  * Rules:
  * - "critical"  → critical-tier blacklist hits (Spamhaus DBL), or SPF fail, or DMARC fail
- * - "warning"   → warning-tier-only blacklist hits, DKIM partial, DMARC policy "none", SPF/DMARC missing
- * - "healthy"   → SPF pass, DKIM pass/partial with no blacklists, DMARC pass with quarantine/reject
+ * - "warning"   → warning-tier-only blacklist hits, DKIM missing, DMARC policy "none", SPF/DMARC missing
+ * - "healthy"   → SPF pass, DKIM pass (>=1 selector), DMARC pass with quarantine/reject, no blacklists
  * - "unknown"   → any other combination (e.g. all missing with no data)
  */
 export function computeOverallHealth(
   dns: DnsCheckResult,
   blacklistHits: string[],
   blacklistSeverity?: "none" | "warning" | "critical",
-  source?: "emailguard" | "legacy",
+  _source?: "emailguard" | "legacy",
 ): "healthy" | "warning" | "critical" | "unknown" {
   const { spf, dkim, dmarc } = dns;
-  const effectiveSource = source ?? dns.source;
 
   // Critical: critical-tier blacklist hits or hard fails
   if (blacklistHits.length > 0 && blacklistSeverity === "critical") return "critical";
@@ -367,8 +363,6 @@ export function computeOverallHealth(
   if (spf.status === "missing") return "warning";
   if (dmarc.status === "missing") return "warning";
   if (dmarc.policy === "none") return "warning";
-  // "partial" DKIM only applies for legacy DNS checks — EmailGuard gives definitive pass/fail
-  if (dkim.status === "partial" && effectiveSource !== "emailguard") return "warning";
   if (dkim.status === "missing") return "warning";
   if (dns.mx.status === "missing") return "warning";
 

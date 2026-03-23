@@ -18,8 +18,8 @@ export interface SpfResult {
 
 /** Result of DKIM TXT record lookups across all selectors */
 export interface DkimResult {
-  /** "pass" if all selectors found, "partial" if some found, "missing" if none found, "fail" if lookup errors */
-  status: "pass" | "partial" | "fail" | "missing";
+  /** "pass" if at least 1 selector found, "missing" if none found, "fail" if lookup errors */
+  status: "pass" | "fail" | "missing";
   /** Array of selector names that had valid DKIM records */
   passedSelectors: string[];
 }

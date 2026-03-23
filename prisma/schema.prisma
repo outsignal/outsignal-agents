@@ -719,7 +719,10 @@ model Campaign {
   emailBisonSequenceId Int?
 
   // --- Signal Campaign fields (Phase 19) ---
-  type                String  @default("static") // "static" | "signal"
+  type                String  @default("static") // "static" | "signal" | "ooo_reengage"
+
+  // Links re-engagement or child campaigns to their parent
+  parentCampaignId    String?
 
   // ICP criteria for signal campaigns (structured JSON — deterministic matching, not LLM)
   // { industries: string[], titles: string[], companySizes: string[], locations: string[], keywords?: string[] }
@@ -758,6 +761,7 @@ model Campaign {
   @@index([status])
   @@index([type, status])
   @@index([emailBisonCampaignId])
+  @@index([parentCampaignId])
 }
 
 model CampaignDeploy {
