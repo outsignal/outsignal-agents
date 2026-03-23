@@ -16,7 +16,7 @@ const adminCreateSenderSchema = z.object({
   linkedinPassword: z.string().optional().or(z.literal("")),
   loginMethod: z
     .enum(["credentials", "infinite", "extension", "none"])
-    .default("none"),
+    .default("credentials"),
   linkedinTier: z.enum(["free", "premium"]).default("free"),
   proxyUrl: z.string().optional().or(z.literal("")),
   totpSecret: z.string().optional().or(z.literal("")),

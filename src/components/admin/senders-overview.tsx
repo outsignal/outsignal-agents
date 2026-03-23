@@ -232,7 +232,7 @@ export function SendersOverview() {
           onClick={() => setShowAddDialog(true)}
         >
           <Plus className="size-4" />
-          Add LinkedIn Sender
+          Add LinkedIn Account
         </Button>
       </div>
 

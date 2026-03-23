@@ -121,7 +121,7 @@ export function AddLinkedInSenderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add LinkedIn Sender</DialogTitle>
+          <DialogTitle>Add LinkedIn Account</DialogTitle>
           <DialogDescription>
             Create a new LinkedIn sender profile linked to a workspace.
           </DialogDescription>

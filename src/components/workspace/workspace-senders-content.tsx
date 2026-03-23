@@ -172,7 +172,7 @@ export function WorkspaceSendersContent({
         {emailSenders.length === 0 ? (
           <EmptyState
             icon={Mail}
-            title="No email senders"
+            title="No email inboxes"
             description="No email sending accounts are linked to this workspace."
           />
         ) : (
@@ -233,8 +233,8 @@ export function WorkspaceSendersContent({
         {linkedinSenders.length === 0 ? (
           <EmptyState
             icon={Linkedin}
-            title="No LinkedIn senders"
-            description="No LinkedIn senders are linked to this workspace."
+            title="No LinkedIn accounts"
+            description="No LinkedIn accounts are linked to this workspace."
           />
         ) : (
           <>

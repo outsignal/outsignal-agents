@@ -1023,7 +1023,7 @@ export async function notifySenderHealth(params: {
             elements: [
               {
                 type: "button",
-                text: { type: "plain_text", text: "View Senders" },
+                text: { type: "plain_text", text: "View LinkedIn Accounts" },
                 url: sendersUrl,
               },
             ],
@@ -1070,7 +1070,7 @@ export async function notifySenderHealth(params: {
           );
         }
 
-        bodyParts.push(emailButton("View Senders", sendersUrl));
+        bodyParts.push(emailButton("View LinkedIn Accounts", sendersUrl));
 
         await audited(
           { notificationType: "sender_health", channel: "email", recipient: verified.join(","), workspaceSlug: params.workspaceSlug },
@@ -1141,7 +1141,7 @@ export async function sendSenderHealthDigest(params: {
             elements: [
               {
                 type: "button",
-                text: { type: "plain_text", text: "View Senders" },
+                text: { type: "plain_text", text: "View LinkedIn Accounts" },
                 url: sendersUrl,
               },
             ],
@@ -1190,7 +1190,7 @@ export async function sendSenderHealthDigest(params: {
                 emailHeading("Daily Sender Health Digest", `${params.warnings.length} warning${params.warnings.length !== 1 ? "s" : ""} across ${byWorkspace.size} workspace${byWorkspace.size !== 1 ? "s" : ""}`),
                 emailLabel("Warnings"),
                 `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;">${warningRowsHtml}</table>`,
-                emailButton("View Senders", sendersUrl),
+                emailButton("View LinkedIn Accounts", sendersUrl),
               ].join(""),
               footerNote: "Admin sender health digest. You received this because you are the system administrator.",
             }),
