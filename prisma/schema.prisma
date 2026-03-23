@@ -1321,7 +1321,7 @@ model DomainHealth {
   spfRecord   String?   // Raw SPF record text
 
   // DKIM validation
-  dkimStatus    String?   // "pass" | "partial" | "fail" | "missing"
+  dkimStatus    String?   // "pass" | "fail" | "missing"
   dkimSelectors String?   // JSON array of passing selectors, e.g. '["google","default"]'
 
   // DMARC validation

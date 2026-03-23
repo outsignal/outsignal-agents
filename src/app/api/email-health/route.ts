@@ -33,7 +33,7 @@ function computeHealth(
   const replyRate = sent > 0 ? (sender.unique_replied_count / sent) * 100 : 0;
 
   let healthStatus: "healthy" | "warning" | "critical" = "healthy";
-  if (sender.status === "Disconnected") healthStatus = "critical";
+  if (sender.status === "Not connected") healthStatus = "critical";
   else if (bounceRate > 5) healthStatus = "critical";
   else if (bounceRate > 2) healthStatus = "warning";
 
@@ -106,14 +106,14 @@ export async function GET(request: NextRequest) {
 
     // Compute aggregates
     const totalSenders = allSenders.length;
-    const disconnected = allSenders.filter((s) => s.status === "Disconnected");
+    const disconnected = allSenders.filter((s) => s.status === "Not connected");
     const connected = totalSenders - disconnected.length;
     const totalSent = allSenders.reduce((sum, s) => sum + s.emailsSent, 0);
     const totalBounced = allSenders.reduce((sum, s) => sum + s.bounced, 0);
     const totalReplies = allSenders.reduce((sum, s) => sum + s.replies, 0);
     const avgBounceRate = totalSent > 0 ? (totalBounced / totalSent) * 100 : 0;
     const avgReplyRate = totalSent > 0 ? (totalReplies / totalSent) * 100 : 0;
-    const highBounce = allSenders.filter((s) => s.bounceRate > 5 && s.status !== "Disconnected");
+    const highBounce = allSenders.filter((s) => s.bounceRate > 5 && s.status !== "Not connected");
 
     // Pagination
     const totalPages = Math.ceil(totalSenders / PAGE_SIZE);

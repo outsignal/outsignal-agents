@@ -66,7 +66,7 @@ function computeEmailHealth(sender: SenderEmail): EmailSenderRow {
   const replyRate = sent > 0 ? (sender.unique_replied_count / sent) * 100 : 0;
 
   let healthStatus: "healthy" | "warning" | "critical" = "healthy";
-  if (sender.status === "Disconnected") healthStatus = "critical";
+  if (sender.status === "Not connected") healthStatus = "critical";
   else if (bounceRate > 5) healthStatus = "critical";
   else if (bounceRate > 3) healthStatus = "warning";
 
@@ -91,14 +91,11 @@ function extractDomain(email: string): string {
 function dnsBadgeStyle(status: string | null) {
   if (!status || status === "missing" || status === "fail")
     return "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-200";
-  if (status === "partial")
-    return "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200";
   return "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200";
 }
 
 function dnsIcon(status: string | null): string {
   if (!status || status === "missing" || status === "fail") return "\u2717";
-  if (status === "partial") return "~";
   return "\u2713";
 }
 
@@ -264,7 +261,7 @@ export default async function PortalSenderHealthPage() {
 
   // ---- Compute aggregates ----
   const totalEmailSenders = emailSenders.length;
-  const disconnected = emailSenders.filter((s) => s.status === "Disconnected");
+  const disconnected = emailSenders.filter((s) => s.status === "Not connected");
   const connectedInboxes = totalEmailSenders - disconnected.length;
 
   const totalSent = emailSenders.reduce((sum, s) => sum + s.emailsSent, 0);

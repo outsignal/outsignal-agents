@@ -268,7 +268,7 @@ export async function GET(request: NextRequest) {
         inboxesTotal += senders.length;
         for (const s of senders) {
           const status = (s.status ?? "").toLowerCase();
-          if (status === "disconnected") {
+          if (status === "not connected") {
             inboxesCritical++;
             inboxAlerts.push({ email: s.email, workspace: wsName, reason: "Disconnected", severity: "error" });
           } else {
