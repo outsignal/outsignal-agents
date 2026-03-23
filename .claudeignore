@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+.env*.local
+
+# Certificate files
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local database
+prisma/dev.db
+prisma/dev.db-journal
+
+# Build artifacts (may contain env interpolation)
+.next/
+dist/
+.trigger/
+
+# Deployment config (contains project IDs and tokens)
+.vercel/
+
+# Dependencies
+node_modules/
+worker/node_modules/
+
+# Test output
+coverage/
+
+# OS artifacts
+.DS_Store
