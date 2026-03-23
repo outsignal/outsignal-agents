@@ -454,7 +454,10 @@ Plans:
   3. Memory files are gitignored (no client intelligence leaks to version control) while directory structure is preserved via .gitkeep files so new machines get the scaffolding
   4. A global-insights.md file exists at .nova/memory/global-insights.md with schema for cross-client patterns and at least one seeded entry
   5. Memory schema includes timestamp requirements and write governance rules that prevent agents from overwriting sections with stale or contradictory content
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 47-01-PLAN.md — Seed script + gitignore configuration
+- [ ] 47-02-PLAN.md — Execute seed, verify output, update ARCHITECTURE.md
 
 ### Phase 48: CLI Wrapper Scripts
 **Goal**: Every tool function the specialist agents need is callable as a standalone script with sanitized JSON output — agents can do real work without any direct DB or API access
