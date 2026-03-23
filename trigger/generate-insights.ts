@@ -4,7 +4,7 @@ import { generateInsights } from "@/lib/insights/generate";
 import { notifyWeeklyDigest, notifyWeeklyDigestCombined } from "@/lib/notifications";
 import { anthropicQueue } from "./queues";
 import { progressWarmup } from "@/lib/linkedin/rate-limiter";
-import { updateAcceptanceRate } from "@/lib/linkedin/sender";
+import { updateAcceptanceRate, activateSender } from "@/lib/linkedin/sender";
 import { recoverStuckActions, expireStaleActions } from "@/lib/linkedin/queue";
 
 // PrismaClient at module scope — not inside run()
@@ -229,6 +229,51 @@ export const generateInsightsTask = schedules.task({
     // -----------------------------------------------------------------------
     console.log(`[generate-insights] Step 2: LinkedIn maintenance`);
 
+    // Auto-start warmup for senders with active sessions + deployed LinkedIn campaigns
+    const unstartedSenders = await prisma.sender.findMany({
+      where: { warmupDay: 0, sessionStatus: "active" },
+      select: { id: true, name: true, workspaceSlug: true },
+    });
+
+    let autoStarted = 0;
+    for (const sender of unstartedSenders) {
+      // Check if workspace has a deployed/active LinkedIn campaign
+      const hasLinkedInCampaign = await prisma.campaign.findFirst({
+        where: {
+          workspaceSlug: sender.workspaceSlug,
+          status: { in: ["deployed", "active"] },
+          channels: { contains: "linkedin" },
+        },
+        select: { id: true },
+      });
+
+      if (hasLinkedInCampaign) {
+        try {
+          await activateSender(sender.id);
+          await prisma.auditLog.create({
+            data: {
+              action: "sender.warmup_auto_start",
+              entityType: "Sender",
+              entityId: sender.id,
+              adminEmail: "system",
+              metadata: {
+                workspaceSlug: sender.workspaceSlug,
+                reason: "auto-start: active session + deployed LinkedIn campaign",
+              },
+            },
+          });
+          autoStarted++;
+          console.log(`[generate-insights] Auto-started warmup for sender ${sender.name} (${sender.id}) in ${sender.workspaceSlug}`);
+        } catch (err) {
+          console.error(`[generate-insights] Auto-start failed for sender ${sender.name}:`, err);
+        }
+      }
+    }
+
+    if (autoStarted > 0) {
+      console.log(`[generate-insights] Auto-started warmup for ${autoStarted}/${unstartedSenders.length} eligible senders`);
+    }
+
     const activeSenders = await prisma.sender.findMany({
       where: { status: "active" },
       select: { id: true, name: true },
@@ -267,6 +312,7 @@ export const generateInsightsTask = schedules.task({
       results,
       errors: errors.length > 0 ? errors : undefined,
       linkedinMaintenance: {
+        autoStarted,
         warmupProcessed,
         warmupErrors,
         stuckRecovered,
