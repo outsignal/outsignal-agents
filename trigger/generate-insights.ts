@@ -154,6 +154,8 @@ export const generateInsightsTask = schedules.task({
   },
 
   run: async () => {
+    const isMonday = new Date().getUTCDay() === 1;
+
     const workspaces = await prisma.workspace.findMany({
       select: { slug: true },
     });
@@ -176,10 +178,12 @@ export const generateInsightsTask = schedules.task({
         }
 
         let digestData: WorkspaceDigestData | null = null;
-        try {
-          digestData = await sendDigestForWorkspace(ws.slug);
-        } catch (err) {
-          console.error(`[generate-insights] Digest failed for ${ws.slug}:`, err);
+        if (isMonday) {
+          try {
+            digestData = await sendDigestForWorkspace(ws.slug);
+          } catch (err) {
+            console.error(`[generate-insights] Digest failed for ${ws.slug}:`, err);
+          }
         }
 
         return {
@@ -198,20 +202,24 @@ export const generateInsightsTask = schedules.task({
       `[generate-insights] Step 1 complete: ${totalInsights} total insights, ${errors.length} workspace errors`,
     );
 
-    // Send bundled email digest (one email with all workspaces)
-    const allDigestData = results
-      .map((r) => r.digestData)
-      .filter((d): d is WorkspaceDigestData => d != null);
+    // Send bundled email digest (one email with all workspaces) — Mondays only
+    if (isMonday) {
+      const allDigestData = results
+        .map((r) => r.digestData)
+        .filter((d): d is WorkspaceDigestData => d != null);
 
-    if (allDigestData.length > 0) {
-      try {
-        await notifyWeeklyDigestBundled(allDigestData);
-        console.log(
-          `[generate-insights] Bundled digest email sent for ${allDigestData.length} workspaces`,
-        );
-      } catch (err) {
-        console.error("[generate-insights] Bundled digest email failed:", err);
+      if (allDigestData.length > 0) {
+        try {
+          await notifyWeeklyDigestBundled(allDigestData);
+          console.log(
+            `[generate-insights] Bundled digest email sent for ${allDigestData.length} workspaces`,
+          );
+        } catch (err) {
+          console.error("[generate-insights] Bundled digest email failed:", err);
+        }
       }
+    } else {
+      console.log("[generate-insights] Skipping weekly digest (not Monday)");
     }
 
     // -----------------------------------------------------------------------
