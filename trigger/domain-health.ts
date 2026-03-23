@@ -583,6 +583,58 @@ async function sendChangeNotifications(
       } catch (err) {
         console.error(`${LOG_PREFIX} Failed to send delist notification for ${domain}:`, err);
       }
+
+      // If domain is fully delisted (no remaining hits), create recovery events
+      // for all inboxes on this domain that were escalated due to blacklist
+      if (currentBlacklistHits.length === 0) {
+        try {
+          const affectedSenders = await prisma.sender.findMany({
+            where: {
+              emailAddress: { endsWith: `@${domain}` },
+              emailBounceStatus: "critical",
+            },
+          });
+
+          for (const sender of affectedSenders) {
+            await prisma.$transaction([
+              prisma.emailHealthEvent.create({
+                data: {
+                  senderEmail: sender.emailAddress!,
+                  senderDomain: domain,
+                  workspaceSlug: sender.workspaceSlug,
+                  fromStatus: "critical",
+                  toStatus: "healthy",
+                  reason: "blacklist_cleared",
+                  detail: `Domain ${domain} removed from blacklist: ${removedHits.join(", ")}`,
+                  senderId: sender.id,
+                },
+              }),
+              prisma.sender.update({
+                where: { id: sender.id },
+                data: {
+                  emailBounceStatus: "healthy",
+                  emailBounceStatusAt: new Date(),
+                  consecutiveHealthyChecks: 0,
+                },
+              }),
+            ]);
+            console.log(
+              `${LOG_PREFIX} ${sender.emailAddress}: blacklist cleared recovery — critical → healthy`,
+            );
+          }
+
+          if (affectedSenders.length > 0) {
+            console.log(
+              `${LOG_PREFIX} Created ${affectedSenders.length} blacklist recovery event(s) for ${domain}`,
+            );
+          }
+        } catch (err) {
+          console.error(
+            `${LOG_PREFIX} Failed to create blacklist recovery events for ${domain}:`,
+            err,
+          );
+        }
+      }
     }
   }
 

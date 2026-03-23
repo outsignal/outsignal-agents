@@ -111,6 +111,8 @@ function eventReasonLabel(reason: string): string {
       return "Blacklist";
     case "auto_recovered":
       return "Auto Recovery";
+    case "blacklist_cleared":
+      return "Blacklist Cleared";
     default:
       return reason;
   }

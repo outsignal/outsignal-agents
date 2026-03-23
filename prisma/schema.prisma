@@ -885,8 +885,8 @@ model Sender {
 
   // Rate limits (account-level, adjusted by warm-up)
   dailyConnectionLimit  Int @default(5)
-  dailyMessageLimit     Int @default(5)
-  dailyProfileViewLimit Int @default(10)
+  dailyMessageLimit     Int @default(10)
+  dailyProfileViewLimit Int @default(15)
 
   status    String   @default("setup") // setup | active | paused | disabled
   createdAt DateTime @default(now())
