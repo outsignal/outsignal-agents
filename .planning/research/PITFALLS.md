@@ -1,302 +1,234 @@
 # Pitfalls Research
 
-**Domain:** Adding Trigger.dev to existing production Next.js + Vercel app (Outsignal v6.0)
-**Researched:** 2026-03-12
-**Confidence:** HIGH (official Trigger.dev docs + GitHub issues + Neon docs verified)
+**Domain:** Adding Claude Code CLI skills with persistent client memory to an existing API-based agent system (Outsignal v7.0)
+**Researched:** 2026-03-23
+**Confidence:** HIGH (official Claude Code docs, Anthropic API docs, community post-mortems, GitHub issues verified)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Prisma Binary Target Mismatch Causes Silent Deploy Failure
+### Pitfall 1: Skill Prompt Bloat — SKILL.md Exceeds Effective Token Budget
 
 **What goes wrong:**
-Trigger.dev Cloud runs on `debian-openssl-3.0.x` but Prisma Client is likely generated for `native` or `debian-openssl-1.1.x` (the typical Vercel/macOS target). The deploy succeeds but tasks immediately crash on first run with a native library error. The error message is unhelpful and doesn't point to the schema.
+The Writer Agent system prompt in `src/lib/agents/writer.ts` is already ~290 lines of dense instruction. When converted to a SKILL.md file naively (a 1:1 copy of the system prompt), the skill loads the entire content into context the moment it's triggered — consuming roughly 4,000-6,000 tokens before the agent has processed a single tool call. With 4-5 skills triggered in an orchestrated session (orchestrator + research + writer + leads + campaign), the cumulative instruction overhead alone can reach 15,000-20,000 tokens, leaving little room for client memory, tool outputs, and the actual conversation.
 
 **Why it happens:**
-The Prisma extension in legacy mode runs `prisma generate` during the Trigger.dev build process. If `binaryTargets` in `schema.prisma` doesn't include the Trigger.dev Cloud target, the generated client is incompatible with the remote infrastructure even though it works locally and on Vercel.
+The existing API-based agents were designed for Anthropic SDK `generateText()` calls where the system prompt is shipped fresh per invocation with no persistent overhead. There's no incentive to trim. When converting to skills, developers copy the system prompt verbatim into SKILL.md without considering that skills compound across a session — every skill triggered in a conversation adds to the running token count.
 
 **How to avoid:**
-Add `"debian-openssl-3.0.x"` to `binaryTargets` in `schema.prisma` before first Trigger.dev deploy:
-```prisma
-generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
-}
-```
-Also configure the Prisma extension in `trigger.config.ts` with explicit `mode: "legacy"` and `directUrlEnvVarName: "DATABASE_URL_UNPOOLED"`.
+Apply a hard 200-line / 3,000-token budget per SKILL.md. Separate instruction content into three layers:
+1. **SKILL.md body**: Workflow steps and decision rules only (what Claude must do, not extensive examples)
+2. **`.claude/rules/` path-scoped files**: Quality rules like banned phrases and copy restrictions — load only when the writer skill is active via `paths: ["**/*"]` scoping at skill level
+3. **Reference files read on demand via bash**: Examples, KB search patterns, lengthy enumerations — Claude reads them only when needed
+
+The current 25-item banned phrases list, the Creative Ideas validation rules, and the full reply-suggestion few-shot examples are all candidates for extraction into reference files.
 
 **Warning signs:**
-- Task runs that immediately fail with "Query engine library" or "binary not found" errors
-- All task runs fail regardless of payload — never a logic error, always a startup error
-- Works perfectly in `trigger.dev dev` but fails only on deployed runs
+- Claude Code session starts slow when agent skills are involved
+- Context window fills before any real work happens in complex orchestration sessions
+- `/compact` is needed mid-session during normal campaign generation
+- Token usage logs show 15,000+ tokens consumed before the first tool call result
 
 **Phase to address:**
-Phase 1 (Trigger.dev installation and Next.js integration) — must be addressed before any task can run.
+Phase 1 (skill definition architecture) — establish the content-layering convention before any skill files are written. Retrofitting is expensive.
 
 ---
 
-### Pitfall 2: Neon Connection Pool Exhaustion Under Concurrent Task Load
+### Pitfall 2: Memory Pollution — Agent Writes Noise, Clients Get Wrong Recommendations
 
 **What goes wrong:**
-Vercel's Next.js app uses Neon's pooled connection URL (as it should for serverless). Trigger.dev tasks also run in a serverless-like environment and each task instance opens its own Prisma connection pool. With multiple crons firing, webhook tasks processing in parallel, and the existing Vercel app all hitting Neon simultaneously, the per-database pool size gets exhausted. Tasks fail with `P1001` or "too many connections" errors that are intermittent and hard to reproduce.
+Each workspace gets a `MEMORY.md` file where the agent accumulates client intelligence across sessions: tone preferences, ICP wins, copy patterns, campaign history, feedback. If there is no governance on what gets written — or agents are allowed to write freely — the memory file fills with low-signal observations, contradictory notes from different sessions, and stale intelligence from campaigns that are no longer active. After 10-15 sessions, the memory reads as noise. The Writer Agent might retrieve a tone preference from 6 months ago that the client explicitly revised, generating copy that gets rejected.
 
 **Why it happens:**
-Prisma's default `connection_limit` is 9 connections per PrismaClient instance. On a Neon 0.25 CU compute, total `max_connections` is ~112. Neon's PgBouncer allows 90% of that per pool (~100). If 5 concurrent Trigger.dev tasks each spin up a PrismaClient with 9 connections, that's 45 connections before counting the Vercel app's connections. Burst concurrency on Trigger.dev free/hobby plans can spike this further.
+Claude's auto-memory is designed to write "learnings and patterns" opportunistically. Without a schema enforcing what belongs in client memory (and what doesn't), agents write whatever seems relevant in context. Draft-level feedback gets saved alongside strategic ICP wins. One-off corrections overwrite durable rules. There is no built-in TTL, no staleness marker, and no quality threshold.
 
 **How to avoid:**
-1. Use Neon's pooled connection URL (`DATABASE_URL` with `-pooler` in hostname) in Trigger.dev env vars — not the direct URL.
-2. Set explicit `connection_limit=1` on the Prisma client instantiated in tasks by appending `?connection_limit=1&pool_timeout=10` to the database URL.
-3. Set `concurrencyLimit` on all task queues to cap simultaneous task executions.
-4. Keep `DATABASE_URL_UNPOOLED` only for the Prisma extension's `directUrlEnvVarName` (for migrations), never for runtime tasks.
+Design a strict memory schema with named sections and write rules enforced in the skill's memory-write instructions:
+- `## ICP Wins` — only confirmed high-performing ICP patterns, timestamped
+- `## Copy Rules` — standing client-specific writing rules (e.g., "never mention price in step 1")
+- `## Campaign History` — last 3 campaigns only, rotate out oldest when adding new
+- `## Feedback Log` — last 5 feedback items, date-stamped
+- `## Archived` — moved here, never deleted (so stale data is visually separated)
+
+Agents must be explicitly instructed: write only when a durable learning is confirmed, not on every session. Temporary context (this session's campaign details) goes in working notes, not persistent memory.
 
 **Warning signs:**
-- Intermittent `P1001` errors in task runs that don't correlate with a single task type
-- Errors spike when cron windows overlap (e.g., domain-health + poll-replies running at the same time)
-- Tasks succeed individually in dev but fail under load in production
+- Client memory files growing faster than 50 lines per month
+- Copy generated by the agent contradicts known client preferences
+- Memory file contains session-specific notes like "used Rise campaign ID abc123 today"
+- Multiple entries for the same topic with different conclusions (no resolution)
+- Admin reports agent "forgot" a preference that was supposed to be persistent
 
 **Phase to address:**
-Phase 1 (installation) — set connection string correctly from day one. Phase 2 (first cron migration) — verify under load before proceeding.
+Phase 2 (client memory namespace design) — the schema and write rules must be designed before any agent session writes to client memory. Cleaning up a polluted memory file is expensive and risks discarding real learnings.
 
 ---
 
-### Pitfall 3: Environment Variables Not Synced to Trigger.dev — Tasks Get `undefined`
+### Pitfall 3: Context Window Overflow — Client Memory + Skill Prompt + Tool Output Exceeds Limit
 
 **What goes wrong:**
-All Vercel env vars (Anthropic key, EmailBison token, Slack tokens, Neon DB URL, etc.) are not automatically available in Trigger.dev tasks. Tasks that reference `process.env.ANTHROPIC_API_KEY` get `undefined`, causing silent failures or cryptic API errors rather than "missing env var" errors. The `trigger.dev dev` environment reads from `.env.local` and works fine, masking the problem until production deploy.
+In a complex campaign generation session, the context window receives: CLAUDE.md (global instructions), skill metadata (~100 tokens/skill × 5 skills), MEMORY.md for the workspace (client intelligence), the skill's SKILL.md instructions, multiple tool call results (workspace intelligence, KB search results, campaign performance data, existing drafts), and the conversation. For a client with a rich memory file and multiple large tool results, this can approach the 200k token limit during the most complex operations (Creative Ideas generation with full KB consultation). The session either silently degrades quality or hits a hard limit.
 
 **Why it happens:**
-Trigger.dev is a separate cloud infrastructure from Vercel. Unlike Vercel where env vars are baked into the deployment, Trigger.dev requires vars to be explicitly added to its own dashboard OR pulled via the `syncVercelEnvVars` build extension. The extension only runs during `trigger.dev deploy` — it has no effect during local `trigger.dev dev`.
+Each layer seems reasonable in isolation: a 150-line MEMORY.md, a 200-line SKILL.md, 5 KB search results at ~500 tokens each, a campaign context result at ~1000 tokens — but they compound. The existing API agents don't face this problem because each `generateText()` call is fresh with only the system prompt and the current task. A persistent CLI session accumulates context across all of an orchestrated run.
 
 **How to avoid:**
-Choose one approach and stick to it:
-- Recommended: Add `syncVercelEnvVars()` to `trigger.config.ts` build extensions. Requires `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` set in the Trigger.dev dashboard itself (bootstrapping problem — these must be added manually first).
-- Do NOT use both the Vercel integration and `syncVercelEnvVars` simultaneously — the official docs explicitly warn this causes vars to be incorrectly populated.
-- Validate every required env var is present at the top of each task's `run()` function during initial testing.
+Define a budget allocation per session type and enforce it architecturally:
+- Global CLAUDE.md: ≤100 lines
+- Per-skill metadata: ≤100 tokens each (enforce via YAML description field ≤512 chars)
+- Client MEMORY.md: ≤150 lines (enforced by the memory write rules)
+- SKILL.md per triggered skill: ≤200 lines
+- Tool result truncation: Wrapper scripts must truncate large results at the tool layer (e.g., KB search returns top 3 results max, not 8)
+
+Additionally, scope skills to only load when their specific task is active (not at session start). The orchestrator skill should load; specialist skills should load only when delegated to.
 
 **Warning signs:**
-- API calls to Anthropic, Slack, or EmailBison return 401/403 in Trigger.dev but work on Vercel
-- `process.env.X` logs as `undefined` in task console output
-- Only affects deployed tasks, not `trigger.dev dev`
+- `/compact` triggered automatically during mid-session tool use
+- Quality degrades on step 3+ of a Creative Ideas generation (model losing early context)
+- Tool results return truncated or empty when they worked fine in shorter sessions
+- Sessions with all 5 agents involved produce worse output than single-agent sessions
 
 **Phase to address:**
-Phase 1 (installation) — set up env sync before deploying any task.
+Phase 1 (skill architecture) for the structural budget. Phase 2 (memory design) for the MEMORY.md limit. Phase 3 (tool wrappers) for result truncation at the tool layer.
 
 ---
 
-### Pitfall 4: Anthropic Rate Limit Exhaustion from Unthrottled Concurrent AI Tasks
+### Pitfall 4: npx tsx Cold Start Latency Makes CLI Tools Unusable in Orchestration
 
 **What goes wrong:**
-Trigger.dev's default behavior gives each task "unbounded concurrency limited only by the environment." With multiple crons migrated (generate-insights, retry-classification, snapshot-metrics all potentially overlapping) plus webhook-triggered classification tasks, multiple Anthropic API calls fire concurrently. This hits Anthropic's per-minute token limits (TPM) and triggers 429 errors. The tasks retry, compounding the problem into retry storms.
+CLI tool wrappers expose existing TypeScript functions (DB queries, EmailBison API calls, discovery adapters) to agents via bash commands like `npx tsx scripts/tools/get-workspace.ts rise`. Each `npx tsx` invocation spawns a new Node.js process, loads the TypeScript compiler (esbuild), imports the Prisma client and its connection bootstrapping, and executes. On a cold call, this can take 2-5 seconds. In an orchestrated session where the Writer Agent makes 6-8 tool calls (getWorkspaceIntelligence, KB searches, getCampaignPerformance, getExistingDrafts, saveDraft × 3), the total overhead from process spawning alone can add 15-40 seconds to a session that should take 30 seconds.
 
 **Why it happens:**
-Currently, Vercel's 60s function timeout naturally throttles AI operations — only one runs at a time per invocation. Trigger.dev removes that constraint. Without explicit `concurrencyLimit` on AI task queues, 10+ tasks can call Anthropic simultaneously. Anthropic's Tier 1 limit for Claude Haiku is 40K TPM — a single batch of 20 reply classifications can consume most of that in one burst.
+`npx tsx` checks the npm registry for updates on every invocation (even for cached packages), then spawns a fresh Node.js process each time. There is no process pool or persistent connection. Prisma Client initialization includes a binary check and connection pool setup. The combination makes per-call overhead substantial. The existing dashboard agents avoid this because they call TypeScript functions in-process; the CLI wrapper pattern sacrifices that efficiency.
 
 **How to avoid:**
-Define a shared queue for all Anthropic-using tasks and set a global concurrency limit:
-```ts
-// src/trigger/queues.ts
-import { queue } from "@trigger.dev/sdk";
-export const anthropicQueue = queue({
-  name: "anthropic-operations",
-  concurrencyLimit: 3,
-});
-```
-Reference this queue in every AI task definition. For the most aggressive operations (generate-insights, writer agent), set per-task limits of 1-2. In v4, queues with `concurrencyLimit` must be pre-defined with `queue()` — inline concurrency on `tasks.trigger()` is silently ignored.
+Prefer compiled scripts over `npx tsx` for hot-path tools. The build strategy:
+1. Run `npx tsx build:tools` to compile all tool scripts to `dist/tools/*.js` during project setup
+2. CLI tool wrappers call `node dist/tools/get-workspace.js rise` not `npx tsx scripts/tools/get-workspace.ts rise`
+3. Compiled JS starts 5-10× faster (no TypeScript compilation, no esbuild)
+4. Alternatively, group related tool calls into a single multi-function script that accepts a command argument, reducing the number of process spawns per session
+
+For the Prisma connection overhead specifically: implement a `scripts/tools/db-query.ts` script that accepts JSON on stdin and routes to the appropriate Prisma query — one process spawn per "DB session" rather than one per operation.
 
 **Warning signs:**
-- 429 errors from Anthropic appearing in task logs shortly after migration goes live
-- Tasks that worked fine individually fail when multiple crons overlap
-- Retry storms: 429 → auto-retry → more 429 → exponential backoff filling the queue
+- Individual tool calls taking 3+ seconds in agent logs
+- Session wall-clock time significantly exceeds the sum of model generation time
+- "spawn latency" complaints when running agents in interactive CLI sessions
+- Railway/Vercel agents work fast but CLI versions feel slow for the same task
 
 **Phase to address:**
-Phase 2 (first AI task migration) — must be in place before migrating `generate-insights` or `retry-classification`.
+Phase 3 (tool wrapper implementation) — design the compilation strategy before writing any wrapper scripts. Retrofitting compiled output paths after 20+ tool scripts exist is painful.
 
 ---
 
-### Pitfall 5: Webhook Handler Ordering Creates Lost Events During Transition
+### Pitfall 5: Dual-Mode Divergence — API Fallback Code Silently Goes Stale
 
 **What goes wrong:**
-During migration, the existing EmailBison webhook handler does inline work + `.then()` chains. The migrated version calls `tasks.trigger()` to offload work. If `tasks.trigger()` fails (Trigger.dev API down, network error, rate limit), the webhook returns 200 to EmailBison but no task is queued — the reply notification or classification is silently dropped.
+The project plan preserves the existing API agent code (`src/lib/agents/`) as a fallback while CLI skills take over as primary. This sounds safe, but in practice the two implementations diverge immediately. When the Writer Agent's SKILL.md gets a new copy rule (e.g., a new banned phrase added after a client complaint), the update goes into the skill file but not into `WRITER_SYSTEM_PROMPT` in `writer.ts`. When the fallback is invoked — automatically, because the CLI agent is unavailable — it generates copy without the new rule. The admin doesn't notice because the fallback is transparent. Within 2-3 weeks of new skill development, the fallback is generating qualitatively different (worse) output.
 
 **Why it happens:**
-The "fire and acknowledge" pattern in the migrated handler does: `await tasks.trigger(...)` then `return NextResponse.json("OK")`. If the trigger call throws and the error is swallowed, the event is lost. If the error propagates and the handler returns 500, EmailBison retries — potentially creating duplicate processing once Trigger.dev recovers.
+Two codepaths for the same behavior require double the maintenance. Developers naturally work in the CLI skill files because that's the active system. The API files are "preserved as fallback" but nobody owns them. Without a test that compares outputs or a lint rule that flags behavioral divergence, the drift is invisible.
 
 **How to avoid:**
-Wrap `tasks.trigger()` in a try-catch that falls back to the original inline logic during the transition period:
-```ts
-try {
-  await tasks.trigger("classify-reply", payload);
-} catch (err) {
-  console.error("Trigger.dev unavailable, falling back:", err);
-  await classifyReplyInline(payload);
-}
-```
-Only remove the fallback after Trigger.dev has been proven stable for 2+ weeks. Always send the 200 after both the trigger attempt and fallback complete — never before attempting to queue.
+Choose one of two strategies — do not mix them:
+
+**Strategy A (recommended): Single source of truth, extracted**. Move all behavioral rules (banned phrases, quality rules, workflow steps) into shared files that both the CLI skill and the API agent import. The SKILL.md uses `@` imports to pull in the shared rules. The API agent's `systemPrompt` also imports the same file. Changes in one place propagate to both. The fallback stays in sync automatically.
+
+**Strategy B: Time-box the fallback and delete it**. Commit to a 30-day parallel period, then delete the API agent code when the CLI skills are proven stable. No maintenance burden, no divergence risk. The fallback was always temporary.
+
+Do not maintain two independent implementations for the same agent indefinitely.
 
 **Warning signs:**
-- Reply notifications stop appearing in Slack/email after migration
-- Reply `classifiedAt` field stays null on new replies
-- No error in Vercel logs (error was swallowed), but Trigger.dev dashboard shows no runs for that task
+- `WRITER_SYSTEM_PROMPT` in `writer.ts` and `SKILL.md` in the writer skill have different banned phrase lists
+- PRs updating skill rules don't touch the API agent files
+- Admin reports different quality levels from CLI sessions vs dashboard-triggered sessions
+- Git blame shows `writer.ts` unchanged for 30+ days while the skill file has 10+ commits
 
 **Phase to address:**
-Phase 3 (webhook background work migration) — fallback pattern is mandatory during cutover.
+Phase 1 (skill architecture) — establish the shared-source or time-boxed-fallback strategy before writing the first skill. The strategy must be decided upfront, not after both systems are running.
 
 ---
 
-### Pitfall 6: cron-job.org and Trigger.dev Crons Run in Parallel — Double Processing
+### Pitfall 6: Dashboard-to-CLI Bridge Complexity — UI Becomes an Unreliable Thin Wrapper
 
 **What goes wrong:**
-When a cron task is migrated to Trigger.dev but cron-job.org is not yet retired, both fire on the same schedule. A `domain-health` cron running twice simultaneously hammers the Neon database, doubles API calls to external DNS checkers, and creates duplicate `DomainHealthSnapshot` records that distort analytics.
+The goal is to keep the dashboard chat UI as a thin wrapper that delegates to CLI agents. In practice, the bridge from Next.js API route → CLI subprocess → CLI agent → tool calls → response back to the browser introduces multiple failure modes: subprocess timeout (the API route has a Vercel limit, the CLI agent has no hard timeout), stdout/stderr parsing complexity (structured JSON output from the CLI agent must survive shell encoding), streaming to the browser failing when the subprocess produces chunked output, and error handling when the subprocess crashes mid-generation. Each failure mode requires a different edge-case handler in the bridge code, and the "thin wrapper" becomes thick with glue logic.
 
 **Why it happens:**
-The natural migration impulse is: "Add Trigger.dev cron → verify it works → retire cron-job.org later." But "verify it works" takes days, and during that window both systems run. There's no coordination mechanism between them.
+The conceptual model (dashboard delegates to CLI) is clean, but spawning a subprocess from a Vercel serverless function is an unusual pattern with sharp edges. Vercel's serverless runtime has restrictions on subprocess spawning (timeout inheritance, memory limits for forked processes). Long-running CLI agent sessions (30-120 seconds for full campaign generation) exceed Vercel's default 30s function timeout unless `maxDuration` is explicitly set. If the bridge isn't designed carefully from the start, every new failure mode requires re-opening the bridge code.
 
 **How to avoid:**
-Retire cron-job.org jobs the same day a Trigger.dev cron is confirmed working, not after a waiting period. Use idempotency keys based on date + workspace to make each cron run idempotent:
-```ts
-export const domainHealthTask = schedules.task({
-  id: "domain-health",
-  run: async (payload) => {
-    // Idempotency key: "domain-health-2026-03-12T08:00:00"
-    // If already ran in this window, skip
-  },
-});
-```
-For existing HTTP-endpoint crons: deactivate the cron-job.org job immediately (they can be re-activated if Trigger.dev fails), don't leave both running.
+Do not spawn CLI agents as direct subprocesses from Vercel API routes. Instead, use a task queue pattern:
+1. API route receives the user request, stores it as a `PendingAgentTask` in DB, returns a task ID immediately (< 1s)
+2. A Trigger.dev task picks up the `PendingAgentTask`, runs `node dist/cli/run-agent.js` as a subprocess with its own timeout budget (Trigger.dev tasks can run up to 5 minutes)
+3. The task writes progress + final output back to DB
+4. The dashboard polls the task status via a lightweight SSE endpoint or Suspense-based polling
+
+This pattern avoids Vercel timeout issues, makes the bridge stateless and simple, and means the "thin wrapper" genuinely stays thin. The complexity moves to Trigger.dev (already proven) rather than a custom subprocess bridge.
 
 **Warning signs:**
-- Duplicate `DomainHealthSnapshot` rows with identical `checkedAt` timestamps (within seconds of each other)
-- Double Slack notifications for domain health alerts
-- Database write conflicts or unique constraint violations in cron tasks
+- The Next.js API route file for agent delegation grows past 100 lines
+- `maxDuration` being set to 120+ on the delegation API route (sign of timeout fighting)
+- Edge cases for stdout encoding, error code handling, or partial JSON results appearing in the bridge code
+- Users seeing 504 gateway timeout errors during campaign generation in the dashboard
 
 **Phase to address:**
-Phase 4 (cron migration) — retirement of external cron must be part of the migration checklist for each job, not deferred.
+Phase 4 (dashboard bridge) — design the task queue pattern before implementing the bridge. The subprocess-from-Vercel approach should be explicitly ruled out in the phase plan.
 
 ---
 
-### Pitfall 7: Task File Discovery Failure — Tasks Not Indexed
+### Pitfall 7: Memory Staleness — Outdated Client Intelligence Driving Wrong Decisions
 
 **What goes wrong:**
-Trigger.dev deploys show "0 tasks found" or tasks don't appear in the dashboard. The `trigger.dev dev` command may not discover tasks if the `dirs` configuration doesn't match the actual file locations in a Next.js `src/` layout.
+A workspace's MEMORY.md contains ICP learnings written 3 months ago: "CTOs at £5-50M SaaS companies respond best to value-first openers." Since then, the client has shifted their ICP toward enterprise (£100M+) and the copy style that worked for mid-market now gets negative replies from the new audience. The agent reads the memory, applies the old intelligence, and generates copy that contradicts the current brief. Because the memory was written by the agent and the admin trusts it, the error isn't caught until a campaign underperforms.
 
 **Why it happens:**
-The CLI creates `trigger/` at the project root, but this project uses `src/` layout. The default `dirs: ["./trigger"]` in `trigger.config.ts` won't find `src/trigger/`. Additionally, tasks must be exported (not just defined) — a named export is required for discovery. Duplicate task `id` values across files silently replace earlier registrations.
+Static memory files have no native staleness signal. An ICP learning from January looks identical to one written yesterday. Agents don't re-evaluate past conclusions unless explicitly instructed to. Without timestamps on memory entries and without a periodic review mechanism, the memory accumulates drift without any visible indicator.
 
 **How to avoid:**
-Configure `trigger.config.ts` to point to the correct directory:
-```ts
-export default defineConfig({
-  project: "<ref>",
-  dirs: ["./src/trigger"],
-});
-```
-Every task file must have a named export (`export const myTask = task({...})`). Task IDs must be unique across all files.
+All memory entries must be timestamped in ISO format at the section level. The memory write skill instruction must include: "Before writing a new ICP learning, check if an existing learning for the same topic exists. If it does, overwrite it with the new learning and update the timestamp. Do not accumulate multiple entries on the same topic." Add a monthly memory review step to the admin workflow: the agent reads the workspace memory, flags entries older than 60 days, and the admin confirms whether they are still accurate or should be archived.
+
+Additionally, workspace data from the DB (ICP fields, coreOffers, differentiators) always takes precedence over memory file intelligence. Memory files supplement, not replace, the DB source of truth.
 
 **Warning signs:**
-- `npx trigger.dev@latest dev` shows "Detected 0 background tasks"
-- Dashboard shows tasks but they have stale definitions from a previous deploy
-- Tasks trigger successfully but run a different version than expected
+- Memory file contains entries with no dates or only implicit dates
+- Memory entries contradict current workspace DB fields (icpIndustries, icpDecisionMakerTitles)
+- Entries accumulate multiple versions of the same learning without resolution
+- Agent generates copy targeting a vertical the client abandoned
+- Admin has to correct the same preference more than once across sessions
 
 **Phase to address:**
-Phase 1 (installation) — catch this before any tasks are written.
+Phase 2 (memory namespace design) — timestamps and precedence rules must be part of the initial memory schema design, not added after memory files are already written.
 
 ---
 
-### Pitfall 8: v4 vs v3 Import Path Confusion Causes Silent Failures
+### Pitfall 8: Security — CLI Wrappers Loading .env Credentials into Agent Context
 
 **What goes wrong:**
-Trigger.dev v3 used `import { task } from '@trigger.dev/sdk/v3'`. v4 uses `import { task } from '@trigger.dev/sdk'`. The old path still works but is deprecated and will stop working April 1, 2026. Starting on v4 with stale examples/docs using v3 paths creates a mix of import styles. More critically, v4 silently ignores inline concurrency limits specified at the `tasks.trigger()` callsite — queues with `concurrencyLimit` must be pre-defined with `queue()`.
+CLI tool scripts run in the project directory, which automatically loads `.env` from the filesystem (via `dotenv` or ts-node's default behavior). `.env` contains `DATABASE_URL`, `ANTHROPIC_API_KEY`, `EMAILBISON_API_TOKEN`, `INGEST_WEBHOOK_SECRET`, and a dozen other secrets. When a CLI agent runs in Claude Code's context, Claude Code reads `.env` files without explicit permission (documented CVE-2025-59536, confirmed by Knostic.ai research). An agent session that encounters an authentication error may inadvertently echo the loaded environment variables in a tool result or error message, which then appears in the Claude Code conversation history. The conversation history is sent to Anthropic's servers on every turn.
 
 **Why it happens:**
-Most tutorials, Stack Overflow answers, and AI-generated code suggestions still use v3 import paths as of 2026. The v4 GA was announced recently. The behavioral change in queue concurrency is easy to miss because it doesn't throw an error.
+CLI scripts conventionally load `.env` for local development convenience. Claude Code's auto-loading of `.env` secrets (introduced as a convenience feature) creates a path where sensitive credentials reach the LLM context without the developer's explicit intent. The issue compounds with agent tool wrappers because tool output (including error messages that might include env var names) flows back into the model context.
 
 **How to avoid:**
-Always use `@trigger.dev/sdk` (no `/v3` suffix). Run `npx trigger.dev@latest update` immediately after `npx trigger.dev@latest init`. Add a CI check: grep for `@trigger.dev/sdk/v3` in `src/trigger/` — must return empty.
+Three-layer defense:
 
-Key v4 breaking changes to know upfront:
-- `handleError` renamed to `catchError`
-- `init` hook replaced by middleware/locals pattern
-- `ctx.attempt.id` and `ctx.task.exportName` removed from context
-- Queues with concurrency must be pre-declared, not inline
+1. **Add `.env` to `.claudeignore`** in the project root to prevent Claude Code from reading it directly. The `.claudeignore` syntax follows `.gitignore` patterns.
 
-**Warning signs:**
-- TypeScript: `@trigger.dev/sdk/v3` not found (only after April 2026)
-- `handleError` config not running
-- Concurrency limits having no effect on AI task throughput
+2. **Tool scripts must not echo credential values.** Error handlers in all CLI tool scripts must sanitize output before printing: strip values matching patterns for API keys (`sk-`, `postgres://`, bearer tokens). Use a `sanitize-output.ts` utility that all tool scripts import.
 
-**Phase to address:**
-Phase 1 (installation) — establish correct import standard from day one.
-
----
-
-### Pitfall 9: Trigger.dev Infrastructure IP Not Allowlisted on Neon
-
-**What goes wrong:**
-The first production Trigger.dev task that hits the database fails with a connection refused error, not a credentials error. Confusing because the same DATABASE_URL works on Vercel. The Trigger.dev v3→v4 migration docs specifically call this out: "Infrastructure IPs may change during migration."
-
-**Why it happens:**
-Neon may have IP allowlisting enabled on the project. Trigger.dev Cloud's egress IPs are different from Vercel's. If Neon's project has IP restrictions configured, Trigger.dev's IPs won't be on the allowlist.
-
-**How to avoid:**
-Before first production deploy, check if Neon IP allowlisting is enabled. If it is, add Trigger.dev Cloud's IP ranges. The simpler option: confirm that the Neon connection pooler URL (`-pooler` in hostname) is being used, as PgBouncer typically doesn't require IP allowlisting. Verify connectivity with a simple smoke-test task (`SELECT 1` via Prisma) before migrating real workloads.
+3. **Restrict database access to compiled tool scripts only.** The CLI agents don't get `DATABASE_URL` in their environment. Only pre-compiled tool scripts (which have it baked in via build-time env injection or a server-side proxy) have DB access. Agents call the tools; they don't receive the connection string.
 
 **Warning signs:**
-- `P1001: Can't reach database server` from tasks but same URL works in Vercel functions
-- Error occurs on first database operation, not on complex queries
-- Pure connection failure — no authentication error component
+- Claude Code session shows "Reading .env" in the tool call log
+- Tool error messages contain substrings of connection strings or API keys
+- `.env` is not in `.claudeignore`
+- Agent tool wrappers do `console.error(error)` without sanitization
+- `DATABASE_URL` appears in any conversation turn
 
 **Phase to address:**
-Phase 1 (installation) — add a connectivity smoke test task as the final step of Phase 1 before Phase 2 begins.
-
----
-
-### Pitfall 10: Railway LinkedIn Worker + Trigger.dev Namespace Collision
-
-**What goes wrong:**
-The Railway LinkedIn worker runs independently and communicates with the Next.js app via HTTP. If a Trigger.dev task also triggers LinkedIn actions (e.g., fast-track LinkedIn sends migrated from the webhook handler), both systems may attempt the same LinkedIn action simultaneously — causing duplicate connection requests, session conflicts, or Voyager API errors.
-
-**Why it happens:**
-Trigger.dev makes it easy to move LinkedIn operations into tasks. The Railway worker doesn't know about Trigger.dev task state. Without coordination, a webhook event could trigger both a Railway job AND a Trigger.dev task for the same LinkedIn operation.
-
-**How to avoid:**
-Maintain a strict boundary: Railway worker owns all LinkedIn Voyager API calls. Trigger.dev tasks may enqueue work to the Railway worker (via its internal HTTP API) but never call the Voyager API directly. Document this boundary explicitly in a comment at the top of any LinkedIn-related task file. The Railway worker's `lastPolledAt` heartbeat is already in place — do not replicate LinkedIn sequencing logic in Trigger.dev.
-
-**Warning signs:**
-- Duplicate LinkedIn connection requests sent to the same prospect
-- Voyager API 429 errors (session rate limited) appearing after Trigger.dev is added
-- Railway worker logs showing state conflicts it didn't initiate
-
-**Phase to address:**
-Phase 3 (webhook background work migration) — establish the boundary before migrating LinkedIn fast-track logic.
-
----
-
-### Pitfall 11: Idempotency Keys Missing on Retry-Prone Cron Tasks
-
-**What goes wrong:**
-A cron task that writes data (e.g., `DomainHealthSnapshot`, `CachedMetrics`, `AgentInsight`) fails partway through and Trigger.dev auto-retries it. The retry re-runs all sub-operations, including ones that already succeeded (like inserting 5 of 8 workspace snapshots). This creates duplicate records. For Slack notifications, this means double-alerting.
-
-**Why it happens:**
-Without idempotency keys, every task retry starts from scratch. Trigger.dev's default retry behavior (3 attempts with exponential backoff) means a flaky task can process the same workspace data 3 times.
-
-**How to avoid:**
-Use idempotency keys on all child task triggers within cron tasks:
-```ts
-await tasks.trigger("send-slack-alert", payload, {
-  idempotencyKey: `domain-alert-${domain}-${runDate}`,
-  idempotencyKeyTTL: "24h",
-});
-```
-For DB writes, use `upsert` instead of `create` everywhere possible so retries are safe. Note: in v4.3.1+, raw string idempotency keys default to `run` scope (not `global`) — this is a breaking change from earlier versions.
-
-**Warning signs:**
-- Duplicate `AgentInsight` records with same `type` + `workspaceId` + date
-- Multiple Slack notifications for the same domain health event
-- `DomainHealthSnapshot` unique constraint violations in task logs
-
-**Phase to address:**
-Phase 4 (cron migration) — each cron task must be audited for idempotency before cron-job.org is retired.
+Phase 3 (tool wrapper implementation) — `.claudeignore` and the output sanitization utility must exist before any tool script is written. Security cannot be retrofitted.
 
 ---
 
@@ -304,13 +236,13 @@ Phase 4 (cron migration) — each cron task must be audited for idempotency befo
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Keep cron-job.org running "just in case" after Trigger.dev cron is live | Safety net during rollout | Double processing, duplicate DB records, wasted API calls | Never — deactivate the same day Trigger.dev cron is verified |
-| Inline `tasks.trigger()` without fallback in webhook handler | Less code | Silent event loss if Trigger.dev is down | Only after 30+ days of proven stability |
-| Shared PrismaClient singleton across tasks | Fewer connection initializations | Pool exhaustion under concurrent load | Only if confirmed `connection_limit=1` is set on the URL |
-| Skip idempotency keys on cron tasks | Faster initial implementation | Duplicate DB writes if task is manually retried | Never for tasks that write to DB |
-| Use `@trigger.dev/sdk/v3` import path | Works today | Breaks April 1, 2026 | Never in new code |
-| Set concurrency per-task inline instead of shared queue | Quick setup | Multiple task types all hammering Anthropic simultaneously | Never for Anthropic-calling tasks |
-| No `maxDuration` on AI tasks | One less config value | Task hangs indefinitely if Anthropic API stalls | Never — always set 300s on AI tasks |
+| Copy system prompt verbatim into SKILL.md | Fast conversion | Context overflow in complex sessions; poor adherence when instructions exceed 200 lines | Never — always layer into SKILL.md + reference files |
+| Let agents write freely to memory with no schema | Agents accumulate learnings quickly | Memory pollution; contradictory entries; stale intelligence driving wrong copy | Never — schema must be defined first |
+| Use `npx tsx` for all tool wrappers | No build step, fastest to write | 3-5s latency per tool call; slow orchestrated sessions | Only during initial prototype phase (Phase 3 only); compile before Phase 4 |
+| Keep API agent code as indefinite fallback | Safety net | Two codepaths diverge silently; fallback becomes qualitatively different from primary | Time-boxed (30 days max); then delete or extract to shared source |
+| Spawn CLI agents as subprocesses from Vercel API routes | Simplest bridge code | Vercel timeout hits on complex sessions; brittle subprocess error handling | Never for sessions > 30s expected duration |
+| MEMORY.md entries without timestamps | Less verbose | No staleness signal; outdated intelligence indistinguishable from current | Never — timestamps are non-negotiable |
+| Skip `.claudeignore` for `.env` | One less setup file | Credentials accessible to Claude Code; potential exfiltration via tool error messages | Never |
 
 ---
 
@@ -318,14 +250,14 @@ Phase 4 (cron migration) — each cron task must be audited for idempotency befo
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Prisma + Trigger.dev | Use `DATABASE_URL` (direct/unpooled) for runtime tasks | Use pooled URL (`-pooler` hostname) for tasks; only direct URL for migration extension's `directUrlEnvVarName` |
-| Neon + Trigger.dev | Trust default Prisma `connection_limit` (9) | Append `?connection_limit=1&pool_timeout=10` to pooled DATABASE_URL in tasks |
-| Anthropic + Trigger.dev | Trigger multiple AI tasks without queue limit | Define shared `anthropicQueue` with `concurrencyLimit: 3` using `queue()` |
-| Vercel env vars + Trigger.dev | Assume env vars auto-sync between platforms | Use `syncVercelEnvVars` extension OR Vercel integration — never both simultaneously |
-| cron-job.org + Trigger.dev | Run both on same schedule during "testing period" | Disable external cron the same day Trigger.dev cron is verified working |
-| EmailBison webhooks + Trigger.dev | Only queue task, no fallback | Wrap `tasks.trigger()` in try-catch with inline fallback during 2+ week transition |
-| Railway LinkedIn worker + Trigger.dev | Move LinkedIn Voyager calls into tasks | Keep all Voyager API calls in Railway worker; Trigger.dev only enqueues work to Railway |
-| `syncVercelEnvVars` + Vercel dashboard integration | Use both simultaneously | Pick one — documented conflict causes vars to be incorrectly populated |
+| Claude Code + SKILL.md | Put entire system prompt in SKILL.md body | Layer content: brief workflow in SKILL.md body, rules in `.claude/rules/`, examples in reference files loaded on demand |
+| Claude Code + auto memory | Let MEMORY.md grow without limits | Hard 150-line cap; schema-enforced sections; timestamps on all entries |
+| Claude Code + .env | Assume .env is not read by the agent | Add `.env` to `.claudeignore`; sanitize all tool output before printing |
+| npx tsx tool wrappers | Use `npx tsx script.ts` in hot path | Pre-compile to `dist/` and call `node dist/script.js`; saves 2-4s per tool call |
+| Next.js dashboard + CLI agents | Spawn subprocess from Vercel API route | Use Trigger.dev task as the execution environment; Vercel route just enqueues |
+| API agent system prompts + CLI SKILL.md | Maintain two independent copies | Extract shared behavioral rules to `.claude/rules/` files imported by both |
+| Prisma in CLI tool scripts | Direct DB access with full `DATABASE_URL` in agent env | Compile tool scripts with env injected at build time; agents call tools, never see the connection string |
+| Client MEMORY.md + workspace DB fields | Memory intelligence overrides DB data | Establish explicit precedence: DB fields are source of truth; memory supplements, never overrides |
 
 ---
 
@@ -333,11 +265,11 @@ Phase 4 (cron migration) — each cron task must be audited for idempotency befo
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| No `concurrencyLimit` on AI tasks | 429 errors from Anthropic, retry storms in queue | Shared Anthropic queue with limit of 3 | First time 3+ crons overlap (e.g., midnight UTC window) |
-| Prisma without `connection_limit=1` in tasks | Intermittent P1001 errors under load | `?connection_limit=1` appended to task DATABASE_URL | When more than ~10 tasks run concurrently |
-| Overlapping scheduled tasks without idempotency | Duplicate snapshots, double notifications | Idempotency keys on all cron tasks that write to DB | First time Trigger.dev auto-retries a failed cron |
-| No `maxDuration` on AI tasks | Task runs indefinitely if Anthropic hangs | Set `maxDuration: 300` (5 min) on AI tasks | Anthropic API slowdown or network issue |
-| Cold starts for time-sensitive webhook tasks | Reply classification delayed 5-30 seconds post-webhook | Keep webhook tasks lightweight; v4 warm starts at 100-300ms for queued runs | During low-traffic periods when containers scale to zero |
+| Uncompiled `npx tsx` tool wrappers in orchestration | Campaign generation takes 90s when it should take 30s | Compile tools to `dist/` before Phase 4 | Every complex multi-tool session |
+| Large SKILL.md triggering full context load | `/compact` needed mid-session during normal work | ≤200-line budget enforced at Phase 1 | Once 3+ skills are triggered in the same session |
+| Unbounded client MEMORY.md accumulation | Context fills faster each month; quality degrades in older workspaces | 150-line cap + rotation policy; enforced in memory write rules | After ~3 months of active use without governance |
+| All 5 skills triggered at session start | Slow session init, high token burn before any work | Load specialist skills on-demand only via orchestrator delegation | Every orchestrated session |
+| Tool results without truncation flowing into context | Large KB search outputs, full campaign history, paginated leads data consuming context budget | Tool wrapper output limit (max 500 tokens per result) | Sessions where multiple large tools are called |
 
 ---
 
@@ -345,25 +277,38 @@ Phase 4 (cron migration) — each cron task must be audited for idempotency befo
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Exposing `TRIGGER_SECRET_KEY` in client-side code | Attackers can trigger arbitrary tasks at will | Only use in server-side code (API routes, Server Actions); never import into React components |
-| Not verifying EmailBison webhook signature before triggering tasks | Replay attacks, cost amplification via fake webhooks | Verify signature before `tasks.trigger()` call — same as current handler |
-| Using `DATABASE_URL_UNPOOLED` for runtime tasks | Direct connection bypasses PgBouncer, can exhaust Neon connection limit | Reserve unpooled URL for migrations only (Prisma extension's `directUrlEnvVarName`) |
-| Logging full task payloads in production | Reply body text, email content, PII in Trigger.dev cloud logs | Sanitize payload before logging; log structured fields with explicit allow-list |
+| `.env` not in `.claudeignore` | Claude Code loads all secrets into agent context automatically | Add `**/.env*` to `.claudeignore` in project root before first CLI agent session |
+| Tool error messages echoing env var values | Credentials appear in conversation turns sent to Anthropic | Shared `sanitize-output.ts` utility; all tool scripts use it before `console.error()` |
+| `DATABASE_URL` accessible inside agent execution context | LLM can construct arbitrary SQL queries via bash if confused | Compile tool scripts with DB access; agents never receive the connection string in env |
+| Agent memory files committed to git | Client-specific intelligence (ICP, campaign history, tone preferences) exposed in repo | Memory files live in `~/.claude/projects/` (machine-local); never in project repo |
+| CLI skill reads untrusted input from workspace data without sanitization | Prompt injection via client-controlled workspace fields (coreOffers, outreachTonePrompt) | Skill instructions must treat workspace DB data as untrusted content; no direct template interpolation |
+| Unreviewed third-party skills in `.claude/skills/` | Malicious skill can exfiltrate API keys or inject instructions | Only first-party skills authored in this repo; audit skill files on every PR touching `.claude/skills/` |
+
+---
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| CLI agent runs with no progress feedback to dashboard user | Admin sees spinner for 60-90s with no indication what's happening | Trigger.dev task writes progress events to DB; dashboard polls and shows "Researching workspace... Writing step 1... Saving draft..." |
+| Memory file content invisible to admin | Admin can't tell what the agent has learned or why it generates certain copy | Add a "Client Memory" tab in workspace settings showing current MEMORY.md with edit/clear controls |
+| Skill error messages shown as raw CLI output | Admin sees `Error: Cannot find module 'dist/tools/get-workspace.js'` instead of a user-facing error | Bridge code translates all subprocess errors to user-friendly messages before sending to dashboard |
+| No indicator when CLI agent falls back to API agent | Admin can't distinguish which system generated the output | Log the execution path (CLI or API fallback) to AgentRun record; show in the agent run audit UI |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Prisma binary targets:** `binaryTargets` includes `debian-openssl-3.0.x` in `schema.prisma` — verify with `prisma generate` output showing the new target
-- [ ] **Env vars synced to Trigger.dev:** Dashboard shows all required vars (ANTHROPIC_API_KEY, SLACK_BOT_TOKEN, DATABASE_URL, etc.) — test by logging `!!process.env.ANTHROPIC_API_KEY` in a smoke-test task
-- [ ] **Concurrency limits set:** Every task that calls Anthropic references the shared `anthropicQueue` — grep `src/trigger/` for Anthropic client usage and verify each file imports and uses the queue
-- [ ] **cron-job.org deactivated:** After each Trigger.dev cron is verified, confirm the corresponding cron-job.org job is disabled (not just paused, disabled)
-- [ ] **Webhook fallback in place:** `tasks.trigger()` in webhook handler is wrapped in try-catch with inline fallback — verify by temporarily disabling Trigger.dev and confirming notifications still fire
-- [ ] **Idempotency keys on cron tasks:** Every task that writes to DB has an idempotency key based on date/workspace — verify by manually triggering the same cron twice and checking for duplicates
-- [ ] **Task discovery confirmed:** `trigger.dev dev` shows the expected task count — run and count before deploying
-- [ ] **Connection pooled URL in use:** Trigger.dev env var `DATABASE_URL` has `-pooler` in the hostname — check directly in the Trigger.dev dashboard env var list
-- [ ] **Railway boundary respected:** No Voyager API client calls in any Trigger.dev task file — run `grep -r "voyager" src/trigger/` expecting zero results
-- [ ] **v4 imports throughout:** No `@trigger.dev/sdk/v3` imports — run `grep -r "sdk/v3" src/trigger/` expecting zero results
+- [ ] **SKILL.md line budget enforced**: Every SKILL.md is ≤200 lines — verify with `wc -l .claude/skills/*/SKILL.md` before Phase 4
+- [ ] **Client memory schema in place**: MEMORY.md for each workspace follows the schema (ICP Wins, Copy Rules, Campaign History, Feedback Log, Archived sections with timestamps) — check before any agent session writes to memory
+- [ ] **`.claudeignore` in place**: Contains `**/.env*` and `**/.env.local*` — verify with `cat .claudeignore` before first CLI agent session
+- [ ] **Tool scripts compiled**: `dist/tools/` directory exists and all wrapper scripts reference compiled JS — run `node dist/tools/get-workspace.js --help` to verify
+- [ ] **Output sanitization active**: All tool scripts import and use `sanitize-output.ts` — grep `import.*sanitize` in `scripts/tools/**/*.ts` must cover all files
+- [ ] **Fallback strategy decided**: Either shared-source-of-truth or time-boxed fallback is documented in ARCHITECTURE.md — not both in parallel indefinitely
+- [ ] **MEMORY.md not in git**: `.gitignore` includes `**/.claude/` or the memory file paths specifically — verify with `git status` after a test session
+- [ ] **Dashboard bridge uses task queue**: No `spawn()` or `exec()` calls in Next.js API routes that call CLI agents — grep `src/app/api/**` for subprocess calls must return empty
+- [ ] **DB fields take precedence**: SKILL.md instruction explicitly states "workspace DB data always overrides MEMORY.md when there is a conflict" — verify in SKILL.md text
+- [ ] **All memory entries timestamped**: Verify by reading the MEMORY.md for the oldest workspace after 2 sessions — all entries must have ISO dates
 
 ---
 
@@ -371,14 +316,13 @@ Phase 4 (cron migration) — each cron task must be audited for idempotency befo
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Prisma binary target mismatch | LOW | Add `debian-openssl-3.0.x` to `binaryTargets`, run `prisma generate`, re-run `trigger.dev deploy` |
-| Env vars missing in production | LOW | Add missing vars in Trigger.dev dashboard, re-deploy trigger |
-| Double processing from parallel crons | MEDIUM | Deactivate cron-job.org immediately; deduplicate DB records with SQL DELETE WHERE duplicated within same 5-minute window |
-| Anthropic rate limit storm | LOW | Trigger.dev auto-retries with backoff; add concurrency limit to queue; pending tasks will eventually succeed |
-| Lost webhook events during migration | HIGH | Re-query EmailBison API for missed replies using `getRecentReplies()` — existing backfill endpoint at `/api/cron/backfill-replies` covers this |
-| Neon connection pool exhaustion | MEDIUM | Add `?connection_limit=1` to DATABASE_URL in Trigger.dev dashboard, redeploy; in-flight runs recover after limit applied |
-| Idempotency key scope bug (v4.3.1+ change) | MEDIUM | Audit all child task triggers for explicit scope; manually re-trigger affected tasks; clean up duplicates in DB |
-| Trigger.dev IP not allowlisted on Neon | LOW | Add Trigger.dev egress IPs to Neon allowlist, or switch to pooler URL which typically bypasses IP restrictions |
+| Skill prompt bloat causing context overflow | MEDIUM | Extract banned phrases and quality rules to `.claude/rules/writer-quality.md`; reduce SKILL.md body to workflow steps only; re-test with `/clear` before each session |
+| Memory pollution (contradictory/stale entries) | MEDIUM | Admin reads MEMORY.md, manually removes noise; re-run last 3 campaign generations to validate quality; add write-governance rules to skill before next session |
+| Credentials appearing in agent context | HIGH | Rotate all credentials in `.env` and Vercel/Railway dashboards immediately; add `.claudeignore` before any further agent sessions; review conversation history for exfiltrated data |
+| npx tsx latency making CLI unusable | LOW | Compile all tool scripts with `npx tsx build:tools`; update all skill SKILL.md references from `npx tsx` to `node dist/`; test one tool call to confirm latency drop |
+| Dual-mode divergence caught late | MEDIUM | Audit diff between `WRITER_SYSTEM_PROMPT` and `writer/SKILL.md`; reconcile manually; extract shared rules to `.claude/rules/` going forward; document which wins on conflict |
+| Dashboard bridge hitting Vercel timeout | LOW | Increase `maxDuration` temporarily; migrate bridge to Trigger.dev task queue pattern in next sprint; remove `maxDuration` workaround after migration |
+| Stale memory driving wrong ICP targeting | LOW | Admin edits MEMORY.md directly via `/memory` command; re-generates affected campaign with corrected context; adds timestamp to all existing entries during the review |
 
 ---
 
@@ -386,38 +330,33 @@ Phase 4 (cron migration) — each cron task must be audited for idempotency befo
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Prisma binary target mismatch | Phase 1: Installation | Deploy smoke-test task with `prisma.$queryRaw(SELECT 1)` — must succeed |
-| Neon connection pool exhaustion | Phase 1: Installation | Confirm `-pooler` in DATABASE_URL; run 5 concurrent test tasks and check for P1001 |
-| Env vars not synced | Phase 1: Installation | Log all required env var presence in smoke-test task output |
-| Trigger.dev IP not allowlisted on Neon | Phase 1: Installation | Smoke-test task with DB query must pass before Phase 2 |
-| v4 import path confusion | Phase 1: Installation | Add CI grep for `@trigger.dev/sdk/v3` in `src/trigger/` — must be empty |
-| Task file discovery failure | Phase 1: Installation | `trigger.dev dev` must show correct task count matching `src/trigger/` file count |
-| Anthropic rate limit exhaustion | Phase 2: First AI task migration | Deploy AI task with shared queue; confirm no 429s during first cron overlap |
-| Webhook handler ordering/lost events | Phase 3: Webhook migration | Send test webhook with Trigger.dev erroring; confirm notification fires via fallback |
-| Railway + Trigger.dev namespace collision | Phase 3: Webhook migration | Grep `src/trigger/` for Voyager calls — must be zero |
-| cron-job.org double processing | Phase 4: Cron migration | For each cron migrated, verify single execution via task run count in dashboard on overlap window |
-| Idempotency missing on cron tasks | Phase 4: Cron migration | Manually trigger cron twice; verify second run is deduplicated (no new DB records) |
-| v4 breaking changes in config | Phase 1: Installation | Test `catchError`, middleware pattern, and queue pre-definition before migrating real tasks |
+| Skill prompt bloat | Phase 1: Skill definition architecture | `wc -l` on all SKILL.md files must show ≤200 lines before Phase 2 begins |
+| Memory pollution | Phase 2: Client memory namespace design | MEMORY.md schema written and reviewed; memory write instructions in skill verified before first agent session |
+| Context window overflow | Phase 1 (budget) + Phase 3 (tool truncation) | Run a full campaign generation for the most complex workspace; confirm `/compact` is not triggered |
+| npx tsx cold start latency | Phase 3: Tool wrapper implementation | Measure wall-clock time for a 6-tool orchestration; must be under 45 seconds total |
+| Dual-mode divergence | Phase 1: Architecture decision | Strategy (shared source or time-boxed) documented; no independent copy of behavioral rules exists by Phase 2 |
+| Dashboard bridge complexity | Phase 4: Bridge implementation | No `spawn()`/`exec()` calls in Next.js API routes; all orchestrated runs go through Trigger.dev task |
+| Memory staleness | Phase 2: Memory namespace design | All MEMORY.md entries have timestamps; precedence rule (DB > memory) written in skill instructions |
+| Security — credentials in context | Phase 3: Tool wrapper implementation | `.claudeignore` present; `sanitize-output.ts` exists and is imported in all tool scripts before Phase 4 |
 
 ---
 
 ## Sources
 
-- [Trigger.dev Prisma Extension docs](https://trigger.dev/docs/config/extensions/prismaExtension) — binary targets, mode configuration (HIGH confidence)
-- [Trigger.dev Next.js setup guide](https://trigger.dev/docs/guides/frameworks/nextjs) — route handler, env var requirements (HIGH confidence)
-- [Trigger.dev environment variables docs](https://trigger.dev/docs/deploy-environment-variables) — sync pitfalls, manual requirements (HIGH confidence)
-- [Trigger.dev syncVercelEnvVars guide](https://trigger.dev/docs/guides/examples/vercel-sync-env-vars) — conflict with Vercel integration (HIGH confidence)
-- [Trigger.dev concurrency and queues docs](https://trigger.dev/docs/queue-concurrency) — default unbounded behavior, deadlock risk (HIGH confidence)
-- [Trigger.dev idempotency docs](https://trigger.dev/docs/idempotency) — TTL, scope confusion, v4.3.1 breaking change (HIGH confidence)
-- [Trigger.dev migrating from v3 docs](https://trigger.dev/docs/migrating-from-v3) — import paths, queue definition, IP allowlisting warning (HIGH confidence)
-- [Trigger.dev scheduled tasks docs](https://trigger.dev/docs/tasks/scheduled) — staging-only runs, deduplication key behavior (HIGH confidence)
-- [Trigger.dev v4 GA changelog](https://trigger.dev/changelog/trigger-v4-ga) — v3 shutdown April/July 2026, warm start times (HIGH confidence)
-- [Neon connection pooling docs](https://neon.com/docs/connect/connection-pooling) — limits by compute size, pooled vs unpooled URL, prepared statement restrictions (HIGH confidence)
-- [GitHub Issue #1358 — Prisma binaryTargets](https://github.com/triggerdotdev/trigger.dev/issues/1358) — confirmed debian-openssl-3.0.x requirement (HIGH confidence)
-- [GitHub Issue #1685 — Slow start times](https://github.com/triggerdotdev/trigger.dev/issues/1685) — cold start reality, warm starts at 100-300ms in v4 (MEDIUM confidence)
-- [Anthropic rate limits docs](https://docs.anthropic.com/en/api/rate-limits) — TPM limits per tier (HIGH confidence)
-- [GitHub Issue #1565/#1635 — Prisma schemaFolder deploy failures](https://github.com/triggerdotdev/trigger.dev/issues/1565) — multi-file schema breaks build (HIGH confidence — confirmed in 2025 issues)
+- [Claude Code Memory Documentation](https://code.claude.com/docs/en/memory) — CLAUDE.md size limits (200 lines), auto memory 200-line cap, storage location, write behavior (HIGH confidence)
+- [Agent Skills Overview — Anthropic](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) — Progressive disclosure architecture, token budget by level (~100 tokens metadata, <5k instructions), security considerations (HIGH confidence)
+- [Claude Code Best Practices](https://code.claude.com/docs/en/best-practices) — Context management, CLAUDE.md size recommendations, skills vs rules scoping (HIGH confidence)
+- [Claude Code Skills Structure Guide — GitHub Gist](https://gist.github.com/mellanon/50816550ecb5f3b239aa77eef7b8ed8d) — 82% token recovery by moving instructions into skills; 15,000 tokens per session saved (MEDIUM confidence — community-verified)
+- [CVE-2025-59536 — API Key Exfiltration via Claude Code](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) — Hook, MCP, and env var exfiltration vectors; .env auto-loading confirmed (HIGH confidence — official CVE)
+- [Claude Code Automatically Loads .env Secrets — Knostic.ai](https://www.knostic.ai/blog/claude-loads-secrets-without-permission) — .env silently loaded into memory without consent; remediation via .claudeignore (HIGH confidence)
+- [Security Feature Request: Zero-Trust Architecture for Env Vars — GitHub #2695](https://github.com/anthropics/claude-code/issues/2695) — Community confirmation of env var exposure patterns (MEDIUM confidence — open issue, unresolved)
+- [The Problem with AI Agent Memory — Dan Giannone / Medium](https://medium.com/@DanGiannone/the-problem-with-ai-agent-memory-9d47924e7975) — Memory pollution mechanics; conflicting context reconciliation failure; stale retrieval (MEDIUM confidence)
+- [Why LLM Memory Still Fails — DEV Community](https://dev.to/isaachagoel/why-llm-memory-still-fails-a-field-guide-for-builders-3d78) — Context rot definition; semantic retrieval without temporal relevance; overwriting old conclusions (MEDIUM confidence)
+- [Patterns and Pitfalls in AI Agent Deployment — HackerNoon](https://hackernoon.com/patterns-that-work-and-pitfalls-to-avoid-in-ai-agent-deployment) — Multi-agent coordination failure rates (41-86%); state divergence from dual codepaths (MEDIUM confidence)
+- [npx cached package slow — GitHub Issue #7295](https://github.com/npm/cli/issues/7295) — npx registry check adds 3+ seconds even for cached packages (HIGH confidence — confirmed bug)
+- [tsx npm package documentation](https://tsx.is/getting-started) — TypeScript Execute behavior; no persistent process pool; cold start cost (HIGH confidence — official docs)
+- [Mastering Context Windows in Claude Code — Sitepoint](https://www.sitepoint.com/claude-code-context-management/) — /compact behavior, 60% compact threshold recommendation, "lost in the middle" problem (MEDIUM confidence)
 
 ---
-*Pitfalls research for: Trigger.dev migration (v6.0) — Next.js + Vercel + Neon + Prisma*
-*Researched: 2026-03-12*
+*Pitfalls research for: CLI agent skills + persistent client memory migration (v7.0) — adding to existing API-based Outsignal agent system*
+*Researched: 2026-03-23*

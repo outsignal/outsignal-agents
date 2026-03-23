@@ -1,578 +1,562 @@
 # Architecture Research
 
-**Domain:** Trigger.dev v4 integration with existing Next.js 16 + Prisma 6 + Vercel + Railway
-**Researched:** 2026-03-12
-**Confidence:** HIGH (Trigger.dev official docs verified; codebase patterns verified against source files)
+**Domain:** CLI Skill System integration with existing TypeScript agent architecture
+**Researched:** 2026-03-23
+**Confidence:** HIGH — based on direct code inspection of all existing agent files
 
 ---
 
 ## Standard Architecture
 
-### System Overview — Before vs After
+### System Overview
 
-**Current (broken) state:**
-```
-EmailBison Webhook
-  → POST /api/webhooks/emailbison
-  → sync work (DB writes, classify) ── 60s Vercel limit
-  → .then() chains (AI suggestion) ── fire-and-forget, dies if Vercel kills function
-  → [SILENT FAILURES beyond 60s]
-
-cron-job.org (every 10 min)
-  → GET /api/cron/poll-replies        ── 30s HTTP timeout (cron-job.org free limit)
-  → GET /api/cron/retry-classification ── 50 replies × Haiku call each
-  → GET /api/cron/generate-insights   ── AI + DB + Slack per workspace
-  → GET /api/cron/snapshot-metrics    ── analytics snapshot per workspace
-  → GET /api/cron/domain-health       ── DNS + DNSBL checks
-  → GET /api/cron/sync-senders        ── EmailBison API sync
-  → GET /api/cron/bounce-monitor      ── bounce rate computation
-  → GET /api/cron/inbox-health        ── sender credential health check
-  → [ALL subject to 30-60s timeouts, no retry, no observability]
-
-Railway worker (Node.js long-running)
-  → LinkedIn action queue loop
-  → session refresh loop
-  → [separate deployment, no connection to cron infrastructure]
-```
-
-**Target state (Trigger.dev v4):**
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     Next.js on Vercel                               │
-│                                                                     │
-│  Webhook Route Handler                                              │
-│   POST /api/webhooks/emailbison                                     │
-│     → verify sig, parse payload, write WebhookEvent to DB          │
-│     → tasks.trigger("process-reply", payload) ─────────────────┐   │
-│     → return 200 immediately                                    │   │
-│                                                                 │   │
-│  Cron Route Stubs (thin — just trigger Trigger.dev tasks)       │   │
-│   GET /api/cron/[name]  → tasks.trigger("cron-name", {})       │   │
-│   (Optional: keep for manual trigger, Vercel daily cron safety) │   │
-└─────────────────────────────────────────────────────────────────┘
-           │                              │
-           │ TRIGGER_SECRET_KEY           │
-           ▼                             │
+│                      INVOCATION LAYER                               │
+│                                                                      │
+│  ┌──────────────────┐        ┌─────────────────────────────────┐   │
+│  │  Dashboard Chat  │        │   Claude Code CLI (nova skill)  │   │
+│  │  /api/chat POST  │        │   .claude/commands/nova.md      │   │
+│  │  streamText()    │        │   Bash → npx tsx scripts/chat   │   │
+│  └────────┬─────────┘        └─────────────────┬───────────────┘   │
+└───────────┼──────────────────────────────────  ┼ ───────────────────┘
+            │                                    │
+            ▼                                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                   Trigger.dev v4 Cloud                              │
-│                                                                     │
-│  Scheduled Tasks (declarative cron):                               │
-│   poll-replies-task          cron: "*/10 * * * *"                  │
-│   retry-classification-task  cron: "*/15 * * * *"                  │
-│   snapshot-metrics-task      cron: "0 1 * * *"                     │
-│   generate-insights-task     cron: "0 2 * * *"                     │
-│   domain-health-task         cron: "0 8,20 * * *"                  │
-│   sync-senders-task          cron: "0 */4 * * *"                   │
-│   bounce-monitor-task        cron: "0 */4 * * *"                   │
-│   inbox-health-task          cron: "0 6 * * *"                     │
-│   deliverability-digest-task cron: "0 9 1 * *"                     │
-│                                                                     │
-│  Event-Triggered Tasks:                                             │
-│   process-reply-task         ← webhook triggers                    │
-│   classify-reply-task        ← subtask from process-reply          │
-│   generate-suggestion-task   ← subtask from process-reply          │
-│   linkedin-fasttrack-task    ← subtask from process-reply          │
-│                                                                     │
-│  All tasks: unlimited duration, auto-retry, full observability     │
-└─────────────────────────────────────────────────────────────────────┘
-           │ DATABASE_URL + all env vars
-           ▼
+│                    ORCHESTRATOR (Sonnet 4, 12 steps)                │
+│           src/lib/agents/orchestrator.ts (683 LOC)                  │
+│   AgentConfig + orchestratorTools + ORCHESTRATOR_SYSTEM_PROMPT      │
+│                                                                      │
+│   Delegation tools          Dashboard tools (direct)                │
+│   ─────────────────         ───────────────────────                 │
+│   delegateToResearch        listWorkspaces                          │
+│   delegateToLeads           getWorkspaceInfo                        │
+│   delegateToWriter          getCampaigns / getReplies               │
+│   delegateToCampaign        queryPeople / listProposals             │
+│                             searchKnowledgeBase                     │
+└───────────┬───────┬────────────────────┬──────────────┬────────────┘
+            │       │                    │              │
+            ▼       ▼                    ▼              ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│   Research   │ │   Writer     │ │   Leads      │ │  Campaign    │
+│   Agent      │ │   Agent      │ │   Agent      │ │  Agent       │
+│   (Opus, 8)  │ │   (Opus, 8)  │ │   (Opus, 8)  │ │  (Opus, 8)  │
+│ research.ts  │ │ writer.ts    │ │ leads.ts     │ │ campaign.ts  │
+└──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+       │                │                │                  │
+       └────────────────┴────────────────┴──────────────────┘
+                                │
+                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Shared Infrastructure                                              │
-│  PostgreSQL (Neon)    EmailBison API    Slack API    Anthropic API  │
+│                       TOOL LAYER                                    │
+│                                                                      │
+│   DB (Prisma)    EmailBison API    Discovery Adapters    KB Search  │
+│   src/lib/db     src/lib/email     src/lib/discovery    store.ts   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Responsibilities
+### Current Architecture (v6 — Pre-migration)
 
-| Component | Responsibility | Location |
-|-----------|----------------|----------|
-| Webhook route handler | Parse + verify payload, write WebhookEvent, trigger Trigger.dev task, return 200 | `src/app/api/webhooks/emailbison/route.ts` (modified) |
-| Trigger.dev task runner | Execute long-running work: classify, notify, AI, LinkedIn | `src/trigger/` (new directory) |
-| Shared lib (`src/lib/`) | All business logic: Prisma, EmailBisonClient, notifications, classifyReply, agents | Unchanged — imported by both Next.js routes and Trigger.dev tasks |
-| Cron route stubs | Optional: HTTP trigger surface for Trigger.dev tasks (manual/fallback) | `src/app/api/cron/` (simplified) |
-| Trigger.dev scheduled tasks | Replace cron-job.org — declarative cron on Trigger.dev's infrastructure | `src/trigger/crons/` |
-| Railway LinkedIn worker | LinkedIn action executor (MAY remain or migrate — see analysis below) | `worker/` |
+The existing system has two invocation paths that share the same orchestrator:
+
+1. **Dashboard Chat** (`/api/chat/route.ts`) — `streamText()` with `orchestratorTools`, returns streaming UI response. Sanitizes user input before delegating.
+
+2. **CLI (nova.md skill)** — Executes `npx tsx` inline to call `generateText()` directly importing `orchestratorConfig` and `orchestratorTools`. One-shot, not persistent.
+
+Both paths load the full TypeScript agent code at runtime. The specialist agents (research, writer, leads, campaign) are called inside the orchestrator's delegation tool `execute()` functions — they never run as separate processes.
+
+The `runner.ts` is the shared execution engine: creates `AgentRun` audit records in Postgres, calls `generateText()`, extracts tool call steps, and persists output. Every agent invocation hits the Anthropic API and costs money.
+
+---
+
+## Target Architecture (v7 — CLI Skill System)
+
+### Migration Goal
+
+Replace direct Anthropic API calls in specialist agents with Claude Code CLI invocations. The key insight is that Claude Code (Max Plan) covers API costs, so running agents as Claude subprocesses is free vs Opus calls at ~$15/MTok input.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      INVOCATION LAYER (unchanged)                   │
+│                                                                      │
+│  ┌──────────────────┐        ┌─────────────────────────────────┐   │
+│  │  Dashboard Chat  │        │   Claude Code CLI (nova skill)  │   │
+│  │  /api/chat POST  │        │   .claude/commands/nova.md      │   │
+│  │  (thin bridge)   │        │   (unchanged — calls scripts)   │   │
+│  └────────┬─────────┘        └─────────────────┬───────────────┘   │
+└───────────┼──────────────────────────────────  ┼ ───────────────────┘
+            │ HTTP POST                           │ Bash exec
+            ▼                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│               ORCHESTRATOR BRIDGE (thin, Sonnet or Haiku)           │
+│           No longer calls runResearchAgent() etc. directly          │
+│           Instead: spawns claude --skill nova-{agent} --workspace   │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │ CLI subprocess (claude --skill)
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+        ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+        │ nova-research │ │ nova-writer  │ │ nova-leads   │
+        │ .claude/      │ │ .claude/     │ │ .claude/     │
+        │ commands/     │ │ commands/    │ │ commands/    │
+        │ nova-         │ │ nova-        │ │ nova-        │
+        │ research.md   │ │ writer.md    │ │ leads.md     │
+        │               │ │              │ │              │
+        │ Uses Bash     │ │ Uses Bash    │ │ Uses Bash    │
+        │ to call thin  │ │ to call thin │ │ to call thin │
+        │ CLI wrappers  │ │ CLI wrappers │ │ CLI wrappers │
+        └──────┬────────┘ └──────┬───────┘ └──────┬───────┘
+               └─────────────────┼─────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    CLI WRAPPER SCRIPTS (thin)                       │
+│                  scripts/cli/                                        │
+│                                                                      │
+│  db-query.ts        emailbison.ts     kb-search.ts                  │
+│  leads-search.ts    leads-export.ts   research-crawl.ts             │
+│  campaign-crud.ts   workspace-get.ts  memory-read.ts                │
+│  memory-write.ts                                                     │
+│                                                                      │
+│  Each script: load .env → call existing TypeScript lib → stdout JSON│
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    EXISTING TOOL LAYER (unchanged)                  │
+│                                                                      │
+│  src/lib/agents/*.ts  src/lib/leads/  src/lib/discovery/            │
+│  src/lib/emailbison/  src/lib/knowledge/store.ts                    │
+│  prisma/schema.prisma                                                │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                CLIENT MEMORY FILES (new — flat file)                │
+│                                                                      │
+│  .claude/memory/{workspace-slug}/                                   │
+│    profile.md          — ICP, tone, copy rules, writing style       │
+│    copy-wins.md        — Subject lines and sequences that worked    │
+│    campaign-history.md — Completed campaigns summary                │
+│    feedback.md         — Client feedback log (most recent 10)       │
+│    icp-learnings.md    — Qualification patterns and signals that fit│
+│    approval-patterns.md — What client approves vs requests changes  │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Recommended Project Structure
 
+### New Files Required
+
 ```
-/trigger/                        # Trigger.dev task root (new directory)
-├── config.ts                    # Shared task utilities (prisma client, emailbison, env)
-├── queues.ts                    # v4: all queues defined ahead of time
+/Users/jjay/programs/outsignal-agents/
+├── .claude/
+│   ├── commands/
+│   │   ├── nova.md                   # EXISTING — orchestrator skill (thin, keep)
+│   │   ├── nova-research.md          # NEW — research specialist skill
+│   │   ├── nova-writer.md            # NEW — writer specialist skill
+│   │   ├── nova-leads.md             # NEW — leads specialist skill
+│   │   └── nova-campaign.md          # NEW — campaign specialist skill
+│   └── memory/
+│       └── {workspace-slug}/         # NEW — per-client memory namespace
+│           ├── profile.md
+│           ├── copy-wins.md
+│           ├── campaign-history.md
+│           ├── feedback.md
+│           ├── icp-learnings.md
+│           └── approval-patterns.md
 │
-├── crons/                       # Scheduled tasks (declarative cron)
-│   ├── poll-replies.ts          # every 10 min — poll EmailBison for missed replies
-│   ├── retry-classification.ts  # every 15 min — classify unclassified replies
-│   ├── snapshot-metrics.ts      # daily 1am — campaign analytics snapshots
-│   ├── generate-insights.ts     # daily 2am — AI insight generation per workspace
-│   ├── domain-health.ts         # 8am + 8pm — DNS/DNSBL checks
-│   ├── sync-senders.ts          # every 4h — EmailBison sender sync
-│   ├── bounce-monitor.ts        # every 4h — bounce rate tracking
-│   ├── inbox-health.ts          # daily 6am — sender credential health
-│   └── deliverability-digest.ts # monthly — deliverability digest notification
+├── scripts/
+│   ├── chat.ts                       # EXISTING — interactive orchestrator CLI
+│   ├── generate-copy.ts              # EXISTING — deprecated, keep as reference
+│   └── cli/                          # NEW — thin CLI wrappers
+│       ├── db-query.ts               # Prisma queries → stdout JSON
+│       ├── workspace-get.ts          # getWorkspaceDetails → stdout JSON
+│       ├── kb-search.ts              # searchKnowledge → stdout JSON
+│       ├── research-crawl.ts         # Firecrawl crawl/scrape → stdout JSON
+│       ├── leads-search.ts           # leads/operations.searchPeople → stdout JSON
+│       ├── leads-export.ts           # leads/operations.exportToEmailBison → stdout JSON
+│       ├── campaign-crud.ts          # Campaign CRUD ops → stdout JSON
+│       ├── emailbison.ts             # EmailBison client calls → stdout JSON
+│       ├── memory-read.ts            # Read .claude/memory/{slug}/*.md → stdout
+│       └── memory-write.ts           # Append/update memory files
 │
-├── reply/                       # Event-triggered reply processing
-│   ├── process-reply.ts         # Orchestrator: receives webhook payload, fans out subtasks
-│   ├── classify-reply.ts        # Run classifyReply() on a reply record
-│   └── generate-suggestion.ts   # Run AI reply suggestion (Haiku or writer agent)
-│
-└── linkedin/                    # LinkedIn tasks (if migrated from Railway)
-    ├── process-action.ts        # Execute single LinkedIn action (connect/message/view)
-    └── poll-linkedin-queue.ts   # Scheduled: pick up pending LinkedInAction records
-
-src/lib/                         # UNCHANGED — all shared business logic
-├── db.ts                        # PrismaClient singleton (used by tasks + routes)
-├── emailbison/client.ts         # EmailBisonClient (used by tasks + routes)
-├── agents/runner.ts             # runAgent() (used by generate-suggestion task)
-├── classification/classify-reply.ts  # classifyReply() (used by classify task)
-├── notifications.ts             # notifyReply() etc. (used by process-reply task)
-└── ...all other libs...
-
-src/app/api/webhooks/emailbison/route.ts   # MODIFIED: remove .then() chains, add tasks.trigger()
-src/app/api/cron/*/route.ts                # SIMPLIFIED: each route calls tasks.trigger() and returns
-
-trigger.config.ts                          # NEW: Trigger.dev configuration at project root
+└── src/lib/agents/
+    ├── orchestrator.ts               # EXISTING — modified: add CLI spawn tools
+    ├── runner.ts                     # EXISTING — unchanged (kept as fallback)
+    ├── research.ts                   # EXISTING — unchanged (kept as fallback)
+    ├── writer.ts                     # EXISTING — unchanged (kept as fallback)
+    ├── leads.ts                      # EXISTING — unchanged (kept as fallback)
+    ├── campaign.ts                   # EXISTING — unchanged (kept as fallback)
+    ├── shared-tools.ts               # EXISTING — unchanged
+    ├── types.ts                      # EXISTING — extend with CLI invocation types
+    ├── utils.ts                      # EXISTING — unchanged
+    └── cli-spawn.ts                  # NEW — spawnCliAgent() utility
 ```
 
 ### Structure Rationale
 
-- **`/trigger/` at project root:** Trigger.dev CLI convention — `dirs: ["./trigger"]` in config. Separate from `src/` to make the boundary clear: these files run on Trigger.dev's infrastructure, not Vercel.
-- **`/trigger/config.ts` for shared setup:** Prisma client, EmailBisonClient factory, and environment variable access in one place, imported by all tasks. Avoids repeated instantiation.
-- **`/trigger/queues.ts`:** v4 requires queues defined ahead-of-time in code (not dynamic). All per-sender queues and concurrency limits defined here.
-- **Crons in `/trigger/crons/`:** One file per cron job, with declarative `cron:` property. Mirrors existing `src/app/api/cron/` structure 1:1 — easy to compare old vs new.
-- **Reply flow in `/trigger/reply/`:** Fan-out pattern: `process-reply` is the orchestrator that receives webhook data and calls `triggerAndWait` for classify + subtasks in parallel.
-- **`src/lib/` unchanged:** Business logic stays in its existing home. Tasks import from `@/lib/` using the same alias as Next.js routes — no duplication.
+- **`scripts/cli/`** — Thin wrappers isolated from agent logic. Each is a standalone Node.js script: `load .env → import lib function → call → print JSON → exit`. No agent intelligence, no prompts. This is the tool boundary.
+
+- **`.claude/commands/nova-*.md`** — Skill definitions contain the agent prompt and tool invocation instructions. They tell Claude Code what to do and how to call the CLI wrappers. Skills replace `generateText()` calls.
+
+- **`.claude/memory/{slug}/`** — Flat markdown files per workspace. Claude Code reads these directly into context. No DB required. Files are human-readable and version-controllable.
+
+- **Existing `src/lib/agents/`** — Kept intact as fallback. No files deleted. The orchestrator gains a new "CLI spawn" path alongside the existing "direct call" path.
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Webhook → Immediate 200 → Trigger.dev Task
+### Pattern 1: Skill as Prompt + Tool Instructions
 
-**What:** Webhook route returns 200 immediately after persisting the event and triggering a Trigger.dev task. All heavy work (classification, AI, notifications, LinkedIn) happens in the task.
+**What:** A `.md` file in `.claude/commands/` defines an agent role as a Claude Code skill. The file contains: system prompt, tool usage instructions (which CLI scripts to call), memory read/write instructions, and output format. Claude Code executes the skill as a subagent.
 
-**When to use:** Any webhook handler that currently does work inside `.then()` chains or risks timing out.
+**When to use:** For specialist agents that benefit from persistent memory and should run under the Claude Code Max Plan to eliminate API costs.
 
-**Trade-offs:** Adds ~100ms overhead for `tasks.trigger()` call. Eliminates all timeout risk. Full retry + observability. Webhook can't "fail" due to downstream work.
+**Trade-offs:** Skills are stateless text files — no TypeScript type safety. But memory files provide cross-session persistence that the current architecture lacks entirely.
 
-**Example:**
-```typescript
-// src/app/api/webhooks/emailbison/route.ts (modified)
-import { tasks } from "@trigger.dev/sdk";
-import type { processReplyTask } from "@/trigger/reply/process-reply";
+**Example structure:**
+```markdown
+# nova-writer
 
-export async function POST(request: NextRequest) {
-  const rawBody = await request.text();
-  // 1. Verify signature (fast, synchronous)
-  const sigCheck = verifyWebhookSignature(rawBody, request);
-  if (!sigCheck.valid) return sigCheck.response;
+You are the Outsignal Writer Agent...
 
-  const payload = JSON.parse(rawBody);
-  // 2. Write event record immediately (dedup anchor)
-  await prisma.webhookEvent.create({ data: { ...parsed } });
+## Tools (call via Bash)
 
-  // 3. Fire task — non-blocking, returns handle
-  await tasks.trigger<typeof processReplyTask>("process-reply", {
-    workspaceSlug,
-    eventType,
-    payload,
-    webhookEventId: webhookEvent.id,
-  });
+Get workspace intelligence:
+  npx tsx scripts/cli/workspace-get.ts {workspace-slug}
 
-  // 4. Return 200 in <500ms — EmailBison stops waiting
-  return NextResponse.json({ received: true });
-}
+Search knowledge base:
+  npx tsx scripts/cli/kb-search.ts "subject line best practices" --tags cold-email
+
+Read client memory:
+  npx tsx scripts/cli/memory-read.ts {workspace-slug} copy-wins
+
+Write to memory (append a copy win):
+  npx tsx scripts/cli/memory-write.ts {workspace-slug} copy-wins "Subject: {line} — {reply-rate}"
 ```
 
-### Pattern 2: Shared Prisma Client in Tasks
+### Pattern 2: Thin CLI Wrapper
 
-**What:** Tasks import `prisma` from `src/lib/db.ts` using the `@/` path alias — same as any Next.js route. Trigger.dev tasks run in a Node.js environment that respects tsconfig path aliases configured in `trigger.config.ts`.
+**What:** A standalone `scripts/cli/*.ts` script that loads `.env`, imports an existing lib function, calls it with CLI args, prints JSON to stdout, and exits. Zero agent logic. Zero prompts. Pure data bridging.
 
-**When to use:** All database access in tasks.
+**When to use:** To expose any existing TypeScript function to Claude Code Bash tool calls without rewriting the underlying logic.
 
-**Trade-offs:** Same Neon connection pool serves both Vercel functions and Trigger.dev tasks. Neon's serverless mode handles connection pooling transparently. At current scale (10+ tasks + 6 workspaces) this is fine. If connection pressure increases, configure `DATABASE_URL` to point at PgBouncer in front of Neon.
+**Trade-offs:** Each script must re-initialize Prisma client — small overhead (~300ms) per call. Acceptable for agent workflows which are measured in seconds.
 
 **Example:**
 ```typescript
-// trigger/reply/classify-reply.ts
-import { task } from "@trigger.dev/sdk";
-import { prisma } from "@/lib/db";            // same import as API routes
-import { classifyReply } from "@/lib/classification/classify-reply";
+// scripts/cli/workspace-get.ts
+import { config } from "dotenv";
+config({ path: ".env" });
+config({ path: ".env.local" });
 
-export const classifyReplyTask = task({
-  id: "classify-reply",
-  run: async (payload: { replyId: string }) => {
-    const reply = await prisma.reply.findUniqueOrThrow({
-      where: { id: payload.replyId },
-    });
-    const result = await classifyReply({ ... });
-    await prisma.reply.update({
-      where: { id: reply.id },
-      data: { intent: result.intent, ... classifiedAt: new Date() },
-    });
-    return result;
-  },
-});
+import { getWorkspaceDetails } from "../../src/lib/workspaces";
+
+const slug = process.argv[2];
+if (!slug) { console.error("Usage: workspace-get.ts <slug>"); process.exit(1); }
+
+getWorkspaceDetails(slug)
+  .then(ws => { console.log(JSON.stringify(ws ?? { error: "not found" })); })
+  .catch(err => { console.error(JSON.stringify({ error: err.message })); process.exit(1); });
 ```
 
-### Pattern 3: Declarative Scheduled Tasks
+### Pattern 3: Flat-File Memory Namespace
 
-**What:** Cron tasks use `schedules.task()` with a `cron` property. The schedule syncs automatically on every `trigger.dev deploy`. No cron-job.org configuration needed.
+**What:** Per-workspace directory at `.claude/memory/{slug}/` containing markdown files. Each file covers one memory domain (copy-wins, feedback, profile). Claude Code reads them with the Read tool at skill startup and appends to them via `memory-write.ts`.
 
-**When to use:** All recurring jobs currently on cron-job.org.
+**When to use:** For any intelligence that should persist across agent sessions and accumulate over time. Replaces the current "no memory" state where each agent run starts cold.
 
-**Trade-offs:** Cron expressions control timing. Can't do "every 10 minutes only during business hours" without logic inside the task. Minimum granularity is 1 minute (Trigger.dev minimum). No cold-start lag.
+**Trade-offs:** Files can grow unbounded. Need a pruning strategy (trim to last N entries, or summarize quarterly). Markdown is human-readable — admin can inspect and correct.
 
-**Example:**
-```typescript
-// trigger/crons/poll-replies.ts
-import { schedules } from "@trigger.dev/sdk";
-import { prisma } from "@/lib/db";
-import { getAllWorkspaces } from "@/lib/workspaces";
-// ... all other imports identical to current src/app/api/cron/poll-replies/route.ts
+**Memory file format:**
+```markdown
+# Copy Wins — Rise
 
-export const pollRepliesTask = schedules.task({
-  id: "poll-replies",
-  cron: "*/10 * * * *",            // every 10 minutes
-  run: async (payload) => {
-    // Exact same logic as current route.ts GET handler
-    // No request/response wrapper needed — just the business logic
-    const workspaces = await getAllWorkspaces();
-    // ... rest of implementation
-  },
-});
+## 2026-03-15 | Campaign: Rise Q1 Static
+- Subject: "branded merch for your team" — 4.2% reply rate
+- Step 1 angle: cost anchor vs competitors → worked well
+- Step 3 (breakup): "worth a quick chat?" → highest CTR
+
+## 2026-03-01 | Campaign: Rise Launch
+- "we outfit X teams" social proof opener — 3.8% reply rate
 ```
 
-### Pattern 4: Subtask Fan-out for Reply Processing
+### Pattern 4: Orchestrator Bridge
 
-**What:** The `process-reply` orchestrator task triggers child tasks in parallel using `triggerAndWait` (inside tasks, not from webhooks). This allows classification and notification to run concurrently while still being able to use results.
+**What:** The orchestrator's delegation tools (`delegateToResearch`, `delegateToWriter`, etc.) are modified to spawn Claude Code CLI skills instead of calling `runResearchAgent()` directly. The orchestrator passes context as flags or via stdin. Results come back as stdout text.
 
-**When to use:** Webhook events that require multiple independent operations (classify, notify, AI suggest).
+**When to use:** This is the core migration pattern. The orchestrator gains a new code path without removing the existing one.
 
-**Trade-offs:** Adds task orchestration complexity. Each subtask has its own retry budget. Failed subtask doesn't block other subtasks.
+**Trade-offs:** Subprocess spawning adds ~2-5 seconds latency per delegation. Acceptable because specialist agent runs already take 30-120 seconds. Error handling must capture non-zero exit codes and stderr.
 
-**Example:**
+**Invocation pattern:**
 ```typescript
-// trigger/reply/process-reply.ts
-import { task } from "@trigger.dev/sdk";
-import { tasks } from "@trigger.dev/sdk";
-
-export const processReplyTask = task({
-  id: "process-reply",
-  run: async (payload: ProcessReplyPayload) => {
-    // 1. Upsert Reply record (required for subtask IDs)
-    const reply = await upsertReply(payload);
-
-    // 2. Fan out: classify + notification fire in parallel
-    const [classifyResult] = await Promise.all([
-      tasks.triggerAndWait("classify-reply", { replyId: reply.id }),
-      notifyReply({ ... }),  // direct call — notifications.ts is fast
-    ]);
-
-    // 3. AI suggestion (depends on classification being done first)
-    if (payload.eventType !== "BOUNCE") {
-      await tasks.trigger("generate-suggestion", {
-        replyId: reply.id,
-        workspaceSlug: payload.workspaceSlug,
-      });
-    }
-  },
+// In orchestrator.ts delegation tool execute():
+// New CLI path (feature-flagged):
+const result = await spawnCliAgent("nova-writer", {
+  workspace: workspaceSlug,
+  task: task,
+  args: ["--channel", channel ?? "email"],
 });
-```
+// result.stdout = agent's text output
+// result.exitCode = 0 on success
 
-### Pattern 5: Per-Sender Concurrency via concurrencyKey
-
-**What:** LinkedIn action tasks use `concurrencyKey: senderId` so each sender's actions execute sequentially (no rate limit violations) while different senders run in parallel.
-
-**When to use:** Any task that must be rate-limited per entity (LinkedIn session limits are per-account).
-
-**Trade-offs:** Requires defining queues ahead of time in v4. With N senders each at concurrency 1, Trigger.dev creates N parallel queues. This is correct — senders don't interfere with each other.
-
-**Example:**
-```typescript
-// trigger/queues.ts
-import { queue } from "@trigger.dev/sdk";
-
-export const linkedInActionQueue = queue({
-  name: "linkedin-actions",
-  concurrencyLimit: 1,  // 1 concurrent action per concurrencyKey
-});
-
-// trigger/linkedin/process-action.ts
-export const processLinkedInActionTask = task({
-  id: "process-linkedin-action",
-  queue: linkedInActionQueue,
-  run: async (payload: { actionId: string; senderId: string }) => {
-    // concurrencyKey ensures sequential execution per sender
-  },
-});
-
-// When triggering:
-await tasks.trigger("process-linkedin-action",
-  { actionId, senderId },
-  { queue: { concurrencyKey: senderId } }
-);
+// Fallback path (existing, unchanged):
+const result = await runWriterAgent({ workspaceSlug, task, channel });
 ```
 
 ---
 
 ## Data Flow
 
-### Webhook → Task Flow
+### Flow 1: Dashboard Chat → CLI Agent (Post-Migration)
 
 ```
-EmailBison
-  → POST /api/webhooks/emailbison?workspace=rise
-  → Next.js route (Vercel):
-      1. verifyWebhookSignature() [sync]
-      2. prisma.webhookEvent.create() [fast DB write]
-      3. tasks.trigger("process-reply", payload) [~100ms Trigger.dev API call]
-      4. return 200 ← EmailBison stops waiting here
-  → Trigger.dev receives task
-  → process-reply task starts (warm: ~100-300ms, cold: ~1-2s):
-      1. upsertReply() → DB
-      2. classifyReply() → Anthropic Haiku → DB update
-      3. notifyReply() → Slack + Resend email
-      4. generateSuggestion() → Anthropic + Slack + DB update
-      5. linkedInFastTrack() → DB enqueue (or direct Trigger.dev trigger)
-  → Task completes with full observability in Trigger.dev dashboard
+User types in dashboard chat
+    ↓
+POST /api/chat → route.ts (streamText + orchestrator system prompt)
+    ↓
+Orchestrator decides to delegate to Writer
+    ↓
+delegateToWriter.execute() → spawnCliAgent("nova-writer", {...})
+    ↓
+Bash: claude --skill nova-writer --workspace rise --task "..."
+    ↓
+nova-writer.md skill loads → reads .claude/memory/rise/copy-wins.md
+    ↓
+Skill calls: npx tsx scripts/cli/workspace-get.ts rise
+    ↓
+workspace-get.ts → getWorkspaceDetails("rise") → stdout JSON
+    ↓
+Skill calls: npx tsx scripts/cli/kb-search.ts "subject line"
+    ↓
+Skill generates copy → calls memory-write.ts to log result
+    ↓
+Skill outputs campaign JSON to stdout
+    ↓
+spawnCliAgent resolves → orchestrator formats response
+    ↓
+streamText continues → UI receives token stream
 ```
 
-### Cron Task Flow
+### Flow 2: Memory Read/Write Cycle
 
 ```
-Trigger.dev scheduler (replaces cron-job.org)
-  → poll-replies task fires every 10 minutes
-  → Task runs on Trigger.dev infrastructure (no 30s limit):
-      - getAllWorkspaces() → DB
-      - EmailBisonClient.getRecentReplies() per workspace [can take 2-5s each]
-      - dedup check → DB
-      - process reply: upsert + classify + notify + LinkedIn fast-track
-      - Full execution with retries if Anthropic API times out
-  → Completes in whatever time it takes (no artificial ceiling)
+Agent session starts
+    ↓
+Skill .md reads memory files (via Read tool or memory-read.ts)
+    ↓
+[profile.md, copy-wins.md, feedback.md loaded into context]
+    ↓
+Agent does work using accumulated knowledge
+    ↓
+Agent writes new learnings:
+  npx tsx scripts/cli/memory-write.ts rise copy-wins "..."
+    ↓
+memory-write.ts appends dated entry to .claude/memory/rise/copy-wins.md
+    ↓
+Next session starts with updated context
 ```
 
-### Task Imports Data Flow
+### Flow 3: Dashboard Chat Bridge (Thin Path)
 
 ```
-trigger/reply/classify-reply.ts
-  imports → @/lib/classification/classify-reply        [business logic, unchanged]
-          → @/lib/db                                   [same PrismaClient singleton]
-  env    → DATABASE_URL, ANTHROPIC_API_KEY             [from Trigger.dev dashboard env vars]
-  runs on → Trigger.dev worker (Node.js, not Vercel)
+User message arrives at /api/chat
+    ↓
+route.ts sanitizes input (existing sanitizePromptInput — unchanged)
+    ↓
+streamText() with orchestratorConfig system prompt
+    ↓
+Orchestrator: simple query? → use dashboardTools directly (no spawn)
+Orchestrator: complex task? → delegation tool → spawnCliAgent
+    ↓
+Result streams back to UI
+    ↓
+No change to frontend — UI is already thin
 ```
+
+### Flow 4: Nova CLI Skill → Orchestrator (Unchanged)
+
+```
+User in Claude Code terminal: /nova "write copy for rise"
+    ↓
+nova.md skill executes
+    ↓
+Bash: cd /Users/jjay/programs/outsignal-agents && npx tsx -e "..."
+    ↓
+Inline script imports orchestratorConfig, orchestratorTools
+    ↓
+generateText() called with orchestrator config
+    ↓
+Orchestrator delegates → spawnCliAgent (new) or direct runAgent (fallback)
+    ↓
+Result printed to terminal
+```
+
+---
+
+## Component Responsibilities
+
+| Component | Responsibility | Status |
+|-----------|----------------|--------|
+| `nova.md` | Entry point skill — orchestrator invocation via CLI | EXISTING, keep as-is |
+| `nova-writer.md` | Writer specialist skill — prompts + tool call instructions | NEW |
+| `nova-research.md` | Research specialist skill | NEW |
+| `nova-leads.md` | Leads specialist skill | NEW |
+| `nova-campaign.md` | Campaign specialist skill | NEW |
+| `scripts/cli/*.ts` | Thin data wrappers exposing lib functions to Bash | NEW |
+| `.claude/memory/{slug}/` | Per-client persistent memory files | NEW |
+| `src/lib/agents/cli-spawn.ts` | `spawnCliAgent()` utility for orchestrator | NEW |
+| `orchestrator.ts` | Central coordinator — gains `spawnCliAgent()` path | MODIFIED |
+| `runner.ts` | Existing execution engine — kept as fallback | UNCHANGED |
+| `research.ts` / `writer.ts` / `leads.ts` / `campaign.ts` | Existing specialist agents — fallback | UNCHANGED |
+| `/api/chat/route.ts` | Dashboard chat bridge | UNCHANGED |
 
 ---
 
 ## Integration Points
 
-### External Services
+### Skill ↔ CLI Wrapper Boundary
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Trigger.dev Cloud | `tasks.trigger()` from webhook/cron routes | Requires `TRIGGER_SECRET_KEY` env var on Vercel + in Trigger.dev dashboard |
-| PostgreSQL (Neon) | Same `@/lib/db` PrismaClient import | Trigger.dev tasks need `DATABASE_URL` env var set in Trigger.dev dashboard |
-| Anthropic API | Same `anthropic()` import via AI SDK | `ANTHROPIC_API_KEY` needed in Trigger.dev dashboard |
-| EmailBison API | Same `EmailBisonClient` class | `EMAILBISON_*` tokens set in Trigger.dev dashboard |
-| Slack API | Same `postMessage()` from `@/lib/slack` | `SLACK_*` env vars in Trigger.dev dashboard |
-| Resend (email) | Same `resend` client from `@/lib/resend` | `RESEND_API_KEY` in Trigger.dev dashboard |
-| Railway LinkedIn Worker | Worker continues running separately OR tasks call worker HTTP endpoint | See LinkedIn worker analysis below |
+The boundary between skill (`.md` prompt file) and tool code (CLI script) is the stdout/stdin interface:
 
-### Internal Boundaries
+- Skills call wrappers via Bash: `npx tsx scripts/cli/workspace-get.ts rise`
+- Wrappers output JSON to stdout, errors to stderr, exit code 0/1
+- Skills parse stdout as JSON for structured data, or treat as text for KB results
+- Skills never import TypeScript directly — they are text files
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Webhook route → Trigger.dev task | `tasks.trigger()` (type-only import of task) | Use `import type` to avoid bundling task deps into Vercel |
-| Trigger.dev task → Next.js lib | Direct import (`@/lib/*`) | Path alias configured via tsconfig in `trigger.config.ts` |
-| Trigger.dev task → subtask | `tasks.triggerAndWait()` (inside tasks only) | Available only within Trigger.dev task context, not from routes |
-| Cron-job.org → (retired) | Replaced entirely by Trigger.dev declarative cron | Old HTTP cron endpoints can be kept as manual trigger fallbacks |
-| Trigger.dev task → Railway worker | HTTP call to `WORKER_URL` (unchanged) | If LinkedIn stays on Railway |
+This boundary is critical. Tools should never contain prompt logic. Skills should never contain database logic.
 
----
+### Orchestrator ↔ CLI Skill Boundary
 
-## LinkedIn Worker — Railway vs Trigger.dev Analysis
+The orchestrator's `delegateToX` tools currently call TypeScript functions directly. The migration adds a parallel path controlled by an env var:
 
-### Current State
+```
+// Current path (keep as fallback, activated when USE_CLI_AGENTS != "true"):
+execute: async ({ task }) => await runWriterAgent({ task })
 
-The LinkedIn worker runs as a long-running Node.js process on Railway. It:
-1. Polls `LinkedInAction` DB table every ~30 seconds
-2. Executes actions (connect, message, profile_view) via Voyager API
-3. Manages session cookies with `undici` ProxyAgent (persistent in-memory state)
-4. Refreshes LinkedIn sessions on a timer
-
-### Can Trigger.dev Replace Railway?
-
-**Answer: Partially, with caveats. Confidence: MEDIUM.**
-
-Trigger.dev tasks are invoked on-demand (not long-running servers). The `undici` ProxyAgent with LinkedIn session cookies is stateful — it needs to persist across calls because LinkedIn's Voyager API uses session-based auth that requires consistent proxy routing.
-
-**What Trigger.dev CAN handle:**
-- Polling the `LinkedInAction` DB table on a schedule (every 1-2 min via cron task)
-- Executing individual actions — if session cookies are fetched fresh from DB each time (already stored as `Sender.linkedinCookies`)
-- Session refresh tasks on a schedule
-
-**What Trigger.dev CANNOT replace cleanly:**
-- In-memory ProxyAgent state with connection pooling across requests
-- The warm connection that Railway's persistent process maintains
-
-**Recommendation: Keep Railway worker as-is for v6.0.** The LinkedIn worker migration is a separate, higher-risk scope. It would require refactoring the ProxyAgent pattern to be stateless (cookies from DB, no in-memory agent reuse). This is feasible but should be its own milestone. For v6.0, focus Trigger.dev on email/AI/cron work — the clear wins.
-
-**Future LinkedIn migration path (post-v6.0):**
-- Store all session state in DB (cookies, proxy assignment)
-- Create stateless `VoyagerClient` that rebuilds ProxyAgent from DB each call
-- `process-linkedin-action` Trigger.dev task: fetch cookies from DB → create ProxyAgent → execute action → discard ProxyAgent
-- Retire Railway entirely
-
----
-
-## trigger.config.ts — Required Configuration
-
-```typescript
-// trigger.config.ts (project root)
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
-
-export default defineConfig({
-  project: "proj_your_project_id",    // from Trigger.dev dashboard
-  dirs: ["./trigger"],                 // task directory
-  build: {
-    extensions: [
-      prismaExtension({
-        schema: "./prisma/schema.prisma",
-        directUrlEnvVarName: "DIRECT_DATABASE_URL",  // Neon requires direct URL for migrations
-      }),
-    ],
-  },
-});
+// New CLI path (activated when USE_CLI_AGENTS="true"):
+execute: async ({ task }) => await spawnCliAgent("nova-writer", { task })
 ```
 
-**Why prismaExtension:** Trigger.dev runs in a custom build environment. Without this extension, Prisma's generated client (binary targets for linux-debian) is not bundled correctly. The extension handles binary target configuration automatically.
+The `spawnCliAgent()` utility in `src/lib/agents/cli-spawn.ts` handles: subprocess creation, timeout (300 seconds), stdout buffering, exit code checking, and error formatting.
 
-**Path alias resolution:** Trigger.dev respects `tsconfig.json` `paths` configuration. The existing `"@/*": ["./src/*"]` alias works in task files — no additional setup needed.
+### Memory ↔ Agent Boundary
 
----
+Memory files are read at skill startup and written at skill completion:
 
-## Modified Files vs New Files
+- **Read** — Claude Code's built-in Read tool loads markdown files into context. Skills instruct the agent to read specific files at startup.
+- **Write** — `memory-write.ts` script appends entries. The script creates the directory/file if it does not exist.
+- **Schema** — No enforced schema. Files are markdown with dated sections. This keeps them human-editable and correctable by admin.
 
-### New Files
+### Dashboard Chat ↔ Orchestrator Boundary (unchanged)
 
-| File | Purpose |
-|------|---------|
-| `trigger.config.ts` | Trigger.dev project config with prismaExtension |
-| `trigger/queues.ts` | v4 queue definitions (concurrency limits) |
-| `trigger/crons/poll-replies.ts` | Scheduled task — replaces cron-job.org poll-replies |
-| `trigger/crons/retry-classification.ts` | Scheduled task — retry unclassified replies |
-| `trigger/crons/snapshot-metrics.ts` | Scheduled task — daily analytics snapshot |
-| `trigger/crons/generate-insights.ts` | Scheduled task — AI insight generation |
-| `trigger/crons/domain-health.ts` | Scheduled task — DNS/DNSBL health checks |
-| `trigger/crons/sync-senders.ts` | Scheduled task — EmailBison sender sync |
-| `trigger/crons/bounce-monitor.ts` | Scheduled task — bounce rate monitoring |
-| `trigger/crons/inbox-health.ts` | Scheduled task — sender credential health |
-| `trigger/reply/process-reply.ts` | Event task — orchestrates reply processing |
-| `trigger/reply/classify-reply.ts` | Event task — classify single reply via Haiku |
-| `trigger/reply/generate-suggestion.ts` | Event task — AI reply suggestion (writer agent or Haiku) |
+The `/api/chat` route calls `streamText()` with `orchestratorTools`. After migration, `orchestratorTools` contains the same delegation tools — but their `execute()` functions now spawn CLI skills when `USE_CLI_AGENTS=true`. The dashboard chat sees no change.
 
-### Modified Files
+### External Service Boundaries
 
-| File | Change | Risk |
-|------|--------|------|
-| `src/app/api/webhooks/emailbison/route.ts` | Remove `.then()` fire-and-forget chains; add `tasks.trigger("process-reply", payload)` after DB write | LOW — same behavior, different execution path |
-| `src/app/api/cron/poll-replies/route.ts` | Thin stub: call `tasks.trigger("poll-replies", {})` instead of doing work inline | LOW — logic moves, doesn't disappear |
-| `src/app/api/cron/retry-classification/route.ts` | Same thin stub pattern | LOW |
-| `src/app/api/cron/generate-insights/route.ts` | Same thin stub pattern | LOW |
-| `src/app/api/cron/snapshot-metrics/route.ts` | Same thin stub pattern | LOW |
-| `src/app/api/cron/domain-health/route.ts` | Same thin stub pattern | LOW |
-| `src/app/api/cron/sync-senders/route.ts` | Same thin stub pattern | LOW |
-| `src/app/api/cron/bounce-monitor/route.ts` | Same thin stub pattern | LOW |
-| `src/app/api/cron/inbox-health/route.ts` | Same thin stub pattern | LOW |
-| `package.json` | Add `@trigger.dev/sdk`, `@trigger.dev/build` | LOW |
-| `.env` / Vercel env vars | Add `TRIGGER_SECRET_KEY` | LOW |
-
-### Unchanged Files (used directly by tasks via import)
-
-- `src/lib/db.ts` — PrismaClient singleton
-- `src/lib/emailbison/client.ts` — EmailBisonClient
-- `src/lib/agents/runner.ts` — runAgent()
-- `src/lib/classification/classify-reply.ts` — classifyReply()
-- `src/lib/notifications.ts` — notifyReply(), notifyWeeklyDigest()
-- `src/lib/insights/generate.ts` — generateInsights()
-- All domain-health, analytics, enrichment libs
+| Service | Accessed By | How |
+|---------|-------------|-----|
+| PostgreSQL (Neon) | CLI wrappers via Prisma | `scripts/cli/*.ts` load `.env` |
+| EmailBison API | `scripts/cli/emailbison.ts` | `getClientForWorkspace()` |
+| Firecrawl | `scripts/cli/research-crawl.ts` | `crawlWebsite()` |
+| Anthropic API | `runner.ts` fallback only | `generateText()` via AI SDK |
+| Knowledge Base | `scripts/cli/kb-search.ts` | `searchKnowledge()` |
+| Memory files | CLI skill via Read tool + `memory-write.ts` | Flat file system |
 
 ---
 
-## Build Order
+## Build Order (Dependency-Aware)
 
-Tasks that can be built independently should be batched. Tasks with dependencies must sequence.
+This sequence is required because each phase unblocks the next:
 
-| Phase | What to Build | Depends On | Rationale |
-|-------|--------------|-----------|-----------|
-| 1 | Install + configure Trigger.dev (`trigger.config.ts`, `trigger/queues.ts`, first smoke test task) | Nothing | Validates toolchain before writing real tasks |
-| 2 | `process-reply` + `classify-reply` tasks; modify webhook handler to trigger them | Phase 1 | Highest-value migration — eliminates webhook timeout risk and fire-and-forget |
-| 3 | `generate-suggestion` task; restore full writer agent path | Phase 2 | Depends on reply being persisted (Phase 2 establishes that) |
-| 4 | All scheduled cron tasks (poll-replies, retry-classification, snapshot-metrics, generate-insights) | Phase 1 | Each cron is independent; build in parallel within phase |
-| 5 | Remaining scheduled tasks (domain-health, sync-senders, bounce-monitor, inbox-health, deliverability-digest) | Phase 1 | Same pattern — straightforward lift-and-shift |
-| 6 | Retire cron-job.org; validate observability dashboard | Phases 4-5 | Only retire after confirming Trigger.dev crons are running correctly |
+### Phase 1: CLI Wrapper Scripts (no dependencies)
+
+Build `scripts/cli/` scripts first. They depend only on existing `src/lib/` code which is unchanged. Can be tested immediately with `npx tsx scripts/cli/workspace-get.ts rise`. Each script is independently testable.
+
+Scripts to build in this order:
+1. `memory-read.ts` + `memory-write.ts` — filesystem only, no Prisma
+2. `workspace-get.ts` + `kb-search.ts` — read-only Prisma queries
+3. `leads-search.ts` — read-only leads operations
+4. `research-crawl.ts` — Firecrawl integration
+5. `campaign-crud.ts` + `leads-export.ts` — write operations (test carefully)
+6. `emailbison.ts` — external API calls
+
+### Phase 2: Memory File Initialization (depends on: Phase 1)
+
+Create `.claude/memory/` directory structure. Populate initial `profile.md` files for each workspace from existing Workspace DB records. Use a one-time init script that calls `workspace-get.ts` for each slug and formats the output as markdown.
+
+Per workspace: `profile.md` (from `getWorkspaceDetails`), empty `copy-wins.md`, `campaign-history.md`, `feedback.md`, `icp-learnings.md`, `approval-patterns.md`.
+
+### Phase 3: Specialist CLI Skills (depends on: Phases 1 + 2)
+
+Write the four `nova-*.md` skill definition files. Each skill references specific CLI wrapper scripts from Phase 1 and memory files from Phase 2. Writer skill is highest priority (most used). Research skill second.
+
+Skill files to write:
+1. `nova-writer.md` — references `workspace-get`, `kb-search`, `memory-read/write`
+2. `nova-research.md` — references `research-crawl`, `workspace-get`, `memory-write`
+3. `nova-leads.md` — references `leads-search`, `leads-export`, `workspace-get`
+4. `nova-campaign.md` — references `campaign-crud`, `workspace-get`
+
+### Phase 4: CLI Spawn Utility (depends on: Phase 3 for interface design)
+
+Write `src/lib/agents/cli-spawn.ts` — the `spawnCliAgent()` function that the orchestrator uses. This needs the skill names and expected output format defined in Phase 3 before the API can be designed correctly.
+
+### Phase 5: Orchestrator Migration (depends on: Phases 1-4)
+
+Modify `orchestrator.ts` delegation tools to call `spawnCliAgent()` when `USE_CLI_AGENTS=true`. Keep existing `runResearchAgent()` etc. calls as fallback. Test both paths. Validate end-to-end through dashboard chat.
+
+### Phase 6: Dashboard Chat Validation (depends on: Phase 5)
+
+Verify `/api/chat` still works end-to-end. No code changes expected — the orchestrator change is transparent to the chat route. Test multi-turn conversations, delegation round-trips, and memory accumulation across sessions.
 
 ---
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Importing Task Implementation into Next.js Routes
+### Anti-Pattern 1: Logic in Skill Files
 
-**What people do:**
-```typescript
-import { processReplyTask } from "@/trigger/reply/process-reply"; // WRONG
-await processReplyTask.trigger(payload); // task code now bundled into Vercel function
-```
+**What people do:** Put TypeScript-equivalent logic in skill `.md` files (conditionals, data transformations, threshold checks).
 
-**Why it's wrong:** Imports the full task module into the Next.js bundle, pulling in all task dependencies (Prisma, AI SDK, etc.) into the Vercel function. This bloats the function and can cause deploy failures.
+**Why it's wrong:** Skill files are prompts. Prompts are unreliable for deterministic logic. If a workspace has a `monthlyCampaignAllowance`, checking it should happen in a CLI wrapper that returns a boolean, not in a prompt that might hallucinate the check.
 
-**Do this instead:**
-```typescript
-import { tasks } from "@trigger.dev/sdk";
-import type { processReplyTask } from "@/trigger/reply/process-reply"; // type-only
-await tasks.trigger<typeof processReplyTask>("process-reply", payload);
-```
+**Do this instead:** Put any data logic in CLI wrapper scripts that output JSON. Skills consume the JSON and make decisions based on clear data.
 
-### Anti-Pattern 2: Doing Real Work in the Webhook Route After Adding Trigger.dev
+### Anti-Pattern 2: Bypassing CLI Wrappers
 
-**What people do:** Keep existing synchronous work in the webhook route (classify inline, update DB, notify) AND trigger a Trigger.dev task that does it again.
+**What people do:** Skills use `node -e "..."` inline scripts to access the database, because it seems faster than writing a wrapper.
 
-**Why it's wrong:** Duplicates work, race conditions on DB updates, defeats the purpose of the migration.
+**Why it's wrong:** This duplicates logic that already exists in `src/lib/`. It creates two code paths for the same operation, and the inline version won't have error handling, type safety, or Prisma connection cleanup.
 
-**Do this instead:** Move ALL post-verification work into the Trigger.dev task. The webhook route should only: verify signature, write WebhookEvent (dedup anchor), trigger task, return 200.
+**Do this instead:** Always route through `scripts/cli/` wrappers. If a wrapper does not exist yet, create one. One hour to write the wrapper saves days debugging divergent behavior.
 
-### Anti-Pattern 3: Defining Queues Dynamically (v3 pattern in v4)
+### Anti-Pattern 3: Growing Memory Files Without Pruning
 
-**What people do:**
-```typescript
-// Works in v3, fails in v4:
-await tasks.trigger("my-task", payload, {
-  queue: { name: `user-${userId}`, concurrencyLimit: 1 }
-});
-```
+**What people do:** Append to memory files indefinitely, reasoning that "more context is better."
 
-**Why it's wrong:** Trigger.dev v4 requires queues to be defined ahead of time in code and synced via `deploy`. Dynamic queue creation is deprecated.
+**Why it's wrong:** Claude Code context windows are finite. A `copy-wins.md` with 2 years of entries will push out current campaign context. Agent performance degrades as memory files bloat.
 
-**Do this instead:**
-```typescript
-// trigger/queues.ts
-export const perSenderQueue = queue({ name: "per-sender", concurrencyLimit: 1 });
+**Do this instead:** Design memory files with a rolling window. `copy-wins.md` keeps last 10 entries. `feedback.md` keeps last 10. `campaign-history.md` keeps a 1-line summary per campaign. Create a quarterly memory compaction script that summarizes and prunes.
 
-// In trigger:
-await tasks.trigger("my-task", payload, { queue: { concurrencyKey: userId } });
-```
+### Anti-Pattern 4: One Giant Nova Skill
 
-### Anti-Pattern 4: Environment Variables Not Set in Trigger.dev Dashboard
+**What people do:** Put all specialist agent logic in a single `nova.md` skill file, reasoning that one context window is simpler.
 
-**What people do:** Set env vars only in Vercel dashboard and assume Trigger.dev tasks inherit them.
+**Why it's wrong:** The existing architecture deliberately separates concerns. A monolithic skill file loses the ability to run specialists in parallel and creates a 10,000+ token prompt that degrades reasoning quality.
 
-**Why it's wrong:** Trigger.dev runs tasks on its own infrastructure. It has no access to Vercel's env vars. Tasks that use Prisma, Anthropic, Slack, etc. will silently fail.
+**Do this instead:** Keep the orchestrator + specialist pattern. `nova.md` stays as the orchestrator entry point. Each specialist gets its own skill file. The orchestrator spawns the right specialist for each task.
 
-**Do this instead:** Mirror all env vars used by task code into the Trigger.dev dashboard (or use Trigger.dev's environment variable sync feature). Required vars: `DATABASE_URL`, `DIRECT_DATABASE_URL`, `ANTHROPIC_API_KEY`, `TRIGGER_SECRET_KEY`, `SLACK_BOT_TOKEN`, `RESEND_API_KEY`, `EMAILBISON_*`.
+### Anti-Pattern 5: Deleting Existing Agent Code
+
+**What people do:** Remove `runner.ts`, `writer.ts`, `leads.ts` etc. once CLI skills are working.
+
+**Why it's wrong:** The existing TypeScript agents are the fallback path for the dashboard chat and for programmatic use (signal campaigns, cron jobs). They also serve as the ground truth for what tools each specialist should have.
+
+**Do this instead:** Keep all existing agent code. Add the CLI skill path as an additive feature controlled by `USE_CLI_AGENTS`. Mark old scripts as deprecated only after 30 days of stable CLI agent operation.
 
 ---
 
@@ -580,24 +564,27 @@ await tasks.trigger("my-task", payload, { queue: { concurrencyKey: userId } });
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| Current (6 workspaces, ~15k contacts) | No changes needed — Trigger.dev free tier covers it |
-| 20+ workspaces | Upgrade Trigger.dev plan for more concurrency; fan-out cron tasks per workspace (batch trigger) |
-| 100+ workspaces | Separate cron tasks per workspace using `tasks.batchTrigger()`; Neon connection pooler if DB pressure increases |
+| Current (8 clients) | Single `.claude/memory/` directory, flat files, manual pruning sufficient |
+| 20-50 clients | Add automated memory compaction script (quarterly), consider memory file size limits |
+| 50+ clients | DB-backed memory (migrate markdown files to `ClientMemory` Prisma model), keep CLI interface identical |
+
+### Scaling Priorities
+
+1. **First bottleneck: Memory file bloat** — At 8 clients with weekly campaigns, files stay manageable. At 50+ clients with daily operations, file-per-client will need compaction automation.
+
+2. **Second bottleneck: CLI spawn latency** — Each `claude --skill` invocation adds ~2-5 seconds startup. For parallel operations across multiple workspaces, consider a process pool. Not a problem at current scale.
 
 ---
 
 ## Sources
 
-- Trigger.dev Next.js integration: https://trigger.dev/docs/guides/frameworks/nextjs
-- Trigger.dev webhook guide: https://trigger.dev/docs/guides/frameworks/nextjs-webhooks
-- Trigger.dev Prisma setup: https://trigger.dev/docs/guides/frameworks/prisma
-- Trigger.dev scheduled tasks: https://trigger.dev/docs/tasks/scheduled
-- Trigger.dev triggering docs: https://trigger.dev/docs/triggering
-- Trigger.dev concurrency & queues: https://trigger.dev/docs/queue-concurrency
-- Trigger.dev v4 migration guide: https://trigger.dev/docs/migrating-from-v3
-- Trigger.dev v4 GA announcement: https://trigger.dev/launchweek/2/trigger-v4-ga
-- Existing codebase: `src/app/api/webhooks/emailbison/route.ts`, `src/app/api/cron/*/route.ts`, `src/lib/db.ts`, `src/lib/agents/runner.ts`
+- Direct code inspection: `src/lib/agents/orchestrator.ts` (683 LOC), `runner.ts`, `types.ts`, `writer.ts`, `leads.ts`, `shared-tools.ts`, `utils.ts`
+- Direct code inspection: `src/app/api/chat/route.ts`, `scripts/chat.ts`, `scripts/generate-copy.ts`
+- Direct code inspection: `.claude/commands/nova.md` (existing skill definition)
+- Direct inspection: global `~/.claude/skills/nextjs16-skills/SKILL.MD` (skill format reference)
+- Direct inspection: global `~/.claude/skills/ui-ux-pro-max/SKILL.md` (skill with scripts/data subdirs)
+- Project context: `.planning/PROJECT.md` (v7.0 milestone definition)
 
 ---
-*Architecture research for: Outsignal v6.0 Trigger.dev Migration*
-*Researched: 2026-03-12*
+*Architecture research for: Nova CLI Agent Teams — v7.0 Outsignal milestone*
+*Researched: 2026-03-23*

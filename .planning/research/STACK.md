@@ -1,259 +1,378 @@
 # Stack Research
 
-**Domain:** Background jobs infrastructure — Trigger.dev migration for Next.js 16 + Vercel
-**Researched:** 2026-03-12
-**Confidence:** HIGH (verified against official Trigger.dev docs, npm, and changelog)
+**Domain:** CLI skill conversion — converting API-based agents to Claude Code CLI skills with persistent, client-specific memory
+**Researched:** 2026-03-23
+**Confidence:** HIGH (skill/command system verified against official Claude Code docs at code.claude.com; wrapper patterns verified against existing working codebase)
+
+---
+
+## Previous Stack Research
+
+The previous STACK.md (2026-03-12) covered Trigger.dev background jobs migration. That research remains valid.
+This file covers the v7.0 Nova CLI milestone stack additions only.
+
+---
 
 ## Recommended Stack
 
-### Core Technologies (New Additions Only)
+### No New npm Dependencies Required
 
-| Technology | Version | Purpose | Why Recommended |
+This is the most important finding: **zero new packages needed**. Everything required to execute CLI skills already exists in the codebase.
+
+| Existing Dependency | Version | Role in CLI Skills |
+|---------------------|---------|-------------------|
+| `tsx` (via `npx tsx`) | latest | Runs TypeScript orchestrator scripts directly — already used by `npm run chat` and the `nova.md` skill |
+| `ai` (Vercel AI SDK) | installed | `generateText` + `stepCountIs` drive agent loops — same pattern as current `runner.ts` |
+| `@ai-sdk/anthropic` | installed | Anthropic model provider — already authenticated via `ANTHROPIC_API_KEY` |
+| `dotenv` | installed | `.env` + `.env.local` loading in CLI scripts — same pattern as `scripts/chat.ts` |
+| `@prisma/client` | 6.x | DB queries from wrapper scripts — already used in all scripts |
+| `chalk` | installed | Terminal output formatting — used in `scripts/chat.ts` |
+
+The only "additions" are text files (`.claude/skills/*/SKILL.md`, memory markdown files) and TypeScript wrapper scripts following patterns already established in `scripts/`.
+
+---
+
+### Core Mechanism: Claude Code Skills (formerly "custom commands")
+
+**What they are:** Markdown files that give Claude Code a named `/slash-command` with instructions, tool permissions, and context.
+
+**Official docs:** https://code.claude.com/docs/en/slash-commands (HIGH confidence — fetched 2026-03-23)
+
+**Two equivalent file locations (both work):**
+
+| Location | Path | Scope |
+|----------|------|-------|
+| Legacy commands | `.claude/commands/<name>.md` | This project (already used — `nova.md` exists here) |
+| Skills (recommended) | `.claude/skills/<name>/SKILL.md` | This project |
+| Personal skills | `~/.claude/skills/<name>/SKILL.md` | All projects on machine |
+
+The existing `.claude/commands/nova.md` **already works and is the right pattern**. Skills add optional extras (supporting files, `context: fork`) but the `.claude/commands/` path is not deprecated — it's explicitly documented as equivalent.
+
+**Recommendation:** Keep existing `nova.md` in `.claude/commands/`. Add new specialist agent skills there too, not in `.claude/skills/`, to keep all Nova skills co-located.
+
+---
+
+### Skill File Format
+
+Every skill is a markdown file with optional YAML frontmatter:
+
+```markdown
+---
+name: nova-writer
+description: Generate email and LinkedIn copy for a client workspace. Use when writing cold outreach sequences, revising copy, or running the Writer Agent.
+argument-hint: <workspace-slug> [channel] [campaign-name]
+disable-model-invocation: true
+allowed-tools: Bash(npx tsx *)
+---
+
+You are the Nova Writer skill...
+
+$ARGUMENTS
+```
+
+**Frontmatter fields used for Nova skills:**
+
+| Field | Value | Why |
+|-------|-------|-----|
+| `name` | `nova-writer`, `nova-leads`, etc. | Becomes the `/nova-writer` slash command |
+| `description` | What it does + when to use it | Claude uses this to decide when to auto-load; keep specific |
+| `argument-hint` | `<workspace-slug> [options]` | Shows in autocomplete UI |
+| `disable-model-invocation: true` | Set on all Nova agent skills | We control timing — don't want Claude auto-running campaign operations |
+| `allowed-tools` | `Bash(npx tsx *)` | Pre-approves the specific bash commands the skill needs without prompting |
+
+**String substitutions available inside skill content:**
+
+| Variable | Replaced With |
+|----------|---------------|
+| `$ARGUMENTS` | Everything typed after `/nova-writer` |
+| `$ARGUMENTS[0]` | First argument (e.g. workspace slug) |
+| `$ARGUMENTS[1]` | Second argument (e.g. channel) |
+| `${CLAUDE_SESSION_ID}` | Current session ID — useful for memory file naming |
+| `${CLAUDE_SKILL_DIR}` | Absolute path to the skill's directory |
+
+**Dynamic context injection (shell commands in skill content):**
+
+The `` !`<command>` `` syntax runs a shell command before Claude sees the prompt and injects the output inline. Use this to load client memory into the skill at invocation time:
+
+```markdown
+## Client Memory
+!`cat /Users/jjay/programs/outsignal-agents/.nova/memory/$ARGUMENTS[0]/MEMORY.md 2>/dev/null || echo "No memory yet for this workspace"`
+```
+
+This is preprocessing — the command runs first, output replaces the placeholder, Claude sees the result. This is the mechanism for injecting client-specific memory.
+
+---
+
+### Memory Architecture
+
+Claude Code offers two memory mechanisms. Both matter for Nova.
+
+**Mechanism 1: CLAUDE.md — Persistent project instructions (loaded every session)**
+
+Location: `.claude/CLAUDE.md` (already used by GSD and existing instructions)
+
+Add a section to the project's `.claude/CLAUDE.md` referencing the Nova memory structure:
+
+```markdown
+## Nova Agent Memory
+
+Nova agent skills read client memory from `.nova/memory/<workspace-slug>/MEMORY.md`.
+When working with Nova skills, always check this file for client-specific intelligence.
+```
+
+**Mechanism 2: Client-namespaced memory files — Per-workspace persistent intelligence**
+
+Store in: `.nova/memory/<workspace-slug>/MEMORY.md` (committed to repo, not `.claude/` auto memory)
+
+Why not use Claude Code's built-in auto memory (`~/.claude/projects/.../memory/`)? Because:
+- Auto memory is machine-local (not shared across machines)
+- Auto memory's 200-line limit and `MEMORY.md` index structure is designed for general session notes
+- Client intelligence (tone profile, copy wins, ICP learnings, approval patterns) needs to be workspace-namespaced, version-controlled, and portable
+
+The `.nova/memory/` directory approach:
+- Version-controlled in the repo — memory persists across machines
+- Skills can read it via `!` shell injection at invocation time
+- Agents can write to it via Bash tool (Claude Code's `Write` or `Bash` tool)
+- One file per workspace, additional topic files (e.g. `copy-wins.md`, `icp-learnings.md`) when MEMORY.md grows past 200 lines
+
+**Memory file structure per workspace:**
+
+```
+.nova/
+  memory/
+    rise/
+      MEMORY.md           # Index: tone, ICP, standing instructions (keep <200 lines)
+      copy-wins.md        # What's worked in campaigns (loaded on demand)
+      icp-learnings.md    # ICP refinements from replies/approvals
+    lime-recruitment/
+      MEMORY.md
+    yoopknows/
+      MEMORY.md
+    outsignal/
+      MEMORY.md
+    myacq/
+      MEMORY.md
+    1210-solutions/
+      MEMORY.md
+    blanktag/
+      MEMORY.md
+    covenco/
+      MEMORY.md
+```
+
+**MEMORY.md format per workspace (example):**
+
+```markdown
+# Nova Memory: Rise (Branded Merchandise)
+
+**Last updated:** 2026-03-20
+**Workspace slug:** rise
+
+## Tone & Voice
+- Casual, direct, no corporate speak
+- Uses "kit" not "merchandise", "promo" not "promotional products"
+- First email punchy: under 80 words
+
+## ICP Refinements
+- Best respondents: Marketing Managers at 50-500 person companies in events/hospitality
+- Avoid: finance companies (bad fit historically)
+- UK + US outperforms EU by 2x on reply rate
+
+## What Works
+- Subject: "quick q on branded kit" — 12% OR on rise-q1 campaign
+- Hook: referencing their LinkedIn event content outperforms generic openers
+- Follow-up on day 5 outperforms day 3 (based on campaign analytics data)
+
+## Approval Patterns
+- Client approves 95%+ first draft — high trust
+- Prefers 4-step email sequences over 3-step
+- Always wants A/B subject line variants
+
+## Standing Instructions
+- Never mention competitor pricing
+- Always include a case study in step 3 when available
+```
+
+---
+
+### CLI Wrapper Script Architecture
+
+The thin wrapper scripts expose TypeScript tool functions to skills via Bash. The existing `scripts/chat.ts` and the `nova.md` skill already validate this pattern.
+
+**Wrapper design principle:** Each script does one job. The skill handles orchestration logic; the script is a pure executor.
+
+**Pattern (already proven in `nova.md` + `scripts/chat.ts`):**
+
+```typescript
+// scripts/nova-run.ts — thin wrapper the skill calls via npx tsx
+import { config } from 'dotenv';
+config({ path: '.env' });
+config({ path: '.env.local' });
+
+import { generateText, stepCountIs } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
+import { orchestratorConfig, orchestratorTools } from '../src/lib/agents/orchestrator';
+
+const [workspaceSlug, ...messageParts] = process.argv.slice(2);
+const userMessage = messageParts.join(' ');
+
+(async () => {
+  const result = await generateText({
+    model: anthropic(orchestratorConfig.model),
+    system: orchestratorConfig.systemPrompt +
+      `\nCurrent workspace: ${workspaceSlug}\nInterface: CLI`,
+    messages: [{ role: 'user', content: userMessage }],
+    tools: orchestratorTools,
+    stopWhen: stepCountIs(orchestratorConfig.maxSteps ?? 12),
+  });
+  console.log(result.text);
+})().catch(err => { console.error(err); process.exit(1); });
+```
+
+**Why `npx tsx` not a compiled binary:** Zero build step. Dotenv + path aliases (`@/lib/...`) work via `tsconfig.json`. Already the established project pattern. No maintenance overhead.
+
+**Why NOT to create separate scripts for each specialist agent:** The orchestrator already handles delegation to research/writer/leads/campaign agents. Skills call the orchestrator; orchestrator delegates. Same layering as dashboard chat. One wrapper script per access pattern (orchestrator, writer-only, leads-only), not one per agent.
+
+**Proposed wrapper scripts (add to `scripts/`):**
+
+| Script | When Used | What It Calls |
+|--------|-----------|---------------|
+| `scripts/nova-run.ts` | Nova orchestrator skill — full pipeline | `orchestratorConfig` + `orchestratorTools` |
+| `scripts/nova-writer.ts` | Writer-only skill — copy generation/revision | `runWriterAgent()` directly |
+| `scripts/nova-leads.ts` | Leads-only skill — search, list build | `runLeadsAgent()` directly |
+| `scripts/nova-memory.ts` | Memory update utility | Reads/writes `.nova/memory/<slug>/MEMORY.md` |
+
+The `nova-writer.ts` and `nova-leads.ts` scripts skip the orchestrator when a specialist is invoked directly (avoids paying for an orchestrator model turn on simple tasks).
+
+---
+
+### Dual-Mode Architecture: CLI Primary + API Fallback
+
+The existing agent code (`runner.ts`, `orchestrator.ts`, etc.) runs identically in both modes because both use the same `generateText` + `orchestratorTools` pattern. No changes needed to agent code.
+
+**What changes:**
+- Dashboard chat route (`/api/agents/chat/route.ts` or similar) continues calling `runAgent()` via the API path
+- CLI skills call the same agents via `npx tsx scripts/nova-run.ts`
+- The same `orchestratorTools`, `writerTools`, etc. are shared — no duplication
+
+**What does NOT change (do not touch):**
+- `src/lib/agents/orchestrator.ts`
+- `src/lib/agents/runner.ts`
+- `src/lib/agents/writer.ts`, `leads.ts`, `research.ts`, `campaign.ts`
+- `src/lib/agents/types.ts`
+- Any Trigger.dev tasks
+- Any dashboard UI code
+
+The only code that changes is the entry point layer: new thin wrapper scripts under `scripts/nova-*.ts`.
+
+---
+
+### Skill Invocation Pattern
+
+**How a Nova skill gets invoked in Claude Code:**
+
+1. User types `/nova rise` in Claude Code terminal
+2. Claude Code reads `.claude/commands/nova.md` (existing) or `.claude/commands/nova-writer.md` (new)
+3. `$ARGUMENTS` gets replaced with `rise`
+4. `!`cat ...`` shell injections fire — client memory gets loaded into the prompt
+5. Claude reads the skill instructions and calls `Bash` tool with `npx tsx scripts/nova-run.ts rise "user message here"`
+6. `nova-run.ts` loads dotenv, calls `generateText` with orchestrator, streams tool calls to stdout
+7. Claude reads stdout, reports result to user
+
+**The `allowed-tools: Bash(npx tsx *)` frontmatter field** pre-approves those bash calls without requiring per-use permission prompts. This is critical for smooth operation — without it, every `npx tsx` invocation requires manual approval.
+
+---
+
+### What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| New npm package for CLI arg parsing | Overkill — `process.argv.slice(2)` is sufficient for simple slug + message patterns | `process.argv` (already used in existing scripts) |
+| Compiled TypeScript binaries | Build step required, no path alias support without config — adds friction | `npx tsx` (already the pattern) |
+| MCP server for agent tools | More complex than needed — Claude Code already calls agents via Bash | `npx tsx` wrapper scripts (simpler, already working) |
+| `context: fork` on Nova skills | Forks lose conversation history — breaks multi-turn workflows | Default context (inline in conversation) |
+| Agent tool definitions as Claude Code tools (via MCP) | Duplicates existing Vercel AI SDK tool definitions — maintenance burden | Call `orchestratorTools` directly from wrapper scripts |
+| Storing memory in `~/.claude/projects/` auto memory | Machine-local, not version-controlled, 200-line limit on auto-load | `.nova/memory/<slug>/` in repo — version-controlled and portable |
+| Separate orchestrator per client | Creates 8 near-identical skill files — hard to maintain | Single `nova.md` skill that accepts workspace slug as `$ARGUMENTS[0]` |
+
+---
+
+### Skills Map for v7.0
+
+The milestone requires 5 skills total. These extend/replace the existing `nova.md`:
+
+| Skill File | Command | Purpose | `allowed-tools` |
 |------------|---------|---------|-----------------|
-| `@trigger.dev/sdk` | 4.3.3 | Task definitions, triggering from API routes, schedule definitions | The core SDK — provides `task()`, `schedules.task()`, and `tasks.trigger()`. Single package covers all task authoring and triggering from Next.js routes. |
-| `@trigger.dev/build` | 4.4.2 | Build extensions (Prisma bundling + Vercel env sync) | Required as a dev dependency to configure Prisma client bundling in `trigger.config.ts`. Contains `prismaExtension` and `syncVercelEnvVars` (the latter only needed without the Vercel integration). |
-| `trigger.dev` CLI | 4.4.2 | Local dev server, production deployment | Run via `npx trigger.dev@latest` — not installed as a local dep. `trigger.dev dev` runs the local worker, `trigger.dev deploy` pushes to cloud. |
+| `.claude/commands/nova.md` | `/nova` | Orchestrator — full pipeline, any workspace | `Bash(npx tsx *)` |
+| `.claude/commands/nova-writer.md` | `/nova-writer` | Writer-only shortcut — skip orchestrator for copy tasks | `Bash(npx tsx *)` |
+| `.claude/commands/nova-leads.md` | `/nova-leads` | Leads-only shortcut — search, list build | `Bash(npx tsx *)` |
+| `.claude/commands/nova-memory.md` | `/nova-memory` | Read/update client memory file | `Bash(cat *), Write` |
+| `.claude/commands/nova-research.md` | `/nova-research` | Research agent — website analysis, ICP extraction | `Bash(npx tsx *)` |
 
-### Supporting Libraries (No New Installs)
+The existing `nova.md` covers the orchestrator. The specialist shortcuts save model turns for focused tasks.
 
-All existing dependencies work inside tasks without changes:
-
-| Library | Already At Version | Role in Tasks |
-|---------|-------------------|---------------|
-| `@prisma/client` | 6.x | DB access in all tasks — `prismaExtension` handles bundling automatically |
-| `@anthropic-ai/sdk` | installed | AI operations (classification, insights, writer agent) — import directly |
-| Resend + Slack SDK | installed | Notification tasks reuse `src/lib/notifications.ts` unchanged |
-| EmailBison client | `src/lib/emailbison/client.ts` | Import directly from tasks |
-
-### Development Tools
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `trigger.dev` CLI (npx) | Local dev server + deploy | `npx trigger.dev@latest dev` runs local worker alongside `next dev` |
-| Trigger.dev cloud dashboard | Task monitoring, run history, env vars, schedules | `cloud.trigger.dev` — 7-day log retention on Hobby, 30-day on Pro |
-| Vercel Integration | Atomic deployments + bidirectional env var sync | Install from Trigger.dev dashboard → Settings → Vercel. Auto-deploys tasks on every Vercel deploy. |
+---
 
 ## Installation
 
+No `npm install` required. All work is file creation:
+
 ```bash
-# Runtime dependency — tasks import from this, API routes call tasks.trigger() from this
-npm install @trigger.dev/sdk
+# 1. Create memory directory structure
+mkdir -p .nova/memory/{rise,lime-recruitment,yoopknows,outsignal,myacq,1210-solutions,blanktag,covenco}
 
-# Dev dependency — only used in trigger.config.ts at build time
-npm install -D @trigger.dev/build
+# 2. Create wrapper scripts (new files under scripts/)
+# scripts/nova-run.ts
+# scripts/nova-writer.ts
+# scripts/nova-leads.ts
+# scripts/nova-memory.ts
+
+# 3. Create specialist skill files (new .md files)
+# .claude/commands/nova-writer.md
+# .claude/commands/nova-leads.md
+# .claude/commands/nova-memory.md
+# .claude/commands/nova-research.md
+# (update existing .claude/commands/nova.md to inject memory)
+
+# 4. Populate initial MEMORY.md per workspace from existing DB data
+npx tsx scripts/nova-memory.ts --init-all
 ```
 
-Initialize project (interactive — creates trigger.config.ts and /trigger/ directory with example task):
-```bash
-npx trigger.dev@latest init
-```
-
-## Configuration
-
-### trigger.config.ts (project root, created by init)
-
-```typescript
-import { defineConfig } from "@trigger.dev/sdk";
-import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
-
-export default defineConfig({
-  project: "<your-project-ref>",  // from cloud.trigger.dev dashboard
-  dirs: ["./trigger"],             // all task files live here
-  runtime: "node",
-  retries: {
-    enabledInDev: false,
-    default: {
-      maxAttempts: 3,
-      minTimeoutInMs: 1000,
-      maxTimeoutInMs: 30000,
-      factor: 2,
-      randomize: true,
-    },
-  },
-  build: {
-    extensions: [
-      prismaExtension({
-        mode: "legacy",               // correct for Prisma 6.x
-        schema: "prisma/schema.prisma",
-      }),
-      // DO NOT add syncVercelEnvVars here if using the Vercel integration —
-      // the integration handles env sync natively and the two conflict.
-    ],
-  },
-});
-```
-
-### /trigger/ directory structure
-
-```
-trigger/
-  reply-classification.ts     # webhook async: AI reply classification
-  ai-suggestions.ts           # webhook async: writer agent reply suggestions
-  linkedin-fast-track.ts      # webhook async: LinkedIn sequence fast-track
-  domain-health.ts            # cron: domain health check (8:00 + 20:00 UTC)
-  poll-replies.ts             # cron: reply polling fallback (every 10 min)
-  sync-senders.ts             # cron: sender sync
-  bounce-monitor.ts           # cron: bounce monitoring (every 4 hours)
-  inbox-health.ts             # cron: inbox health check (daily 6am UTC)
-  snapshot-metrics.ts         # AI cron: daily campaign metrics snapshot
-  generate-insights.ts        # AI cron: weekly workspace insights
-  retry-classification.ts     # AI cron: retry failed reply classifications
-```
-
-### package.json scripts
-
-```json
-{
-  "scripts": {
-    "dev": "next dev",
-    "trigger:dev": "npx trigger.dev@latest dev",
-    "trigger:deploy": "npx trigger.dev@latest deploy"
-  }
-}
-```
-
-Run both in development (separate terminals or use concurrently):
-```bash
-npm run dev          # terminal 1
-npm run trigger:dev  # terminal 2
-```
-
-## Environment Variables Required
-
-| Variable | Where Set | Purpose |
-|----------|-----------|---------|
-| `TRIGGER_SECRET_KEY` | `.env.local` + Vercel env + Trigger.dev env | Authenticates `tasks.trigger()` calls from Next.js API routes. One key per environment (dev, staging, prod) — get each from cloud.trigger.dev → API Keys. |
-| All existing vars (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `SLACK_BOT_TOKEN`, etc.) | Already in Vercel | Must also exist in Trigger.dev env vars for tasks to access them. Synced automatically via Vercel integration — no manual re-entry needed. |
-
-`TRIGGER_API_URL` is only needed for self-hosted deployments. Not required for cloud.
-
-## Task Authoring Patterns
-
-### Triggering from Next.js API routes (replaces fire-and-forget)
-
-```typescript
-// In any Next.js API route — e.g., src/app/api/webhooks/emailbison/route.ts
-import { tasks } from "@trigger.dev/sdk";
-import type { replyClassificationTask } from "~/trigger/reply-classification";
-
-// Return 200 immediately, task runs asynchronously with no timeout
-const handle = await tasks.trigger<typeof replyClassificationTask>(
-  "reply-classification",
-  { replyId: "abc123", workspaceId: "rise" }
-);
-```
-
-`tasks.triggerAndWait()` is NOT available from API routes — only from inside other tasks. Use `tasks.trigger()` from routes.
-
-### Cron task (replaces cron-job.org jobs)
-
-```typescript
-// trigger/domain-health.ts
-import { schedules } from "@trigger.dev/sdk";
-
-export const domainHealthTask = schedules.task({
-  id: "domain-health",
-  cron: "0 8,20 * * *",     // 8:00 + 20:00 UTC — standard 5-field cron (no seconds)
-  maxDuration: 300,           // seconds — no Vercel timeout applies here
-  run: async (payload) => {
-    // payload.scheduledTime, payload.timezone, payload.scheduleId available
-    // ... existing domain health logic here unchanged
-  },
-});
-```
-
-### Standard background task
-
-```typescript
-// trigger/ai-suggestions.ts
-import { task } from "@trigger.dev/sdk";
-
-export const aiSuggestionsTask = task({
-  id: "ai-suggestions",
-  maxDuration: 300,
-  retry: {
-    maxAttempts: 2,
-    minTimeoutInMs: 5000,
-  },
-  run: async (payload: { replyId: string; workspaceId: string }) => {
-    // Full writer agent call — no 30s/60s timeout
-  },
-});
-```
+---
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| Trigger.dev cloud (Hobby $20/mo) | Self-hosted Trigger.dev | Only if GDPR requirements prohibit sending payloads to third-party. Adds significant infra overhead (Docker + PostgreSQL + Redis). Not worth it here. |
-| Trigger.dev | Inngest | If already on Vercel and want tighter native integration. Inngest is viable but smaller ecosystem, less observability. Trigger.dev v4.4.0 now has first-class Vercel integration anyway. |
-| Trigger.dev | BullMQ + Redis | If comfortable managing self-hosted Redis workers. No built-in observability dashboard. Requires Railway/Fly infra beyond what we already run. |
-| Trigger.dev | Upstash QStash | Only for simple HTTP-based task dispatch. QStash receiver still runs on Vercel — still hits the 30s timeout. Does not solve the problem. |
-| Vercel Integration for env sync | `syncVercelEnvVars` extension | Only use the extension if NOT using the official Vercel integration. The two conflict — never use both. |
+| `.claude/commands/` for skill files | `.claude/skills/<name>/SKILL.md` (new format) | Use skills format if you want `context: fork` subagent isolation or supporting file directories. Not needed here — inline context is correct for conversational workflows. |
+| `.nova/memory/` in repo | `~/.claude/projects/.../memory/` auto memory | Use auto memory for machine-local session notes. Use `.nova/memory/` when memory must be version-controlled, shared across machines, and workspace-namespaced. |
+| Single `nova.md` + `$ARGUMENTS[0]` for workspace | One skill file per workspace | One per workspace = 8 nearly identical files. Single parameterised skill is maintainable. |
+| `npx tsx` wrapper scripts | Compiled TS binary or Node.js-only scripts | Compiled adds a build step. JS-only loses type safety and path aliases. `npx tsx` is the established pattern with zero new tooling. |
+| Shell injection `!` for memory loading | Reading memory inside the orchestrator script | Shell injection happens before Claude's turn — memory is in the initial prompt. Orchestrator-side reading would require a tool call and an extra model turn. |
 
-## What NOT to Use
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| `@trigger.dev/nextjs` | v2 package — reached end-of-life January 31, 2025 | `@trigger.dev/sdk` (v4) |
-| `@trigger.dev/react` | v2 hooks package — deprecated alongside v2 | Not needed; task triggering is server-side only |
-| `tasks.triggerAndWait()` from Next.js API routes | Throws an error — method only works inside Trigger.dev tasks | `tasks.trigger()` from routes; `triggerAndWait()` only for task-to-task calls |
-| `syncVercelEnvVars` extension when Vercel integration is active | Conflicts with Vercel integration's native env sync — causes duplicate or broken env handling | Remove extension; let Vercel integration handle sync |
-| Fire-and-forget `setTimeout` / `setImmediate` in Vercel API routes | Vercel kills the serverless function after the response is sent — work is silently lost | `tasks.trigger()` — fire-and-forget that actually works |
-| cron-job.org after migration | Polling from an external HTTP caller still depends on Vercel's 60s timeout for the actual work | Trigger.dev `schedules.task()` — cron runs in Trigger.dev's own compute, no Vercel timeout |
-
-## Stack Patterns by Task Type
-
-**Webhook async tasks (reply classification, AI suggestions, LinkedIn fast-track):**
-- Webhook handler calls `tasks.trigger()` and returns 200 immediately
-- Task file imports existing business logic from `src/lib/`
-- Set `maxDuration: 300` for AI tasks (5 min ceiling)
-- Set `retry.maxAttempts: 2` — don't spam classification on transient errors
-
-**Cron migrations from cron-job.org (~10 jobs):**
-- Replace HTTP endpoint + external cron call with `schedules.task()` in `/trigger/`
-- Keep the core logic function in `src/lib/` — just call it from the task `run()`
-- Delete cron-job.org jobs only after verifying production task works for 2+ days
-- Standard cron expressions work: `"*/10 * * * *"` (every 10 min), `"0 6 * * *"` (daily 6am)
-
-**AI-heavy tasks (generate-insights, snapshot-metrics):**
-- Set `maxDuration: 600` (10 min) — full writer agent can be slow
-- Set `retry.maxAttempts: 1` — AI tasks are expensive; don't retry on first failure, alert instead
-- `queue: { concurrencyLimit: 1 }` for insight generation — prevent parallel runs per workspace
-
-## Plan Recommendation
-
-**Hobby plan ($20/month)** for this project:
-- 25 concurrent runs — sufficient for ~10 crons + webhook spikes
-- 100 schedules per project — sufficient (we have ~10 crons)
-- 7-day log retention — adequate for debugging
-- Upgrade to Pro ($50/month) only if 30-day log retention becomes important for debugging production issues
-
-Free tier is insufficient: 10-schedule cap would be hit immediately with ~10 cron tasks.
+---
 
 ## Version Compatibility
 
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `@trigger.dev/sdk@4.3.3` | Next.js 16, Node.js 18+ | Tasks are a separate build target — no Next.js config changes needed |
-| `@trigger.dev/build@4.4.2` | Prisma 6.x with `mode: "legacy"` | Prisma 7 uses `mode: "generate"` — use `"legacy"` for Prisma 6 |
-| `trigger.dev` CLI 4.4.2 | SDK v4.x | Keep CLI and SDK major versions aligned |
-| Vercel Integration | Trigger.dev v4.4.0+ | GA as of v4.4.0 — replaces `syncVercelEnvVars` extension entirely |
+| Component | Compatible With | Notes |
+|-----------|-----------------|-------|
+| `.claude/commands/` skill files | Claude Code current (verified 2026-03-23) | Legacy path explicitly supported alongside new `.claude/skills/` path. No migration required. |
+| `allowed-tools: Bash(npx tsx *)` frontmatter | Claude Code current | Glob patterns supported in tool permissions. `Bash(npx tsx *)` covers all `npx tsx` calls. |
+| `!` shell injection in skill content | Claude Code current | Runs before prompt is sent to Claude. Shell must be available (it is on macOS/Linux). |
+| `$ARGUMENTS` substitution | Claude Code current | Replaced at invocation time. `$ARGUMENTS[0]` for positional access. |
+| `npx tsx` with path aliases | Requires `tsconfig.json` `paths` + `tsx` resolving them | Already works in project (confirmed by `scripts/chat.ts` and `nova.md` patterns). |
+
+---
 
 ## Sources
 
-- [Trigger.dev Next.js setup guide](https://trigger.dev/docs/guides/frameworks/nextjs) — Installation steps, TRIGGER_SECRET_KEY, deployment — HIGH confidence
-- [Trigger.dev scheduled tasks docs](https://trigger.dev/docs/tasks/scheduled) — `schedules.task()` syntax, cron format, limitations — HIGH confidence
-- [Trigger.dev config file docs](https://trigger.dev/docs/config/config-file) — `trigger.config.ts` options, dirs, retries, build extensions — HIGH confidence
-- [Trigger.dev Prisma extension changelog](https://trigger.dev/changelog/prisma-7-integration) — Prisma 6 `mode: "legacy"` config, import path from `@trigger.dev/build/extensions/prisma` — HIGH confidence
-- [Trigger.dev Vercel env sync guide](https://trigger.dev/docs/guides/examples/vercel-sync-env-vars) — `syncVercelEnvVars` deprecation when Vercel integration is active — HIGH confidence
-- [Trigger.dev v4.4.0 changelog](https://trigger.dev/changelog/v4-4-0) — Vercel integration GA, atomic deployments, bidirectional env sync — HIGH confidence
-- [Trigger.dev limits](https://trigger.dev/docs/limits) — Concurrency limits (10 free / 25 hobby / 100+ pro), schedule limits (10 / 100 / 1000+), log retention — HIGH confidence
-- [Trigger.dev API keys docs](https://trigger.dev/docs/apikeys) — TRIGGER_SECRET_KEY per-environment, TRIGGER_API_URL for self-hosted only — HIGH confidence
-- [Trigger.dev tasks overview](https://trigger.dev/docs/tasks/overview) — `task()` API, retry config, queue, maxDuration, import from `@trigger.dev/sdk` — HIGH confidence
-- [Triggering tasks docs](https://trigger.dev/docs/triggering) — `tasks.trigger()` from routes, type-only imports, `triggerAndWait()` restriction — HIGH confidence
-- [@trigger.dev/build npm](https://www.npmjs.com/package/@trigger.dev/build) — Version 4.4.2, extensions import paths — HIGH confidence
+- [Claude Code Skills docs](https://code.claude.com/docs/en/slash-commands) — Full skill format, frontmatter reference, `$ARGUMENTS`, shell injection, `allowed-tools`, `context: fork` — HIGH confidence (fetched 2026-03-23)
+- [Claude Code Memory docs](https://code.claude.com/docs/en/memory) — CLAUDE.md hierarchy, auto memory storage location, 200-line limit, `.claude/rules/` — HIGH confidence (fetched 2026-03-23)
+- `/Users/jjay/programs/outsignal-agents/.claude/commands/nova.md` — Existing working skill: `npx tsx -e` inline execution pattern, workspace list, orchestrator invocation — HIGH confidence (verified against live file)
+- `/Users/jjay/programs/outsignal-agents/scripts/chat.ts` — Established wrapper pattern: dotenv loading, chalk formatting, `generateText` loop, workspace picker — HIGH confidence (existing code)
+- `/Users/jjay/programs/outsignal-agents/src/lib/agents/runner.ts` — Agent execution engine: `generateText` + `stepCountIs`, AgentRun DB logging — HIGH confidence (existing code)
+- `/Users/jjay/programs/outsignal-agents/src/lib/agents/types.ts` — Agent input/output types, Zod schemas — HIGH confidence (existing code)
 
 ---
-*Stack research for: Trigger.dev background jobs migration (v6.0 milestone — Next.js 16 + Vercel + Prisma 6)*
-*Researched: 2026-03-12*
+*Stack research for: v7.0 Nova CLI Agent Teams — Claude Code skill conversion + client-specific memory*
+*Researched: 2026-03-23*

@@ -1,182 +1,179 @@
 # Project Research Summary
 
-**Project:** Outsignal Agents — v6.0 Trigger.dev Background Jobs Migration
-**Domain:** Background jobs infrastructure — replacing cron-job.org + Vercel fire-and-forget with Trigger.dev v4
-**Researched:** 2026-03-12
+**Project:** Nova CLI Agent Teams — v7.0 Outsignal Milestone
+**Domain:** CLI skill conversion — API-based agent system to Claude Code CLI skills with persistent client-specific memory
+**Researched:** 2026-03-23
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The current Outsignal codebase has a structural reliability problem: background work is being executed inside Vercel serverless functions that impose hard 30-60 second timeouts. Cron-job.org HTTP-polls Vercel endpoints, AI operations (.then() chains after webhook handlers) silently die when Vercel kills the function after sending the response, and AI-heavy crons (generate-insights, retry-classification) almost certainly fail silently when multi-workspace Anthropic calls exceed the timeout ceiling. The fix is well-established: migrate all background work to Trigger.dev v4, which runs tasks on its own compute with no timeout constraint, built-in retries, and a full observability dashboard.
+The v7.0 Nova milestone converts an existing, production API-based agent system (orchestrator + 4 specialists, all running via Anthropic SDK `generateText()`) into Claude Code CLI skills with per-client persistent memory. The core value driver is cost: specialist agent calls via Claude Code Max Plan are effectively free versus Anthropic API Opus calls at ~$15/MTok. The approach requires no new npm dependencies, no new model providers, and no replacement of existing agent logic — only a new thin invocation layer (skill `.md` files + CLI wrapper scripts) and a flat-file memory system under `.claude/memory/{workspace-slug}/`. The existing codebase already validates the core pattern through the working `nova.md` skill and `scripts/chat.ts`.
 
-The recommended approach is a phased migration using Trigger.dev Cloud (Hobby, $20/month). Two new npm packages are needed (`@trigger.dev/sdk` as a runtime dep, `@trigger.dev/build` as a dev dep), a `/trigger/` directory is created at the project root, and all task files live there — separated from the Next.js src/ tree. Existing business logic in `src/lib/` is imported unchanged by both Next.js routes and Trigger.dev tasks. The webhook handler is simplified to: verify signature, write WebhookEvent to DB, call `tasks.trigger()`, return 200. Cron-job.org jobs are replaced one-for-one by `schedules.task()` definitions with declarative cron expressions that sync on every `trigger.dev deploy`.
+The recommended approach is strictly additive: build CLI wrapper scripts first, then create per-client memory files with seeded content, then define specialist skill files, then add the CLI spawn utility to the orchestrator (feature-flagged via `USE_CLI_AGENTS`). The existing API agents remain fully intact as a fallback. The dashboard chat UI requires no changes — the orchestrator's delegation tools are the only modified code, gaining a new CLI path alongside the existing direct-call path. Memory is stored as version-controlled flat markdown files per workspace (not DB-backed, not machine-local auto-memory) so it is portable, inspectable, and correctable by the admin.
 
-The main risks are all infrastructure-setup risks that must be resolved in Phase 1 before any real migration work begins: Prisma binary target mismatch (tasks crash on first run), environment variables not synced to Trigger.dev's own dashboard (all API calls return undefined), Neon connection pool exhaustion under concurrent task load, and task file discovery misconfiguration (0 tasks found). None of these are hard problems — they are all one-line fixes — but they will block everything downstream if not addressed first. A smoke-test task that verifies DB connectivity and env var presence is the Phase 1 exit criterion before any real task is written.
+The two highest risks are credential exposure and memory governance. Claude Code auto-loads `.env` files into agent context without explicit permission (CVE-2025-59536), meaning secrets reach the LLM if `.claudeignore` is absent. On the memory side, agents without strict write schemas will pollute client memory files with stale and contradictory intelligence within weeks, causing the writer agent to generate copy that contradicts current client direction. Both risks must be addressed in Phase 1 (architecture) and Phase 2 (memory design) respectively — they cannot be retrofitted safely.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Trigger.dev v4 is the clear choice for this migration. Only two packages are added: `@trigger.dev/sdk@4.3.3` (runtime, used in task files and `tasks.trigger()` calls from API routes) and `@trigger.dev/build@4.4.2` (dev-only, used in `trigger.config.ts` for the Prisma extension). All existing dependencies — Prisma, Anthropic SDK, Resend, Slack SDK, EmailBison client — are imported directly inside task files without any changes. The Vercel integration (installed from the Trigger.dev dashboard) handles bidirectional env var sync and atomic task deployments on every Vercel deploy, replacing the need for the `syncVercelEnvVars` build extension.
+No new packages are required. The stack is entirely the existing project toolchain: `tsx` via `npx tsx` for wrapper script execution, `@ai-sdk/anthropic` + Vercel AI SDK for agent invocation, `@prisma/client` for DB queries, and `dotenv` for environment loading. All of these are already installed and follow established patterns in `scripts/chat.ts` and the existing `nova.md` skill.
+
+The only new artifacts are text files (skill `.md` definitions), TypeScript CLI wrapper scripts under `scripts/cli/`, and per-workspace memory markdown files under `.claude/memory/`. The skill system uses Claude Code's `.claude/commands/` path (verified as current and explicitly supported alongside the newer `.claude/skills/` path). Key skill frontmatter fields: `disable-model-invocation: true` (user-triggered flows), `allowed-tools: Bash(npx tsx *)` (pre-approves tool calls without per-use prompts), `argument-hint` for autocomplete, and `!` shell injection syntax for loading client memory before Claude sees the prompt.
 
 **Core technologies:**
-- `@trigger.dev/sdk@4.3.3`: Task authoring, triggering from API routes, schedule definitions — single package for all Trigger.dev SDK usage
-- `@trigger.dev/build@4.4.2` (dev): `prismaExtension` with `mode: "legacy"` for Prisma 6 binary bundling — required or tasks crash on first DB access
-- Trigger.dev Cloud Hobby ($20/month): 25 concurrent runs + 100 schedules — covers 10 crons + webhook spikes with headroom; free tier (10 schedules) is insufficient
-- Vercel Integration: Atomic task deployments + bidirectional env var sync — do NOT also use `syncVercelEnvVars` extension (documented conflict)
-
-**Do not use:** `@trigger.dev/nextjs` (v2, EOL Jan 2025), `@trigger.dev/sdk/v3` import path (breaks April 2026), `tasks.triggerAndWait()` from Next.js API routes (throws — only valid inside other tasks), cron-job.org after migration (double-execution risk).
+- `npx tsx scripts/cli/*.ts` — CLI wrapper execution, zero build step, established project pattern
+- Claude Code `.claude/commands/*.md` skill files — define agent roles, tool invocation instructions, memory read/write rules; replaces hardcoded system prompts
+- `.claude/memory/{slug}/` flat markdown files — version-controlled per-client persistent intelligence (profile, copy-wins, feedback, icp-learnings, approval-patterns, campaign-history)
+- `src/lib/agents/cli-spawn.ts` (new) — `spawnCliAgent()` orchestrator utility, feature-flagged via `USE_CLI_AGENTS`
+- All existing `src/lib/agents/*.ts` files — unchanged, retained as fallback
 
 ### Expected Features
 
-The migration has a clear two-tier priority structure. P1 features are the table stakes — without them the migration either does not work or delivers no value over the current setup. P2 features are unlocked by the migration and represent genuine capability improvements that were not possible under Vercel's timeout constraints.
+This is an additive milestone on a production system. All existing agent capabilities (orchestrator, research, writer, leads, campaign; 30+ tools; AgentRun audit; copy strategies; discovery adapters; enrichment) are preserved unchanged. v7.0 adds:
 
 **Must have (table stakes — P1):**
-- Trigger.dev Next.js App Router setup — foundation, nothing else works without this
-- Scheduled tasks via `schedules.task()` — replaces all 10 cron-job.org jobs
-- Event-triggered background tasks via `tasks.trigger()` — replaces .then() fire-and-forget chains
-- Long-running task support (`maxDuration` config) — eliminates the core timeout problem
-- Automatic retry with exponential backoff — replaces zero retry infrastructure
-- Task observability dashboard — replaces zero visibility into cron success/failure
-- Run tags per workspace slug — minimum observability to verify migration correctness
-- Idempotency keys — prevents double-processing during cron-job.org transition overlap
+- 5 skill definition files (`nova.md` updated + 4 new specialist skills) — without these there is no CLI skill system
+- Bash CLI wrapper scripts for the top 10 most-used tool functions — agents must be able to do real work
+- Per-workspace MEMORY.md files seeded with tone, ICP, and last 3 campaigns — cold-start is unacceptable on day one
+- Memory read at skill invocation start via `!` shell injection — every session is client-aware from the first turn
+- Dashboard-to-CLI bridge for writer and orchestrator agents — covers 80% of usage
+- API agent fallback preserved and verified working
 
-**Should have (competitive — P2, after core migration validated):**
-- Writer agent restoration via Opus subtasks — Haiku shortcut was forced by Vercel timeout; Trigger.dev removes the constraint
-- Campaign deploy migration (replace `after()` pattern, currently 300s Vercel ceiling)
-- Per-task concurrency control via shared Anthropic queue — prevents rate limit storms
-- Batch workspace parallelisation — fan-out crons per workspace instead of sequential loop
+**Should have (competitive — P2, add after CLI path is proven):**
+- Memory accumulation from real agent usage (auto-write learnings after sessions)
+- Approval pattern tracking in per-client `feedback.md`
+- Bridge extended to leads and campaign agents
+- Cross-client global learning namespace (`global-insights.md`)
 
 **Defer (v2+):**
-- `useRealtimeRun` React hooks for live deploy status UI — frontend complexity, low urgency
-- Human-in-the-loop wait tokens — future portal approval flow, architecturally enabled but not needed now
-- Streaming AI responses to dashboard — separate milestone
-- LinkedIn Railway worker migration to Trigger.dev — stateful ProxyAgent pattern requires non-trivial refactor
+- Copy wins feedback loop — requires 2+ months of CLI agent data to build reliably
+- Memory-driven copy strategy auto-selection — requires solid approval pattern data first
+- Automated memory pruning beyond inline agent instructions
 
 ### Architecture Approach
 
-The architectural boundary is clean: Vercel routes stay thin (auth, DB write, task trigger, return 200); all heavy computation moves into `/trigger/` task files running on Trigger.dev's infrastructure. The `/trigger/` directory lives at the project root (not inside `src/`), signaling that these files run on different compute. All business logic stays in `src/lib/` unchanged — tasks import from `@/lib/*` using the same TypeScript path alias as Next.js routes. The Prisma singleton from `src/lib/db.ts` is shared. The Railway LinkedIn worker is explicitly excluded from this migration: its stateful ProxyAgent session management does not map cleanly to Trigger.dev's invocation model.
+The architecture is a new thin invocation layer on top of an unchanged core. The orchestrator's `delegateToX` tools gain a new parallel execution path (`spawnCliAgent()`) that spawns Claude Code CLI skills as subprocesses, while the existing `runWriterAgent()` etc. calls remain as fallback. The tool layer (all `src/lib/agents/*.ts` files) is completely unchanged — CLI wrapper scripts in `scripts/cli/` are the only new code that touches the tool layer, acting as thin JSON-in/JSON-out adapters for existing TypeScript functions.
 
 **Major components:**
-1. **Webhook route handler** (`src/app/api/webhooks/emailbison/route.ts`, modified) — verify signature, write WebhookEvent to DB, call `tasks.trigger("process-reply", payload)`, return 200; no business logic
-2. **`/trigger/reply/` orchestration** (new) — `process-reply` receives webhook payload, fans out classify + notify in parallel via `triggerAndWait`, then triggers `generate-suggestion`
-3. **`/trigger/crons/`** (new, 9 files) — one `schedules.task()` per cron-job.org job; each imports the existing business logic function from `src/lib/` and calls it
-4. **`/trigger/queues.ts`** (new) — pre-defined queues with `concurrencyLimit`; v4 requires ahead-of-time queue definition; shared `anthropicQueue` with limit of 3 prevents rate limit storms
-5. **`src/lib/`** (unchanged) — PrismaClient, EmailBisonClient, agents/runner.ts, classifyReply, notifications.ts — all imported by both Next.js routes and Trigger.dev tasks without modification
+1. `.claude/commands/nova-*.md` skill files — agent prompts, tool invocation instructions, memory read/write rules (new invocation layer for writer, research, leads, campaign; orchestrator updated)
+2. `scripts/cli/*.ts` wrapper scripts — thin Node.js scripts that call existing lib functions and print JSON to stdout; no agent logic; the hard boundary between prompt and data
+3. `.claude/memory/{slug}/` flat markdown files — per-client persistent intelligence read at skill startup, written at skill completion
+4. `src/lib/agents/cli-spawn.ts` (new) — `spawnCliAgent()` handling subprocess creation, 300s timeout, stdout buffering, error translation
+5. Modified `orchestrator.ts` — delegation tools gain `spawnCliAgent()` path alongside existing direct-call path, controlled by `USE_CLI_AGENTS` env var
+
+**Build order is dependency-driven:** CLI wrappers first (testable in isolation), then memory file initialization, then specialist skill files, then `cli-spawn.ts`, then orchestrator modification, then dashboard bridge validation.
 
 ### Critical Pitfalls
 
-1. **Prisma binary target mismatch** — Trigger.dev Cloud runs on `debian-openssl-3.0.x`; add this target to `binaryTargets` in `schema.prisma` before first deploy. Tasks fail at startup with a misleading native library error, not at query time. Fix: one line in `schema.prisma` + `prisma generate`.
+1. **Skill prompt bloat causing context overflow** — Copying existing 290-line system prompts verbatim into SKILL.md creates 4,000-6,000 token overhead per skill; five skills in one session = 15,000-20,000 tokens consumed before real work begins. Apply a hard 200-line / 3,000-token budget per SKILL.md. Extract banned phrases, quality rules, and examples into `.claude/rules/` reference files loaded only on demand.
 
-2. **Environment variables not synced to Trigger.dev** — Trigger.dev is separate cloud infrastructure; Vercel env vars are not automatically available. Use the Vercel integration (preferred) OR `syncVercelEnvVars` extension — never both simultaneously (documented conflict). Verify with a smoke-test task that logs env var presence before any real tasks.
+2. **Credential exposure via auto-loaded .env** — Claude Code silently loads `.env` into agent context (CVE-2025-59536). Add `**/.env*` to `.claudeignore` before the first CLI agent session. All tool scripts must sanitize output via a shared `sanitize-output.ts` utility. Agents must never receive `DATABASE_URL` directly in their environment.
 
-3. **Anthropic rate limit storm from unthrottled concurrent AI tasks** — Trigger.dev removes Vercel's accidental throttle (60s timeout). Without explicit concurrency limits, 10+ tasks can call Anthropic simultaneously. Pre-define a shared `anthropicQueue` with `concurrencyLimit: 3` in `/trigger/queues.ts` and reference it in every AI task.
+3. **Memory pollution from undisciplined writes** — Agents writing freely to MEMORY.md produce contradictory, stale, low-signal entries within weeks. Design a strict schema with named sections (ICP Wins, Copy Rules, Campaign History, Feedback Log, Archived) and write governance rules enforced in skill instructions before any agent session runs. All entries must be timestamped; DB fields always take precedence over memory file intelligence.
 
-4. **cron-job.org double processing** — running both systems on the same schedule creates duplicate DB records, double Slack notifications, and doubled API costs. Deactivate each cron-job.org job the same day the corresponding Trigger.dev cron is confirmed working — not after a waiting period.
+4. **npx tsx cold-start latency** — Each `npx tsx` invocation adds 2-5 seconds (npm registry check + Node.js spawn + Prisma init). Six tool calls per session = 12-30 seconds of overhead. Compile tool scripts to `dist/cli/*.js` before Phase 4 and call `node dist/cli/script.js`. Build compilation into Phase 3 setup, not as a retrofit.
 
-5. **Idempotency missing on cron tasks** — Trigger.dev auto-retries failed tasks (3 attempts). Without idempotency keys, a partial failure creates duplicate `DomainHealthSnapshot`, `AgentInsight`, and `CachedMetrics` records. Use `upsert` instead of `create` everywhere possible; add idempotency keys to all child task triggers with `idempotencyKey: \`task-${workspace}-${runDate}\``.
+5. **Dual-mode divergence** — Maintaining API agent code and CLI skill files independently means behavioral rules will diverge silently within weeks. Choose one strategy before writing the first skill: Strategy A (extract shared rules to `.claude/rules/` files imported by both) or Strategy B (time-box fallback to 30 days then delete). The decision cannot wait.
 
 ## Implications for Roadmap
 
-Based on combined research, the migration follows a natural dependency order: infrastructure foundation first, high-value webhook migration second, AI writer agent restoration third, cron lift-and-shift fourth, and decommission + validation last.
+The dependency graph is clear and maps directly to a 6-phase build order. All phases are local development — no deployment required until Phase 6 validation.
 
-### Phase 1: Trigger.dev Foundation + Smoke Test
-**Rationale:** All other phases are blocked until the toolchain is verified. Five critical pitfalls (Prisma binary targets, env var sync, Neon IP allowlisting, task discovery, v4 import paths) must be resolved before any real task can run. The phase is entirely infrastructure — no business logic changes.
-**Delivers:** Working Trigger.dev setup with a smoke-test task that proves DB connectivity, env var presence, and task discovery. `trigger.dev dev` shows correct task count. `trigger.config.ts` in place with `prismaExtension` mode: "legacy", `dirs: ["./trigger"]`, and Vercel integration installed.
-**Addresses:** TRIGGER_SECRET_KEY configured in both Vercel and Trigger.dev dashboards; Prisma binaryTargets updated; `/trigger/queues.ts` with `anthropicQueue` pre-defined
-**Avoids:** Prisma binary mismatch, env var sync failure, Neon IP allowlisting, task discovery failure, v4 import path confusion — all caught here before any real task is written
+### Phase 1: Skill Architecture Foundation
+**Rationale:** Structural decisions made here (content budget, shared-source vs fallback strategy, security approach) cannot be safely retrofitted once skill files and memory files are written. This phase has no business logic code — only decisions, setup files, and the `sanitize-output.ts` utility.
+**Delivers:** `.claudeignore` with `**/.env*` entries; `.claude/rules/` directory structure defined; skill content budget (200 lines) documented; dual-mode strategy decision recorded; `sanitize-output.ts` utility written and tested; memory write governance rules drafted.
+**Addresses:** Table-stakes skill definition architecture; fallback preservation decision
+**Avoids:** Skill prompt bloat (Pitfall 1), credential exposure (Pitfall 2), dual-mode divergence (Pitfall 5)
 
-### Phase 2: Webhook Reply Processing Migration
-**Rationale:** The highest-value migration — the .then() fire-and-forget chains in the EmailBison webhook handler are the most user-visible failure point. Reply classification and AI suggestions silently dying after 60s directly impacts client notification quality. Must include fallback to inline processing in case Trigger.dev is unavailable.
-**Delivers:** `process-reply`, `classify-reply` tasks; webhook handler simplified to trigger + return 200; fallback pattern in place (try-catch around `tasks.trigger()` with inline classification fallback)
-**Uses:** `tasks.trigger()` with type-only import pattern; shared `anthropicQueue` with `concurrencyLimit: 3`
-**Implements:** Webhook → Immediate 200 → Trigger.dev Task pattern; Subtask Fan-out for reply processing
+### Phase 2: Client Memory Namespace
+**Rationale:** Memory schema must be designed and approved before any agent session writes to memory. Retroactively cleaning polluted memory files risks discarding real intelligence accumulated in early sessions.
+**Delivers:** `.claude/memory/{slug}/` directory structure for all 8 clients; MEMORY.md schema (ICP Wins, Copy Rules, Campaign History, Feedback Log, Archived) with timestamp requirements; seeded profile content from existing workspace DB fields; memory-write governance rules finalized.
+**Addresses:** MEMORY.md per workspace (seeded), memory read at skill start
+**Avoids:** Memory pollution (Pitfall 3), memory staleness (Pitfall 7)
 
-### Phase 3: AI Reply Suggestion Restoration (Opus Writer Agent)
-**Rationale:** The writer agent was downgraded from Opus to Haiku specifically because of Vercel's 60s constraint. With Phase 2 in place (reply persisted in DB, classification done), the `generate-suggestion` task can be extended to use full Opus chains via `triggerAndWait` subtasks — no timeout concern. This restores the original AI quality that was compromised as a workaround.
-**Delivers:** `generate-suggestion` task using full Opus writer agent; subtask fan-out for KB search + draft generation; `maxDuration: 300` on AI tasks
-**Uses:** `tasks.triggerAndWait()` for task-to-task orchestration; `agents/runner.ts` imported unchanged from `src/lib/`
+### Phase 3: CLI Wrapper Scripts
+**Rationale:** Wrappers depend only on existing `src/lib/` code (unchanged). They must exist and be compiled before skills can reference them. Security (`sanitize-output.ts` applied to all scripts) and latency (compiled output) are non-negotiable here.
+**Delivers:** `scripts/cli/` with 10 wrapper scripts for top tool functions; compiled output in `dist/cli/`; output sanitization via `sanitize-output.ts` imported in every script; each script independently testable with `node dist/cli/workspace-get.js rise`.
+**Addresses:** Bash CLI wrapper scripts for top 10 tool functions
+**Avoids:** npx tsx latency (Pitfall 4), credential exposure at tool output layer (Pitfall 2)
 
-### Phase 4: High-Risk Cron Migration (AI + Analytics)
-**Rationale:** The AI-heavy crons (generate-insights, retry-classification, snapshot-metrics) are the most likely to be silently failing under Vercel's timeout today. They involve multi-workspace Anthropic calls that can easily exceed 60s. Each migrated cron must use idempotency keys and have cron-job.org deactivated immediately after verification.
-**Delivers:** `generate-insights`, `retry-classification`, `snapshot-metrics` as Trigger.dev scheduled tasks; idempotency pattern established for all cron tasks; corresponding cron-job.org jobs deactivated same day each is verified
-**Avoids:** Double processing from parallel cron systems; idempotency failures on retry; Anthropic rate limit storms
+### Phase 4: Specialist CLI Skill Files
+**Rationale:** Skill files reference both CLI wrappers (Phase 3) and memory files (Phase 2) — both must exist first. Writer skill is highest priority (most-used agent). The existing `nova.md` is updated to inject memory via `!` syntax.
+**Delivers:** 4 new `.claude/commands/nova-{writer,research,leads,campaign}.md` files; updated `nova.md` with memory injection; each skill within the 200-line budget; all wrapper references using `node dist/cli/` paths.
+**Addresses:** SKILL.md definitions for all 5 agents
+**Avoids:** Skill prompt bloat (size enforced at authoring), monolithic skill anti-pattern
 
-### Phase 5: Remaining Cron Lift-and-Shift
-**Rationale:** Lower-risk crons (domain-health, poll-replies, sync-senders, bounce-monitor, inbox-health, deliverability-digest) follow the identical pattern established in Phase 4. Less timeout-sensitive but benefit from Trigger.dev's retry and observability. Straightforward lift-and-shift — business logic in `src/lib/` is imported unchanged. Campaign deploy `after()` pattern also migrated here.
-**Delivers:** All remaining scheduled tasks migrated; cron-job.org fully deactivated; campaign deploy `after()` pattern replaced with `tasks.trigger()`
-**Implements:** Declarative Scheduled Tasks pattern for all 10 cron jobs; Per-Sender Concurrency via `concurrencyKey` for LinkedIn fast-track
+### Phase 5: Orchestrator CLI Spawn Integration
+**Rationale:** `cli-spawn.ts` interface is designed with actual skill names and output formats from Phase 4. The orchestrator modification is feature-flagged — safe to ship alongside existing code without regression risk. Dashboard bridge uses Trigger.dev task queue (not subprocess from Vercel API route) to avoid timeout issues.
+**Delivers:** `src/lib/agents/cli-spawn.ts` with `spawnCliAgent()` (300s timeout, stdout buffering, error translation to user-facing messages); modified `orchestrator.ts` delegation tools with `USE_CLI_AGENTS` feature flag; both CLI and API fallback paths tested end-to-end; dashboard bridge validated.
+**Addresses:** Dashboard-to-CLI bridge (writer + orchestrator path), API fallback verified
+**Avoids:** Dashboard bridge complexity (Pitfall 6 — Trigger.dev task queue, not raw subprocess from Vercel)
 
-### Phase 6: Decommission + Observability Validation
-**Rationale:** Only after all tasks have run in production for 1+ week should cron-job.org be fully retired and old cron API routes cleaned up. This phase validates the Trigger.dev dashboard provides adequate production observability and ensures the "Looks Done But Isn't" checklist passes completely.
-**Delivers:** cron-job.org account deactivated; old cron HTTP endpoints cleaned up or converted to manual-trigger stubs; run tags verified in Trigger.dev dashboard per workspace; full pitfall checklist verified (binaryTargets, env vars, concurrency, idempotency, v4 imports, Railway boundary)
-**Addresses:** Full cron-job.org retirement; observability validated per workspace slug tag
+### Phase 6: Memory Accumulation and Full Validation
+**Rationale:** Only run after Phase 5 is proven stable. Adds intelligence accumulation to the working skill system and extends the bridge to remaining agents. End-to-end validation confirms no regression in dashboard chat.
+**Delivers:** Memory write instructions added to all specialist skills; approval pattern tracking in `feedback.md`; dashboard bridge extended to leads and campaign agents; `USE_CLI_AGENTS=true` in local `.env`; end-to-end campaign generation session tested for context overflow and quality.
+**Addresses:** Memory accumulation from real usage, approval pattern memory, bridge extension to all agents
+**Avoids:** Stale memory (timestamp enforcement validated in practice); context overflow (full session audit)
 
 ### Phase Ordering Rationale
 
-- Phase 1 must come first: 5 pitfalls are Phase 1 blockers; nothing can run until toolchain is proven
-- Phases 2-3 are ordered by user-visible impact: missing client reply notifications are immediately visible; Opus quality restoration is an improvement once reliability is established
-- Phase 4 before Phase 5: high-risk AI crons are prioritized because they are most likely already silently failing; lower-risk crons come second
-- Phase 6 is last: retirement of external systems only after extended production observation window
+- **Security and architecture first (Phase 1):** `.claudeignore` and shared-source strategy must exist before any skill file is written or any agent session runs. Impossible to retrofit safely.
+- **Memory schema before memory writes (Phase 2 before Phase 4):** Agents will write to memory files from their first session. Schema without governance means immediate pollution.
+- **Wrappers before skills (Phase 3 before Phase 4):** Skill files are text files that reference tool scripts. Referenced scripts must exist and be testable before skill authoring begins.
+- **Skills before spawn utility (Phase 4 before Phase 5):** `cli-spawn.ts` needs actual skill names, argument formats, and expected stdout format — which are defined in Phase 4.
+- **Validation last (Phase 6):** Accumulation features require a stable working baseline. Extending the bridge to lower-priority agents only makes sense once the primary path (writer + orchestrator) is proven.
 
 ### Research Flags
 
-Phases with standard, well-documented patterns (skip additional research):
-- **Phase 1:** Trigger.dev init is fully documented and linear — official docs cover every step
-- **Phase 5:** Cron lift-and-shift follows identical pattern to Phase 4; no new patterns introduced
-- **Phase 6:** Decommission is operational, not technical
+Phases likely needing deeper research during planning:
+- **Phase 5 (Bridge):** The Trigger.dev task queue pattern for dashboard-to-CLI delegation is recommended by pitfall research but the specific design (task schema, SSE polling vs Suspense-based polling, progress event DB schema) needs a dedicated planning pass before Phase 5 implementation begins.
+- **Phase 3 (Compilation):** TypeScript path alias resolution (`@/lib/...`) in compiled `dist/cli/` output should be verified against the existing `tsconfig.json` configuration before scripting all 10 wrappers. A mismatch here breaks every compiled wrapper.
 
-Phases that benefit from codebase review during planning:
-- **Phase 2:** Webhook handler has accumulated complexity (notification-before-AI sequencing, webhook event dedup, LinkedIn fast-track) — review `src/app/api/webhooks/emailbison/route.ts` carefully before scoping to understand what stays inline vs moves to task
-- **Phase 3:** Writer agent restoration requires reviewing the current Haiku shortcut implementation in `src/lib/agents/runner.ts` to understand what Opus restoration entails and whether subtask decomposition is required
-- **Phase 4:** `generate-insights` and `retry-classification` cron logic should be audited for hidden timeout assumptions baked into the lib functions (e.g., hardcoded timeouts, sequential workspace loops that assume short execution)
+Phases with standard, well-documented patterns (skip additional research):
+- **Phase 1:** Security setup (`.claudeignore`, sanitize utility) is fully specified in PITFALLS.md with exact implementation steps.
+- **Phase 2:** Memory directory structure and markdown schema is fully specified in ARCHITECTURE.md and STACK.md with example file content.
+- **Phase 4:** Skill file format is verified against official Claude Code docs with working examples in the live codebase (`nova.md`).
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All verified against official Trigger.dev docs via WebFetch; npm versions confirmed; Vercel integration GA status confirmed via v4.4.0 changelog |
-| Features | HIGH | Complete jobs inventory from codebase analysis; official docs for every feature used; MVP vs defer boundary is clearly justified |
-| Architecture | HIGH | Official docs + codebase source file analysis; patterns verified against actual route handlers and lib files; Railway LinkedIn boundary is well-reasoned with explicit future migration path |
-| Pitfalls | HIGH | Each pitfall backed by official docs or confirmed GitHub issues; recovery strategies documented; pitfall-to-phase mapping explicit with verification steps |
+| Stack | HIGH | Official Claude Code docs verified 2026-03-23; all patterns confirmed against live working codebase (`nova.md`, `scripts/chat.ts`, 7 agent files inspected directly) |
+| Features | HIGH | Official Claude Code docs verified; feature set is bounded and clear — this is additive on an existing production system, not greenfield |
+| Architecture | HIGH | Based on direct code inspection of all 7 agent files and the full project structure; build order derived from actual dependency graph |
+| Pitfalls | HIGH | Official CVE documentation for credentials; npm issue tracker for npx latency; multiple community post-mortems for memory pollution and context overflow; all prevention strategies are concrete and actionable |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **LinkedIn worker fast-track boundary:** Research recommends keeping Railway as-is for v6.0, but the fast-track LinkedIn enqueue from the webhook handler needs clarification — does it call Railway's HTTP API or write directly to `LinkedInAction` DB table? This affects Phase 2 scoping. Review `src/app/api/webhooks/emailbison/route.ts` at planning time.
+- **Trigger.dev bridge design (Phase 5):** PITFALLS.md recommends the task queue pattern for the dashboard-to-CLI bridge but does not specify the exact Trigger.dev task schema or the polling/streaming mechanism for the dashboard. This needs a planning decision before Phase 5 implementation.
 
-- **Neon IP allowlisting status:** Research flags Trigger.dev IP allowlisting as a Phase 1 concern, but it is unknown whether this Neon project has IP restrictions enabled. Verify in Neon console before Phase 1 starts — if not enabled, this pitfall does not apply.
+- **TypeScript path alias resolution in compiled output (Phase 3):** The project uses `@/lib/...` path aliases. Whether these resolve correctly when compiling `scripts/cli/*.ts` to `dist/cli/*.js` should be verified early in Phase 3 before scripting all 10 wrappers. A quick compilation test of a single wrapper using an `@/lib/` import will confirm.
 
-- **Vercel integration vs `syncVercelEnvVars` choice:** Research flags a documented conflict between the Vercel integration and the `syncVercelEnvVars` build extension. The Vercel integration is preferred (simpler, no bootstrapping problem). Decision must be made in Phase 1 and committed to — do not use both.
-
-- **Campaign deploy `after()` complexity:** The campaign deploy endpoint uses a 300s Vercel max duration. Research places this in Phase 5, but if the deploy logic has complex state (EmailBison + LinkedIn + DB sequencing) that requires careful migration, it may warrant its own phase. Review `src/app/api/campaigns/[id]/deploy/route.ts` at planning time.
+- **Memory file git inclusion (Phase 2):** PITFALLS.md recommends against committing memory files to git (client intelligence exposure risk). STACK.md recommends committing them for portability and version control. This conflict requires a decision before Phase 2: likely the answer is to `.gitignore` the per-client memory files while committing the directory structure via `.gitkeep` files, but this needs to be explicitly decided and documented.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Trigger.dev Next.js setup guide](https://trigger.dev/docs/guides/frameworks/nextjs) — Installation, TRIGGER_SECRET_KEY, route handler patterns
-- [Trigger.dev scheduled tasks docs](https://trigger.dev/docs/tasks/scheduled) — `schedules.task()` syntax, cron format, dev vs production behavior
-- [Trigger.dev config file docs](https://trigger.dev/docs/config/config-file) — `trigger.config.ts` options, dirs, retries, build extensions
-- [Trigger.dev Prisma extension docs](https://trigger.dev/docs/config/extensions/prismaExtension) — binary targets, `mode: "legacy"` for Prisma 6
-- [Trigger.dev triggering docs](https://trigger.dev/docs/triggering) — `tasks.trigger()`, `triggerAndWait()` restrictions from API routes
-- [Trigger.dev concurrency and queues docs](https://trigger.dev/docs/queue-concurrency) — pre-defined queues in v4, `concurrencyKey` pattern
-- [Trigger.dev idempotency docs](https://trigger.dev/docs/idempotency) — TTL, scope behavior, v4.3.1 breaking change
-- [Trigger.dev v4 GA changelog](https://trigger.dev/changelog/trigger-v4-ga) — Vercel integration GA, v3 shutdown timeline
-- [Trigger.dev limits](https://trigger.dev/docs/limits) — Concurrency, schedule caps, log retention by plan
-- [Trigger.dev migrating from v3](https://trigger.dev/docs/migrating-from-v3) — Import path changes, queue definition, IP allowlisting
-- [Neon connection pooling docs](https://neon.com/docs/connect/connection-pooling) — Pool limits by compute size, pooled vs unpooled URL
-- [Anthropic rate limits docs](https://docs.anthropic.com/en/api/rate-limits) — TPM limits per tier
-- [@trigger.dev/build npm](https://www.npmjs.com/package/@trigger.dev/build) — Version 4.4.2, extensions import paths
+- [Claude Code Skills docs](https://code.claude.com/docs/en/slash-commands) — Full skill format, frontmatter reference, `$ARGUMENTS`, shell injection, `allowed-tools`, `context: fork` — verified 2026-03-23
+- [Claude Code Memory docs](https://code.claude.com/docs/en/memory) — CLAUDE.md hierarchy, auto memory storage location, 200-line limit, `.claude/rules/` — verified 2026-03-23
+- [Claude Code Agent Teams docs](https://code.claude.com/docs/en/agent-teams) — Subagent orchestration patterns — verified 2026-03-23
+- [CVE-2025-59536](https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files-cve-2025-59536/) — RCE and API key exfiltration via Claude Code; .env auto-loading confirmed
+- [Knostic.ai .env auto-load research](https://www.knostic.ai/blog/claude-loads-secrets-without-permission) — .claudeignore remediation confirmed
+- Direct code inspection: `src/lib/agents/orchestrator.ts` (683 LOC), `runner.ts`, `writer.ts`, `leads.ts`, `research.ts`, `campaign.ts`, `shared-tools.ts`, `types.ts`
+- Direct code inspection: `.claude/commands/nova.md`, `scripts/chat.ts`, `scripts/generate-copy.ts`
+- [tsx npm package documentation](https://tsx.is/getting-started) — cold start behavior, no persistent process pool
+- [npx slow cached packages — GitHub Issue #7295](https://github.com/npm/cli/issues/7295) — registry check adds 3+ seconds per invocation
 
 ### Secondary (MEDIUM confidence)
-- [GitHub Issue #1685 — Slow start times](https://github.com/triggerdotdev/trigger.dev/issues/1685) — Cold start reality; warm starts at 100-300ms in v4
-- Existing codebase analysis: `src/app/api/webhooks/emailbison/route.ts`, `src/app/api/cron/*/route.ts`, `src/lib/agents/runner.ts` — confirmed .then() patterns and current timeout constraints
-
-### Tertiary (HIGH confidence, specific issues)
-- [GitHub Issue #1358 — Prisma binaryTargets](https://github.com/triggerdotdev/trigger.dev/issues/1358) — Confirmed `debian-openssl-3.0.x` requirement for Trigger.dev Cloud
-- [GitHub Issue #1565/#1635 — Prisma schemaFolder](https://github.com/triggerdotdev/trigger.dev/issues/1565) — Multi-file schema breaks Trigger.dev build (not applicable here, single schema file)
+- [Inside Claude Code Skills — mikhail.io](https://mikhail.io/2025/10/claude-code-skills/) — Community skill structure analysis
+- [Claude Code Context Management — Sitepoint](https://www.sitepoint.com/claude-code-context-management/) — `/compact` behavior, 60% compact threshold
+- [The Problem with AI Agent Memory — Medium](https://medium.com/@DanGiannone/the-problem-with-ai-agent-memory-9d47924e7975) — Memory pollution mechanics; conflicting context reconciliation
+- [Why LLM Memory Still Fails — DEV Community](https://dev.to/isaachagoel/why-llm-memory-still-fails-a-field-guide-for-builders-3d78) — Context rot; semantic retrieval without temporal relevance
+- [Claude Code Skills token budget — GitHub Gist](https://gist.github.com/mellanon/50816550ecb5f3b239aa77eef7b8ed8d) — 82% token recovery from content layering into reference files
 
 ---
-*Research completed: 2026-03-12*
+*Research completed: 2026-03-23*
 *Ready for roadmap: yes*

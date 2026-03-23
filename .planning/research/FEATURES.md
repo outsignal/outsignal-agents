@@ -1,192 +1,202 @@
 # Feature Research
 
-**Domain:** Background Jobs Infrastructure — Trigger.dev Migration (v6.0)
-**Researched:** 2026-03-12
-**Confidence:** HIGH (official Trigger.dev docs verified via WebFetch)
+**Domain:** CLI-based agent teams with persistent memory (Nova v7.0)
+**Researched:** 2026-03-23
+**Confidence:** HIGH (official Claude Code docs verified)
+
+---
+
+## Context
+
+This is a **subsequent milestone** on an existing codebase. The research question is what is NEW:
+converting the existing API-based agent system to Claude Code CLI skills with client-specific
+persistent memory. Existing features (orchestrator, 4 specialist agents, 30+ tool functions,
+dashboard chat, AgentRun audit, quality gates, copy strategies, discovery, enrichment) are
+**already built and in production**. This research covers only what v7.0 adds.
+
+---
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Core Trigger.dev capabilities the migration depends on. Without these the migration cannot succeed.
+Features the CLI agent system must have for it to be considered functional. Without these it is
+not a real skill system — it is just a renamed API call.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Scheduled tasks (cron replacement) | Direct replacement for all 10 cron-job.org jobs | LOW | `schedules.task()` with declarative `cron` property. Syncs on `npx trigger.dev deploy`. Standard 5-field cron syntax. No external service needed after migration. |
-| Event-triggered background tasks | Replace `.then()` fire-and-forget in webhook handlers and `after()` in deploy route | LOW | `tasks.trigger()` from any API route returns immediately with run handle. Trigger.dev executes async on its own infra. Exact conceptual replacement for fire-and-forget. |
-| Long-running task support | AI operations (writer agent via Opus, generate-insights, retry-classification) and campaign deploy routinely exceed Vercel's 60s limit | LOW | `maxDuration` configurable up to 14 days on cloud. Tasks run on Trigger.dev infra, not Vercel. No checkpointing required for most tasks — just set a generous `maxDuration`. |
-| Automatic retry with backoff | Cron jobs and webhook handlers currently have zero retry logic; silent failures are common | LOW | Built-in: default 3 attempts. Configurable `maxAttempts`, exponential `factor`, `minTimeoutInMs`, `maxTimeoutInMs`. Add one `retry` config block per task. |
-| Task observability dashboard | Zero visibility into whether cron-job.org jobs succeeded or why they failed | LOW | Trigger.dev Cloud dashboard shows every run: status, duration, logs, full OpenTelemetry trace. Filter by tag, status, environment, date. Live run page shows real-time trace as task executes. |
-| Next.js App Router integration | Project is Next.js 16 App Router; tasks must integrate cleanly without restructuring | LOW | Official guide: `npx trigger.dev@latest init` scaffolds `/trigger` directory + `trigger.config.ts`. Tasks triggered from API routes via `tasks.trigger()`. Auto-syncs Vercel env vars via `syncVercelEnvVars` build extension. |
-| Environment separation | Need dev/staging/production task isolation | LOW | Built-in: tasks respect `DEVELOPMENT`, `STAGING`, `PREVIEW`, `PRODUCTION` environments. Dev schedules only run when CLI is active — no accidental production schedule firing. |
-| Idempotency keys | Prevent duplicate task execution when webhooks fire multiple times for the same event | LOW | Pass `idempotencyKey` option on `tasks.trigger()`. Same key = returns existing run handle instead of creating duplicate. Critical for overlap window when cron-job.org and Trigger.dev both run simultaneously. |
+| SKILL.md definition per agent | The fundamental unit of a Claude Code skill. Without it you have no skill system. | LOW | One SKILL.md per agent (orchestrator, research, writer, leads, campaign). Frontmatter: name, description, disable-model-invocation (for user-triggered flows), allowed-tools |
+| Skill reads workspace context on invoke | CLI agents need to know which client they are operating for before doing any work | LOW | Pass workspaceSlug as `$ARGUMENTS[0]` or embed in invocation prompt. Agent reads workspace CLAUDE.md or client memory file first |
+| Bash wrapper scripts for existing tool functions | Existing TypeScript tool functions (DB queries, EmailBison API, discovery adapters, KB search) must be callable from CLI agents via Bash tool | MEDIUM | Thin node scripts in `scripts/agents/`. Each script: read args from stdin or argv, call existing lib function via dynamic require, return JSON stdout. Agent calls via `!` injection or Bash tool |
+| MEMORY.md file per workspace | Standard Claude Code auto-memory pattern. First 200 lines loaded every session. Client-specific context persists across runs | LOW | One MEMORY.md per workspace slug under `.claude/memory/[slug]/`. Claude reads/writes during sessions |
+| Memory read at skill invocation start | Agent must load client context before acting. Without this, every invocation is stateless | LOW | Skill frontmatter `!` injection: `!cat .claude/memory/[slug]/MEMORY.md` or agent reads via Bash tool at start of execution |
+| Dashboard-to-CLI bridge (API route to CLI exec) | Existing dashboard chat must still work. Users expect no regression in the chat interface | MEDIUM | Next.js API route executes `claude --print -p "[prompt]"` as child process via Node `exec`. Returns streamed or buffered response. Replaces direct `runAgent()` Anthropic SDK call |
+| Fallback preserved (existing API agents) | Production system must not break if CLI invocation fails | LOW | Existing `runAgent()` / `generateText()` code stays. CLI bridge catches exec failures and falls back to API path. Feature flag controls routing |
 
 ### Differentiators (Competitive Advantage)
 
-Features beyond basic cron replacement that unlock new capabilities the current setup cannot provide.
+Features that make this more than a simple port — the actual value of v7.0.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Subtask orchestration (`triggerAndWait` / `batchTriggerAndWait`) | Writer agent can fan out to multiple tools in parallel and collect typed results — impossible with current 60s fire-and-forget. Restores full Opus writer agent instead of Haiku shortcut. | MEDIUM | `yourTask.triggerAndWait()` blocks until child completes without wasting compute (checkpoint-restore). `batchTriggerAndWait()` fan-out up to 1,000 items in parallel. Parent task "sleeps" between child dispatches. |
-| React hooks for live run status (`useRealtimeRun`) | Show live campaign deploy progress or AI suggestion status in dashboard without polling | MEDIUM | `@trigger.dev/react-hooks` package. `useRealtimeRun(runId, { accessToken })` streams live status updates. Requires generating a Public Access Token server-side and passing to frontend. `onComplete` callback for navigation/notification on finish. |
-| Run tags + metadata | Group runs by workspace/client for cross-run filtering in Trigger.dev dashboard and per-workspace observability | LOW | Up to 10 tags per run (strings 1-64 chars). Tag with workspace slug (e.g., `workspace:rise`) to filter all runs for a client. Metadata updates in-flight — show task progress to frontend without separate polling. |
-| Per-task queue + concurrency control | Prevent AI operations from overwhelming Anthropic API; prevent LinkedIn tasks from running concurrently and triggering rate limits | LOW | `queue: { concurrencyLimit: 1 }` for single-at-a-time. Dynamic queue name (e.g., `generate-insights-${workspaceSlug}`) for per-workspace isolation. No code changes to task logic — config only. |
-| Batch workspace parallelisation (`batchTrigger`) | Process all 6 workspaces in parallel for generate-insights, snapshot-metrics, domain-health instead of sequential loop | MEDIUM | `tasks.batchTrigger()` fires up to 1,000 runs in one SDK call. Requires refactoring crons from "iterate workspaces in one handler" to "per-workspace task" pattern — parent cron triggers N workspace subtasks in parallel. |
-| Delayed task execution | Defer a task run without an external scheduler; schedule a one-off task for a specific future time | LOW | Pass `delay` option to `tasks.trigger()` using duration strings, timestamps, or Date objects. Delayed runs show as "Delayed" status in dashboard and can be cancelled. |
-| Human-in-the-loop wait tokens | Future: pause AI agent mid-task pending human approval (e.g., hold campaign deploy until client approves in portal) | HIGH | `wait.for({ event: 'approval' })` pauses task indefinitely. Token returned to frontend; user approves; task resumes. Not needed for v6.0 but architecturally enabled. |
+| Client-specific memory namespacing | Each workspace accumulates its own tone profile, copy wins, ICP learnings, campaign history, feedback patterns — independent of other clients | MEDIUM | Directory per workspace: `.claude/memory/[slug]/`. Separate topic files: `tone.md`, `copy-wins.md`, `icp.md`, `campaigns.md`, `feedback.md`. MEMORY.md as index. Auto-memory builds this over time, manual seeding bootstraps it |
+| Memory accumulation from real usage | Writer agent auto-writes to `copy-wins.md` when a campaign performs above benchmark. Research agent updates `icp.md` when new patterns found. Campaign agent logs approval patterns | MEDIUM | Agents instructed in SKILL.md to write structured entries to memory files when they complete work. Uses Claude Code built-in Write/Edit tools. Standard auto-memory pattern from official docs |
+| Copy wins feedback loop | When reply rate exceeds threshold, agent reads existing copy, extracts what worked, and writes a structured entry to `copy-wins.md`. Next writer invocation loads this as context | HIGH | Requires: campaign performance query tool + threshold check + Claude analysis + write to memory. Trigger: campaign agent or scheduled check. High value: grounded in real performance data not training assumptions |
+| Approval pattern memory | Writer agent records which copy strategies the client approved vs rejected. Shapes future generation toward patterns that get approved | MEDIUM | Structured log in `feedback.md`: date, strategy, element, outcome (approved or rejected), note. Writer skill reads last 30 entries as context. Reduces revision cycles |
+| Cross-client learning namespace | A separate global memory file stores cross-client insights (e.g. "one-liner CTAs outperform PVP for recruitment verticals"). Shared across all agents | MEDIUM | Separate from per-client memory. Agents instructed to read global insights before per-client context. Written by admin explicitly or by orchestrator after pattern detection |
+| Zero API cost for primary agent operations | Moves primary orchestration from Anthropic API (paid) to Claude Code Max Plan (covered). Signal campaign Haiku calls remain as the only paid path | LOW | This is the architecture goal, not an implementation feature. CLI exec uses Max Plan credits not API credits. Fallback to API only on CLI failure |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
+Features that seem like natural extensions but would create serious problems.
+
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Self-hosted Trigger.dev | Full data control, no cloud cost | Requires managing Docker containers, Postgres, Redis, and worker scaling — significant ops burden that negates the "eliminate infrastructure management" goal. Adds Railway/VPS cost and maintenance overhead. | Use Trigger.dev Cloud. Hobby tier ($10/mo) covers this project's volume easily. Self-host only if data residency compliance mandates it. |
-| Single monolithic task per cron | Simpler initial migration — one big task containing all workspace iteration logic | Losses parallelism benefits, makes failures hard to isolate (one workspace error fails all), ties unrelated work together. No retry granularity. | One logical task per unit of work. Per-workspace subtasks via `batchTrigger`. |
-| Keep cron-job.org running indefinitely as safety net | Avoid risk during transition | Creates double-execution: both systems fire same cron = duplicate Slack notifications, double DB writes, double AI API costs. | Migrate fully, then retire cron-job.org within 1 week of each task going live. Use idempotency keys during the overlap window only. |
-| Poll for task completion from API route before responding | Verify task finished before returning HTTP response | Defeats async purpose, adds latency to user-facing responses, blocks Next.js route handler. | Use `useRealtimeRun` on frontend for live status. Accept fire-and-forget for notifications. Use `triggerAndWait` only inside other tasks, not in API routes. |
-| Manual retry loops inside task code | Developers add try/catch retry loops for resilience | Duplicates Trigger.dev's built-in retry infrastructure. Inconsistent behavior. Retry loops inside tasks can exceed `maxDuration` unexpectedly. | Use task-level `retry` config. Keep task code clean. Trust the platform. |
+| Custom agent runtime / process manager | "We should own the execution environment" | You already have one: Claude Code. Building a custom runtime duplicates auth, tool management, context windowing, model routing — all solved by Claude Code | Use Claude Code CLI directly. Deploy via Node child_process exec from Next.js |
+| Database-backed memory (PostgreSQL/Redis) | "Memory should be queryable" | Massive over-engineering. CLAUDE.md and MEMORY.md are the standard pattern. DB adds schema migration, connection management, query layer — all for what is essentially a config file | Flat markdown files per workspace. Claude reads them natively. No query layer needed |
+| Memory schema enforcement / validation | "We need typed memory fields" | Memory is prose-first. Enforcing a schema fights Claude's native reading pattern and makes memory brittle when the agent writes something slightly differently | Write memory in structured markdown sections. Agent follows section headings as loose schema. No runtime validation |
+| Real-time memory sync across sessions | "Multiple agents should share live memory" | Claude Code sessions are independent. "Shared live memory" requires a coordination layer that does not exist in the skill system | Each session reads from disk at start. Writes flush to disk immediately. Next session picks up writes. File locking on concurrent writes is the only edge case worth handling |
+| Separate memory cleanup daemon / cron | "Old memory should expire automatically" | Adds operational complexity for marginal value. 200-line MEMORY.md limit is self-managing. Agents prune naturally when near limit | Include pruning instructions in SKILL.md: "If MEMORY.md exceeds 150 lines, summarize oldest entries". Agent handles it inline |
+| Full agent conversation history in memory | "Store every interaction for context" | Violates the 200-line MEMORY.md limit. Bloats context. Claude has conversation context within a session — persisting all of it is redundant | Store only distilled learnings and patterns, not raw conversations. AgentRun table already covers audit/history needs |
+| Replace AgentRun audit trail | "CLI agents don't need DB logging" | AgentRun table is used by the dashboard for agent monitoring. Removing it breaks the admin UI | Keep AgentRun. CLI bridge writes to AgentRun via a lightweight POST to the existing `/api/agent-runs` endpoint after CLI exec returns |
+
+---
 
 ## Feature Dependencies
 
 ```
-[Trigger.dev Next.js Setup]  ← FOUNDATION, must be Phase 1
-    └──enables──> [Scheduled Tasks]
-    └──enables──> [Event-Triggered Tasks]
-    └──enables──> [Long-Running Tasks]
-    └──enables──> [All other features]
+[SKILL.md definitions]
+    └──requires──> [Bash wrapper scripts] (agents need tools to call)
+                       └──requires──> [Existing tool functions preserved]
 
-[Scheduled Tasks]
-    └──requires──> [Task Deployment] (declarative cron only activates after npx trigger.dev deploy)
-    └──enables──> [Batch Workspace Parallelisation] (parent cron triggers N workspace subtasks)
-    └──replaces──> [cron-job.org] (retire after migration verified)
+[Dashboard-to-CLI bridge]
+    └──requires──> [SKILL.md definitions] (something to invoke)
+    └──requires──> [Fallback preserved] (production safety)
 
-[Event-Triggered Tasks]
-    └──enables──> [Webhook Async Work] (classify-reply, generate-reply-suggestion, linkedin-fast-track)
-    └──enables──> [Campaign Deploy Background Task] (replaces after() pattern)
-    └──required-by──> [React Hooks] (needs run ID returned from tasks.trigger())
+[Client memory namespacing]
+    └──requires──> [SKILL.md definitions] (agent must know to read memory)
+    └──enables──> [Memory accumulation from real usage]
+                      └──enables──> [Copy wins feedback loop]
+                      └──enables──> [Approval pattern memory]
 
-[Long-Running Tasks]
-    └──enables──> [Writer Agent Restoration] (Opus without 60s constraint)
-    └──enables──> [Subtask Orchestration] (parent can wait on long children)
+[Cross-client learning namespace]
+    └──enhances──> [Client memory namespacing] (adds global layer on top of per-client)
+    └──requires──> [Memory accumulation from real usage] (needs data to generalize from)
 
-[Subtask Orchestration]
-    └──requires──> [Long-Running Tasks]
-    └──enables──> [Writer Agent Restoration] (fan-out to KB search + draft generation)
-    └──enables──> [Batch Workspace Parallelisation]
-
-[Run Tags + Metadata]
-    └──requires──> [Any triggered task]
-    └──enhances──> [Observability Dashboard] (filter by workspace slug)
-    └──enhances──> [React Hooks] (subscribe to all runs tagged for a workspace)
-
-[React Hooks (useRealtimeRun)]
-    └──requires──> [Event-Triggered Tasks] (need run ID from tasks.trigger())
-    └──requires──> [Public Access Token generation] (server-side auth for frontend)
-    └──enables──> [Live Deploy Progress UI]
-    └──enables──> [AI Suggestion Status Display]
+[Memory read at skill invocation start]
+    └──requires──> [Client memory namespacing] (need the files to read)
 ```
 
 ### Dependency Notes
 
-- **Setup is the gating dependency**: All features require the `/trigger` directory, `trigger.config.ts`, and `TRIGGER_SECRET_KEY` env var. This must be Phase 1 before any other task can be written or deployed.
-- **Declarative cron requires deployment**: `cron` property in task definition only activates after `npx trigger.dev deploy`. Dev environment schedules only run while `npx trigger.dev dev` CLI is active — this is a pitfall for testing production schedule cadences.
-- **React hooks require surfacing run IDs**: `useRealtimeRun` only works if the triggering API route captures and returns the `runId` from `tasks.trigger()`. Current fire-and-forget pattern discards the handle. API routes returning run IDs must be updated before React hooks can be added.
-- **Subtask orchestration enables writer agent restoration**: Current Haiku shortcut exists because Opus chains exceed 60s in Vercel. With Trigger.dev, parent task `triggerAndWait`s child subtasks without any timeout concern. The Haiku shortcut was a workaround — Trigger.dev removes the root cause.
-- **Batch parallelisation requires task decomposition**: Current crons iterate all workspaces in a sequential loop inside one HTTP handler. For batch benefits, refactor so each workspace is an independent task run. The parent cron task becomes a dispatcher that calls `batchTrigger` with one item per workspace.
+- **Bash wrappers require existing tools preserved:** Wrappers must not reimplement tool logic. They call the existing TypeScript functions via `node -e` or dedicated script files. This is a hard constraint — the same tool code serves both the API path (Vercel) and the CLI path (local).
+
+- **Dashboard bridge requires fallback:** Bridge goes to production. It must not break existing dashboard users. Fallback to existing `runAgent()` is a day-one requirement, not an optimization.
+
+- **Copy wins loop requires campaign data tools:** The agent needs to query real campaign metrics. This is already in the existing `getCampaignPerformance` tool (writer.ts). The wrapper just needs to expose it.
+
+- **Memory namespace requires per-client directory structure:** Must be established before any accumulation features. Bootstrap with seed content (tone prompt, ICP summary) from existing workspace DB fields.
+
+---
 
 ## MVP Definition
 
-### Launch With (v1 — Critical Path)
+### Launch With (v1 — Phase 1-3 of v7.0)
 
-Minimum viable migration — eliminates timeout silent failures and establishes Trigger.dev foundation.
+Minimum viable CLI skill system. Proves the architecture. Gets the cost savings.
 
-- [ ] Trigger.dev installation + Next.js App Router setup — foundation, nothing else works without this
-- [ ] Migrate webhook background work (classify-reply, generate-reply-suggestion `.then()` chains, linkedin-fast-track) — most user-visible failures; these are the critical notification path
-- [ ] Migrate high-risk AI crons (retry-classification, generate-insights, snapshot-metrics) — these are most likely silently failing under 60s Vercel limit due to multi-workspace AI calls
-- [ ] Basic run tags (workspace slug) — minimum observability to verify migration correctness in dashboard
+- [ ] SKILL.md for all 5 agents (orchestrator, research, writer, leads, campaign) — defines the CLI interface
+- [ ] Bash wrapper scripts for top 10 most-used tool functions (getWorkspaceIntelligence, searchKnowledgeBase, getCampaignPerformance, queryPeople, getCampaigns, getLeadsList, createTargetList, saveWriterOutput, getCampaignContext, getReplies) — agents can actually do work
+- [ ] MEMORY.md file per workspace with seeded context (tone, ICP, last 3 campaigns) — gives agents immediate value from day one
+- [ ] Memory read at skill start — agents behave as client-aware from first invocation
+- [ ] Dashboard-to-CLI bridge for writer and orchestrator agents — covers 80% of usage
+- [ ] Fallback to existing API agents — production safety net
 
-### Add After Validation (v1.x)
+### Add After Validation (v1.x — Phase 4-5 of v7.0)
 
-Once core migration is proven stable (1 week observation).
+Once CLI path is proven stable and agents are behaving well:
 
-- [ ] Migrate remaining crons (domain-health, poll-replies, sync-senders, bounce-monitor, inbox-health, bounce-snapshots, deliverability-digest) — lower urgency, less timeout-sensitive
-- [ ] Restore writer agent Opus subtasks (replace Haiku shortcut) — unlocked by long-running task support; was previously constrained by Vercel timeout
-- [ ] Migrate campaign deploy `after()` pattern — currently 300s Vercel limit; Trigger.dev removes this ceiling
-- [ ] Retire cron-job.org — after observation window confirms all scheduled tasks fire reliably
-- [ ] Per-task concurrency control — add queue config where AI API rate limits require it
+- [ ] Memory accumulation from real usage — trigger: first week of CLI agent operation shows stable results
+- [ ] Approval pattern memory — trigger: admin uses writer agent 5+ times via CLI
+- [ ] Bridge extended to leads and campaign agents — trigger: writer bridge working cleanly
+- [ ] Cross-client learning namespace — trigger: 3+ clients have meaningful per-client memory built up
 
-### Future Consideration (v2+)
+### Future Consideration (v2+ — post v7.0)
 
-Defer until v6.0 core is validated.
+Defer until pattern is well understood from real usage:
 
-- [ ] `useRealtimeRun` React hooks for live deploy status UI — adds frontend complexity, low urgency
-- [ ] Batch workspace parallelisation — refactor crons to per-workspace subtasks once baseline migration is stable
-- [ ] Human-in-the-loop wait tokens — future portal approval flow feature
-- [ ] Streaming AI responses to dashboard — significant frontend work, separate milestone
+- [ ] Copy wins feedback loop — requires measuring impact of memory-informed generation vs baseline. Needs at least 2 months of data. High value but premature to build now.
+- [ ] Automated memory pruning beyond inline instructions — complex, low current need
+- [ ] Memory-driven copy strategy auto-selection — agent picks strategy based on past approval patterns without prompting. Requires solid approval pattern data first.
+
+---
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Trigger.dev Next.js setup | HIGH | LOW | P1 |
-| Event-triggered tasks (webhook async) | HIGH | LOW | P1 |
-| Long-running task support | HIGH | LOW (maxDuration config) | P1 |
-| Scheduled tasks (cron replacement) | HIGH | LOW | P1 |
-| Automatic retries | HIGH | LOW (config only) | P1 |
-| Run tags for observability | MEDIUM | LOW | P1 |
-| Idempotency keys | MEDIUM | LOW | P1 |
-| Writer agent restoration via subtasks | HIGH | MEDIUM | P2 |
-| Campaign deploy migration | MEDIUM | LOW | P2 |
-| Per-task concurrency control | MEDIUM | LOW | P2 |
-| Batch workspace parallelisation | MEDIUM | MEDIUM (task decomp) | P2 |
-| React hooks (`useRealtimeRun`) | LOW | MEDIUM | P3 |
-| Human-in-the-loop wait tokens | LOW | HIGH | P3 |
-| Streaming AI responses | LOW | HIGH | P3 |
+| SKILL.md definitions (5 agents) | HIGH | LOW | P1 |
+| Bash wrapper scripts (top 10 tools) | HIGH | MEDIUM | P1 |
+| Dashboard-to-CLI bridge (writer + orchestrator) | HIGH | MEDIUM | P1 |
+| Fallback to existing API agents | HIGH | LOW | P1 |
+| MEMORY.md per workspace (seeded) | HIGH | LOW | P1 |
+| Memory read at skill start | HIGH | LOW | P1 |
+| Memory accumulation from real usage | HIGH | MEDIUM | P2 |
+| Approval pattern memory | MEDIUM | MEDIUM | P2 |
+| Bridge extended to leads + campaign | MEDIUM | LOW | P2 |
+| Cross-client learning namespace | MEDIUM | MEDIUM | P2 |
+| Copy wins feedback loop | HIGH | HIGH | P3 |
+| Memory-driven strategy auto-selection | MEDIUM | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for migration launch
-- P2: Should have, add after core migration stable
-- P3: Nice to have, future milestone
+- P1: Must have for launch — core architecture and production safety
+- P2: Should have, add when CLI path is proven
+- P3: Nice to have, requires real usage data to build well
 
-## Existing Jobs Inventory (Migration Targets)
+---
 
-Complete list of jobs requiring migration. Each becomes a Trigger.dev task.
+## Skill Invocation Patterns (Reference)
 
-### Scheduled Tasks (cron-job.org → Trigger.dev `schedules.task()`)
+Verified against official Claude Code docs (March 2026):
 
-| Job | Current Schedule | Estimated Risk | Migration Notes |
-|-----|-----------------|----------------|-----------------|
-| poll-replies | every 10 min | MEDIUM | Multi-workspace, 60s limit. Consider per-workspace subtasks for parallelism. |
-| domain-health | twice daily (8:00 + 20:00 UTC) | MEDIUM | DNS lookups + DNSBL checks across all domains. Currently 60s limit. Needs higher `maxDuration`. |
-| bounce-monitor | every 4 hours | LOW | EmailBison API calls per workspace. Sequential, unlikely to timeout. |
-| sync-senders | daily | LOW | EmailBison sender sync. Sequential, low risk. |
-| retry-classification | daily | HIGH | Haiku AI calls across all workspaces. Most likely exceeding 60s silently. |
-| generate-insights | weekly (per workspace) | HIGH | Opus AI calls. Highest timeout risk of all crons. |
-| snapshot-metrics | daily | MEDIUM | DB aggregations across all workspaces. 60s limit on complex queries. |
-| bounce-snapshots | daily | LOW | Sender bounce stats snapshots. |
-| deliverability-digest | weekly | LOW | Notification dispatch only. |
-| inbox-health | daily 6am UTC | LOW | EmailBison health check. maxDuration 60s currently. |
+**User-triggered via dashboard bridge:**
+Dashboard POST to `/api/chat` -> Node exec `claude --print -p "invoke /writer rise write pvp sequence for Q2 campaign"` -> streamed or buffered response back to UI.
 
-### Event-Triggered Tasks (fire-and-forget → `tasks.trigger()`)
+**CLI direct invocation:**
+`/writer rise "write pvp email sequence for Q2 pharmaceutical campaign"`
 
-| Trigger Point | Current Pattern | Timeout Risk | Migration Notes |
-|---------------|----------------|-------------|-----------------|
-| Webhook LEAD_REPLIED — reply classification | `.then()` chain in emailbison/route.ts | MEDIUM | Haiku call. Low latency not critical — async is fine. |
-| Webhook — AI reply suggestion | `.then()` chained after classification | HIGH | Writer agent. Currently Haiku shortcut due to timeout constraint. Trigger.dev enables restoring full Opus agent. |
-| Webhook — LinkedIn fast-track | `.then()` pattern | LOW | LinkedIn Voyager API call. Quick but should not block webhook response. |
-| Campaign deploy | `after()` in deploy/route.ts, maxDuration 300s | HIGH | EmailBison + LinkedIn deploy for large campaigns. Can exceed 300s. Critical user action — needs live status (use run tags + React hook later). |
+**Agent auto-load:**
+User message matching skill description triggers Claude to load full skill content automatically. No slash required.
+
+**Memory injection at invocation (! syntax):**
+Frontmatter in SKILL.md: `!cat /path/to/project/.claude/memory/$ARGUMENTS[0]/MEMORY.md 2>/dev/null || echo "No memory yet"`
+This runs before Claude sees the skill content — output is injected as context.
+
+**Bash wrapper call pattern (inside skill instructions):**
+```
+To get workspace intelligence: run `node scripts/agents/get-workspace.js $ARGUMENTS[0]`
+To search knowledge base: run `node scripts/agents/search-kb.js "$query"`
+```
+
+**Memory write pattern (inside skill instructions):**
+```
+After completing copy generation, append to .claude/memory/[slug]/copy-wins.md:
+- Date: [date]
+- Campaign: [name]
+- Strategy: [pvp/creative-ideas/one-liner]
+- What worked: [brief description]
+```
+
+---
 
 ## Sources
 
-- [Trigger.dev Scheduled Tasks docs](https://trigger.dev/docs/tasks/scheduled) — HIGH confidence (WebFetch verified)
-- [Trigger.dev Next.js integration guide](https://trigger.dev/docs/guides/frameworks/nextjs) — HIGH confidence (WebFetch verified)
-- [Trigger.dev Triggering API docs](https://trigger.dev/docs/triggering) — HIGH confidence (WebFetch verified)
-- [Trigger.dev React Hooks overview](https://trigger.dev/docs/realtime/react-hooks/overview) — HIGH confidence (WebFetch verified)
-- [Trigger.dev AI Agents product page](https://trigger.dev/product/ai-agents) — HIGH confidence (WebFetch verified)
-- [Trigger.dev Limits docs](https://trigger.dev/docs/limits) — HIGH confidence (WebFetch verified)
-- [Trigger.dev Pricing](https://trigger.dev/pricing) — HIGH confidence (WebFetch verified)
-- [Building AI agents with Trigger.dev blog](https://trigger.dev/blog/ai-agents-with-trigger) — HIGH confidence (WebFetch verified)
-- Existing codebase analysis: `/src/app/api/cron/`, `/src/app/api/webhooks/emailbison/route.ts`, `/src/app/api/campaigns/[id]/deploy/route.ts`
+- [Extend Claude with skills — Claude Code Docs](https://code.claude.com/docs/en/skills) — HIGH confidence, official, verified March 2026
+- [How Claude remembers your project — Claude Code Docs](https://code.claude.com/docs/en/memory) — HIGH confidence, official, verified March 2026
+- [Orchestrate teams of Claude Code sessions — Claude Code Docs](https://code.claude.com/docs/en/agent-teams) — HIGH confidence, official, verified March 2026
+- [Inside Claude Code Skills: Structure, prompts, invocation](https://mikhail.io/2025/10/claude-code-skills/) — MEDIUM confidence, community analysis
+- Existing codebase `src/lib/agents/` — tool functions, types, runner pattern — HIGH confidence (read directly)
 
 ---
-*Feature research for: Outsignal Agents — v6.0 Trigger.dev Background Jobs Migration*
-*Researched: 2026-03-12*
+*Feature research for: Nova CLI Agent Teams with Persistent Memory (v7.0)*
+*Researched: 2026-03-23*
