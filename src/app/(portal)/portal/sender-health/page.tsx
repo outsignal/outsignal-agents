@@ -105,13 +105,15 @@ function dnsIcon(status: string | null): string {
 function eventReasonLabel(reason: string): string {
   switch (reason) {
     case "manual":
-      return "Manual";
+      return "Limit Reduced";
     case "bounce_rate":
-      return "Bounce rate";
+      return "Bounce Rate";
     case "step_down":
-      return "Recovery";
+      return "Auto Recovery";
     case "blacklist":
       return "Blacklist";
+    case "auto_recovered":
+      return "Auto Recovery";
     default:
       return reason;
   }
@@ -181,7 +183,8 @@ export default async function PortalSenderHealthPage() {
   const linkedinSenders = await prisma.sender.findMany({
     where: {
       workspaceSlug,
-      linkedinProfileUrl: { not: null },
+      emailBisonSenderId: null,
+      OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }],
     },
     orderBy: { createdAt: "desc" },
   });
@@ -254,6 +257,7 @@ export default async function PortalSenderHealthPage() {
       reason: true,
       fromStatus: true,
       toStatus: true,
+      detail: true,
       createdAt: true,
     },
   });
@@ -668,6 +672,11 @@ export default async function PortalSenderHealthPage() {
                         {event.senderEmail}
                       </p>
                     </div>
+                    {event.detail && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {event.detail}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {event.fromStatus && event.toStatus && (
