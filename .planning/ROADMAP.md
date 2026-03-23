@@ -439,7 +439,10 @@ Plans:
   2. A skill content budget of 200 lines is documented in .claude/rules/ and the dual-mode strategy (shared rules vs time-boxed fallback) is recorded as a locked decision in PROJECT.md
   3. .claude/rules/ directory exists with at least one shared behavioral rules file demonstrating the structure both CLI skills and API agents can reference
   4. sanitize-output.ts utility exists, exports a sanitize() function, and strips DATABASE_URL, API keys, and secrets from any string passed to it — verified by unit test
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 46-01-PLAN.md — .claudeignore + sanitize-output.ts security foundation
+- [ ] 46-02-PLAN.md — Shared rules directory, loadRules utility, ARCHITECTURE.md
 
 ### Phase 47: Client Memory Namespace
 **Goal**: Every workspace has a named memory directory seeded with real intelligence from the database — agents have zero cold-start from their first session
