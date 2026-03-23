@@ -105,18 +105,17 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
 - Campaign builder UI — all campaign operations through chat (Cmd+J / CLI)
 
-## Current Milestone: v6.0 Trigger.dev Migration — Background Jobs Infrastructure
+## Current Milestone: v7.0 Nova CLI Agent Teams — Client-Specific Intelligence
 
-**Goal:** Migrate all background operations (cron jobs, webhook async tasks, AI operations) from cron-job.org + Vercel fire-and-forget to Trigger.dev managed infrastructure. Eliminates 30s/60s timeout constraints causing silent failures.
+**Goal:** Convert Nova agents from paid Anthropic API calls to Claude Code CLI skills with persistent, client-specific memory. Each workspace gets a dedicated agent team that accumulates intelligence over time.
 
 **Target features:**
-- Trigger.dev installation and Next.js integration
-- Migrate critical AI crons (retry-classification, generate-insights, snapshot-metrics)
-- Migrate webhook background work (reply classification, AI suggestions via writer agent, LinkedIn fast-track)
-- Migrate remaining crons (domain-health, poll-replies, sync-senders, bounce-monitor, inbox-health)
-- Restore writer agent for AI reply suggestions (replace Haiku shortcut)
-- Retire cron-job.org, remove fire-and-forget patterns
-- Background task observability
+- Convert orchestrator + 4 specialist agents (research, writer, leads, campaign) to Claude Code skills
+- Client-specific memory namespaces per workspace (tone, copy wins, ICP learnings, campaign history, feedback, approval patterns)
+- Thin CLI wrapper scripts exposing existing tool functions (DB, EmailBison, discovery adapters, KB) to agents via Bash
+- Dashboard chat kept as thin UI delegating to CLI agents (not direct API calls)
+- Signal campaign runtime kept on lightweight Haiku API for auto-personalisation
+- Existing API agent code preserved as fallback (not deleted)
 
 ## Current State
 

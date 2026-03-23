@@ -1,33 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
-status: unknown
-last_updated: "2026-03-12T22:49:58.899Z"
+milestone: v7.0
+milestone_name: Nova CLI Agent Teams — Client-Specific Intelligence
+status: active
+last_updated: "2026-03-23"
 progress:
-  total_phases: 42
-  completed_phases: 40
-  total_plans: 127
-  completed_plans: 128
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-12)
+See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v6.0 Phase 44 — OOO Re-engagement Pipeline
+**Current focus:** v7.0 — Nova CLI Agent Teams with client-specific memory
 
 ## Current Position
 
-Phase: 44 of 44 (OOO Re-engagement Pipeline)
-Plan: 3 of 3 (44-03 complete — PHASE COMPLETE)
-Status: Phase 44 complete — OOO pipeline fully shipped: detection (44-01), re-engagement task (44-02), admin dashboard (44-03)
-Last activity: 2026-03-13 - Completed quick task 4: Platform Costs dashboard page
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-23 — Milestone v7.0 started
 
-Progress: v6.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+Progress: v7.0 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
