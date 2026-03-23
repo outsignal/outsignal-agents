@@ -434,13 +434,14 @@ export async function runBounceMonitor(): Promise<{
   const senderEmails = senders.map(s => s.emailAddress as string);
   const senderDomains = [...new Set(senders.map(s => (s.emailAddress as string).split("@")[1] ?? ""))];
 
-  // Latest snapshot per sender
-  const snapshots = await Promise.all(
+  // Fetch last 3 snapshots per sender for rolling average
+  const snapshotsBySender = await Promise.all(
     senderEmails.map(email =>
-      prisma.bounceSnapshot.findFirst({
+      prisma.bounceSnapshot.findMany({
         where: { senderEmail: email },
         orderBy: { snapshotDate: "desc" },
-        select: { senderEmail: true, bounceRate: true },
+        take: 3,
+        select: { senderEmail: true, bounceRate: true, deltaSent: true, deltaBounced: true, snapshotDate: true },
       }),
     ),
   );
@@ -452,10 +453,56 @@ export async function runBounceMonitor(): Promise<{
     select: { domain: true, blacklistSeverity: true },
   });
 
-  // Build lookup maps
+  // Build rolling average bounce rate map
   const bounceRateByEmail = new Map<string, number | null>();
-  for (const snap of snapshots) {
-    if (snap) bounceRateByEmail.set(snap.senderEmail, snap.bounceRate ?? null);
+  for (const senderSnaps of snapshotsBySender) {
+    if (!senderSnaps.length) continue;
+    const email = senderSnaps[0].senderEmail;
+
+    // Filter to snapshots with non-null bounce rate (had enough volume)
+    const validSnaps = senderSnaps.filter(s => s.bounceRate !== null);
+
+    if (validSnaps.length === 0) {
+      bounceRateByEmail.set(email, null);
+      continue;
+    }
+
+    // Weighted average: use deltaSent as weight
+    const totalSent = validSnaps.reduce((sum, s) => sum + (s.deltaSent ?? 0), 0);
+    const totalBounced = validSnaps.reduce((sum, s) => sum + (s.deltaBounced ?? 0), 0);
+
+    if (totalSent > 0) {
+      bounceRateByEmail.set(email, totalBounced / totalSent);
+    } else {
+      // Fall back to simple average of bounce rates
+      const avg = validSnaps.reduce((sum, s) => sum + (s.bounceRate ?? 0), 0) / validSnaps.length;
+      bounceRateByEmail.set(email, avg);
+    }
+
+    // Circuit breaker: if today's snapshot shows high volume + critical bounce rate, override
+    const todaySnap = senderSnaps[0]; // most recent
+    if (
+      todaySnap &&
+      todaySnap.deltaSent !== null &&
+      todaySnap.deltaSent >= 50 &&
+      todaySnap.bounceRate !== null &&
+      todaySnap.bounceRate >= 0.05
+    ) {
+      bounceRateByEmail.set(email, todaySnap.bounceRate);
+    }
+
+    // Consecutive bad days: 2+ consecutive snapshots above warning threshold = escalate
+    const consecutiveBadDays = validSnaps
+      .reduce((count, s) => {
+        if (count === -1) return -1; // broke streak
+        return s.bounceRate! >= 0.03 ? count + 1 : -1;
+      }, 0);
+
+    if (consecutiveBadDays >= 2) {
+      // Use the worst recent rate to ensure proper escalation
+      const worstRate = Math.max(...validSnaps.map(s => s.bounceRate!));
+      bounceRateByEmail.set(email, worstRate);
+    }
   }
 
   // Only treat domains with critical-tier blacklist hits as blacklisted.

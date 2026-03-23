@@ -167,7 +167,7 @@ export async function captureSnapshots(
       // - If first snapshot or counter reset (deltas null): use cumulative if >= MIN_SENDS_FOR_RATE
       // - Otherwise: use daily delta (deltaBounced / deltaSent) if deltaSent > 0
       let bounceRate: number | null = null;
-      if (deltaSent !== null && deltaSent > 0) {
+      if (deltaSent !== null && deltaSent >= MIN_SENDS_FOR_RATE) {
         bounceRate = (deltaBounced ?? 0) / deltaSent;
       } else if (deltaSent === null) {
         // First snapshot or counter reset — use cumulative
