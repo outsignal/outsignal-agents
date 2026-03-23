@@ -7,8 +7,8 @@
 
 ### Security & Architecture
 
-- [ ] **SEC-01**: `.claudeignore` prevents `.env*` files and secrets from being loaded into agent context
-- [ ] **SEC-02**: `sanitize-output.ts` utility strips credentials, DB URLs, and API keys from all CLI wrapper stdout
+- [x] **SEC-01**: `.claudeignore` prevents `.env*` files and secrets from being loaded into agent context
+- [x] **SEC-02**: `sanitize-output.ts` utility strips credentials, DB URLs, and API keys from all CLI wrapper stdout
 - [ ] **SEC-03**: Skill content budget documented and enforced (200-line max per skill file)
 - [ ] **SEC-04**: Dual-mode strategy decided and documented (shared rules vs time-boxed fallback)
 - [ ] **SEC-05**: `.claude/rules/` directory houses shared behavioral rules importable by both CLI skills and API agents
@@ -82,8 +82,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | Phase 46 | Pending |
-| SEC-02 | Phase 46 | Pending |
+| SEC-01 | Phase 46 | Complete |
+| SEC-02 | Phase 46 | Complete |
 | SEC-03 | Phase 46 | Pending |
 | SEC-04 | Phase 46 | Pending |
 | SEC-05 | Phase 46 | Pending |
