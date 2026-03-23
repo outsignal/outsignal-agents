@@ -352,8 +352,10 @@ export function computeOverallHealth(
   dns: DnsCheckResult,
   blacklistHits: string[],
   blacklistSeverity?: "none" | "warning" | "critical",
+  source?: "emailguard" | "legacy",
 ): "healthy" | "warning" | "critical" | "unknown" {
   const { spf, dkim, dmarc } = dns;
+  const effectiveSource = source ?? dns.source;
 
   // Critical: critical-tier blacklist hits or hard fails
   if (blacklistHits.length > 0 && blacklistSeverity === "critical") return "critical";
@@ -365,7 +367,8 @@ export function computeOverallHealth(
   if (spf.status === "missing") return "warning";
   if (dmarc.status === "missing") return "warning";
   if (dmarc.policy === "none") return "warning";
-  if (dkim.status === "partial") return "warning";
+  // "partial" DKIM only applies for legacy DNS checks — EmailGuard gives definitive pass/fail
+  if (dkim.status === "partial" && effectiveSource !== "emailguard") return "warning";
   if (dkim.status === "missing") return "warning";
   if (dns.mx.status === "missing") return "warning";
 

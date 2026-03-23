@@ -13,7 +13,20 @@
 
 import { schedules } from "@trigger.dev/sdk";
 import { PrismaClient } from "@prisma/client";
-import { checkAllDns, computeOverallHealth } from "@/lib/domain-health/dns";
+import {
+  checkAllDns,
+  checkMx,
+  checkMtaSts,
+  checkTlsRpt,
+  checkBimi,
+  computeOverallHealth,
+} from "@/lib/domain-health/dns";
+import type { DnsCheckResult } from "@/lib/domain-health/types";
+import type {
+  SpfResult as EgSpfResult,
+  DkimResult as EgDkimResult,
+  DmarcResult as EgDmarcResult,
+} from "@/lib/emailguard/types";
 import { checkBlacklists } from "@/lib/domain-health/blacklist";
 import {
   notifyBlacklistHit,
@@ -87,6 +100,8 @@ interface DomainPriority {
   overallHealth: string | null;
   /** Previous blacklist severity from DB */
   previousBlacklistSeverity: "none" | "warning" | "critical";
+  /** EmailGuard UUID for this domain (null if not synced) */
+  emailguardUuid: string | null;
 }
 
 /**
@@ -109,6 +124,7 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
       dmarcStatus: true,
       overallHealth: true,
       updatedAt: true,
+      emailguardUuid: true,
     },
   });
 
@@ -175,6 +191,7 @@ async function buildPriorityQueue(domains: string[]): Promise<DomainPriority[]> 
       firstFailingSince,
       overallHealth: health?.overallHealth ?? null,
       previousBlacklistSeverity: (health?.blacklistSeverity as "none" | "warning" | "critical") ?? "none",
+      emailguardUuid: health?.emailguardUuid ?? null,
     };
   });
 
@@ -262,8 +279,95 @@ async function checkDomain(
   let blacklistHits: string[] = [];
   let blacklistChecked = false;
 
-  // 1. Run DNS checks
-  const dnsResult = await checkAllDns(domain);
+  // 1. Run DNS checks — prefer EmailGuard for SPF/DKIM/DMARC, fall back to legacy
+  let dnsResult: DnsCheckResult;
+
+  if (process.env.EMAILGUARD_API_TOKEN && priority.emailguardUuid) {
+    const uuid = priority.emailguardUuid;
+    try {
+      // EmailGuard for SPF/DKIM/DMARC (serialized by client throttle)
+      const [egSpf, egDkim, egDmarc] = await Promise.allSettled([
+        emailguard.checkSpf(uuid),
+        emailguard.checkDkim(uuid),
+        emailguard.checkDmarc(uuid),
+      ]);
+
+      const allFailed =
+        egSpf.status === "rejected" &&
+        egDkim.status === "rejected" &&
+        egDmarc.status === "rejected";
+
+      if (allFailed) {
+        // All 3 EmailGuard calls failed — fall back to full legacy DNS checks
+        console.warn(`${LOG_PREFIX} All EmailGuard DNS checks failed for ${domain}, falling back to legacy`);
+        dnsResult = await checkAllDns(domain);
+        dnsResult.source = "legacy";
+      } else {
+        // Map EmailGuard responses to our internal format
+        const spf: DnsCheckResult["spf"] =
+          egSpf.status === "fulfilled"
+            ? {
+                status: (egSpf.value as EgSpfResult).valid ? "pass" : "fail",
+                record: (egSpf.value as EgSpfResult).record,
+              }
+            : { status: "missing", record: null };
+
+        const dkim: DnsCheckResult["dkim"] =
+          egDkim.status === "fulfilled"
+            ? {
+                status: (egDkim.value as EgDkimResult).valid ? "pass" : "fail",
+                passedSelectors: (egDkim.value as EgDkimResult).valid && (egDkim.value as EgDkimResult).selector
+                  ? [(egDkim.value as EgDkimResult).selector as string]
+                  : [],
+              }
+            : { status: "missing", passedSelectors: [] };
+
+        const egDmarcVal = egDmarc.status === "fulfilled" ? (egDmarc.value as EgDmarcResult) : null;
+        const dmarc: DnsCheckResult["dmarc"] = egDmarcVal
+          ? {
+              status: egDmarcVal.valid ? "pass" : "fail",
+              policy: (egDmarcVal.policy as "none" | "quarantine" | "reject") ?? null,
+              record: egDmarcVal.record,
+              // EmailGuard doesn't return alignment directives — parse from record if available
+              aspf: egDmarcVal.record?.match(/\baspf=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
+              adkim: egDmarcVal.record?.match(/\badkim=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
+            }
+          : { status: "missing", policy: null, record: null, aspf: null, adkim: null };
+
+        // Log any individual EmailGuard failures (non-fatal — we got at least one result)
+        if (egSpf.status === "rejected") {
+          console.error(`${LOG_PREFIX} EmailGuard SPF check failed for ${domain}: ${egSpf.reason}`);
+        }
+        if (egDkim.status === "rejected") {
+          console.error(`${LOG_PREFIX} EmailGuard DKIM check failed for ${domain}: ${egDkim.reason}`);
+        }
+        if (egDmarc.status === "rejected") {
+          console.error(`${LOG_PREFIX} EmailGuard DMARC check failed for ${domain}: ${egDmarc.reason}`);
+        }
+
+        // MX, MTA-STS, TLS-RPT, BIMI still use Node.js DNS checks
+        const [mx, mtaSts, tlsRpt, bimi] = await Promise.all([
+          checkMx(domain),
+          checkMtaSts(domain),
+          checkTlsRpt(domain),
+          checkBimi(domain),
+        ]);
+
+        dnsResult = { spf, dkim, dmarc, mx, mtaSts, tlsRpt, bimi, source: "emailguard" };
+      }
+    } catch (err) {
+      // Unexpected error in EmailGuard DNS path — fall back to full legacy
+      console.error(
+        `${LOG_PREFIX} EmailGuard DNS check error for ${domain}, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`
+      );
+      dnsResult = await checkAllDns(domain);
+      dnsResult.source = "legacy";
+    }
+  } else {
+    // No EmailGuard token or no UUID — use legacy DNS checks
+    dnsResult = await checkAllDns(domain);
+    dnsResult.source = "legacy";
+  }
 
   // 2. Run blacklist check (conditional per targeting criteria)
   if (shouldCheckBlacklist(priority)) {
@@ -368,7 +472,7 @@ async function checkDomain(
   }
 
   // 4. Compute overall health (now tier-aware for blacklist hits)
-  overallHealth = computeOverallHealth(dnsResult, blacklistHits, blacklistSeverity);
+  overallHealth = computeOverallHealth(dnsResult, blacklistHits, blacklistSeverity, dnsResult.source);
 
   // 5. Upsert DomainHealth record
   const now = new Date();

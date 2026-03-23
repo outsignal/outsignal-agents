@@ -81,6 +81,8 @@ export interface DnsCheckResult {
   mtaSts: MtaStsResult;
   tlsRpt: TlsRptResult;
   bimi: BimiResult;
+  /** Where the SPF/DKIM/DMARC results came from — "emailguard" or "legacy" (Node.js DNS) */
+  source?: "emailguard" | "legacy";
 }
 
 /** Full domain health summary combining DNS and blacklist data */
