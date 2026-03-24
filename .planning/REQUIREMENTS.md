@@ -45,11 +45,11 @@
 
 ### Dashboard Bridge
 
-- [ ] **BRG-01**: Dashboard chat delegates to CLI agents for writer and orchestrator paths
+- [x] **BRG-01**: Dashboard chat delegates to CLI agents for writer and orchestrator paths
 - [x] **BRG-02**: API agent fallback preserved and verified working when `USE_CLI_AGENTS=false`
-- [ ] **BRG-03**: Dashboard bridge extended to all 7 specialist agents
+- [x] **BRG-03**: Dashboard bridge extended to all 7 specialist agents
 - [x] **BRG-04**: `cli-spawn.ts` utility handles subprocess creation, 300s timeout, stdout buffering, error translation
-- [ ] **BRG-05**: AgentRun audit logging preserved for CLI-invoked agent sessions
+- [x] **BRG-05**: AgentRun audit logging preserved for CLI-invoked agent sessions
 
 ### Validation
 
@@ -108,11 +108,11 @@
 | SKL-07 | Phase 49 | Complete |
 | SKL-08 | Phase 49 | Complete |
 | SKL-09 | Phase 49 | Complete |
-| BRG-01 | Phase 50 | Pending |
+| BRG-01 | Phase 50 | Complete |
 | BRG-02 | Phase 50 | Complete |
-| BRG-03 | Phase 50 | Pending |
+| BRG-03 | Phase 50 | Complete |
 | BRG-04 | Phase 50 | Complete |
-| BRG-05 | Phase 50 | Pending |
+| BRG-05 | Phase 50 | Complete |
 | VAL-01 | Phase 51 | Pending |
 | VAL-02 | Phase 51 | Pending |
 | VAL-03 | Phase 51 | Pending |
