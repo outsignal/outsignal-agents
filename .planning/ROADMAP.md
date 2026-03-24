@@ -291,7 +291,11 @@ Plans:
   1. A new inbound reply triggers a `generate-suggestion` Trigger.dev task that completes successfully — the task run is visible in the Trigger.dev dashboard with a duration above 60 seconds (proving it runs beyond Vercel's constraint)
   2. The generated suggestion uses the Opus model (visible in AgentRun logs) and references knowledge base results — not the single-model Haiku shortcut
   3. The AI suggested reply appears on the Reply record within 5 minutes of the webhook arriving, and the portal "Use this" button surfaces it in the inbox composer
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 49-01-PLAN.md — Flesh out 3 stub rules files + update 4 existing rules with CLI refs and memory governance
+- [ ] 49-02-PLAN.md — Create 4 specialist skill files (writer, research, leads, campaign)
+- [ ] 49-03-PLAN.md — Create 3 specialist skill files (deliverability, onboarding, intelligence) + rewrite nova.md orchestrator
 
 ### Phase 41: AI Cron Migration
 **Goal**: retry-classification, generate-insights, and snapshot-metrics run as Trigger.dev scheduled tasks — eliminating the silent failures caused by multi-workspace Anthropic chains exceeding Vercel's 60s ceiling
@@ -484,7 +488,11 @@ Plans:
   3. Every skill file is within the 200-line budget — no skill file exceeds 200 lines; overflow content lives in .claude/rules/ reference files
   4. All tool invocation instructions in skill files reference node dist/cli/ paths — no npx tsx references that would add cold-start latency
   5. The updated nova.md orchestrator skill delegates to all 7 specialist skills and injects appropriate workspace memory via the ! shell injection syntax
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 49-01-PLAN.md — Flesh out 3 stub rules files + update 4 existing rules with CLI refs and memory governance
+- [ ] 49-02-PLAN.md — Create 4 specialist skill files (writer, research, leads, campaign)
+- [ ] 49-03-PLAN.md — Create 3 specialist skill files (deliverability, onboarding, intelligence) + rewrite nova.md orchestrator
 
 ### Phase 50: Orchestrator CLI Spawn Integration
 **Goal**: The dashboard chat delegates agent work to CLI skills via a feature-flagged spawn utility — writer and orchestrator paths use CLI by default while the API fallback remains fully operational
@@ -496,7 +504,11 @@ Plans:
   3. cli-spawn.ts exists in src/lib/agents/ and handles subprocess creation, 300s timeout, stdout buffering, and translates non-zero exit codes to user-facing error messages
   4. AgentRun audit logs are written for CLI-invoked sessions — the audit trail is preserved regardless of which execution path is taken
   5. Dashboard bridge covers all 7 specialist agents — any agent type can be delegated via the CLI path when USE_CLI_AGENTS=true
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 49-01-PLAN.md — Flesh out 3 stub rules files + update 4 existing rules with CLI refs and memory governance
+- [ ] 49-02-PLAN.md — Create 4 specialist skill files (writer, research, leads, campaign)
+- [ ] 49-03-PLAN.md — Create 3 specialist skill files (deliverability, onboarding, intelligence) + rewrite nova.md orchestrator
 
 ### Phase 51: Memory Accumulation and Full Validation
 **Goal**: Agents write intelligence back to memory after every session and the full system is validated end-to-end — no regression in dashboard chat quality, no context overflow, memory growing with real learnings
@@ -508,4 +520,8 @@ Plans:
   3. After running 2 CLI agent sessions for the same workspace, the client's memory files contain new timestamped entries in icp-learnings, copy-wins, or campaign-history — memory is accumulating
   4. A full orchestrated session with memory loaded (all 7 agents, all memory files for one workspace) does not hit context overflow — Claude Code compact threshold is not triggered before the session completes
   5. Setting USE_CLI_AGENTS=false after v7.0 is live routes correctly to API agents with no errors — fallback is fully functional for emergency use
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 49-01-PLAN.md — Flesh out 3 stub rules files + update 4 existing rules with CLI refs and memory governance
+- [ ] 49-02-PLAN.md — Create 4 specialist skill files (writer, research, leads, campaign)
+- [ ] 49-03-PLAN.md — Create 3 specialist skill files (deliverability, onboarding, intelligence) + rewrite nova.md orchestrator
