@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v7.0 Phase 47 — Client Memory Namespace
+**Current focus:** v7.0 Phase 48 — CLI Wrapper Scripts
 
 ## Current Position
 
-Phase: 47 of 51 (Client Memory Namespace)
-Plan: 02 of 2 complete
-Status: Phase complete
-Last activity: 2026-03-24 — Phase 47 Plan 02 complete (seed execution, verification, ARCHITECTURE.md update)
+Phase: 48 of 51 (CLI Wrapper Scripts)
+Plan: 01 of 2 complete
+Status: In progress
+Last activity: 2026-03-24 — Phase 48 Plan 01 complete (CLI harness, tsup config, workspace-get smoke test)
 
 Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
 
@@ -63,6 +63,9 @@ Key v7.0 pre-milestone decisions:
 - [Phase 47]: Governance headers embedded in every memory file to instruct agents on correct write behavior
 - [Phase 47]: Reply rate figures in campaigns.md are raw EmailBison format (values stored as whole-number percentages); no script bug
 - [Phase 47]: Vercel Blob backup deferred — removed from ARCHITECTURE.md, not implemented in this phase
+- [Phase 48-01]: PROJECT_ROOT set unconditionally in cli-harness.ts before any imports — prevents load-rules.ts __dirname hazard in dist/cli/ context
+- [Phase 48-01]: workspace-get uses direct Prisma query (not writer tool) for smoke test — validates pipeline without writer agent complexity
+- [Phase 48-01]: tsup esbuildOptions.alias maps '@' to path.resolve(__dirname, 'src') — tsup does not auto-read tsconfig.json paths for bundling
 
 ### Pending Todos
 
@@ -81,10 +84,11 @@ None.
 ### Blockers/Concerns
 
 - Phase 50 (Bridge) needs a planning pass on Trigger.dev task queue pattern for dashboard-to-CLI delegation before implementation — exact task schema and polling mechanism are unspecified
-- Phase 48 (Wrappers) should verify TypeScript path alias resolution (@/lib/...) in compiled dist/cli/ output early — a single test wrapper before scripting all wrappers
+- Phase 48 (Wrappers) pipeline blocker RESOLVED: @/ aliases, Prisma external, dotenv all confirmed working in compiled dist/cli/ output
+- Phase 50 (Bridge) needs a planning pass on Trigger.dev task queue pattern for dashboard-to-CLI delegation before implementation — exact task schema and polling mechanism are unspecified
 
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 47-02-PLAN.md (seed execution, verification, ARCHITECTURE.md update) — Phase 47 complete
+Stopped at: Completed 48-01-PLAN.md (CLI harness, tsup config, workspace-get smoke test) — Phase 48 Plan 01 complete
 Resume file: None
