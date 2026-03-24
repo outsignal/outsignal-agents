@@ -468,7 +468,11 @@ Plans:
   2. All wrapper scripts are compiled to dist/cli/*.js — running node dist/cli/workspace-get.js rise returns a valid JSON response with no npx tsx cold-start latency
   3. Every wrapper script output passes through sanitize-output.ts — no DATABASE_URL, API keys, or secrets appear in any script's stdout
   4. Each wrapper script is independently testable: node dist/cli/<script>.js <args> returns valid JSON or a well-formed error object with no external dependencies other than the compiled dist/
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 48-01-PLAN.md — Foundation: cli-harness, tsup config, workspace-get smoke test
+- [ ] 48-02-PLAN.md — Writer + Research + Campaign wrapper scripts (21 scripts)
+- [ ] 48-03-PLAN.md — Leads + Orchestrator + Deliverability/Intelligence wrapper scripts (33 scripts)
 
 ### Phase 49: Specialist CLI Skill Files
 **Goal**: All 7 specialist agents and the orchestrator have skill files that inject client memory at startup and reference compiled CLI wrappers for tool calls — every agent is client-aware from the first turn
