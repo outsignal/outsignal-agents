@@ -15,14 +15,14 @@
 
 ### Client Memory
 
-- [ ] **MEM-01**: Per-workspace memory directory structure exists for all 8 client workspaces (`.nova/memory/{slug}/`)
-- [ ] **MEM-02**: Memory schema defined with named sections (profile, tone, icp-learnings, copy-wins, campaign-history, feedback, approval-patterns)
-- [ ] **MEM-03**: All 8 workspace memory files seeded with initial content from existing DB fields (ICP, tone prompt, recent campaigns)
-- [ ] **MEM-04**: Memory files gitignored with directory structure preserved via `.gitkeep`
-- [ ] **MEM-05**: Memory read at skill invocation start via shell injection — every session is client-aware from first turn
-- [ ] **MEM-06**: Memory accumulation instructions wired into all specialist skills — agents write learnings after sessions
-- [ ] **MEM-07**: Approval pattern tracking in per-client feedback memory (what copy/leads the client approved or rejected)
-- [ ] **MEM-08**: Cross-client global learning namespace (`global-insights.md`) for patterns that apply across all workspaces
+- [x] **MEM-01**: Per-workspace memory directory structure exists for all 8 client workspaces (`.nova/memory/{slug}/`)
+- [x] **MEM-02**: Memory schema defined with named sections (profile, tone, icp-learnings, copy-wins, campaign-history, feedback, approval-patterns)
+- [x] **MEM-03**: All 8 workspace memory files seeded with initial content from existing DB fields (ICP, tone prompt, recent campaigns)
+- [x] **MEM-04**: Memory files gitignored with directory structure preserved via `.gitkeep`
+- [x] **MEM-05**: Memory read at skill invocation start via shell injection — every session is client-aware from first turn
+- [x] **MEM-06**: Memory accumulation instructions wired into all specialist skills — agents write learnings after sessions
+- [x] **MEM-07**: Approval pattern tracking in per-client feedback memory (what copy/leads the client approved or rejected)
+- [x] **MEM-08**: Cross-client global learning namespace (`global-insights.md`) for patterns that apply across all workspaces
 
 ### CLI Wrappers
 
@@ -87,14 +87,14 @@
 | SEC-03 | Phase 46 | Complete |
 | SEC-04 | Phase 46 | Complete |
 | SEC-05 | Phase 46 | Complete |
-| MEM-01 | Phase 47 | Pending |
-| MEM-02 | Phase 47 | Pending |
-| MEM-03 | Phase 47 | Pending |
-| MEM-04 | Phase 47 | Pending |
-| MEM-05 | Phase 47 | Pending |
-| MEM-06 | Phase 47 | Pending |
-| MEM-07 | Phase 47 | Pending |
-| MEM-08 | Phase 47 | Pending |
+| MEM-01 | Phase 47 | Complete |
+| MEM-02 | Phase 47 | Complete |
+| MEM-03 | Phase 47 | Complete |
+| MEM-04 | Phase 47 | Complete |
+| MEM-05 | Phase 47 | Complete |
+| MEM-06 | Phase 47 | Complete |
+| MEM-07 | Phase 47 | Complete |
+| MEM-08 | Phase 47 | Complete |
 | CLI-01 | Phase 48 | Pending |
 | CLI-02 | Phase 48 | Pending |
 | CLI-03 | Phase 48 | Pending |
