@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 48 of 51 (CLI Wrapper Scripts)
-Plan: 01 of 2 complete
+Plan: 02 of 2 complete
 Status: In progress
-Last activity: 2026-03-24 — Phase 48 Plan 01 complete (CLI harness, tsup config, workspace-get smoke test)
+Last activity: 2026-03-24 — Phase 48 Plan 02 complete (21 writer/research/campaign CLI wrapper scripts)
 
 Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
 
@@ -66,6 +66,10 @@ Key v7.0 pre-milestone decisions:
 - [Phase 48-01]: PROJECT_ROOT set unconditionally in cli-harness.ts before any imports — prevents load-rules.ts __dirname hazard in dist/cli/ context
 - [Phase 48-01]: workspace-get uses direct Prisma query (not writer tool) for smoke test — validates pipeline without writer agent complexity
 - [Phase 48-01]: tsup esbuildOptions.alias maps '@' to path.resolve(__dirname, 'src') — tsup does not auto-read tsconfig.json paths for bundling
+- [Phase 48-02]: writerTools/researchTools/campaignTools imported directly from agent files — guaranteed parity, no logic reimplementation
+- [Phase 48-02]: JSON-file input pattern for 6 scripts with complex object inputs — agents write to /tmp/<uuid>.json before calling
+- [Phase 48-02]: kb-search is a single shared script for writer/leads/orchestrator agents (searchKnowledgeBase from shared-tools.ts)
+- [Phase 48-02]: signal-campaign-pause validates pause|resume enum before calling tool — catches invalid args with clear error before DB call
 
 ### Pending Todos
 
@@ -90,5 +94,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 48-01-PLAN.md (CLI harness, tsup config, workspace-get smoke test) — Phase 48 Plan 01 complete
+Stopped at: Completed 48-02-PLAN.md (21 writer/research/campaign CLI wrapper scripts) — Phase 48 Plan 02 complete
 Resume file: None
