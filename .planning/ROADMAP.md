@@ -118,7 +118,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 48: CLI Wrapper Scripts** — scripts/cli/ wrapper scripts for all 7 agents, compiled dist/cli/ output, sanitize-output applied, each independently testable (completed 2026-03-24)
 - [x] **Phase 49: Specialist CLI Skill Files** — 7 new specialist skill files (writer, research, leads, campaign, deliverability, onboarding, intelligence) + updated nova.md with memory injection; all within 200-line budget (completed 2026-03-24)
 - [x] **Phase 50: Orchestrator CLI Spawn Integration** — cli-spawn.ts utility, feature-flagged orchestrator modification, dashboard bridge for writer and orchestrator paths; API fallback preserved (completed 2026-03-24)
-- [ ] **Phase 51: Memory Accumulation and Full Validation** — memory write instructions in all skills, approval pattern tracking, bridge extended to all 7 agents, end-to-end campaign generation validated
+- [x] **Phase 51: Memory Accumulation and Full Validation** — memory write instructions in all skills, approval pattern tracking, bridge extended to all 7 agents, end-to-end campaign generation validated (completed 2026-03-24)
 
 ## Phase Details
 
@@ -400,7 +400,7 @@ Plans:
 | 48. CLI Wrapper Scripts | 3/3 | Complete    | 2026-03-24 | - |
 | 49. Specialist CLI Skill Files | 3/3 | Complete   | 2026-03-24 | - |
 | 50. Orchestrator CLI Spawn Integration | 2/2 | Complete    | 2026-03-24 | - |
-| 51. Memory Accumulation and Full Validation | 1/2 | In Progress|  | - |
+| 51. Memory Accumulation and Full Validation | 2/2 | Complete   | 2026-03-24 | - |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
