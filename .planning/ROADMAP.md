@@ -400,7 +400,7 @@ Plans:
 | 48. CLI Wrapper Scripts | 3/3 | Complete    | 2026-03-24 | - |
 | 49. Specialist CLI Skill Files | 3/3 | Complete   | 2026-03-24 | - |
 | 50. Orchestrator CLI Spawn Integration | 2/2 | Complete    | 2026-03-24 | - |
-| 51. Memory Accumulation and Full Validation | v7.0 | 0/TBD | Not started | - |
+| 51. Memory Accumulation and Full Validation | v7.0 | 0/2 | Not started | - |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
@@ -516,8 +516,12 @@ Plans:
   3. After running 2 CLI agent sessions for the same workspace, the client's memory files contain new timestamped entries in icp-learnings, copy-wins, or campaign-history — memory is accumulating
   4. A full orchestrated session with memory loaded (all 7 agents, all memory files for one workspace) does not hit context overflow — Claude Code compact threshold is not triggered before the session completes
   5. Setting USE_CLI_AGENTS=false after v7.0 is live routes correctly to API agents with no errors — fallback is fully functional for emergency use
-**Plans**: 3 plans
+**Plans**: 2 plans
 Plans:
-- [ ] 49-01-PLAN.md — Flesh out 3 stub rules files + update 4 existing rules with CLI refs and memory governance
-- [ ] 49-02-PLAN.md — Create 4 specialist skill files (writer, research, leads, campaign)
-- [ ] 49-03-PLAN.md — Create 3 specialist skill files (deliverability, onboarding, intelligence) + rewrite nova.md orchestrator
+- [ ] 51-01-PLAN.md — CLI agent validation (writer + intelligence + full pipeline) + memory accumulation + token budget
+- [ ] 51-02-PLAN.md — Dashboard chat smoke tests (CLI mode + API fallback) + VERIFICATION.md compilation
+
+
+
+
+
