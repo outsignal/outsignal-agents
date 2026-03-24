@@ -48,6 +48,7 @@ export async function POST(
       data: {
         sessionData: encryptedData,
         sessionStatus: "active",
+        status: "active",
         healthStatus: "healthy",
         lastActiveAt: now,
         lastKeepaliveAt: now,

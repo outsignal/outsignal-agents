@@ -71,6 +71,8 @@ export async function POST(
       data: {
         sessionData: encryptedData,
         sessionStatus: "active",
+        healthStatus: "healthy",
+        status: "active",
         lastActiveAt: new Date(),
         lastKeepaliveAt: new Date(),
         // Set sessionConnectedAt on fresh session establishment

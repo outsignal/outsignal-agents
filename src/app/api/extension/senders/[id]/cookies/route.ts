@@ -68,6 +68,7 @@ export async function POST(
       data: {
         sessionData: encryptedData,
         sessionStatus: "active",
+        status: "active",
         loginMethod: "extension",
         lastActiveAt: new Date(),
         healthStatus: "healthy", // Clear any prior session_expired flag
