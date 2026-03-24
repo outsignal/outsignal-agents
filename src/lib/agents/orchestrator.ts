@@ -1,5 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { writeFileSync } from "fs";
+import { randomUUID } from "crypto";
 import { runResearchAgent } from "./research";
 import { runWriterAgent } from "./writer";
 import { runLeadsAgent } from "./leads";
@@ -15,8 +17,9 @@ import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { searchKnowledgeBase } from "./shared-tools";
 import { getWorkspaceQuotaUsage, parseModules } from "@/lib/workspaces/quota";
 import type { AgentConfig } from "./types";
-import { USER_INPUT_GUARD } from "./utils";
+import { USER_INPUT_GUARD, isCliMode } from "./utils";
 import { loadRules } from "./load-rules";
+import { cliSpawn } from "./cli-spawn";
 
 // --- Delegation Tools ---
 
@@ -39,6 +42,24 @@ const delegateToResearch = tool({
       ),
   }),
   execute: async ({ workspaceSlug, url, task }) => {
+    if (isCliMode()) {
+      try {
+        const tmpFile = `/tmp/${randomUUID()}.json`;
+        writeFileSync(tmpFile, JSON.stringify({ workspaceSlug, url, task }));
+        await cliSpawn("website-crawl.js", ["--url", url ?? ""]);
+        await cliSpawn("website-analysis-save.js", ["--file", tmpFile]);
+        return {
+          status: "complete",
+          message: "Research completed via CLI",
+          workspaceSlug,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Research CLI failed",
+        };
+      }
+    }
     try {
       const result = await runResearchAgent({ workspaceSlug, url, task });
       return {
@@ -82,6 +103,23 @@ const delegateToLeads = tool({
       ),
   }),
   execute: async ({ workspaceSlug, task, conversationContext }) => {
+    if (isCliMode()) {
+      try {
+        const tmpFile = `/tmp/${randomUUID()}.json`;
+        writeFileSync(tmpFile, JSON.stringify({ workspaceSlug, task, conversationContext }));
+        const result = await cliSpawn("people-search.js", [workspaceSlug ?? "", task]);
+        return {
+          status: "complete",
+          message: "Leads operation completed via CLI",
+          data: result,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Leads CLI failed",
+        };
+      }
+    }
     try {
       const result = await runLeadsAgent({ workspaceSlug, task, conversationContext });
       return {
@@ -140,6 +178,31 @@ const delegateToWriter = tool({
       .describe("Signal context for signal-triggered campaigns — internal only, never shown to recipient"),
   }),
   execute: async ({ workspaceSlug, task, channel, campaignName, campaignId, feedback, copyStrategy, customStrategyPrompt, signalContext }) => {
+    if (isCliMode()) {
+      try {
+        const tmpFile = `/tmp/${randomUUID()}.json`;
+        writeFileSync(
+          tmpFile,
+          JSON.stringify({ workspaceSlug, task, channel, campaignName, campaignId, feedback, copyStrategy, customStrategyPrompt, signalContext })
+        );
+        const result = campaignId
+          ? await cliSpawn("save-sequence.js", ["--file", tmpFile])
+          : await cliSpawn("save-draft.js", ["--file", tmpFile]);
+        return {
+          status: "complete",
+          message: "Writer completed via CLI",
+          campaignId,
+          channel: channel ?? "email",
+          strategy: copyStrategy ?? "pvp",
+          data: result,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Writer CLI failed",
+        };
+      }
+    }
     try {
       const result = await runWriterAgent({
         workspaceSlug,
@@ -189,6 +252,23 @@ const delegateToCampaign = tool({
       .describe("Campaign name (for creating or finding)"),
   }),
   execute: async ({ workspaceSlug, task, campaignId, campaignName }) => {
+    if (isCliMode()) {
+      try {
+        const tmpFile = `/tmp/${randomUUID()}.json`;
+        writeFileSync(tmpFile, JSON.stringify({ workspaceSlug, task, campaignId, campaignName }));
+        const result = await cliSpawn("campaign-list.js", ["--slug", workspaceSlug]);
+        return {
+          status: "complete",
+          message: "Campaign operation completed via CLI",
+          data: result,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Campaign CLI failed",
+        };
+      }
+    }
     try {
       const result = await runCampaignAgent({ workspaceSlug, task, campaignId, campaignName });
       return {
