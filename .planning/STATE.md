@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 
 ## Current Position
 
-Phase: 49 of 51 (Specialist CLI Skill Files) -- COMPLETE
-Plan: 03 of 3 complete (all plans shipped)
-Status: Phase 49 complete
-Last activity: 2026-03-24 — Phase 49 Plan 03 complete (3 specialist skill files + nova.md orchestrator rewrite)
+Phase: 50 of 51 (Orchestrator CLI Spawn Integration) -- IN PROGRESS
+Plan: 01 of 2 complete
+Status: Phase 50 Plan 01 complete
+Last activity: 2026-03-24 — Phase 50 Plan 01 complete (cli-spawn.ts utility, isCliMode helper, build:cli in Vercel build command)
 
 Progress: v7.0 [██████████░░░░░░░░░░░░░░░░░░░░] ~33%
 
@@ -81,6 +81,9 @@ Key v7.0 pre-milestone decisions:
 - [Phase 49-03]: nova-onboarding includes cross-agent domain-health.js tool for DNS verification post-setup
 - [Phase 49-03]: nova.md orchestrator loads only profile+campaigns (not feedback/learnings) — specialist-level context stays with specialists
 - [Phase 49-03]: nova.md references campaign-rules.md for orchestrator delegation rules — no separate orchestrator rules file
+- [Phase 50-01]: cli-spawn.ts uses spawn (not execFile) for streaming stdout collection during 300s timeout window
+- [Phase 50-01]: AbortController preferred over setTimeout+kill for cleaner AbortError detection in subprocess error handler
+- [Phase 50-01]: build:cli inserted between prisma generate and next build to guarantee dist/cli/ exists on Vercel (gitignored build artifact must be rebuilt on each deploy)
 
 ### Pending Todos
 
@@ -105,5 +108,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 49-03-PLAN.md (3 specialist skill files + nova.md orchestrator rewrite) — Phase 49 fully complete
+Stopped at: Completed 50-01-PLAN.md (cli-spawn.ts subprocess utility, isCliMode helper, package.json build:cli)
 Resume file: None
