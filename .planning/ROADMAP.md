@@ -432,8 +432,6 @@ Plans:
 Plans:
 - [ ] 45-01-PLAN.md — Tier 1 bug fixes (triggerStepRef derivation, bounce/unsub cancellation, connect dedup, cascade delete)
 - [ ] 45-02-PLAN.md — Tier 2 schema migration + if/else evaluation engine + per-campaign connection timeout
-
-
 ### Phase 46: Skill Architecture Foundation
 **Goal**: The security and architectural decisions that gate every downstream phase are made, documented, and implemented — no skill file can be safely written until these exist
 **Depends on**: Phase 45 (existing codebase baseline)
@@ -504,12 +502,10 @@ Plans:
   3. cli-spawn.ts exists in src/lib/agents/ and handles subprocess creation, 300s timeout, stdout buffering, and translates non-zero exit codes to user-facing error messages
   4. AgentRun audit logs are written for CLI-invoked sessions — the audit trail is preserved regardless of which execution path is taken
   5. Dashboard bridge covers all 7 specialist agents — any agent type can be delegated via the CLI path when USE_CLI_AGENTS=true
-**Plans**: 3 plans
+**Plans**: 2 plans
 Plans:
-- [ ] 49-01-PLAN.md — Flesh out 3 stub rules files + update 4 existing rules with CLI refs and memory governance
-- [ ] 49-02-PLAN.md — Create 4 specialist skill files (writer, research, leads, campaign)
-- [ ] 49-03-PLAN.md — Create 3 specialist skill files (deliverability, onboarding, intelligence) + rewrite nova.md orchestrator
-
+- [ ] 50-01-PLAN.md — cli-spawn.ts subprocess utility + isCliMode() helper
+- [ ] 50-02-PLAN.md — Wire USE_CLI_AGENTS conditionals into all 4 delegation tools in orchestrator.ts
 ### Phase 51: Memory Accumulation and Full Validation
 **Goal**: Agents write intelligence back to memory after every session and the full system is validated end-to-end — no regression in dashboard chat quality, no context overflow, memory growing with real learnings
 **Depends on**: Phase 50 (stable working CLI path required before accumulation features are added)
