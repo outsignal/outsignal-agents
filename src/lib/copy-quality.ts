@@ -24,6 +24,8 @@ export const BANNED_PATTERNS: BannedPattern[] = [
   { pattern: /we'd love to/i, name: "we'd love to" },
   { pattern: /feel free to/i, name: "feel free to" },
   { pattern: /pick your brain/i, name: "pick your brain" },
+  { pattern: /\{\{[^}]+\}\}/, name: "double-brace variable (use {UPPERCASE} single braces)" },
+  { pattern: /\{(firstName|lastName|companyName|jobTitle|location|lastEmailMonth)\}/, name: "lowercase variable (use {FIRSTNAME}, {COMPANYNAME}, etc.)" },
 ];
 
 export interface CopyQualityResult {

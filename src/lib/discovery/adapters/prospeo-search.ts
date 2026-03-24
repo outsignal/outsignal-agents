@@ -47,6 +47,7 @@ const ProspeoSearchResultSchema = z
         first_name: z.string().optional().nullable(),
         last_name: z.string().optional().nullable(),
         job_title: z.string().optional().nullable(),
+        current_job_title: z.string().optional().nullable(),
         seniority: z.string().optional().nullable(),
         linkedin_url: z.string().optional().nullable(),
         location: z.unknown().optional().nullable(),
@@ -278,7 +279,7 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
       (result) => ({
         firstName: result.person.first_name ?? undefined,
         lastName: result.person.last_name ?? undefined,
-        jobTitle: result.person.job_title ?? undefined,
+        jobTitle: result.person.current_job_title ?? result.person.job_title ?? undefined,
         linkedinUrl: result.person.linkedin_url ?? undefined,
         location: typeof result.person.location === "string"
           ? result.person.location

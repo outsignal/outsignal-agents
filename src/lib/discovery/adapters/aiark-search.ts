@@ -428,6 +428,7 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "accept": "application/json",
           [AUTH_HEADER_NAME]: apiKey,
         },
         body: JSON.stringify(requestBody),
@@ -504,6 +505,7 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "accept": "application/json",
           [AUTH_HEADER_NAME]: apiKey,
         },
         body: JSON.stringify(requestBody),
