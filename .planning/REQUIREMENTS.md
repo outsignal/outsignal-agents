@@ -26,7 +26,7 @@
 
 ### CLI Wrappers
 
-- [ ] **CLI-01**: `scripts/cli/` wrapper scripts created for tool functions across all 7 agents (workspace-get, campaign-list, people-search, kb-search, campaign-performance, workspace-intelligence, sequence-steps, existing-drafts, campaign-context, save-sequence, sender-health, domain-health, bounce-stats, inbox-status, workspace-create, member-invite, notification-health, cached-metrics, insight-list)
+- [x] **CLI-01**: `scripts/cli/` wrapper scripts created for tool functions across all 7 agents (workspace-get, campaign-list, people-search, kb-search, campaign-performance, workspace-intelligence, sequence-steps, existing-drafts, campaign-context, save-sequence, sender-health, domain-health, bounce-stats, inbox-status, workspace-create, member-invite, notification-health, cached-metrics, insight-list)
 - [x] **CLI-02**: All wrapper scripts compiled to `dist/cli/*.js` to avoid npx tsx cold-start latency
 - [x] **CLI-03**: All wrapper scripts import and apply `sanitize-output.ts` to stdout
 - [x] **CLI-04**: Each wrapper script independently testable via `node dist/cli/<script>.js <args>`
@@ -95,7 +95,7 @@
 | MEM-06 | Phase 47 | Complete |
 | MEM-07 | Phase 47 | Complete |
 | MEM-08 | Phase 47 | Complete |
-| CLI-01 | Phase 48 | Pending |
+| CLI-01 | Phase 48 | Complete |
 | CLI-02 | Phase 48 | Complete |
 | CLI-03 | Phase 48 | Complete |
 | CLI-04 | Phase 48 | Complete |

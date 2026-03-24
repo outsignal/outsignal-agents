@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 48 of 51 (CLI Wrapper Scripts)
-Plan: 02 of 2 complete
+Plan: 03 of 3 complete
 Status: In progress
-Last activity: 2026-03-24 — Phase 48 Plan 02 complete (21 writer/research/campaign CLI wrapper scripts)
+Last activity: 2026-03-24 — Phase 48 Plan 03 complete (33 leads/orchestrator/deliverability CLI wrapper scripts, all 55 scripts compile)
 
 Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
 
@@ -70,6 +70,9 @@ Key v7.0 pre-milestone decisions:
 - [Phase 48-02]: JSON-file input pattern for 6 scripts with complex object inputs — agents write to /tmp/<uuid>.json before calling
 - [Phase 48-02]: kb-search is a single shared script for writer/leads/orchestrator agents (searchKnowledgeBase from shared-tools.ts)
 - [Phase 48-02]: signal-campaign-pause validates pause|resume enum before calling tool — catches invalid args with clear error before DB call
+- [Phase 48-03]: leadsTools exported from leads.ts to enable thin wrappers without reimplementing tool logic
+- [Phase 48-03]: Deliverability scripts use direct Prisma queries (not AI SDK tools) — computeDomainRollup, evaluateSender are internal library helpers
+- [Phase 48-03]: insight-list lists existing DB records (read-only, no LLM cost) — generateInsights runs via Trigger.dev cron only
 
 ### Pending Todos
 
@@ -94,5 +97,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 48-02-PLAN.md (21 writer/research/campaign CLI wrapper scripts) — Phase 48 Plan 02 complete
+Stopped at: Completed 48-03-PLAN.md (33 leads/orchestrator/deliverability/intelligence CLI wrapper scripts) — Phase 48 Plan 03 complete, all 55 scripts compile
 Resume file: None
