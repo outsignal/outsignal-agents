@@ -55,10 +55,16 @@ export class LinkedInBrowser {
   private launched = false;
   private urnCache: Map<string, CachedProfile> = new Map();
   private _voyagerCookies: { liAt: string; jsessionId: string } | null = null;
+  private _ownProfileUrl: string | null = null;
 
   /** Returns extracted Voyager cookies (li_at + JSESSIONID) after a successful login. */
   getVoyagerCookies(): { liAt: string; jsessionId: string } | null {
     return this._voyagerCookies;
+  }
+
+  /** Returns the logged-in user's LinkedIn profile URL after a successful login. */
+  getOwnProfileUrl(): string | null {
+    return this._ownProfileUrl;
   }
 
   /** URN cache TTL: 30 minutes */
@@ -600,6 +606,34 @@ export class LinkedInBrowser {
     } catch (error) {
       this.log(`Session check failed: ${error}`);
       return false;
+    }
+  }
+
+  /**
+   * Extract the logged-in user's own LinkedIn profile URL.
+   *
+   * Navigates to https://www.linkedin.com/me/ which redirects to
+   * the user's actual profile URL (e.g. https://www.linkedin.com/in/username).
+   * Returns the resolved profile URL, or null if extraction fails.
+   */
+  async extractOwnProfileUrl(): Promise<string | null> {
+    try {
+      this.log("Extracting own profile URL via /me/ redirect...");
+      const resolvedUrl = await this.navigateTo("https://www.linkedin.com/me/");
+
+      if (resolvedUrl && resolvedUrl.includes("/in/")) {
+        // Normalize: strip query params and trailing slashes, keep the canonical URL
+        const cleanUrl = resolvedUrl.split("?")[0].replace(/\/+$/, "");
+        this.log(`Own profile URL: ${cleanUrl}`);
+        this._ownProfileUrl = cleanUrl;
+        return cleanUrl;
+      }
+
+      this.log(`Could not extract profile URL from /me/ redirect: ${resolvedUrl}`);
+      return null;
+    } catch (error) {
+      this.log(`Failed to extract own profile URL: ${error}`);
+      return null;
     }
   }
 
@@ -1671,6 +1705,8 @@ export class LinkedInBrowser {
             } else {
               console.warn("[LinkedInBrowser] Failed to extract Voyager cookies — HTTP actions will not work");
             }
+            // Extract own profile URL for backfill
+            await this.extractOwnProfileUrl();
             return true;
           }
 
@@ -1830,6 +1866,9 @@ export class LinkedInBrowser {
         } else {
           console.warn("[LinkedInBrowser] Failed to extract Voyager cookies — HTTP actions will not work");
         }
+
+        // Extract own profile URL for backfill
+        await this.extractOwnProfileUrl();
 
         return true;
       }

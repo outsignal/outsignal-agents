@@ -21,10 +21,10 @@ export async function PATCH(
 
     const validStatuses = ["healthy", "warning", "paused", "blocked", "session_expired"];
 
-    // Allow keepalive-only updates (no healthStatus required)
-    if (!body.healthStatus && !body.lastKeepaliveAt) {
+    // Allow keepalive-only, health-only, or profile URL-only updates
+    if (!body.healthStatus && !body.lastKeepaliveAt && !body.linkedinProfileUrl) {
       return NextResponse.json(
-        { error: `Must provide healthStatus or lastKeepaliveAt` },
+        { error: `Must provide healthStatus, lastKeepaliveAt, or linkedinProfileUrl` },
         { status: 400 },
       );
     }
@@ -39,6 +39,7 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
     if (body.healthStatus) updateData.healthStatus = body.healthStatus;
     if (body.lastKeepaliveAt) updateData.lastKeepaliveAt = new Date(body.lastKeepaliveAt);
+    if (body.linkedinProfileUrl) updateData.linkedinProfileUrl = body.linkedinProfileUrl;
 
     await prisma.sender.update({
       where: { id },

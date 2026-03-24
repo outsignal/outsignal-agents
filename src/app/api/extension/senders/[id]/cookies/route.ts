@@ -45,8 +45,9 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { cookies } = body as {
+    const { cookies, linkedinProfileUrl } = body as {
       cookies?: Array<{ name: string; value: string; domain: string }>;
+      linkedinProfileUrl?: string;
     };
 
     if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {
@@ -70,6 +71,7 @@ export async function POST(
         loginMethod: "extension",
         lastActiveAt: new Date(),
         healthStatus: "healthy", // Clear any prior session_expired flag
+        ...(linkedinProfileUrl ? { linkedinProfileUrl } : {}),
       },
     });
 

@@ -205,6 +205,20 @@ export class ApiClient {
   }
 
   /**
+   * Update the LinkedIn profile URL for a sender.
+   * Called after login or during backfill when linkedinProfileUrl is null.
+   */
+  async updateSenderProfileUrl(
+    senderId: string,
+    linkedinProfileUrl: string,
+  ): Promise<void> {
+    await this.request(`/api/linkedin/senders/${senderId}/health`, {
+      method: "PATCH",
+      body: JSON.stringify({ linkedinProfileUrl }),
+    });
+  }
+
+  /**
    * Report a successful keepalive for a sender.
    */
   async updateKeepalive(senderId: string): Promise<void> {

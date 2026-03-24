@@ -446,6 +446,53 @@ export class VoyagerClient {
   }
 
   /**
+   * Fetch the logged-in user's own LinkedIn profile URL via the /me endpoint.
+   *
+   * Extracts publicIdentifier from the miniProfile in the /me response and
+   * constructs the canonical profile URL. Used for backfilling linkedinProfileUrl
+   * on senders that logged in before profile URL extraction was added.
+   *
+   * Returns null if extraction fails (does not throw).
+   */
+  async fetchOwnProfileUrl(): Promise<string | null> {
+    try {
+      const res = await this.request("/me");
+      const data = (await res.json()) as Record<string, unknown>;
+
+      // Check included[] for miniProfile with publicIdentifier
+      const included = data?.included as Array<Record<string, unknown>> | undefined;
+      if (included) {
+        for (const item of included) {
+          const publicId = item.publicIdentifier as string | undefined;
+          if (publicId && typeof publicId === "string" && publicId.length > 0) {
+            const url = `https://www.linkedin.com/in/${publicId}`;
+            console.log(`[VoyagerClient] Own profile URL: ${url}`);
+            return url;
+          }
+        }
+      }
+
+      // Fallback: check data.miniProfile or data.publicIdentifier
+      const innerData = data?.data as Record<string, unknown> | undefined;
+      const publicId = innerData?.publicIdentifier as string | undefined;
+      if (publicId && typeof publicId === "string" && publicId.length > 0) {
+        const url = `https://www.linkedin.com/in/${publicId}`;
+        console.log(`[VoyagerClient] Own profile URL (from data): ${url}`);
+        return url;
+      }
+
+      console.warn(
+        "[VoyagerClient] Could not extract publicIdentifier from /me response:",
+        JSON.stringify(data).substring(0, 500)
+      );
+      return null;
+    } catch (err) {
+      console.error("[VoyagerClient] Failed to fetch own profile URL:", err);
+      return null;
+    }
+  }
+
+  /**
    * Send a message to an existing 1st-degree LinkedIn connection.
    *
    * Uses the dash messaging endpoint (voyagerMessagingDashMessengerMessages).

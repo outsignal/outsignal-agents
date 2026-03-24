@@ -26,6 +26,7 @@ import { KeepaliveManager } from "./keepalive.js";
 interface SenderConfig {
   id: string;
   name: string;
+  linkedinProfileUrl: string | null;
   sessionData: string | null;
   sessionStatus: string;
   proxyUrl: string | null;
@@ -492,6 +493,19 @@ export class Worker {
       return;
     }
 
+    // Backfill linkedinProfileUrl if missing — uses existing Voyager session, no browser needed
+    if (!sender.linkedinProfileUrl) {
+      try {
+        const profileUrl = await client.fetchOwnProfileUrl();
+        if (profileUrl) {
+          await this.api.updateSenderProfileUrl(sender.id, profileUrl);
+          console.log(`[Worker] Backfilled linkedinProfileUrl for ${sender.name}: ${profileUrl}`);
+        }
+      } catch (err) {
+        console.warn(`[Worker] Failed to backfill profile URL for ${sender.name}:`, err);
+      }
+    }
+
     // Session health check — only if 30+ minutes since last successful test
     const lastCheck = this.lastSessionCheck.get(sender.id) ?? 0;
     const now = Date.now();
@@ -619,6 +633,15 @@ export class Worker {
           console.warn(`[Worker] Re-login succeeded but no Voyager cookies extracted for ${sender.name}`);
           await browser.close();
           return false;
+        }
+
+        // Persist LinkedIn profile URL if extracted during login
+        const profileUrl = browser.getOwnProfileUrl();
+        if (profileUrl) {
+          await this.api.updateSenderProfileUrl(sender.id, profileUrl).catch((err) =>
+            console.error(`[Worker] Failed to save profile URL after re-login:`, err),
+          );
+          console.log(`[Worker] Saved LinkedIn profile URL for ${sender.name}: ${profileUrl}`);
         }
 
         // Reset health to healthy
