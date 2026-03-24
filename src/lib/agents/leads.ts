@@ -25,7 +25,7 @@ import { prisma } from "@/lib/db";
 
 // --- Leads Agent Tools ---
 
-const leadsTools = {
+export const leadsTools = {
   searchPeople: tool({
     description:
       "Search people in the database by criteria. Use for: finding leads by title, vertical, company, location, ICP score. Searches are FREE (no credit cost). Returns up to 25 results per page with ICP scores where available.",
