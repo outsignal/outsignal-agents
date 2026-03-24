@@ -49,7 +49,7 @@ const ProspeoSearchResultSchema = z
         job_title: z.string().optional().nullable(),
         seniority: z.string().optional().nullable(),
         linkedin_url: z.string().optional().nullable(),
-        location: z.string().optional().nullable(),
+        location: z.unknown().optional().nullable(),
       })
       .passthrough(),
     company: z
@@ -135,7 +135,11 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.companyDomains?.length) {
-      f.company_domain = { include: filters.companyDomains };
+      // Prospeo uses a nested `company.websites` filter, not `company_domain`
+      f.company = {
+        ...(f.company as Record<string, unknown> | undefined),
+        websites: { include: filters.companyDomains },
+      };
     }
 
     if (filters.keywords?.length) {
@@ -257,7 +261,11 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
         lastName: result.person.last_name ?? undefined,
         jobTitle: result.person.job_title ?? undefined,
         linkedinUrl: result.person.linkedin_url ?? undefined,
-        location: result.person.location ?? undefined,
+        location: typeof result.person.location === "string"
+          ? result.person.location
+          : result.person.location && typeof result.person.location === "object"
+            ? [(result.person.location as Record<string, string>).city, (result.person.location as Record<string, string>).country].filter(Boolean).join(", ") || undefined
+            : undefined,
         company: result.company?.name ?? undefined,
         companyDomain: result.company?.domain ?? undefined,
         sourceId: result.person.person_id,
