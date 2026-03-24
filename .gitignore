@@ -57,3 +57,8 @@ worker-signals/node_modules/
 
 # Lead data exports
 /data/
+
+# Nova agent memory — gitignored to prevent client intelligence leaking to version control
+# Directory structure preserved via .gitkeep files (which have no .md extension)
+.nova/memory/**/*.md
+!.nova/memory/**/.gitkeep
