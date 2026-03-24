@@ -398,7 +398,7 @@ Plans:
 | 46. Skill Architecture Foundation | 2/2 | Complete    | 2026-03-23 | - |
 | 47. Client Memory Namespace | 2/2 | Complete    | 2026-03-24 | - |
 | 48. CLI Wrapper Scripts | 3/3 | Complete    | 2026-03-24 | - |
-| 49. Specialist CLI Skill Files | 1/3 | In Progress|  | - |
+| 49. Specialist CLI Skill Files | 2/3 | In Progress|  | - |
 | 50. Orchestrator CLI Spawn Integration | v7.0 | 0/TBD | Not started | - |
 | 51. Memory Accumulation and Full Validation | v7.0 | 0/TBD | Not started | - |
 

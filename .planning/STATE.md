@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
-last_updated: "2026-03-24T08:51:10.165Z"
+last_updated: "2026-03-24T09:42:45.974Z"
 progress:
-  total_phases: 45
+  total_phases: 46
   completed_phases: 43
-  total_plans: 134
-  completed_plans: 135
+  total_plans: 137
+  completed_plans: 137
 ---
 
 # Project State
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 49 of 51 (Specialist CLI Skill Files)
-Plan: 02 of 3 complete
+Plan: 02 of 3 complete (Plan 01 also complete — executed out of order)
 Status: In progress
-Last activity: 2026-03-24 — Phase 49 Plan 02 complete (4 specialist CLI skill files: nova-writer, nova-research, nova-leads, nova-campaign)
+Last activity: 2026-03-24 — Phase 49 Plan 01 complete (7 rules files authored/updated with CLI refs and memory governance)
 
 Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
 
@@ -76,6 +76,8 @@ Key v7.0 pre-milestone decisions:
 - [Phase 49-02]: $ARGUMENTS[0] used for slug in shell injection — first positional token ensures cat paths never contain spaces
 - [Phase 49-02]: All 4 memory files injected for every specialist agent — full workspace context per locked research decision
 - [Phase 49-02]: Skill file = identity + tools + memory only — behavioral rules overflow to .claude/rules/ via @ reference
+- [Phase 49-01]: deliverability/onboarding/intelligence rules: memory write governance assignments locked per agent type
+- [Phase 49-01]: global-insights.md is intelligence-agent-only for cross-client patterns; profile.md is seed-only for all 7 agents
 
 ### Pending Todos
 
@@ -100,5 +102,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 49-02-PLAN.md (4 specialist CLI skill files: nova-writer, nova-research, nova-leads, nova-campaign) — Phase 49 Plan 02 complete
+Stopped at: Completed 49-01-PLAN.md (7 rules files authored/updated with CLI refs and memory governance) — Phase 49 Plan 01 complete
 Resume file: None
