@@ -114,7 +114,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 **Milestone Goal:** Convert Nova agents from paid Anthropic API calls to Claude Code CLI skills with persistent client-specific memory — eliminating Opus API costs while each workspace accumulates intelligence over time.
 
 - [x] **Phase 46: Skill Architecture Foundation** — .claudeignore, sanitize-output.ts, shared rules directory, 200-line skill budget, dual-mode strategy decision; security gates that cannot be retrofitted once agents run (completed 2026-03-23)
-- [ ] **Phase 47: Client Memory Namespace** — per-workspace memory directory structure, schema with named sections, seeded content from DB, gitignore rules; memory governance before any agent writes
+- [x] **Phase 47: Client Memory Namespace** — per-workspace memory directory structure, schema with named sections, seeded content from DB, gitignore rules; memory governance before any agent writes (completed 2026-03-24)
 - [ ] **Phase 48: CLI Wrapper Scripts** — scripts/cli/ wrapper scripts for all 7 agents, compiled dist/cli/ output, sanitize-output applied, each independently testable
 - [ ] **Phase 49: Specialist CLI Skill Files** — 7 new specialist skill files (writer, research, leads, campaign, deliverability, onboarding, intelligence) + updated nova.md with memory injection; all within 200-line budget
 - [ ] **Phase 50: Orchestrator CLI Spawn Integration** — cli-spawn.ts utility, feature-flagged orchestrator modification, dashboard bridge for writer and orchestrator paths; API fallback preserved
@@ -392,7 +392,7 @@ Plans:
 | 44. OOO Re-engagement Pipeline | v6.0 | 3/3 | Complete | 2026-03-12 |
 | 45. Multi-Channel Sequencing Fix & If/Else Upgrade | v6.0 | 2/2 | Complete | 2026-03-23 |
 | 46. Skill Architecture Foundation | 2/2 | Complete    | 2026-03-23 | - |
-| 47. Client Memory Namespace | 1/2 | In Progress|  | - |
+| 47. Client Memory Namespace | 2/2 | Complete   | 2026-03-24 | - |
 | 48. CLI Wrapper Scripts | v7.0 | 0/TBD | Not started | - |
 | 49. Specialist CLI Skill Files | v7.0 | 0/TBD | Not started | - |
 | 50. Orchestrator CLI Spawn Integration | v7.0 | 0/TBD | Not started | - |
@@ -454,7 +454,7 @@ Plans:
   3. Memory files are gitignored (no client intelligence leaks to version control) while directory structure is preserved via .gitkeep files so new machines get the scaffolding
   4. A global-insights.md file exists at .nova/memory/global-insights.md with schema for cross-client patterns and at least one seeded entry
   5. Memory schema includes timestamp requirements and write governance rules that prevent agents from overwriting sections with stale or contradictory content
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 47-01-PLAN.md — Seed script + gitignore configuration
 - [ ] 47-02-PLAN.md — Execute seed, verify output, update ARCHITECTURE.md
