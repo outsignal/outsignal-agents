@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v7.0 Phase 48 — CLI Wrapper Scripts
+**Current focus:** v7.0 Phase 49 — Specialist CLI Skill Files
 
 ## Current Position
 
-Phase: 48 of 51 (CLI Wrapper Scripts)
-Plan: 03 of 3 complete
+Phase: 49 of 51 (Specialist CLI Skill Files)
+Plan: 02 of 3 complete
 Status: In progress
-Last activity: 2026-03-24 — Phase 48 Plan 03 complete (33 leads/orchestrator/deliverability CLI wrapper scripts, all 55 scripts compile)
+Last activity: 2026-03-24 — Phase 49 Plan 02 complete (4 specialist CLI skill files: nova-writer, nova-research, nova-leads, nova-campaign)
 
 Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
 
@@ -73,6 +73,9 @@ Key v7.0 pre-milestone decisions:
 - [Phase 48-03]: leadsTools exported from leads.ts to enable thin wrappers without reimplementing tool logic
 - [Phase 48-03]: Deliverability scripts use direct Prisma queries (not AI SDK tools) — computeDomainRollup, evaluateSender are internal library helpers
 - [Phase 48-03]: insight-list lists existing DB records (read-only, no LLM cost) — generateInsights runs via Trigger.dev cron only
+- [Phase 49-02]: $ARGUMENTS[0] used for slug in shell injection — first positional token ensures cat paths never contain spaces
+- [Phase 49-02]: All 4 memory files injected for every specialist agent — full workspace context per locked research decision
+- [Phase 49-02]: Skill file = identity + tools + memory only — behavioral rules overflow to .claude/rules/ via @ reference
 
 ### Pending Todos
 
@@ -97,5 +100,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 48-03-PLAN.md (33 leads/orchestrator/deliverability/intelligence CLI wrapper scripts) — Phase 48 Plan 03 complete, all 55 scripts compile
+Stopped at: Completed 49-02-PLAN.md (4 specialist CLI skill files: nova-writer, nova-research, nova-leads, nova-campaign) — Phase 49 Plan 02 complete
 Resume file: None
