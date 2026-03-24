@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 
 ## Current Position
 
-Phase: 50 of 51 (Orchestrator CLI Spawn Integration) -- IN PROGRESS
-Plan: 01 of 2 complete
-Status: Phase 50 Plan 01 complete
-Last activity: 2026-03-24 — Phase 50 Plan 01 complete (cli-spawn.ts utility, isCliMode helper, build:cli in Vercel build command)
+Phase: 50 of 51 (Orchestrator CLI Spawn Integration) -- COMPLETE
+Plan: 02 of 2 complete
+Status: Phase 50 Plan 02 complete
+Last activity: 2026-03-24 — Phase 50 Plan 02 complete (USE_CLI_AGENTS conditionals wired into all 4 delegation tools in orchestrator.ts)
 
 Progress: v7.0 [██████████░░░░░░░░░░░░░░░░░░░░] ~33%
 
@@ -84,6 +84,9 @@ Key v7.0 pre-milestone decisions:
 - [Phase 50-01]: cli-spawn.ts uses spawn (not execFile) for streaming stdout collection during 300s timeout window
 - [Phase 50-01]: AbortController preferred over setTimeout+kill for cleaner AbortError detection in subprocess error handler
 - [Phase 50-01]: build:cli inserted between prisma generate and next build to guarantee dist/cli/ exists on Vercel (gitignored build artifact must be rebuilt on each deploy)
+- [Phase 50-02]: Writer CLI path branches on campaignId: save-sequence.js (campaign-aware) vs save-draft.js (standard) — mirrors inline writer agent logic
+- [Phase 50-02]: Campaign CLI path uses campaign-list.js as simplified stub — full campaign workflow runs in Nova CLI skill, not orchestrator bridge
+- [Phase 50-02]: CLI delegation tools return simplified status objects (message + data), not full agent return shapes — dashboard chat not used when USE_CLI_AGENTS=true
 
 ### Pending Todos
 
@@ -108,5 +111,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 50-01-PLAN.md (cli-spawn.ts subprocess utility, isCliMode helper, package.json build:cli)
+Stopped at: Completed 50-02-PLAN.md (USE_CLI_AGENTS feature flag wired into all 4 delegation tools in orchestrator.ts)
 Resume file: None
