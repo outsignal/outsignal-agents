@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v7.0 Phase 49 — Specialist CLI Skill Files
+**Current focus:** v7.0 Phase 50 — Orchestrator CLI Spawn Integration
 
 ## Current Position
 
-Phase: 49 of 51 (Specialist CLI Skill Files)
-Plan: 02 of 3 complete (Plan 01 also complete — executed out of order)
-Status: In progress
-Last activity: 2026-03-24 — Phase 49 Plan 01 complete (7 rules files authored/updated with CLI refs and memory governance)
+Phase: 49 of 51 (Specialist CLI Skill Files) -- COMPLETE
+Plan: 03 of 3 complete (all plans shipped)
+Status: Phase 49 complete
+Last activity: 2026-03-24 — Phase 49 Plan 03 complete (3 specialist skill files + nova.md orchestrator rewrite)
 
-Progress: v7.0 [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] ~3%
+Progress: v7.0 [██████████░░░░░░░░░░░░░░░░░░░░] ~33%
 
 ## Performance Metrics
 
@@ -78,6 +78,9 @@ Key v7.0 pre-milestone decisions:
 - [Phase 49-02]: Skill file = identity + tools + memory only — behavioral rules overflow to .claude/rules/ via @ reference
 - [Phase 49-01]: deliverability/onboarding/intelligence rules: memory write governance assignments locked per agent type
 - [Phase 49-01]: global-insights.md is intelligence-agent-only for cross-client patterns; profile.md is seed-only for all 7 agents
+- [Phase 49-03]: nova-onboarding includes cross-agent domain-health.js tool for DNS verification post-setup
+- [Phase 49-03]: nova.md orchestrator loads only profile+campaigns (not feedback/learnings) — specialist-level context stays with specialists
+- [Phase 49-03]: nova.md references campaign-rules.md for orchestrator delegation rules — no separate orchestrator rules file
 
 ### Pending Todos
 
@@ -102,5 +105,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 49-01-PLAN.md (7 rules files authored/updated with CLI refs and memory governance) — Phase 49 Plan 01 complete
+Stopped at: Completed 49-03-PLAN.md (3 specialist skill files + nova.md orchestrator rewrite) — Phase 49 fully complete
 Resume file: None

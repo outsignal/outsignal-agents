@@ -37,10 +37,10 @@
 - [x] **SKL-02**: `nova-research.md` skill file with research agent prompt and tool invocation instructions
 - [x] **SKL-03**: `nova-leads.md` skill file with leads agent prompt and tool invocation instructions
 - [x] **SKL-04**: `nova-campaign.md` skill file with campaign agent prompt and tool invocation instructions
-- [ ] **SKL-05**: `nova-deliverability.md` skill file for inbox health monitoring, domain diagnostics, warmup strategy, and sender rotation recommendations
-- [ ] **SKL-06**: `nova-onboarding.md` skill file for new client workspace setup, domain configuration, inbox provisioning, and initial campaign scaffolding
-- [ ] **SKL-07**: `nova-intelligence.md` skill file for analytics, cross-client benchmarking, performance insights, and campaign analysis
-- [ ] **SKL-08**: Existing `nova.md` updated with memory injection via `!` syntax and delegation to all 7 specialist skills
+- [x] **SKL-05**: `nova-deliverability.md` skill file for inbox health monitoring, domain diagnostics, warmup strategy, and sender rotation recommendations
+- [x] **SKL-06**: `nova-onboarding.md` skill file for new client workspace setup, domain configuration, inbox provisioning, and initial campaign scaffolding
+- [x] **SKL-07**: `nova-intelligence.md` skill file for analytics, cross-client benchmarking, performance insights, and campaign analysis
+- [x] **SKL-08**: Existing `nova.md` updated with memory injection via `!` syntax and delegation to all 7 specialist skills
 - [x] **SKL-09**: All skill files within 200-line budget with overflow content in `.claude/rules/` reference files
 
 ### Dashboard Bridge
@@ -103,10 +103,10 @@
 | SKL-02 | Phase 49 | Complete |
 | SKL-03 | Phase 49 | Complete |
 | SKL-04 | Phase 49 | Complete |
-| SKL-05 | Phase 49 | Pending |
-| SKL-06 | Phase 49 | Pending |
-| SKL-07 | Phase 49 | Pending |
-| SKL-08 | Phase 49 | Pending |
+| SKL-05 | Phase 49 | Complete |
+| SKL-06 | Phase 49 | Complete |
+| SKL-07 | Phase 49 | Complete |
+| SKL-08 | Phase 49 | Complete |
 | SKL-09 | Phase 49 | Complete |
 | BRG-01 | Phase 50 | Pending |
 | BRG-02 | Phase 50 | Pending |
