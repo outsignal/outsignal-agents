@@ -27,8 +27,8 @@ runWithHarness("insight-list <workspaceSlug>", async () => {
     select: {
       id: true,
       category: true,
-      title: true,
-      summary: true,
+      observation: true,
+      actionDescription: true,
       priority: true,
       status: true,
       createdAt: true,
@@ -41,8 +41,8 @@ runWithHarness("insight-list <workspaceSlug>", async () => {
     insights: insights.map(i => ({
       id: i.id,
       category: i.category,
-      title: i.title,
-      summary: i.summary,
+      observation: i.observation,
+      actionDescription: i.actionDescription,
       priority: i.priority,
       status: i.status,
       createdAt: i.createdAt.toISOString(),
