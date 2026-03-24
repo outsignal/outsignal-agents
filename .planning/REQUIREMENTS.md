@@ -53,11 +53,11 @@
 
 ### Validation
 
-- [ ] **VAL-01**: End-to-end campaign generation session tested via CLI (research → leads → writer → campaign)
+- [x] **VAL-01**: End-to-end campaign generation session tested via CLI (research → leads → writer → campaign)
 - [ ] **VAL-02**: Dashboard chat verified working with CLI delegation enabled
 - [ ] **VAL-03**: API fallback verified working with `USE_CLI_AGENTS=false`
-- [ ] **VAL-04**: Memory accumulation verified — run 2+ sessions and confirm memory files grow with relevant intelligence
-- [ ] **VAL-05**: No context overflow during full orchestrated session with memory loaded
+- [x] **VAL-04**: Memory accumulation verified — run 2+ sessions and confirm memory files grow with relevant intelligence
+- [x] **VAL-05**: No context overflow during full orchestrated session with memory loaded
 
 ## Future Requirements
 
@@ -113,11 +113,11 @@
 | BRG-03 | Phase 50 | Complete |
 | BRG-04 | Phase 50 | Complete |
 | BRG-05 | Phase 50 | Complete |
-| VAL-01 | Phase 51 | Pending |
+| VAL-01 | Phase 51 | Complete |
 | VAL-02 | Phase 51 | Pending |
 | VAL-03 | Phase 51 | Pending |
-| VAL-04 | Phase 51 | Pending |
-| VAL-05 | Phase 51 | Pending |
+| VAL-04 | Phase 51 | Complete |
+| VAL-05 | Phase 51 | Complete |
 
 **Coverage:**
 - v7.0 requirements: 36 total

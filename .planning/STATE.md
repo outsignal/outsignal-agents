@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Trigger.dev Migration — Background Jobs Infrastructure
 status: unknown
-last_updated: "2026-03-24T10:35:39.241Z"
+last_updated: "2026-03-24T11:09:30.242Z"
 progress:
-  total_phases: 47
+  total_phases: 48
   completed_phases: 45
-  total_plans: 139
-  completed_plans: 140
+  total_plans: 141
+  completed_plans: 141
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Own the lead data pipeline end-to-end so we never pay for the same lead twice and can cancel the $300+/month Clay subscription.
-**Current focus:** v7.0 Phase 50 — Orchestrator CLI Spawn Integration
+**Current focus:** v7.0 Phase 51 — Memory Accumulation and Full Validation (COMPLETE)
 
 ## Current Position
 
-Phase: 50 of 51 (Orchestrator CLI Spawn Integration) -- COMPLETE
-Plan: 02 of 2 complete
-Status: Phase 50 Plan 02 complete
-Last activity: 2026-03-24 — Phase 50 Plan 02 complete (USE_CLI_AGENTS conditionals wired into all 4 delegation tools in orchestrator.ts)
+Phase: 51 of 51 (Memory Accumulation and Full Validation) -- COMPLETE
+Plan: 01 of 1 complete
+Status: Phase 51 Plan 01 complete — v7.0 milestone COMPLETE
+Last activity: 2026-03-24 — Phase 51 Plan 01 complete (CLI validation: 8+ scripts verified, memory write-back proven, insight-list schema fixed, token budget documented at 1,760 tokens current / ~11,500 ceiling)
 
 Progress: v7.0 [██████████░░░░░░░░░░░░░░░░░░░░] ~33%
 
@@ -87,6 +87,8 @@ Key v7.0 pre-milestone decisions:
 - [Phase 50-02]: Writer CLI path branches on campaignId: save-sequence.js (campaign-aware) vs save-draft.js (standard) — mirrors inline writer agent logic
 - [Phase 50-02]: Campaign CLI path uses campaign-list.js as simplified stub — full campaign workflow runs in Nova CLI skill, not orchestrator bridge
 - [Phase 50-02]: CLI delegation tools return simplified status objects (message + data), not full agent return shapes — dashboard chat not used when USE_CLI_AGENTS=true
+- [Phase 51-memory-accumulation-and-full-validation]: insight-list.ts used removed schema fields (title, summary); fixed to use observation + actionDescription matching current Insight model
+- [Phase 51-memory-accumulation-and-full-validation]: Token budget ceiling: 40,000 bytes (~10,000 tokens) per workspace; current Rise state is 7,039 bytes (1,760 tokens); projected mature ceiling ~11,500 tokens including skill files
 
 ### Pending Todos
 
@@ -111,5 +113,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-24
-Stopped at: Completed 50-02-PLAN.md (USE_CLI_AGENTS feature flag wired into all 4 delegation tools in orchestrator.ts)
+Stopped at: Completed 51-01-PLAN.md (Nova CLI validation: 8 scripts verified, memory write-back proven, token budget documented, insight-list schema fix)
 Resume file: None
