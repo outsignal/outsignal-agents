@@ -21,6 +21,9 @@
 # production
 /build
 
+# CLI wrapper compiled bundles
+/dist/cli/
+
 # misc
 .DS_Store
 *.pem
