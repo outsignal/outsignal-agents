@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A self-hosted outbound lead engine that replaces Clay for Outsignal's cold outbound operation. Full pipeline from lead discovery through campaign deployment: multi-source lead discovery (Apollo, Prospeo, AI Ark, Exa.ai, Serper.dev, Apify), enrichment waterfall, AI-powered ICP qualification, signal-driven targeting (PredictLeads), Creative Ideas copy generation via AI agents, client portal with dual approval, auto-deploy to EmailBison + LinkedIn, sender health monitoring, and Chrome extension for LinkedIn cookie management. Built on Next.js 16 with Prisma/PostgreSQL, deployed on Vercel.
+A self-hosted outbound lead engine that replaces Clay for Outsignal's cold outbound operation. Full pipeline from lead discovery through campaign deployment: multi-source lead discovery (Apollo, Prospeo, AI Ark, Exa.ai, Serper.dev, Apify), enrichment waterfall, AI-powered ICP qualification, signal-driven targeting (PredictLeads), Creative Ideas copy generation via CLI agent teams (Nova), client portal with dual approval, auto-deploy to EmailBison + LinkedIn, sender health monitoring, and Chrome extension for LinkedIn cookie management. Nova agents run as Claude Code CLI skills with persistent per-client memory, 55 CLI wrapper scripts, and feature-flagged routing with API fallback. Built on Next.js 16 with Prisma/PostgreSQL, deployed on Vercel.
 
 ## Core Value
 
@@ -24,7 +24,7 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - Clay sync endpoints for inbound enrichment data (/api/people/enrich, /api/companies/enrich)
 - Slack + email reply notifications per workspace
 - Customer onboarding flow (proposals, Stripe payments, questionnaire)
-- 6 active client workspaces (Rise, Lime Recruitment, YoopKnows, Outsignal, MyAcq, 1210 Solutions)
+- 10 active client workspaces (Rise, Lime Recruitment, YoopKnows, Outsignal, MyAcq, 1210 Solutions, BlankTag, Covenco, Situ, Ladder Group)
 - ✓ Multi-source enrichment waterfall (Prospeo → AI Ark → LeadMagic → FindyMail, cheapest first) — v1.0
 - ✓ Dedup-first enrichment (local DB check before paid APIs) — v1.0
 - ✓ AI normalization via Claude (industry, company name, job title classification) — v1.0
@@ -50,34 +50,17 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - ✓ Cross-workspace benchmarking with industry reference bands, ICP calibration, signal effectiveness ranking — v3.0
 - ✓ AI insight generation (weekly per workspace, 3-5 actionable cards, approve/dismiss/snooze queue) — v3.0
 - ✓ Intelligence Hub dashboard with bento grid, KPI row, donut charts, mini gauges, enhanced weekly digest — v3.0
+- ✓ .claudeignore + sanitize-output.ts protecting secrets/credentials from CLI agent context — v7.0
+- ✓ Shared rules architecture (.claude/rules/) — 7 specialist rule files governing agent behaviour — v7.0
+- ✓ Per-workspace flat-file memory namespace (.nova/memory/{slug}/) with profile, campaigns, feedback, learnings files — v7.0
+- ✓ 55 CLI wrapper scripts (scripts/cli/) with tsup build pipeline exposing DB, EmailBison, discovery, KB tools to agents — v7.0
+- ✓ 8 Claude Code skill files (orchestrator + 7 specialists: writer, research, campaign, leads, deliverability, intelligence, onboarding) — v7.0
+- ✓ cli-spawn.ts with feature-flagged routing (NOVA_CLI_ENABLED) + Anthropic API fallback — v7.0
+- ✓ Memory accumulation validated against Rise — persistent client-specific intelligence across sessions, ~11,500 token budget — v7.0
 
 ### Active
 
-<!-- v4.0 Email Deliverability & Domain Infrastructure Monitoring (parallel) -->
-
-- [ ] SPF/DKIM/DMARC validation per sending domain via DNS lookups
-- [ ] DNS blacklist monitoring (~50 DNSBLs) — targeted checking on domains with elevated bounce rates
-- [ ] Historical bounce rate tracking with daily per-sender snapshots and delta computation
-- [ ] Per-domain aggregate metrics (roll up all senders on a domain)
-- [ ] On-demand inbox placement testing via mail-tester.com JSON API
-- [ ] Graduated email sender auto-rotation (elevated → warning → critical → paused → recovery)
-- [ ] More frequent bounce monitoring (every 4 hours)
-- [ ] Deliverability dashboard with domain health cards, sender sparklines, warmup visualization
-- [ ] Intelligence Hub deliverability bento section
-- [ ] Weekly deliverability digest notification
-- [ ] Portal deliverability summary for clients
-- [ ] EmailBison sender management API investigation (pause/unpause, daily limits, warmup toggle)
-
-<!-- v5.0 Client Portal Inbox (parallel) -->
-
-- [ ] LinkedIn conversation fetching via Voyager API (read-only, existing session cookies)
-- [ ] LinkedIn message storage with DB models (LinkedInConversation + LinkedInMessage)
-- [ ] EmailBison reply capability (sendReply, getReply, getRepliesPage)
-- [ ] Portal inbox API routes for email + LinkedIn threads
-- [ ] Two-panel inbox UI with thread list and conversation view
-- [ ] Reply composer for email (direct send) and LinkedIn (queue via worker)
-- [ ] Channel tabs based on workspace package (email/linkedin/both)
-- [ ] Inbox navigation replacing Replies in portal sidebar
+<!-- Next milestone TBD — see /gsd:new-milestone -->
 
 ### Future
 
@@ -90,7 +73,6 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - [ ] Per-client Creative Ideas examples (AI-generated drafts, admin review, KB-tagged)
 - [ ] Custom directory scraping via Firecrawl for niche lists
 - [ ] Signal dashboard (live feed, per-client breakdown, cost tracking, long-term data collection)
-- [ ] CLI orchestrator chat session (interactive back-and-forth in Claude Code terminal)
 - [ ] Knowledge base tool added to Research Agent
 - [ ] Enrichment waterfall reordered to actual cheapest-first
 
@@ -103,29 +85,21 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - Per-lead approve/reject in portal — binary list-level approval only
 - FullEnrich — redundant, we have our own enrichment waterfall
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
-- Campaign builder UI — all campaign operations through chat (Cmd+J / CLI)
+- Campaign builder UI — all campaign operations through Nova CLI agent teams (Cmd+J / CLI skills)
 
-## Current Milestone: v7.0 Nova CLI Agent Teams — Client-Specific Intelligence
+## Current Milestone
 
-**Goal:** Convert Nova agents from paid Anthropic API calls to Claude Code CLI skills with persistent, client-specific memory. Each workspace gets a dedicated agent team that accumulates intelligence over time.
-
-**Target features:**
-- Convert orchestrator + 4 specialist agents (research, writer, leads, campaign) to Claude Code skills
-- Client-specific memory namespaces per workspace (tone, copy wins, ICP learnings, campaign history, feedback, approval patterns)
-- Thin CLI wrapper scripts exposing existing tool functions (DB, EmailBison, discovery adapters, KB) to agents via Bash
-- Dashboard chat kept as thin UI delegating to CLI agents (not direct API calls)
-- Signal campaign runtime kept on lightweight Haiku API for auto-personalisation
-- Existing API agent code preserved as fallback (not deleted)
+Next milestone TBD — see `/gsd:new-milestone`. v7.0 Nova CLI Agent Teams shipped 2026-03-24.
 
 ## Current State
 
-**Shipped:** v3.0 Campaign Intelligence Hub (2026-03-10) — 6 phases, 17 plans, 78 commits
-**Previous:** v2.0 Lead Discovery & Intelligence (2026-03-04), v1.1 Outbound Pipeline (2026-03-03), v1.0 Lead Engine (2026-02-27)
-**Active:** v4.0 Email Deliverability (phases 30-32, parallel) + v5.0 Client Portal Inbox (starting)
+**Shipped:** v7.0 Nova CLI Agent Teams (2026-03-24) — 6 phases (46-51), CLI agent architecture with persistent memory
+**Previous:** v3.0 Campaign Intelligence Hub (2026-03-10), v2.0 Lead Discovery & Intelligence (2026-03-04), v1.1 Outbound Pipeline (2026-03-03), v1.0 Lead Engine (2026-02-27)
 
-**Codebase:** ~81,280 LOC TypeScript/TSX across 420+ files
+**Codebase:** ~146,700 LOC TypeScript/TSX across 940+ files
 **Stack:** Next.js 16, Prisma 6, PostgreSQL (Neon), Vercel, Railway (LinkedIn worker)
-**Data:** 14,563 people, 16,941 companies, 6 client workspaces
+**Data:** 14,563 people, 16,941 companies, 10 client workspaces
+**Nova agents:** 7 specialist skills + orchestrator, 55 CLI wrapper scripts, 10 workspace memory namespaces
 **Chrome extension:** Manifest V3, vanilla JS, 3 files
 
 **Tech debt (v1.0 carried):** AI Ark auth header LOW confidence, FindyMail schema MEDIUM confidence, costs page not in sidebar, webhook no signature verification. See `milestones/v1.0-MILESTONE-AUDIT.md`.
@@ -147,7 +121,7 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | Prospeo + AI Ark + LeadMagic stack | Industry standard for lead gen, validated by agencies, cheaper than Clay | ✓ Good — all integrated, AI Ark auth LOW confidence |
 | Firecrawl + Haiku for qualification | Already have Firecrawl, Haiku is cheap — classify ICP fit from web data | ✓ Good — ICP scorer works, crawl cache prevents re-crawling |
 | AI normalization via Claude | Already have Anthropic integration, Claude more capable than Clay AI | ✓ Good — rule-based fast path + Haiku fallback |
-| Keep Clay running during transition | De-risk migration, fall back if new pipeline has gaps | ⚠️ Revisit — Clay still running, ready to cancel |
+| Keep Clay running during transition | De-risk migration, fall back if new pipeline has gaps | ✓ Done — Clay cancelled 2026-03-18, own pipeline fully operational |
 | Provider-agnostic enrichment architecture | Future-proof against API changes, easy to add new providers | ✓ Good — adapter types, easy to swap |
 | db push over migrate dev | No migration history, 14k+ records, db push is safer | ✓ Good — used consistently across all 7 phases |
 | TargetList model for lists | Junction table over PersonWorkspace.tags for proper relational modeling | ✓ Good — clean export path, MCP consistent |
@@ -163,6 +137,12 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | Bento grid Intelligence Hub as separate page | Executive summary page linking to analytics tabs for detail | ✓ Good — clean separation of overview vs deep-dive |
 | Hardcoded industry benchmarks per vertical | Only 1 workspace per vertical, not enough data for computed averages | ✓ Good — easy to update later with real data |
 | Insight dedup with 2-week window | Prevents spamming admin with same insight, but allows recurrence | ✓ Good — balances freshness with noise reduction |
+| CLI skills over Anthropic API for agents | Claude Code Max Plan covers compute — saves $300+/mo in API costs, enables persistent memory | ✓ Good — 7 specialists + orchestrator shipped, API fallback preserved |
+| Per-workspace flat-file memory (.nova/memory/{slug}/) | Agents need client-specific context (tone, wins, ICP learnings) that persists across sessions | ✓ Good — validated on Rise, memory accumulates, ~11,500 token budget |
+| 55 CLI wrapper scripts via tsup build pipeline | Agents need DB/API access but cannot import app code directly — thin Bash-callable wrappers | ✓ Good — clean separation, sanitize-output.ts strips secrets |
+| Feature-flagged routing (NOVA_CLI_ENABLED) | Gradual rollout, API fallback if CLI fails, zero-downtime migration path | ✓ Good — cli-spawn.ts routes per-flag, existing API code untouched |
+| .claudeignore + sanitize-output.ts for security | CLI agents must not see .env, credentials, or raw DB connection strings | ✓ Good — defence in depth, output sanitisation as safety net |
+| Shared rules architecture (.claude/rules/) | Consistent agent behaviour without duplicating instructions across skills | ✓ Good — 7 rule files, memory write governance per agent |
 | Multi-source discovery over single-provider | No single provider has all leads — agent picks best source per ICP type | — Pending |
 | Exa.ai for semantic company search | Replaces Disco/Ocean.io lookalikes, more flexible, API-first, MCP server | — Pending |
 | Signals for timing not hooks | Everyone sends "congrats on funding" — use signals invisibly for targeting, not as email hook | — Pending |
@@ -172,4 +152,4 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 | Railway for signal monitoring | Vercel Hobby 2-cron limit, Railway already running LinkedIn worker, needs continuous background process | — Pending |
 
 ---
-*Last updated: 2026-03-10 after v4.0 milestone start*
+*Last updated: 2026-03-24 after v7.0 milestone*

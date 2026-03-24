@@ -51,3 +51,23 @@
 
 ---
 
+
+## v7.0 Nova CLI Agent Teams (Shipped: 2026-03-24)
+
+**Phases:** 6 (46-51) | **Plans:** 14 | **Commits:** 85
+**Timeline:** 2 days (2026-03-23 → 2026-03-24)
+**Files:** 191 changed, +17,565 / -2,995 lines
+**Requirements:** 36/36 satisfied
+
+**Key accomplishments:**
+- Security foundation with .claudeignore credential redaction and sanitize-output.ts for CLI stdout
+- Per-workspace flat-file memory namespace (.nova/memory/{slug}/) with DB-seeded CLI script and 4-file schema
+- 55 CLI wrapper scripts across all 7 agent domains with tsup build pipeline and shared JSON envelope harness
+- 8 Claude Code skill files (orchestrator + 7 specialists) with shell-injected memory and Agent tool delegation
+- cli-spawn.ts subprocess utility with feature-flagged orchestrator routing and preserved API fallback
+- Full pipeline validated against Rise workspace — memory accumulation proven, token budget documented at ~11,500 ceiling
+
+**Core value delivered:** Eliminated Opus API costs by converting all 7 Nova agents to Claude Code CLI skills while adding persistent per-client memory that accumulates intelligence across sessions.
+
+---
+
