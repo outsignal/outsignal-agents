@@ -11,7 +11,7 @@ export default async function TasksPage() {
       client: { select: { id: true, name: true } },
       subtasks: { select: { id: true, status: true } },
     },
-    orderBy: [{ status: "asc" }, { dueDate: "asc" }],
+    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { status: "asc" }],
   });
 
   // Serialize dates for client component
