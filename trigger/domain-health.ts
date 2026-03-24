@@ -15,6 +15,7 @@ import { schedules } from "@trigger.dev/sdk";
 import { PrismaClient } from "@prisma/client";
 import {
   checkAllDns,
+  checkDkim,
   checkMx,
   checkMtaSts,
   checkTlsRpt,
@@ -312,15 +313,28 @@ async function checkDomain(
               }
             : { status: "missing", record: null };
 
-        const dkim: DnsCheckResult["dkim"] =
-          egDkim.status === "fulfilled"
-            ? {
-                status: (egDkim.value as EgDkimResult).valid ? "pass" : "fail",
-                passedSelectors: (egDkim.value as EgDkimResult).valid && (egDkim.value as EgDkimResult).selector
-                  ? [(egDkim.value as EgDkimResult).selector as string]
-                  : [],
-              }
-            : { status: "missing", passedSelectors: [] };
+        let dkim: DnsCheckResult["dkim"];
+        if (egDkim.status === "fulfilled") {
+          const egDkimVal = egDkim.value as EgDkimResult;
+          if (egDkimVal.valid) {
+            dkim = {
+              status: "pass",
+              passedSelectors: egDkimVal.selector ? [egDkimVal.selector as string] : [],
+            };
+          } else {
+            // EmailGuard reported DKIM invalid — fallback to legacy DNS checker
+            // which correctly follows CNAME chains (common with Microsoft 365)
+            const legacyDkim = await checkDkim(domain);
+            if (legacyDkim.status === "pass") {
+              console.log(`${LOG_PREFIX} EmailGuard DKIM=invalid for ${domain}, but legacy DNS found valid DKIM via selectors: ${legacyDkim.passedSelectors.join(", ")}`);
+              dkim = legacyDkim;
+            } else {
+              dkim = { status: "fail", passedSelectors: [] };
+            }
+          }
+        } else {
+          dkim = { status: "missing", passedSelectors: [] };
+        }
 
         const egDmarcVal = egDmarc.status === "fulfilled" ? (egDmarc.value as EgDmarcResult) : null;
         const dmarc: DnsCheckResult["dmarc"] = egDmarcVal

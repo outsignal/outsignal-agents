@@ -46,6 +46,7 @@ export interface CampaignSummary {
   status: string;
   channels: string[];
   targetListName: string | null;
+  targetListLeadCount: number;
   emailBisonCampaignId: number | null;
   leadsApproved: boolean;
   contentApproved: boolean;
@@ -166,6 +167,7 @@ function formatCampaignDetail(
     status: raw.status,
     channels: parseJsonArray(raw.channels) as string[] ?? ["email"],
     targetListName: raw.targetList?.name ?? null,
+    targetListLeadCount: raw.targetList?._count.people ?? 0,
     leadsApproved: raw.leadsApproved,
     contentApproved: raw.contentApproved,
     createdAt: raw.createdAt,
@@ -309,7 +311,12 @@ export async function listCampaigns(
     where: { workspaceSlug },
     include: {
       targetList: {
-        select: { name: true },
+        select: {
+          name: true,
+          _count: {
+            select: { people: true },
+          },
+        },
       },
     },
     orderBy: { updatedAt: "desc" },
@@ -323,6 +330,7 @@ export async function listCampaigns(
     status: c.status,
     channels: parseJsonArray(c.channels) as string[] ?? ["email"],
     targetListName: c.targetList?.name ?? null,
+    targetListLeadCount: c.targetList?._count.people ?? 0,
     emailBisonCampaignId: c.emailBisonCampaignId,
     leadsApproved: c.leadsApproved,
     contentApproved: c.contentApproved,

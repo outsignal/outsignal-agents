@@ -64,7 +64,7 @@ export default async function PortalCampaignsPage({
       unsubscribed: ebMatch?.unsubscribed ?? 0,
       interested: ebMatch?.interested ?? 0,
       totalLeadsContacted: ebMatch?.total_leads_contacted ?? 0,
-      totalLeads: ebMatch?.total_leads ?? 0,
+      totalLeads: ebMatch?.total_leads ?? c.targetListLeadCount ?? 0,
       openTracking: ebMatch?.open_tracking ?? false,
       tags: ebMatch?.tags?.map((t) => t.name) ?? [],
       updatedAt: c.updatedAt.toISOString(),
