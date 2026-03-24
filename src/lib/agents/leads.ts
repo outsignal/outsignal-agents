@@ -388,7 +388,7 @@ export const leadsTools = {
         .array(z.string())
         .optional()
         .describe(
-          "Headcount ranges: '1-10', '11-50', '51-200', '201-500', '501-1000'",
+          "Headcount ranges (Prospeo): '1-10', '11-20', '21-50', '51-100', '101-200', '201-500', '501-1000', '1001-2000', '2001-5000', '5001-10000', '10000+'. Generic values like '11-50', '51-200', '500+' are auto-mapped.",
         ),
       companyDomains: z
         .array(z.string())

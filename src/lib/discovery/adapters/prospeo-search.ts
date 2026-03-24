@@ -130,8 +130,27 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.companySizes?.length) {
-      // Prospeo accepts size strings as-is: "51-200", "201-500"
-      f.company_headcount_range = { include: filters.companySizes };
+      // Map our generic ranges to Prospeo's finer-grained enum values
+      const PROSPEO_HEADCOUNT_MAP: Record<string, string[]> = {
+        "1-10": ["1-10"],
+        "11-50": ["11-20", "21-50"],
+        "51-200": ["51-100", "101-200"],
+        "201-500": ["201-500"],
+        "501-1000": ["501-1000"],
+        "1001-5000": ["1001-2000", "2001-5000"],
+        "5001-10000": ["5001-10000"],
+        "10000+": ["10000+"],
+        "500+": ["501-1000", "1001-2000", "2001-5000", "5001-10000", "10000+"],
+      };
+      const VALID_PROSPEO_VALUES = new Set([
+        "1-10", "11-20", "21-50", "51-100", "101-200", "201-500",
+        "501-1000", "1001-2000", "2001-5000", "5001-10000", "10000+",
+      ]);
+      const mapped = filters.companySizes.flatMap((size) => {
+        if (VALID_PROSPEO_VALUES.has(size)) return [size];
+        return PROSPEO_HEADCOUNT_MAP[size] ?? [size];
+      });
+      f.company_headcount_range = { include: [...new Set(mapped)] };
     }
 
     if (filters.companyDomains?.length) {
