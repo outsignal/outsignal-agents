@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, MessageSquare, ChevronDown, Mail, Loader2, Info } from "lucide-react";
+import { CheckCircle2, MessageSquare, ChevronDown, Mail, Loader2, Info, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveSpintax, substituteTokens } from "@/lib/content-preview";
 import { SequenceStepsDisplay } from "@/components/portal/sequence-steps-display";
@@ -118,6 +118,8 @@ export function CampaignApprovalContent({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  const [violations, setViolations] = useState<Array<{ step: number; field: string; violation: string }> | null>(null);
+  const [softWarnings, setSoftWarnings] = useState<Array<{ step: number; field: string; violation: string }> | null>(null);
 
   const canAct = isPending && !contentApproved;
 
@@ -149,14 +151,36 @@ export function CampaignApprovalContent({
   async function handleApprove() {
     setLoading(true);
     setError(null);
+    setViolations(null);
+    setSoftWarnings(null);
     try {
       const res = await fetch(`/api/portal/campaigns/${campaignId}/approve-content`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error("Failed to approve content");
+
+      const data = await res.json();
+
+      if (res.status === 422) {
+        // Hard violations — approval blocked
+        setViolations(data.violations ?? []);
+        if (data.warnings?.length > 0) {
+          setSoftWarnings(data.warnings);
+        }
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to approve content");
+      }
+
+      // Success — check for soft warnings
+      if (data.warnings?.length > 0) {
+        setSoftWarnings(data.warnings);
+      }
+
       router.refresh();
-    } catch {
-      setError("Something went wrong approving the content. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong approving the content. Please try again.");
     } finally {
       setLoading(false);
       setConfirmApprove(false);
@@ -292,8 +316,53 @@ export function CampaignApprovalContent({
         </div>
       )}
 
-      {/* Approval buttons */}
-      {canAct && (hasEbSteps || hasEmail || hasLinkedIn) && (
+      {/* Copy quality violation banner (422 response) */}
+      {violations && violations.length > 0 && (
+        <div className="mt-4 border border-red-300 bg-red-50/50 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <XCircle className="h-5 w-5 text-red-600 shrink-0" />
+            <p className="font-medium text-red-800">
+              Content cannot be approved — quality violations must be fixed first
+            </p>
+          </div>
+          <ul className="space-y-1.5 ml-7">
+            {violations.map((v, idx) => (
+              <li key={idx} className="text-sm text-red-700">
+                <span className="font-medium">Step {v.step}</span>{" "}
+                <span className="text-red-500">({v.field})</span>:{" "}
+                {v.violation}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 ml-7 text-sm text-red-600">
+            Request changes below to ask the team to fix these issues.
+          </p>
+        </div>
+      )}
+
+      {/* Soft warnings banner (200 with warnings) */}
+      {!violations && softWarnings && softWarnings.length > 0 && (
+        <div className="mt-4 border border-amber-300 bg-amber-50/50 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+            <p className="font-medium text-amber-800">
+              Content approved with warnings
+            </p>
+          </div>
+          <ul className="space-y-1.5 ml-7">
+            {softWarnings.map((w, idx) => (
+              <li key={idx} className="text-sm text-amber-700">
+                <span className="font-medium">Step {w.step}</span>{" "}
+                <span className="text-amber-500">({w.field})</span>:{" "}
+                {w.violation}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Approval buttons — hidden when hard violations are displayed */}
+      {canAct && !violations && (hasEbSteps || hasEmail || hasLinkedIn) && (
         <div className="mt-6 space-y-3">
           {error && (
             <p className="text-sm text-red-600">{error}</p>
@@ -341,6 +410,46 @@ export function CampaignApprovalContent({
               </Button>
             </div>
           )}
+
+          {showFeedback && (
+            <div className="space-y-2">
+              <Textarea
+                placeholder="Describe what changes you'd like (e.g., 'too formal, simplify the CTA')..."
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                rows={3}
+              />
+              <Button
+                onClick={handleRequestChanges}
+                disabled={loading || !feedback.trim()}
+                className="bg-[#635BFF] hover:bg-[#635BFF]/90 text-white"
+                size="sm"
+              >
+                {loading && showFeedback && (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                )}
+                Submit Feedback
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Request Changes when violations block approval */}
+      {canAct && violations && violations.length > 0 && (
+        <div className="mt-6 space-y-3">
+          {error && (
+            <p className="text-sm text-red-600">{error}</p>
+          )}
+
+          <Button
+            variant="outline"
+            onClick={() => setShowFeedback(!showFeedback)}
+            disabled={loading}
+          >
+            <MessageSquare className="h-4 w-4 mr-1" />
+            Request Changes
+          </Button>
 
           {showFeedback && (
             <div className="space-y-2">

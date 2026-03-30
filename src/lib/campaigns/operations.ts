@@ -12,6 +12,8 @@
  */
 
 import { prisma } from "@/lib/db";
+import { validateListForChannel, runDataQualityPreCheck, type DataQualityReport } from "@/lib/campaigns/list-validation";
+import { detectOverlaps, type OverlapResult } from "@/lib/campaigns/overlap-detection";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -476,6 +478,14 @@ export async function deleteCampaign(id: string): Promise<void> {
 // 7. publishForReview — push campaign to pending_approval
 // ---------------------------------------------------------------------------
 
+export interface PublishForReviewResult {
+  campaign: CampaignDetail;
+  warnings?: {
+    dataQuality?: DataQualityReport;
+    overlaps?: OverlapResult[];
+  };
+}
+
 /**
  * Publish a campaign for client review by transitioning to "pending_approval".
  *
@@ -483,18 +493,25 @@ export async function deleteCampaign(id: string): Promise<void> {
  *   - Current status is "internal_review"
  *   - Campaign has at least one sequence (emailSequence or linkedinSequence)
  *   - Campaign has a targetListId (leads must be linked)
+ *   - Channel-specific list validation (hard-blocks if requirements not met)
+ *
+ * Runs non-blocking checks:
+ *   - Data quality pre-check (warnings only)
+ *   - Overlap detection (warnings only — admin decides)
  *
  * Sets publishedAt to the current timestamp.
  *
  * @param id - Campaign ID
- * @returns Updated CampaignDetail
- * @throws If validation fails
+ * @returns { campaign: CampaignDetail, warnings?: { dataQuality?, overlaps? } }
+ * @throws If validation fails (status, content, list, or channel requirements)
  */
-export async function publishForReview(id: string): Promise<CampaignDetail> {
+export async function publishForReview(id: string): Promise<PublishForReviewResult> {
   const current = await prisma.campaign.findUnique({
     where: { id },
     select: {
       status: true,
+      channels: true,
+      workspaceSlug: true,
       emailSequence: true,
       linkedinSequence: true,
       targetListId: true,
@@ -536,6 +553,56 @@ export async function publishForReview(id: string): Promise<CampaignDetail> {
     );
   }
 
+  // --- Channel-aware list validation (Phase 57) ---
+  const channels = (parseJsonArray(current.channels) as string[] ?? ["email"]) as ("email" | "linkedin")[];
+
+  // Load target list people for validation
+  const targetListPeople = await prisma.targetListPerson.findMany({
+    where: { listId: current.targetListId },
+    include: {
+      person: {
+        select: {
+          id: true,
+          email: true,
+          linkedinUrl: true,
+          firstName: true,
+          lastName: true,
+          company: true,
+          jobTitle: true,
+        },
+      },
+    },
+  });
+
+  const people = targetListPeople.map((tlp) => tlp.person);
+
+  // Hard-block: channel requirements
+  const channelFailures: string[] = [];
+  for (const channel of channels) {
+    const result = validateListForChannel(channel, people);
+    if (!result.valid) {
+      channelFailures.push(...result.hardFailures);
+    }
+  }
+
+  if (channelFailures.length > 0) {
+    throw new Error(
+      `Cannot publish campaign — list validation failed: ${channelFailures.join("; ")}`,
+    );
+  }
+
+  // Non-blocking: data quality pre-check
+  const dataQuality = runDataQualityPreCheck(channels, people);
+
+  // Non-blocking: overlap detection
+  const personIds = people.map((p) => p.id);
+  const overlaps = await detectOverlaps({
+    workspaceSlug: current.workspaceSlug,
+    candidatePersonIds: personIds,
+    excludeCampaignId: id,
+  });
+
+  // All checks passed — publish
   const campaign = await prisma.campaign.update({
     where: { id },
     data: {
@@ -545,7 +612,18 @@ export async function publishForReview(id: string): Promise<CampaignDetail> {
     include: targetListInclude,
   });
 
-  return formatCampaignDetail(campaign);
+  const warnings: PublishForReviewResult["warnings"] = {};
+  if (!dataQuality.pass || dataQuality.warnings.length > 0) {
+    warnings.dataQuality = dataQuality;
+  }
+  if (overlaps.length > 0) {
+    warnings.overlaps = overlaps;
+  }
+
+  return {
+    campaign: formatCampaignDetail(campaign),
+    ...(Object.keys(warnings).length > 0 ? { warnings } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

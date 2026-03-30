@@ -757,6 +757,7 @@ model Campaign {
   workspace    Workspace            @relation(fields: [workspaceSlug], references: [slug], onDelete: Cascade)
   deploys      CampaignDeploy[]
   signalLeads  SignalCampaignLead[]
+  costLogs     PipelineCostLog[]
 
   @@unique([workspaceSlug, name])
   @@index([workspaceSlug])
@@ -1673,4 +1674,21 @@ model FaqArticle {
   createdAt DateTime @default(now())
 
   @@index([published, category, sortOrder])
+}
+
+model PipelineCostLog {
+  id            String    @id @default(cuid())
+  campaignId    String?
+  workspaceSlug String
+  stage         String    // "discovery" | "enrichment" | "verification"
+  provider      String
+  costUsd       Float
+  itemCount     Int       @default(1)
+  createdAt     DateTime  @default(now())
+
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId])
+  @@index([workspaceSlug])
+  @@index([stage])
 }

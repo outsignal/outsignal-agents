@@ -390,3 +390,108 @@ export function validateAllChecks(
     hasHardViolation: checks.some((c) => c.severity === "hard"),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Full Sequence Validation (Phase 57 — aggregates all checks for portal gate)
+// ---------------------------------------------------------------------------
+
+export interface FullValidationResult {
+  hardViolations: Array<{ step: number; field: string; violation: string }>;
+  softWarnings: Array<{ step: number; field: string; violation: string }>;
+  pass: boolean; // true if no hard violations
+}
+
+/**
+ * Runs ALL copy quality checks on a sequence and classifies by severity.
+ *
+ * Used by the portal approve-content route to hard-block on violations (HTTP 422).
+ *
+ * Checks run per step:
+ *   - Banned patterns (checkSequenceQuality) — all are hard violations
+ *   - Word count (needs strategy)
+ *   - Greeting (first step only)
+ *   - CTA format (email body)
+ *   - Subject line checks
+ *   - LinkedIn spintax (if channel is linkedin)
+ */
+export function runFullSequenceValidation(
+  sequence: Array<{
+    position?: number;
+    subjectLine?: string;
+    subjectVariantB?: string;
+    body?: string;
+  }>,
+  options?: {
+    strategy?: CopyStrategy;
+    channel?: "email" | "linkedin";
+  },
+): FullValidationResult {
+  const hardViolations: FullValidationResult["hardViolations"] = [];
+  const softWarnings: FullValidationResult["softWarnings"] = [];
+
+  const strategy = options?.strategy ?? "pvp";
+  const channel = options?.channel ?? "email";
+
+  for (let i = 0; i < sequence.length; i++) {
+    const step = sequence[i];
+    const stepNum = step.position ?? i + 1;
+    const isFirstStep = i === 0;
+
+    // Check body
+    if (step.body) {
+      const bodyResult = validateAllChecks(step.body, "body", {
+        strategy,
+        channel,
+        isFirstStep,
+      });
+      for (const check of bodyResult.checks) {
+        const entry = { step: stepNum, field: "body", violation: check.violation };
+        if (check.severity === "hard") {
+          hardViolations.push(entry);
+        } else {
+          softWarnings.push(entry);
+        }
+      }
+    }
+
+    // Check subject line
+    if (step.subjectLine) {
+      const subjectResult = validateAllChecks(step.subjectLine, "subject", {
+        strategy,
+        channel,
+        isFirstStep,
+      });
+      for (const check of subjectResult.checks) {
+        const entry = { step: stepNum, field: "subject", violation: check.violation };
+        if (check.severity === "hard") {
+          hardViolations.push(entry);
+        } else {
+          softWarnings.push(entry);
+        }
+      }
+    }
+
+    // Check subject variant B
+    if (step.subjectVariantB) {
+      const variantResult = validateAllChecks(step.subjectVariantB, "subjectVariantB", {
+        strategy,
+        channel,
+        isFirstStep,
+      });
+      for (const check of variantResult.checks) {
+        const entry = { step: stepNum, field: "subjectVariantB", violation: check.violation };
+        if (check.severity === "hard") {
+          hardViolations.push(entry);
+        } else {
+          softWarnings.push(entry);
+        }
+      }
+    }
+  }
+
+  return {
+    hardViolations,
+    softWarnings,
+    pass: hardViolations.length === 0,
+  };
+}

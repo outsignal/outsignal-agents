@@ -4,9 +4,8 @@ import { getCampaign, approveCampaignContent } from "@/lib/campaigns/operations"
 import { notifyApproval } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
 import {
-  checkSequenceQuality,
-  formatSequenceViolations,
-  type SequenceStepViolation,
+  runFullSequenceValidation,
+  type CopyStrategy,
 } from "@/lib/copy-quality";
 
 export async function POST(
@@ -30,9 +29,14 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // --- Copy quality gate (warn only, does NOT block approval) ---
-  let copyQualityWarnings: SequenceStepViolation[] = [];
+  // --- Full copy quality validation (Phase 57 — hard-block on violations) ---
+  const strategy = (campaign.copyStrategy as CopyStrategy) ?? "pvp";
+  const channels = campaign.channels ?? ["email"];
 
+  let allHardViolations: Array<{ step: number; field: string; violation: string }> = [];
+  let allSoftWarnings: Array<{ step: number; field: string; violation: string }> = [];
+
+  // Validate email sequence
   const emailSequence = campaign.emailSequence as Array<{
     position?: number;
     subjectLine?: string;
@@ -41,10 +45,48 @@ export async function POST(
   }> | null;
 
   if (emailSequence && emailSequence.length > 0) {
-    copyQualityWarnings = checkSequenceQuality(emailSequence);
+    const emailResult = runFullSequenceValidation(emailSequence, {
+      strategy,
+      channel: "email",
+    });
+    allHardViolations = allHardViolations.concat(emailResult.hardViolations);
+    allSoftWarnings = allSoftWarnings.concat(emailResult.softWarnings);
   }
 
-  // Approve regardless of warnings
+  // Validate LinkedIn sequence
+  const linkedinSequence = campaign.linkedinSequence as Array<{
+    position?: number;
+    subjectLine?: string;
+    subjectVariantB?: string;
+    body?: string;
+  }> | null;
+
+  if (linkedinSequence && linkedinSequence.length > 0 && channels.includes("linkedin")) {
+    const linkedinResult = runFullSequenceValidation(linkedinSequence, {
+      strategy,
+      channel: "linkedin",
+    });
+    allHardViolations = allHardViolations.concat(
+      linkedinResult.hardViolations.map((v) => ({ ...v, field: `linkedin:${v.field}` })),
+    );
+    allSoftWarnings = allSoftWarnings.concat(
+      linkedinResult.softWarnings.map((v) => ({ ...v, field: `linkedin:${v.field}` })),
+    );
+  }
+
+  // Hard violations -> HTTP 422 (approval blocked)
+  if (allHardViolations.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Copy quality violations",
+        violations: allHardViolations,
+        warnings: allSoftWarnings,
+      },
+      { status: 422 },
+    );
+  }
+
+  // No hard violations -> proceed with approval
   const updated = await approveCampaignContent(id);
 
   const action = updated.status === "approved" ? "both_approved" : "content_approved";
@@ -67,9 +109,8 @@ export async function POST(
 
   return NextResponse.json({
     campaign: updated,
-    ...(copyQualityWarnings.length > 0 && {
-      copyQualityWarnings,
-      copyQualityWarningsSummary: `Banned patterns found: ${formatSequenceViolations(copyQualityWarnings)}`,
+    ...(allSoftWarnings.length > 0 && {
+      warnings: allSoftWarnings,
     }),
   });
 }

@@ -59,3 +59,137 @@ export function normalizeCompanyName(name: string): string {
 
   return titleCased.join("") + suffix;
 }
+
+// ---------------------------------------------------------------------------
+// Job Title Normalisation
+// ---------------------------------------------------------------------------
+
+const CSUITE_ACRONYMS = new Set([
+  "ceo", "cto", "cfo", "coo", "cio", "cmo", "cso", "cpo", "cro", "chro",
+]);
+
+const VP_PATTERN = /^vp\b/i;
+
+/**
+ * Normalise a job title to consistent casing.
+ *
+ * - C-suite acronyms: "cto" -> "CTO"
+ * - VP prefix: "vp of sales" -> "VP of Sales"
+ * - Title case otherwise: "head of marketing" -> "Head of Marketing"
+ * - Preserves existing mixed case: "DevOps Engineer" stays as-is
+ */
+export function normalizeJobTitle(title: string): string {
+  const trimmed = title.trim();
+  if (!trimmed) return trimmed;
+
+  // Check for C-suite acronyms (exact match after lowering)
+  if (CSUITE_ACRONYMS.has(trimmed.toLowerCase())) {
+    return trimmed.toUpperCase();
+  }
+
+  const isAllLower = trimmed === trimmed.toLowerCase();
+  const isAllUpper = trimmed === trimmed.toUpperCase();
+
+  // If mixed case already, preserve it
+  if (!isAllLower && !isAllUpper) {
+    return trimmed;
+  }
+
+  // Handle VP prefix
+  if (VP_PATTERN.test(trimmed)) {
+    const rest = trimmed.slice(2);
+    return "VP" + titleCaseWords(rest);
+  }
+
+  return titleCaseWords(trimmed);
+}
+
+// ---------------------------------------------------------------------------
+// Location Normalisation
+// ---------------------------------------------------------------------------
+
+const COUNTRY_CODES = new Set([
+  "UK", "US", "USA", "UAE", "EU", "CA", "AU", "NZ", "IE", "DE", "FR", "NL",
+  "BE", "CH", "AT", "ES", "IT", "PT", "SE", "NO", "DK", "FI", "PL", "CZ",
+  "HK", "SG", "JP", "KR", "IN", "BR", "MX", "ZA", "GB", "IL",
+]);
+
+/**
+ * Normalise a location string to consistent casing.
+ *
+ * - Title case each word: "london, uk" -> "London, UK"
+ * - Preserves 2-3 letter uppercase tokens as country codes
+ */
+export function normalizeLocation(location: string): string {
+  const trimmed = location.trim();
+  if (!trimmed) return trimmed;
+
+  // Split by spaces and commas, preserving separators
+  return trimmed.replace(/[^\s,]+/g, (word) => {
+    // If it's a 2-3 letter token and matches a known country code, uppercase it
+    if (word.length >= 2 && word.length <= 3 && COUNTRY_CODES.has(word.toUpperCase())) {
+      return word.toUpperCase();
+    }
+    // Title case the word
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Industry Normalisation
+// ---------------------------------------------------------------------------
+
+const KNOWN_ABBREVIATIONS: Record<string, string> = {
+  saas: "SaaS",
+  b2b: "B2B",
+  b2c: "B2C",
+  ai: "AI",
+  it: "IT",
+  hr: "HR",
+  pr: "PR",
+  iot: "IoT",
+  api: "API",
+  crm: "CRM",
+  erp: "ERP",
+  vpn: "VPN",
+  seo: "SEO",
+  sem: "SEM",
+  dtc: "DTC",
+  d2c: "D2C",
+};
+
+/**
+ * Normalise an industry string to consistent casing.
+ *
+ * - Known abbreviations: "SAAS" -> "SaaS", "b2b" -> "B2B"
+ * - Title case remaining words: "b2b software" -> "B2B Software"
+ */
+export function normalizeIndustry(industry: string): string {
+  const trimmed = industry.trim();
+  if (!trimmed) return trimmed;
+
+  return trimmed.replace(/[^\s,&/]+/g, (word) => {
+    const lower = word.toLowerCase();
+    if (KNOWN_ABBREVIATIONS[lower]) {
+      return KNOWN_ABBREVIATIONS[lower];
+    }
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shared helper: title case a string
+// ---------------------------------------------------------------------------
+
+const LOWERCASE_WORDS = new Set(["of", "the", "and", "in", "for", "to", "a", "an", "at", "by", "on", "or"]);
+
+function titleCaseWords(text: string): string {
+  return text.replace(/[^\s]+/g, (word, offset: number) => {
+    const lower = word.toLowerCase();
+    // Keep lowercase words like "of", "the" unless first word
+    if (offset > 0 && LOWERCASE_WORDS.has(lower)) {
+      return lower;
+    }
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}

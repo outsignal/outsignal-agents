@@ -15,6 +15,7 @@ import { classifyIndustry } from "@/lib/normalizer/industry";
 import { classifyCompanyName } from "@/lib/normalizer/company";
 import { classifyJobTitle } from "@/lib/normalizer/job-title";
 import { CANONICAL_VERTICALS, SENIORITY_LEVELS } from "@/lib/normalizer/vocabulary";
+import { normalizeJobTitle, normalizeLocation, normalizeIndustry } from "@/lib/normalize";
 
 const mockGenerateObject = generateObject as ReturnType<typeof vi.fn>;
 
@@ -174,6 +175,93 @@ describe("classifyJobTitle", () => {
     expect(result).not.toBeNull();
     expect(result!.seniority).toBe("Unknown");
     consoleSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rule-based normalisation functions (Phase 57)
+// ---------------------------------------------------------------------------
+
+describe("normalizeJobTitle", () => {
+  it("normalises C-suite acronyms to uppercase", () => {
+    expect(normalizeJobTitle("cto")).toBe("CTO");
+    expect(normalizeJobTitle("ceo")).toBe("CEO");
+    expect(normalizeJobTitle("cfo")).toBe("CFO");
+    expect(normalizeJobTitle("coo")).toBe("COO");
+    expect(normalizeJobTitle("cio")).toBe("CIO");
+  });
+
+  it("normalises VP prefix with title case", () => {
+    expect(normalizeJobTitle("vp of sales")).toBe("VP of Sales");
+    expect(normalizeJobTitle("VP MARKETING")).toBe("VP Marketing");
+  });
+
+  it("title cases lowercase titles", () => {
+    expect(normalizeJobTitle("head of marketing")).toBe("Head of Marketing");
+    expect(normalizeJobTitle("sales director")).toBe("Sales Director");
+  });
+
+  it("preserves existing mixed case", () => {
+    expect(normalizeJobTitle("DevOps Engineer")).toBe("DevOps Engineer");
+  });
+
+  it("strips leading/trailing whitespace", () => {
+    expect(normalizeJobTitle("  cto  ")).toBe("CTO");
+    expect(normalizeJobTitle("  Head of Marketing  ")).toBe("Head of Marketing");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(normalizeJobTitle("")).toBe("");
+    expect(normalizeJobTitle("  ")).toBe("");
+  });
+});
+
+describe("normalizeLocation", () => {
+  it("normalises to title case with country codes preserved", () => {
+    expect(normalizeLocation("london, uk")).toBe("London, UK");
+    expect(normalizeLocation("NEW YORK")).toBe("New York");
+  });
+
+  it("preserves 2-3 letter country codes as uppercase", () => {
+    expect(normalizeLocation("dubai, uae")).toBe("Dubai, UAE");
+    expect(normalizeLocation("sydney, au")).toBe("Sydney, AU");
+  });
+
+  it("strips leading/trailing whitespace", () => {
+    expect(normalizeLocation("  london, uk  ")).toBe("London, UK");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(normalizeLocation("")).toBe("");
+  });
+});
+
+describe("normalizeIndustry", () => {
+  it("normalises known abbreviations", () => {
+    expect(normalizeIndustry("SAAS")).toBe("SaaS");
+    expect(normalizeIndustry("saas")).toBe("SaaS");
+    expect(normalizeIndustry("b2b")).toBe("B2B");
+    expect(normalizeIndustry("B2C")).toBe("B2C");
+    expect(normalizeIndustry("ai")).toBe("AI");
+    expect(normalizeIndustry("it")).toBe("IT");
+  });
+
+  it("title cases remaining words with abbreviations", () => {
+    expect(normalizeIndustry("b2b software")).toBe("B2B Software");
+    expect(normalizeIndustry("saas platform")).toBe("SaaS Platform");
+  });
+
+  it("title cases unknown industries", () => {
+    expect(normalizeIndustry("financial services")).toBe("Financial Services");
+    expect(normalizeIndustry("REAL ESTATE")).toBe("Real Estate");
+  });
+
+  it("strips leading/trailing whitespace", () => {
+    expect(normalizeIndustry("  saas  ")).toBe("SaaS");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(normalizeIndustry("")).toBe("");
   });
 });
 

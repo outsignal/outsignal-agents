@@ -16,19 +16,20 @@ export async function POST(
   try {
     const { id } = await params;
 
-    const campaign = await publishForReview(id);
+    const result = await publishForReview(id);
 
     notify({
       type: "system",
       severity: "info",
-      title: `Campaign published for review: ${campaign.name}`,
-      workspaceSlug: campaign.workspaceSlug,
+      title: `Campaign published for review: ${result.campaign.name}`,
+      workspaceSlug: result.campaign.workspaceSlug,
       metadata: { campaignId: id },
     }).catch(() => {});
 
     return NextResponse.json({
-      campaign,
+      campaign: result.campaign,
       message: "Campaign published for client review",
+      ...(result.warnings ? { warnings: result.warnings } : {}),
     });
   } catch (err) {
     if (err instanceof Error) {
