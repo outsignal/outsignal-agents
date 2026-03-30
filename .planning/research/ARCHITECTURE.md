@@ -1,562 +1,552 @@
 # Architecture Research
 
-**Domain:** CLI Skill System integration with existing TypeScript agent architecture
-**Researched:** 2026-03-23
-**Confidence:** HIGH — based on direct code inspection of all existing agent files
+**Domain:** Agent Quality Overhaul — v8.0 Integration Architecture
+**Researched:** 2026-03-30
+**Confidence:** HIGH — based on direct code inspection of all relevant agent files, rules files, and CLI scripts
 
 ---
 
 ## Standard Architecture
 
-### System Overview
+### System Overview (Current v7.0 State)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      INVOCATION LAYER                               │
-│                                                                      │
-│  ┌──────────────────┐        ┌─────────────────────────────────┐   │
-│  │  Dashboard Chat  │        │   Claude Code CLI (nova skill)  │   │
-│  │  /api/chat POST  │        │   .claude/commands/nova.md      │   │
-│  │  streamText()    │        │   Bash → npx tsx scripts/chat   │   │
-│  └────────┬─────────┘        └─────────────────┬───────────────┘   │
-└───────────┼──────────────────────────────────  ┼ ───────────────────┘
-            │                                    │
-            ▼                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    ORCHESTRATOR (Sonnet 4, 12 steps)                │
-│           src/lib/agents/orchestrator.ts (683 LOC)                  │
-│   AgentConfig + orchestratorTools + ORCHESTRATOR_SYSTEM_PROMPT      │
-│                                                                      │
-│   Delegation tools          Dashboard tools (direct)                │
-│   ─────────────────         ───────────────────────                 │
-│   delegateToResearch        listWorkspaces                          │
-│   delegateToLeads           getWorkspaceInfo                        │
-│   delegateToWriter          getCampaigns / getReplies               │
-│   delegateToCampaign        queryPeople / listProposals             │
-│                             searchKnowledgeBase                     │
-└───────────┬───────┬────────────────────┬──────────────┬────────────┘
-            │       │                    │              │
-            ▼       ▼                    ▼              ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│   Research   │ │   Writer     │ │   Leads      │ │  Campaign    │
-│   Agent      │ │   Agent      │ │   Agent      │ │  Agent       │
-│   (Opus, 8)  │ │   (Opus, 8)  │ │   (Opus, 8)  │ │  (Opus, 8)  │
-│ research.ts  │ │ writer.ts    │ │ leads.ts     │ │ campaign.ts  │
-└──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
-       │                │                │                  │
-       └────────────────┴────────────────┴──────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                       TOOL LAYER                                    │
-│                                                                      │
-│   DB (Prisma)    EmailBison API    Discovery Adapters    KB Search  │
-│   src/lib/db     src/lib/email     src/lib/discovery    store.ts   │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        INVOCATION LAYER                              │
+│  Dashboard Chat /api/chat     Claude Code CLI (.claude/skills/)      │
+└───────────────────────────┬──────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│          ORCHESTRATOR — orchestrator.ts (Sonnet 4, 12 steps)         │
+│   delegateToWriter | delegateToLeads | delegateToCampaign | etc.     │
+│   cli-spawn.ts: routes to CLI skill (NOVA_CLI_ENABLED) or runAgent() │
+└────────┬──────────────────┬──────────────────────┬───────────────────┘
+         │                  │                       │
+         ▼                  ▼                       ▼
+  ┌─────────────┐   ┌─────────────┐        ┌──────────────┐
+  │ Writer      │   │ Leads       │        │ Campaign     │
+  │ writer.ts   │   │ leads.ts    │        │ campaign.ts  │
+  │ (API path)  │   │ (API path)  │        │ (API path)   │
+  └──────┬──────┘   └──────┬──────┘        └──────┬───────┘
+         │                 │                       │
+         ▼                 ▼                       ▼
+  ┌──────────────────────────────────────────────────┐
+  │           CLI WRAPPER SCRIPTS (55 scripts)        │
+  │    scripts/cli/   →  dist/cli/  (tsup build)      │
+  │  save-draft.ts  save-sequence.ts  search-*.ts     │
+  │  discovery-plan.ts  discovery-promote.ts  etc.    │
+  └──────────────────────────────────────────────────┘
+         │                 │                       │
+         ▼                 ▼                       ▼
+  ┌──────────────────────────────────────────────────┐
+  │              SHARED TOOL LAYER                    │
+  │  Prisma/PostgreSQL  |  EmailBison API             │
+  │  Discovery Adapters |  KB Store                   │
+  │  copy-quality.ts    |  .nova/memory/{slug}/       │
+  └──────────────────────────────────────────────────┘
 ```
 
-### Current Architecture (v6 — Pre-migration)
+### Current Quality Enforcement (v7.0 Gaps)
 
-The existing system has two invocation paths that share the same orchestrator:
+```
+Writer Agent generates copy
+    ↓
+saveDraft / saveCampaignSequence tool called
+    ↓
+checkCopyQuality() / checkSequenceQuality()  ← 13 banned patterns only
+    ↓ quality_violation? Agent is expected to rewrite (not enforced by runner)
+    ↓
+Draft saved to DB
+    ↓
+Client approves via portal /api/portal/.../approve-content
+    ↓
+checkSequenceQuality() again — WARN ONLY, approval proceeds regardless
+    ↓
+Campaign deployed
+```
 
-1. **Dashboard Chat** (`/api/chat/route.ts`) — `streamText()` with `orchestratorTools`, returns streaming UI response. Sanitizes user input before delegating.
-
-2. **CLI (nova.md skill)** — Executes `npx tsx` inline to call `generateText()` directly importing `orchestratorConfig` and `orchestratorTools`. One-shot, not persistent.
-
-Both paths load the full TypeScript agent code at runtime. The specialist agents (research, writer, leads, campaign) are called inside the orchestrator's delegation tool `execute()` functions — they never run as separate processes.
-
-The `runner.ts` is the shared execution engine: creates `AgentRun` audit records in Postgres, calls `generateText()`, extracts tool call steps, and persists output. Every agent invocation hits the Anthropic API and costs money.
+**Problems this architecture has:**
+1. No word count enforcement — agent must count manually, often fails
+2. No greeting enforcement — agent forgets on first-step emails
+3. No spintax grammar check — bad options pass through
+4. No campaign-holistic view — writer never sees all steps together before saving
+5. No LinkedIn spintax block — writer adds spintax despite rules saying no
+6. No validator between generation and save — quality_violation requires agent self-correction which is unreliable
+7. No platform expertise encoding — leads agent has no structured knowledge of optimal Prospeo/Apollo filters
+8. No pre-search validation — expensive API calls happen before input sanity checks
+9. No channel-aware list building — email leads and LinkedIn leads mixed
 
 ---
 
-## Target Architecture (v7 — CLI Skill System)
+## Target Architecture (v8.0)
 
-### Migration Goal
+### Integration Philosophy
 
-Replace direct Anthropic API calls in specialist agents with Claude Code CLI invocations. The key insight is that Claude Code (Max Plan) covers API costs, so running agents as Claude subprocesses is free vs Opus calls at ~$15/MTok input.
+The overhaul adds quality infrastructure *around* the existing agent loop, not inside it. The key principle: **enforce at the boundary, not in the prompt**. Prompts are probabilistic. Boundary functions are deterministic.
+
+Three integration zones:
+
+1. **Pre-generation** — Platform expertise data, campaign-holistic context load
+2. **Post-generation, pre-save** — Validator agent reviews output before it touches the DB
+3. **Pre-search** — Input validation gates before paid API calls fire
+
+### System Overview (Target v8.0)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      INVOCATION LAYER (unchanged)                   │
-│                                                                      │
-│  ┌──────────────────┐        ┌─────────────────────────────────┐   │
-│  │  Dashboard Chat  │        │   Claude Code CLI (nova skill)  │   │
-│  │  /api/chat POST  │        │   .claude/commands/nova.md      │   │
-│  │  (thin bridge)   │        │   (unchanged — calls scripts)   │   │
-│  └────────┬─────────┘        └─────────────────┬───────────────┘   │
-└───────────┼──────────────────────────────────  ┼ ───────────────────┘
-            │ HTTP POST                           │ Bash exec
-            ▼                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│               ORCHESTRATOR BRIDGE (thin, Sonnet or Haiku)           │
-│           No longer calls runResearchAgent() etc. directly          │
-│           Instead: spawns claude --skill nova-{agent} --workspace   │
-└──────────────────────────────────┬──────────────────────────────────┘
-                                   │ CLI subprocess (claude --skill)
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼              ▼
-        ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-        │ nova-research │ │ nova-writer  │ │ nova-leads   │
-        │ .claude/      │ │ .claude/     │ │ .claude/     │
-        │ commands/     │ │ commands/    │ │ commands/    │
-        │ nova-         │ │ nova-        │ │ nova-        │
-        │ research.md   │ │ writer.md    │ │ leads.md     │
-        │               │ │              │ │              │
-        │ Uses Bash     │ │ Uses Bash    │ │ Uses Bash    │
-        │ to call thin  │ │ to call thin │ │ to call thin │
-        │ CLI wrappers  │ │ CLI wrappers │ │ CLI wrappers │
-        └──────┬────────┘ └──────┬───────┘ └──────┬───────┘
-               └─────────────────┼─────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    CLI WRAPPER SCRIPTS (thin)                       │
-│                  scripts/cli/                                        │
-│                                                                      │
-│  db-query.ts        emailbison.ts     kb-search.ts                  │
-│  leads-search.ts    leads-export.ts   research-crawl.ts             │
-│  campaign-crud.ts   workspace-get.ts  memory-read.ts                │
-│  memory-write.ts                                                     │
-│                                                                      │
-│  Each script: load .env → call existing TypeScript lib → stdout JSON│
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    EXISTING TOOL LAYER (unchanged)                  │
-│                                                                      │
-│  src/lib/agents/*.ts  src/lib/leads/  src/lib/discovery/            │
-│  src/lib/emailbison/  src/lib/knowledge/store.ts                    │
-│  prisma/schema.prisma                                                │
-└─────────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                CLIENT MEMORY FILES (new — flat file)                │
-│                                                                      │
-│  .claude/memory/{workspace-slug}/                                   │
-│    profile.md          — ICP, tone, copy rules, writing style       │
-│    copy-wins.md        — Subject lines and sequences that worked    │
-│    campaign-history.md — Completed campaigns summary                │
-│    feedback.md         — Client feedback log (most recent 10)       │
-│    icp-learnings.md    — Qualification patterns and signals that fit│
-│    approval-patterns.md — What client approves vs requests changes  │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        INVOCATION LAYER (unchanged)                  │
+└───────────────────────────┬──────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│          ORCHESTRATOR (unchanged interface, minor additions)          │
+│   delegateToWriter (+ campaignHolisticLoad flag added)               │
+│   delegateToLeads  (+ channelMode param added)                       │
+└────────┬──────────────────┬──────────────────────────────────────────┘
+         │                  │
+         ▼                  ▼
+  ┌──────────────────┐  ┌────────────────────────────────────────────┐
+  │  WRITER AGENT    │  │  LEADS AGENT                               │
+  │  (modified)      │  │  (modified)                                │
+  │                  │  │                                            │
+  │ 1. Load campaign │  │ 1. Pre-search input validation gate        │
+  │    context FIRST │  │    (domain format, title sanity, ICP fit)  │
+  │    (all steps)   │  │                                            │
+  │ 2. Generate all  │  │ 2. Platform expertise context load         │
+  │    steps         │  │    (optimal filters per source)            │
+  │ 3. Self-review   │  │                                            │
+  │    gate (NEW)    │  │ 3. Source-specific execution               │
+  │ 4. Pass to       │  │                                            │
+  │    Validator     │  │ 4. Post-search quality gates               │
+  │    Agent (NEW)   │  │    (% verified, % LinkedIn, ICP threshold) │
+  │ 5. Save if pass  │  │                                            │
+  └──────────────────┘  └────────────────────────────────────────────┘
+         │
+         ▼
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  VALIDATOR AGENT (NEW — src/lib/agents/validator.ts)             │
+  │  Sonnet 4, 4 steps max, structured output                        │
+  │                                                                  │
+  │  Input: full campaign sequence (all steps as one unit)           │
+  │  Checks: word count, banned phrases, greetings, CTA format,      │
+  │          spintax validity, variable syntax, LinkedIn format,      │
+  │          UK English, campaign angle dedup, CTA dedup             │
+  │  Output: ValidationResult { pass: bool, violations: [], fixes: }  │
+  │                                                                  │
+  │  On fail: returns violations to Writer for targeted rewrite      │
+  │  On pass: writer calls saveCampaignSequence                      │
+  └──────────────────────────────────────────────────────────────────┘
+         │ (after validation pass)
+         ▼
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  EXISTING SAVE LAYER (checkCopyQuality still runs — last resort) │
+  │  saveDraft / saveCampaignSequence → DB                           │
+  └──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Component Boundaries
+
+### New Components
+
+| Component | File | Responsibility | Calls |
+|-----------|------|----------------|-------|
+| Validator Agent | `src/lib/agents/validator.ts` | Deterministic copy QA — reviews full sequence as a unit, returns typed violations | `copy-quality.ts`, new extended checks |
+| Extended copy-quality.ts | `src/lib/copy-quality.ts` | Add: word count check, greeting check, CTA format check, LinkedIn spintax check, spintax grammar check | Existing module, extended |
+| Platform expertise docs | `.claude/rules/platform-expertise.md` (or `leads-platform-expertise.md`) | Optimal filters, cost/lead, verified vs unverified handling per source (Prospeo, Apollo, AI Ark, Leads Finder, Google Maps, Ecommerce) | Read by leads agent at runtime via loadRules() |
+| Pre-search validator tool | New tool inside `leads.ts` | Input validation before any paid API call: domain format, ICP filter sanity, title format | Pure TypeScript, no API calls |
+| Post-search quality gate | New tool inside `leads.ts` | Quality metrics after discovery: % verified, % with LinkedIn, placeholder detection, ICP fit sample | Reads staged results from DB |
+| Campaign-holistic context loader | New tool inside `writer.ts` (`loadCampaignSequence`) | Load all existing sequence steps as a unit before generation begins | Extends existing `getCampaignContext` |
+| Channel-aware list validator | New tool inside `leads.ts` or `campaign.ts` | Checks that email campaigns use email-verified leads, LinkedIn campaigns use leads with LinkedIn URLs | DB query |
+
+### Modified Existing Components
+
+| Component | File | Changes |
+|-----------|------|---------|
+| `copy-quality.ts` | `src/lib/copy-quality.ts` | Add: `checkWordCount()`, `checkGreeting()`, `checkCTAFormat()`, `checkLinkedInSpintax()`, `checkSpintaxGrammar()` — extend existing `CopyQualityResult` type |
+| `writer.ts` | `src/lib/agents/writer.ts` | Add: `validateSequence` tool (calls Validator Agent), add `loadCampaignSequence` tool, update system prompt to mandate self-review + validator call before save |
+| `leads.ts` | `src/lib/agents/leads.ts` | Add: `validateDiscoveryInputs` tool, `checkPostSearchQuality` tool, update system prompt to load platform expertise |
+| `writer-rules.md` | `.claude/rules/writer-rules.md` | Add: campaign-holistic section, self-review checklist, validator call instruction |
+| `leads-rules.md` | `.claude/rules/leads-rules.md` | Add: platform expertise reference, pre-search validation steps, post-search quality thresholds |
+| `orchestrator.ts` | `src/lib/agents/orchestrator.ts` | Add `channelMode` param to `delegateToLeads`, add `campaignId` requirement enforcement for Writer delegation |
+| `save-sequence.ts` CLI | `scripts/cli/save-sequence.ts` | No change — quality enforcement happens before this is called |
+| Portal `approve-content` route | `src/app/api/portal/.../approve-content/route.ts` | Upgrade from warn-only to hard block if violations exist (last-resort gate) |
+
+### Unchanged Components
+
+- `runner.ts` — execution engine unchanged
+- `cli-spawn.ts` — subprocess routing unchanged
+- `orchestrator.ts` delegation tool interface (params extended, not replaced)
+- All 55 CLI wrapper scripts (no changes needed)
+- `.nova/memory/` namespace and files
+- Dashboard chat route
+
+---
+
+## Data Flow
+
+### Writer Flow: Campaign-Holistic with Validator Gate
+
+```
+Orchestrator delegates to Writer (with campaignId)
+    ↓
+Writer: loadCampaignContext(campaignId)
+  → returns: existing steps, targetList info, channel, strategy
+    ↓
+Writer: loadCampaignSequence(campaignId)  [NEW — loads all existing steps as unit]
+  → returns: full existing sequence if any (for dedup / continuation)
+    ↓
+Writer: getWorkspaceIntelligence(slug)
+    ↓
+Writer: searchKnowledgeBase(×3 tiered calls)
+    ↓
+Writer: generate ALL steps (not one at a time)
+  → internal self-review checklist executed before returning
+    ↓
+Writer: validateSequence(fullSequence)  [NEW tool — calls Validator Agent]
+  Validator Agent receives: all steps as JSON, channel, strategy
+  Validator runs: word count, banned phrases, greeting, CTA, spintax, variables,
+                  LinkedIn format, UK English, angle dedup across steps
+  Validator returns: { pass: bool, violations: PerStepViolation[], suggestedFixes: string }
+    ↓
+  IF violations exist:
+    Writer receives violations → targeted rewrite of failing steps → re-validate (max 2 loops)
+    If still failing after 2 loops: save with violations logged, flag for admin review
+  IF pass:
+    Writer: saveCampaignSequence(campaignId, sequence)
+    ↓
+    checkSequenceQuality() fires again (13 patterns — existing last-resort gate)
+    ↓
+    Saved to Campaign.emailSequence / Campaign.linkedinSequence
+```
+
+### Leads Flow: Platform-Expert with Pre/Post Gates
+
+```
+Orchestrator delegates to Leads (with workspaceSlug, channelMode)
+    ↓
+Leads: buildDiscoveryPlan(sources, filters)  [existing — modified to include expertise hint]
+  → Platform expertise context loaded from leads-rules.md at agent startup
+  → Plan shows: optimal filters per source, estimated quality metrics
+    ↓
+Admin approves plan
+    ↓
+Leads: validateDiscoveryInputs(plan)  [NEW tool — runs before any API call]
+  Checks:
+  - Prospeo domain search: are domains formatted correctly? (no https://, no paths)
+  - Apollo/Prospeo/AIArk: are industry/title filters using known-good terms?
+  - Company name list: does domain resolution step exist?
+  - Estimated volume: sanity check (>10k from single source = suspicious)
+  Returns: { valid: bool, warnings: string[], blockers: string[] }
+  Blockers halt execution. Warnings shown to admin.
+    ↓
+Leads: execute searches (existing search-*.ts tools)
+    ↓
+Leads: runDeduplicateAndPromote(runIds)  [existing]
+    ↓
+Leads: checkPostSearchQuality(promotedIds, channelMode)  [NEW tool]
+  Checks:
+  - % with verified email (for email channel: require >60%)
+  - % with LinkedIn URL (for linkedin channel: require >50%)
+  - Placeholder detection: firstName contains "N/A", email contains "info@"
+  - ICP fit sample: spot-check 10 random leads vs workspace ICP
+  Returns: { qualityScore: number, issues: string[], passesThreshold: bool }
+    ↓
+  IF issues: report to admin with counts, recommend next step
+    (route unverified emails through BounceBan / LeadMagic)
+  IF passes: proceed to list building
+```
+
+### Validator Agent Internal Flow
+
+```
+Input: { steps: EmailStep[] | LinkedInStep[], channel, strategy, workspaceSlug }
+    ↓
+Validator calls: checkExtendedCopyQuality(steps)
+  [Extended function in copy-quality.ts — deterministic, no LLM]
+  Returns structural violations (word count, variables, spintax, banned phrases)
+    ↓
+Validator calls: checkCampaignCoherence(steps)
+  [LLM call — Haiku 4.5, ~500 tokens per campaign]
+  Checks: angle dedup across steps, CTA dedup, step-to-step narrative flow,
+          UK English flags, tone consistency
+  Returns: CoherenceResult { issues: string[], severity: "block" | "warn" }
+    ↓
+Validator assembles: ValidationResult {
+  pass: structuralViolations.length === 0 && !coherence.hasBlockers,
+  structuralViolations: PerStepViolation[],
+  coherenceIssues: string[],
+  warningsOnly: string[],  // non-blocking issues for reviewNotes
+  suggestedFixes: string   // plain text guidance for rewrite
+}
+    ↓
+Returns to Writer Agent
+```
+
+### Platform Expertise Data Flow
+
+```
+Agent startup (Writer or Leads)
+    ↓
+loadRules("writer-rules.md") or loadRules("leads-rules.md")
+  [existing loadRules() mechanism — reads .claude/rules/ at runtime]
+    ↓
+Rules file now contains platform expertise section:
+  - Per-source: optimal filters, cost-per-lead, quality expectations
+  - Prospeo: domain-based search is cheapest, verified email included
+  - Apollo: free but no emails, use for initial volume only
+  - AI Ark: paid peer to Prospeo, different record coverage
+  - Leads Finder: verified emails included, no pagination, use for speed
+  - Google Maps: local/SMB only, not B2B enterprise
+    ↓
+Agent has expertise baked into system prompt — no separate tool call needed
 ```
 
 ---
 
 ## Recommended Project Structure
 
-### New Files Required
+### New Files
 
 ```
-/Users/jjay/programs/outsignal-agents/
-├── .claude/
-│   ├── commands/
-│   │   ├── nova.md                   # EXISTING — orchestrator skill (thin, keep)
-│   │   ├── nova-research.md          # NEW — research specialist skill
-│   │   ├── nova-writer.md            # NEW — writer specialist skill
-│   │   ├── nova-leads.md             # NEW — leads specialist skill
-│   │   └── nova-campaign.md          # NEW — campaign specialist skill
-│   └── memory/
-│       └── {workspace-slug}/         # NEW — per-client memory namespace
-│           ├── profile.md
-│           ├── copy-wins.md
-│           ├── campaign-history.md
-│           ├── feedback.md
-│           ├── icp-learnings.md
-│           └── approval-patterns.md
+src/lib/agents/
+├── validator.ts              NEW — Validator Agent (Haiku 4.5, 4 steps)
 │
-├── scripts/
-│   ├── chat.ts                       # EXISTING — interactive orchestrator CLI
-│   ├── generate-copy.ts              # EXISTING — deprecated, keep as reference
-│   └── cli/                          # NEW — thin CLI wrappers
-│       ├── db-query.ts               # Prisma queries → stdout JSON
-│       ├── workspace-get.ts          # getWorkspaceDetails → stdout JSON
-│       ├── kb-search.ts              # searchKnowledge → stdout JSON
-│       ├── research-crawl.ts         # Firecrawl crawl/scrape → stdout JSON
-│       ├── leads-search.ts           # leads/operations.searchPeople → stdout JSON
-│       ├── leads-export.ts           # leads/operations.exportToEmailBison → stdout JSON
-│       ├── campaign-crud.ts          # Campaign CRUD ops → stdout JSON
-│       ├── emailbison.ts             # EmailBison client calls → stdout JSON
-│       ├── memory-read.ts            # Read .claude/memory/{slug}/*.md → stdout
-│       └── memory-write.ts           # Append/update memory files
+src/lib/
+├── copy-quality.ts           MODIFIED — extend with word count, greeting,
+│                               CTA, LinkedIn spintax, spintax grammar checks
 │
-└── src/lib/agents/
-    ├── orchestrator.ts               # EXISTING — modified: add CLI spawn tools
-    ├── runner.ts                     # EXISTING — unchanged (kept as fallback)
-    ├── research.ts                   # EXISTING — unchanged (kept as fallback)
-    ├── writer.ts                     # EXISTING — unchanged (kept as fallback)
-    ├── leads.ts                      # EXISTING — unchanged (kept as fallback)
-    ├── campaign.ts                   # EXISTING — unchanged (kept as fallback)
-    ├── shared-tools.ts               # EXISTING — unchanged
-    ├── types.ts                      # EXISTING — extend with CLI invocation types
-    ├── utils.ts                      # EXISTING — unchanged
-    └── cli-spawn.ts                  # NEW — spawnCliAgent() utility
+.claude/rules/
+├── writer-rules.md           MODIFIED — add self-review checklist section,
+│                               validator call instruction, holistic awareness
+├── leads-rules.md            MODIFIED — add platform expertise section,
+│                               pre-search validation steps, post-search thresholds
+│
+src/lib/agents/
+├── writer.ts                 MODIFIED — add validateSequence tool,
+│                               loadCampaignSequence tool, update system prompt
+├── leads.ts                  MODIFIED — add validateDiscoveryInputs tool,
+│                               checkPostSearchQuality tool
+├── orchestrator.ts           MODIFIED — add channelMode to delegateToLeads,
+│                               minor param additions
+│
+src/app/api/portal/campaigns/[id]/approve-content/
+├── route.ts                  MODIFIED — upgrade from warn to hard block
 ```
 
-### Structure Rationale
+### No New Files Needed For
 
-- **`scripts/cli/`** — Thin wrappers isolated from agent logic. Each is a standalone Node.js script: `load .env → import lib function → call → print JSON → exit`. No agent intelligence, no prompts. This is the tool boundary.
-
-- **`.claude/commands/nova-*.md`** — Skill definitions contain the agent prompt and tool invocation instructions. They tell Claude Code what to do and how to call the CLI wrappers. Skills replace `generateText()` calls.
-
-- **`.claude/memory/{slug}/`** — Flat markdown files per workspace. Claude Code reads these directly into context. No DB required. Files are human-readable and version-controllable.
-
-- **Existing `src/lib/agents/`** — Kept intact as fallback. No files deleted. The orchestrator gains a new "CLI spawn" path alongside the existing "direct call" path.
+- CLI wrapper scripts — no new scripts required; validator runs inside agent layer
+- Memory files — platform expertise lives in rules files, not memory
+- Database schema — no new tables; ValidationResult logged in AgentRun.steps (existing)
+- Orchestrator tools — existing delegation interface extended, not replaced
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Skill as Prompt + Tool Instructions
+### Pattern 1: Rules File as Platform Knowledge Base
 
-**What:** A `.md` file in `.claude/commands/` defines an agent role as a Claude Code skill. The file contains: system prompt, tool usage instructions (which CLI scripts to call), memory read/write instructions, and output format. Claude Code executes the skill as a subagent.
+**What:** Platform expertise (optimal Prospeo filters, Apollo limitations, cost-per-lead, quality expectations per source) lives in `.claude/rules/leads-rules.md`. Loaded at agent startup via existing `loadRules()` mechanism. No new infrastructure needed.
 
-**When to use:** For specialist agents that benefit from persistent memory and should run under the Claude Code Max Plan to eliminate API costs.
+**When to use:** For knowledge that is semi-stable (changes when platforms update their APIs), needs to be shared between API agent and CLI skill, and should be human-editable without a code deploy.
 
-**Trade-offs:** Skills are stateless text files — no TypeScript type safety. But memory files provide cross-session persistence that the current architecture lacks entirely.
+**Trade-offs:** Rules files are text — no type safety, no structured validation. Acceptable because this is guidance content, not executable logic. When platform APIs change materially, a human updates the rules file.
 
-**Example structure:**
+**Do not:** Put this in the DB as a "platform knowledge document" — that adds query overhead for static content that changes rarely.
+
+### Pattern 2: Validator as Thin Haiku Agent
+
+**What:** The Validator Agent is a minimal `AgentConfig` using Haiku 4.5 with a narrow, deterministic task: receive a sequence as JSON, run checks, return a typed `ValidationResult`. It does not write to DB, does not call external APIs, and never saves anything. It is a pure function wrapped in an agent call for coherence checking that requires LLM reasoning (angle dedup, UK English, tone consistency).
+
+**When to use:** When deterministic regex checks (existing `copy-quality.ts`) are insufficient — specifically for semantic checks like "are all three steps using the same CTA angle?" that require understanding content.
+
+**Trade-offs:** A Haiku call adds ~2-3 seconds and ~$0.002 per campaign validation. Acceptable — validation happens once before save, not on every token. Running via API (not CLI skill) because it is a short, structured task that benefits from type-safe `generateObject()` with Zod schema.
+
+**Implementation note:** `validator.ts` uses `generateObject()` with a Zod output schema, not `generateText()`. This ensures structured output without JSON parsing fragility. The `runner.ts` execute path is bypassed — validator has no `AgentRun` audit record (it is a sub-call, not a top-level agent invocation).
+
+### Pattern 3: Self-Review Gate in System Prompt
+
+**What:** The writer system prompt adds an explicit mandatory self-review checklist that runs before the agent calls `validateSequence`. The checklist mirrors the `copy-quality.ts` checks in plain English. The agent reasons through each point.
+
+**When to use:** As a first-pass filter before the Validator Agent call. Catches obvious violations (em dashes, banned phrases, double-brace variables) without spending Haiku tokens.
+
+**Trade-offs:** Self-review is probabilistic — Claude may miss violations. This is why the Validator Agent runs after. The self-review reduces the number of violations the Validator sees, reducing the chance of a rewrite loop. It does not replace the Validator.
+
+**Updated writer-rules.md section:**
+
 ```markdown
-# nova-writer
+## Mandatory Self-Review (runs before calling validateSequence)
 
-You are the Outsignal Writer Agent...
+Before calling validateSequence, mentally run this checklist against ALL steps:
 
-## Tools (call via Bash)
+1. Word count: count every word in each email body. Must be under 70. Count again.
+2. Banned phrases: re-read rule 1 banned list. Scan body + subject for each phrase.
+3. Variables: every {variable} must be UPPERCASE single braces. Search for {{ or {lower}.
+4. Greetings: email step 1 must start with "Hi {FIRSTNAME}," or "Hello {FIRSTNAME},".
+5. CTAs: every CTA must be a question. No "Let me know", "Are you free", "Can I send".
+6. LinkedIn: zero spintax {option|option} patterns in any LinkedIn step.
+7. Em dashes: zero —, zero –, zero " - " separators.
 
-Get workspace intelligence:
-  npx tsx scripts/cli/workspace-get.ts {workspace-slug}
-
-Search knowledge base:
-  npx tsx scripts/cli/kb-search.ts "subject line best practices" --tags cold-email
-
-Read client memory:
-  npx tsx scripts/cli/memory-read.ts {workspace-slug} copy-wins
-
-Write to memory (append a copy win):
-  npx tsx scripts/cli/memory-write.ts {workspace-slug} copy-wins "Subject: {line} — {reply-rate}"
+If any check fails: fix it, then call validateSequence.
+If all checks pass: call validateSequence to confirm.
 ```
 
-### Pattern 2: Thin CLI Wrapper
+### Pattern 4: Channel-Aware List Building as Orchestrator Param
 
-**What:** A standalone `scripts/cli/*.ts` script that loads `.env`, imports an existing lib function, calls it with CLI args, prints JSON to stdout, and exits. Zero agent logic. Zero prompts. Pure data bridging.
+**What:** The orchestrator's `delegateToLeads` tool gains a `channelMode: "email" | "linkedin" | "hybrid"` param. This is passed into the Leads Agent's `buildDiscoveryPlan` and `checkPostSearchQuality` tools, which use it to set the right quality thresholds.
 
-**When to use:** To expose any existing TypeScript function to Claude Code Bash tool calls without rewriting the underlying logic.
+**When to use:** Any time a campaign has a defined channel before lead discovery starts. The orchestrator reads the channel from the Campaign entity and passes it through.
 
-**Trade-offs:** Each script must re-initialize Prisma client — small overhead (~300ms) per call. Acceptable for agent workflows which are measured in seconds.
+**Trade-offs:** Requires the campaign to exist before discovery runs (leads created for a campaign, not a generic workspace pool). This is already the intended workflow; this enforces it.
 
-**Example:**
-```typescript
-// scripts/cli/workspace-get.ts
-import { config } from "dotenv";
-config({ path: ".env" });
-config({ path: ".env.local" });
-
-import { getWorkspaceDetails } from "../../src/lib/workspaces";
-
-const slug = process.argv[2];
-if (!slug) { console.error("Usage: workspace-get.ts <slug>"); process.exit(1); }
-
-getWorkspaceDetails(slug)
-  .then(ws => { console.log(JSON.stringify(ws ?? { error: "not found" })); })
-  .catch(err => { console.error(JSON.stringify({ error: err.message })); process.exit(1); });
-```
-
-### Pattern 3: Flat-File Memory Namespace
-
-**What:** Per-workspace directory at `.claude/memory/{slug}/` containing markdown files. Each file covers one memory domain (copy-wins, feedback, profile). Claude Code reads them with the Read tool at skill startup and appends to them via `memory-write.ts`.
-
-**When to use:** For any intelligence that should persist across agent sessions and accumulate over time. Replaces the current "no memory" state where each agent run starts cold.
-
-**Trade-offs:** Files can grow unbounded. Need a pruning strategy (trim to last N entries, or summarize quarterly). Markdown is human-readable — admin can inspect and correct.
-
-**Memory file format:**
-```markdown
-# Copy Wins — Rise
-
-## 2026-03-15 | Campaign: Rise Q1 Static
-- Subject: "branded merch for your team" — 4.2% reply rate
-- Step 1 angle: cost anchor vs competitors → worked well
-- Step 3 (breakup): "worth a quick chat?" → highest CTR
-
-## 2026-03-01 | Campaign: Rise Launch
-- "we outfit X teams" social proof opener — 3.8% reply rate
-```
-
-### Pattern 4: Orchestrator Bridge
-
-**What:** The orchestrator's delegation tools (`delegateToResearch`, `delegateToWriter`, etc.) are modified to spawn Claude Code CLI skills instead of calling `runResearchAgent()` directly. The orchestrator passes context as flags or via stdin. Results come back as stdout text.
-
-**When to use:** This is the core migration pattern. The orchestrator gains a new code path without removing the existing one.
-
-**Trade-offs:** Subprocess spawning adds ~2-5 seconds latency per delegation. Acceptable because specialist agent runs already take 30-120 seconds. Error handling must capture non-zero exit codes and stderr.
-
-**Invocation pattern:**
-```typescript
-// In orchestrator.ts delegation tool execute():
-// New CLI path (feature-flagged):
-const result = await spawnCliAgent("nova-writer", {
-  workspace: workspaceSlug,
-  task: task,
-  args: ["--channel", channel ?? "email"],
-});
-// result.stdout = agent's text output
-// result.exitCode = 0 on success
-
-// Fallback path (existing, unchanged):
-const result = await runWriterAgent({ workspaceSlug, task, channel });
-```
-
----
-
-## Data Flow
-
-### Flow 1: Dashboard Chat → CLI Agent (Post-Migration)
-
-```
-User types in dashboard chat
-    ↓
-POST /api/chat → route.ts (streamText + orchestrator system prompt)
-    ↓
-Orchestrator decides to delegate to Writer
-    ↓
-delegateToWriter.execute() → spawnCliAgent("nova-writer", {...})
-    ↓
-Bash: claude --skill nova-writer --workspace rise --task "..."
-    ↓
-nova-writer.md skill loads → reads .claude/memory/rise/copy-wins.md
-    ↓
-Skill calls: npx tsx scripts/cli/workspace-get.ts rise
-    ↓
-workspace-get.ts → getWorkspaceDetails("rise") → stdout JSON
-    ↓
-Skill calls: npx tsx scripts/cli/kb-search.ts "subject line"
-    ↓
-Skill generates copy → calls memory-write.ts to log result
-    ↓
-Skill outputs campaign JSON to stdout
-    ↓
-spawnCliAgent resolves → orchestrator formats response
-    ↓
-streamText continues → UI receives token stream
-```
-
-### Flow 2: Memory Read/Write Cycle
-
-```
-Agent session starts
-    ↓
-Skill .md reads memory files (via Read tool or memory-read.ts)
-    ↓
-[profile.md, copy-wins.md, feedback.md loaded into context]
-    ↓
-Agent does work using accumulated knowledge
-    ↓
-Agent writes new learnings:
-  npx tsx scripts/cli/memory-write.ts rise copy-wins "..."
-    ↓
-memory-write.ts appends dated entry to .claude/memory/rise/copy-wins.md
-    ↓
-Next session starts with updated context
-```
-
-### Flow 3: Dashboard Chat Bridge (Thin Path)
-
-```
-User message arrives at /api/chat
-    ↓
-route.ts sanitizes input (existing sanitizePromptInput — unchanged)
-    ↓
-streamText() with orchestratorConfig system prompt
-    ↓
-Orchestrator: simple query? → use dashboardTools directly (no spawn)
-Orchestrator: complex task? → delegation tool → spawnCliAgent
-    ↓
-Result streams back to UI
-    ↓
-No change to frontend — UI is already thin
-```
-
-### Flow 4: Nova CLI Skill → Orchestrator (Unchanged)
-
-```
-User in Claude Code terminal: /nova "write copy for rise"
-    ↓
-nova.md skill executes
-    ↓
-Bash: cd /Users/jjay/programs/outsignal-agents && npx tsx -e "..."
-    ↓
-Inline script imports orchestratorConfig, orchestratorTools
-    ↓
-generateText() called with orchestrator config
-    ↓
-Orchestrator delegates → spawnCliAgent (new) or direct runAgent (fallback)
-    ↓
-Result printed to terminal
-```
-
----
-
-## Component Responsibilities
-
-| Component | Responsibility | Status |
-|-----------|----------------|--------|
-| `nova.md` | Entry point skill — orchestrator invocation via CLI | EXISTING, keep as-is |
-| `nova-writer.md` | Writer specialist skill — prompts + tool call instructions | NEW |
-| `nova-research.md` | Research specialist skill | NEW |
-| `nova-leads.md` | Leads specialist skill | NEW |
-| `nova-campaign.md` | Campaign specialist skill | NEW |
-| `scripts/cli/*.ts` | Thin data wrappers exposing lib functions to Bash | NEW |
-| `.claude/memory/{slug}/` | Per-client persistent memory files | NEW |
-| `src/lib/agents/cli-spawn.ts` | `spawnCliAgent()` utility for orchestrator | NEW |
-| `orchestrator.ts` | Central coordinator — gains `spawnCliAgent()` path | MODIFIED |
-| `runner.ts` | Existing execution engine — kept as fallback | UNCHANGED |
-| `research.ts` / `writer.ts` / `leads.ts` / `campaign.ts` | Existing specialist agents — fallback | UNCHANGED |
-| `/api/chat/route.ts` | Dashboard chat bridge | UNCHANGED |
-
----
-
-## Integration Points
-
-### Skill ↔ CLI Wrapper Boundary
-
-The boundary between skill (`.md` prompt file) and tool code (CLI script) is the stdout/stdin interface:
-
-- Skills call wrappers via Bash: `npx tsx scripts/cli/workspace-get.ts rise`
-- Wrappers output JSON to stdout, errors to stderr, exit code 0/1
-- Skills parse stdout as JSON for structured data, or treat as text for KB results
-- Skills never import TypeScript directly — they are text files
-
-This boundary is critical. Tools should never contain prompt logic. Skills should never contain database logic.
-
-### Orchestrator ↔ CLI Skill Boundary
-
-The orchestrator's `delegateToX` tools currently call TypeScript functions directly. The migration adds a parallel path controlled by an env var:
-
-```
-// Current path (keep as fallback, activated when USE_CLI_AGENTS != "true"):
-execute: async ({ task }) => await runWriterAgent({ task })
-
-// New CLI path (activated when USE_CLI_AGENTS="true"):
-execute: async ({ task }) => await spawnCliAgent("nova-writer", { task })
-```
-
-The `spawnCliAgent()` utility in `src/lib/agents/cli-spawn.ts` handles: subprocess creation, timeout (300 seconds), stdout buffering, exit code checking, and error formatting.
-
-### Memory ↔ Agent Boundary
-
-Memory files are read at skill startup and written at skill completion:
-
-- **Read** — Claude Code's built-in Read tool loads markdown files into context. Skills instruct the agent to read specific files at startup.
-- **Write** — `memory-write.ts` script appends entries. The script creates the directory/file if it does not exist.
-- **Schema** — No enforced schema. Files are markdown with dated sections. This keeps them human-editable and correctable by admin.
-
-### Dashboard Chat ↔ Orchestrator Boundary (unchanged)
-
-The `/api/chat` route calls `streamText()` with `orchestratorTools`. After migration, `orchestratorTools` contains the same delegation tools — but their `execute()` functions now spawn CLI skills when `USE_CLI_AGENTS=true`. The dashboard chat sees no change.
-
-### External Service Boundaries
-
-| Service | Accessed By | How |
-|---------|-------------|-----|
-| PostgreSQL (Neon) | CLI wrappers via Prisma | `scripts/cli/*.ts` load `.env` |
-| EmailBison API | `scripts/cli/emailbison.ts` | `getClientForWorkspace()` |
-| Firecrawl | `scripts/cli/research-crawl.ts` | `crawlWebsite()` |
-| Anthropic API | `runner.ts` fallback only | `generateText()` via AI SDK |
-| Knowledge Base | `scripts/cli/kb-search.ts` | `searchKnowledge()` |
-| Memory files | CLI skill via Read tool + `memory-write.ts` | Flat file system |
+**Implementation note:** The `channelMode` param is optional for backward compatibility. When absent, quality checks run with relaxed thresholds (warning only, not blocking).
 
 ---
 
 ## Build Order (Dependency-Aware)
 
-This sequence is required because each phase unblocks the next:
+Dependencies are strict: each phase must be complete before the next begins.
 
-### Phase 1: CLI Wrapper Scripts (no dependencies)
+### Phase 1: Extend copy-quality.ts (no dependencies)
 
-Build `scripts/cli/` scripts first. They depend only on existing `src/lib/` code which is unchanged. Can be tested immediately with `npx tsx scripts/cli/workspace-get.ts rise`. Each script is independently testable.
+Add new check functions to the existing module. All are pure TypeScript with zero external dependencies:
 
-Scripts to build in this order:
-1. `memory-read.ts` + `memory-write.ts` — filesystem only, no Prisma
-2. `workspace-get.ts` + `kb-search.ts` — read-only Prisma queries
-3. `leads-search.ts` — read-only leads operations
-4. `research-crawl.ts` — Firecrawl integration
-5. `campaign-crud.ts` + `leads-export.ts` — write operations (test carefully)
-6. `emailbison.ts` — external API calls
+1. `checkWordCount(body: string): { count: number, pass: boolean }` — split on whitespace, count
+2. `checkGreeting(body: string, stepPosition: number, channel: string): boolean` — regex for "Hi {FIRSTNAME}," at step 1
+3. `checkCTAFormat(body: string): { hasBannedCTA: boolean, found: string[] }` — regex for "Let me know", "Are you free", "Can I send"
+4. `checkLinkedInSpintax(body: string, channel: string): boolean` — detect {option|option} in LinkedIn messages
+5. `checkSpintaxGrammar(body: string): { valid: boolean, suspects: string[] }` — extract all {a|b|c} patterns, flag ones where options have different word counts (rough grammar proxy)
+6. Update `CopyQualityResult` type to include new check results
+7. Update `checkCopyQuality()` to call all new checks
 
-### Phase 2: Memory File Initialization (depends on: Phase 1)
+This phase has zero risk — adding to a pure utility module, no agent code touched.
 
-Create `.claude/memory/` directory structure. Populate initial `profile.md` files for each workspace from existing Workspace DB records. Use a one-time init script that calls `workspace-get.ts` for each slug and formats the output as markdown.
+### Phase 2: Platform expertise in rules files (no dependencies)
 
-Per workspace: `profile.md` (from `getWorkspaceDetails`), empty `copy-wins.md`, `campaign-history.md`, `feedback.md`, `icp-learnings.md`, `approval-patterns.md`.
+Update `.claude/rules/leads-rules.md` with a new "Platform Expertise" section documenting per-source optimal filters, cost-per-lead, and quality expectations. Update `.claude/rules/writer-rules.md` with the mandatory self-review checklist.
 
-### Phase 3: Specialist CLI Skills (depends on: Phases 1 + 2)
+This is a text edit. Zero code changes. Affects both the API agent (via `loadRules()`) and the CLI skill (via `!` file include in skill files).
 
-Write the four `nova-*.md` skill definition files. Each skill references specific CLI wrapper scripts from Phase 1 and memory files from Phase 2. Writer skill is highest priority (most used). Research skill second.
+### Phase 3: Validator Agent (depends on Phase 1)
 
-Skill files to write:
-1. `nova-writer.md` — references `workspace-get`, `kb-search`, `memory-read/write`
-2. `nova-research.md` — references `research-crawl`, `workspace-get`, `memory-write`
-3. `nova-leads.md` — references `leads-search`, `leads-export`, `workspace-get`
-4. `nova-campaign.md` — references `campaign-crud`, `workspace-get`
+Create `src/lib/agents/validator.ts`:
 
-### Phase 4: CLI Spawn Utility (depends on: Phase 3 for interface design)
+- `AgentConfig` using `claude-haiku-4-5-20251001`, `maxSteps: 4`
+- Uses `generateObject()` with Zod schema (not `generateText()` + runner.ts)
+- Zod output schema: `ValidationResult { pass, structuralViolations, coherenceIssues, warningsOnly, suggestedFixes }`
+- System prompt: focused narrowly on QA review, imports extended `checkExtendedCopyQuality()` logic from Phase 1 for the structural checks
+- Export: `validateSequence(steps, channel, strategy, workspaceSlug): Promise<ValidationResult>`
 
-Write `src/lib/agents/cli-spawn.ts` — the `spawnCliAgent()` function that the orchestrator uses. This needs the skill names and expected output format defined in Phase 3 before the API can be designed correctly.
+No changes to runner.ts, orchestrator.ts, or any other file in this phase.
 
-### Phase 5: Orchestrator Migration (depends on: Phases 1-4)
+### Phase 4: Writer agent integration (depends on Phases 2 + 3)
 
-Modify `orchestrator.ts` delegation tools to call `spawnCliAgent()` when `USE_CLI_AGENTS=true`. Keep existing `runResearchAgent()` etc. calls as fallback. Test both paths. Validate end-to-end through dashboard chat.
+Modify `src/lib/agents/writer.ts`:
 
-### Phase 6: Dashboard Chat Validation (depends on: Phase 5)
+1. Add `loadCampaignSequence` tool — loads all existing steps from a Campaign as a flat array (for dedup context). Extends existing `getCampaignContext` tool.
+2. Add `validateSequence` tool — calls `validateSequence()` from Phase 3. Returns `ValidationResult` to agent.
+3. Update `WRITER_SYSTEM_PROMPT`: add self-review checklist section from Phase 2, add instruction to call `validateSequence` before `saveCampaignSequence`, add campaign-holistic awareness instruction ("load all steps before generating any step").
+4. Add rewrite loop logic in system prompt: "If validateSequence returns violations, fix only the flagged steps and call validateSequence again. Maximum 2 validation loops. If still failing, save with violations recorded in reviewNotes."
 
-Verify `/api/chat` still works end-to-end. No code changes expected — the orchestrator change is transparent to the chat route. Test multi-turn conversations, delegation round-trips, and memory accumulation across sessions.
+No changes to `runner.ts`, `types.ts`, or any CLI scripts.
+
+### Phase 5: Leads agent integration (depends on Phase 2)
+
+Modify `src/lib/agents/leads.ts`:
+
+1. Add `validateDiscoveryInputs` tool — pure TypeScript, no API calls. Validates: domain format, title sanity, ICP filter structure. Returns blockers vs warnings.
+2. Add `checkPostSearchQuality` tool — queries staged/promoted results from DB, computes quality metrics, applies channel-specific thresholds.
+3. Update leads system prompt to reference platform expertise from Phase 2, mandate validateDiscoveryInputs call before any search tool, mandate checkPostSearchQuality call after discovery-promote.
+
+### Phase 6: Campaign pipeline validation (depends on Phases 4 + 5)
+
+1. Add `channelMode` param to `delegateToLeads` in `orchestrator.ts`
+2. Add company name normalization gate — new check in `validateDiscoveryInputs` for {COMPANYNAME} usage patterns
+3. Update `approve-content` portal route to hard-block on violations (upgrade from warn-only)
+4. Add list overlap detection — new tool in `campaign.ts` or utility function that checks if a TargetList shares >10% of people with an active campaign for the same workspace
+
+### Phase 7: End-to-end validation (depends on all previous phases)
+
+1. Run a full pipeline on a test workspace: discovery → quality gate → list build → write copy → validate → save
+2. Verify AgentRun audit logs capture validation results
+3. Confirm portal hard-block works on a seeded campaign with violations
+4. Verify rewrite loop triggers and resolves on a campaign with deliberate violations
 
 ---
 
-## Anti-Patterns
+## Integration Points
 
-### Anti-Pattern 1: Logic in Skill Files
+### Validator Agent Integration Boundary
 
-**What people do:** Put TypeScript-equivalent logic in skill `.md` files (conditionals, data transformations, threshold checks).
+The Validator Agent is called as a TypeScript function (`validateSequence()`), not via the runner.ts pattern. This is intentional:
 
-**Why it's wrong:** Skill files are prompts. Prompts are unreliable for deterministic logic. If a workspace has a `monthlyCampaignAllowance`, checking it should happen in a CLI wrapper that returns a boolean, not in a prompt that might hallucinate the check.
+- It does not need an `AgentRun` audit record — it is a sub-call within the writer's run
+- It uses `generateObject()` for structured output, not `generateText()` + JSON parsing
+- It has no tools (no DB calls, no API calls) — it is stateless
+- Its output feeds directly back into the writer's tool result, which IS logged in the writer's `AgentRun.steps`
 
-**Do this instead:** Put any data logic in CLI wrapper scripts that output JSON. Skills consume the JSON and make decisions based on clear data.
+```typescript
+// How validator.ts exports:
+export async function validateSequence(
+  steps: (EmailStep | LinkedInStep)[],
+  channel: "email" | "linkedin" | "email_linkedin",
+  strategy: string,
+  workspaceSlug: string
+): Promise<ValidationResult>
 
-### Anti-Pattern 2: Bypassing CLI Wrappers
+// How writer.ts calls it:
+const validateSequence = tool({
+  description: "Validate the complete sequence before saving...",
+  inputSchema: z.object({ steps: ..., channel: ..., strategy: ... }),
+  execute: async ({ steps, channel, strategy }) => {
+    return validateSequence(steps, channel, strategy, workspaceSlug);
+  }
+});
+```
 
-**What people do:** Skills use `node -e "..."` inline scripts to access the database, because it seems faster than writing a wrapper.
+### copy-quality.ts Extension Boundary
 
-**Why it's wrong:** This duplicates logic that already exists in `src/lib/`. It creates two code paths for the same operation, and the inline version won't have error handling, type safety, or Prisma connection cleanup.
+The existing `BANNED_PATTERNS`, `checkCopyQuality()`, and `checkSequenceQuality()` are kept exactly as-is. New functions are additive exports:
 
-**Do this instead:** Always route through `scripts/cli/` wrappers. If a wrapper does not exist yet, create one. One hour to write the wrapper saves days debugging divergent behavior.
+- Existing callers (`saveDraft`, `saveCampaignSequence`, portal `approve-content`) continue working unchanged
+- Validator Agent imports the new extended functions
+- `approve-content` route upgrade (Phase 6) imports the same extended functions
 
-### Anti-Pattern 3: Growing Memory Files Without Pruning
+### Rules File Boundary
 
-**What people do:** Append to memory files indefinitely, reasoning that "more context is better."
+Platform expertise lives in `.claude/rules/` files. This means:
 
-**Why it's wrong:** Claude Code context windows are finite. A `copy-wins.md` with 2 years of entries will push out current campaign context. Agent performance degrades as memory files bloat.
+- API agents load it via `loadRules("leads-rules.md")` at agent config construction time
+- CLI skills load it via `!` file include in the skill `.md` files (already how they work)
+- A single source of truth — no divergence between API path and CLI skill path
+- Human-editable without a code deploy — admin can update filter recommendations as platforms evolve
 
-**Do this instead:** Design memory files with a rolling window. `copy-wins.md` keeps last 10 entries. `feedback.md` keeps last 10. `campaign-history.md` keeps a 1-line summary per campaign. Create a quarterly memory compaction script that summarizes and prunes.
+### Platform Expertise vs KB Documents
 
-### Anti-Pattern 4: One Giant Nova Skill
+Platform expertise belongs in **rules files**, not the knowledge base. The distinction:
 
-**What people do:** Put all specialist agent logic in a single `nova.md` skill file, reasoning that one context window is simpler.
+- KB documents: campaign strategy, copy frameworks, industry insights — things agents search contextually
+- Rules files: behavioral constraints, tool usage instructions, platform configuration — things agents load unconditionally at startup
 
-**Why it's wrong:** The existing architecture deliberately separates concerns. A monolithic skill file loses the ability to run specialists in parallel and creates a 10,000+ token prompt that degrades reasoning quality.
+Putting Prospeo filter guidance in a KB document would require a search step that might miss it. Loading it from `leads-rules.md` guarantees it is always in context.
 
-**Do this instead:** Keep the orchestrator + specialist pattern. `nova.md` stays as the orchestrator entry point. Each specialist gets its own skill file. The orchestrator spawns the right specialist for each task.
+### Portal Approval Hard-Block Boundary
 
-### Anti-Pattern 5: Deleting Existing Agent Code
+The `approve-content` route upgrade (Phase 6) changes behavior: if `checkSequenceQuality()` returns violations, the route returns `HTTP 422` instead of `HTTP 200 + warnings`. The frontend must handle this:
 
-**What people do:** Remove `runner.ts`, `writer.ts`, `leads.ts` etc. once CLI skills are working.
+- If the portal approval button currently ignores `copyQualityWarnings` in the response, the frontend needs a minor update to show an error state on 422
+- This is a deliberate product decision: clients should not be able to approve copy with banned patterns. The quality gate is not optional at approval time.
 
-**Why it's wrong:** The existing TypeScript agents are the fallback path for the dashboard chat and for programmatic use (signal campaigns, cron jobs). They also serve as the ground truth for what tools each specialist should have.
+### AgentRun Audit Trail
 
-**Do this instead:** Keep all existing agent code. Add the CLI skill path as an additive feature controlled by `USE_CLI_AGENTS`. Mark old scripts as deprecated only after 30 days of stable CLI agent operation.
+Validation results are captured in the writer's existing `AgentRun` record:
+
+- `AgentRun.steps` JSON array will include the `validateSequence` tool call and its `ValidationResult`
+- No new DB table needed — existing audit infrastructure captures it
+- `reviewNotes` field in `WriterOutput` should include a summary of validation status
 
 ---
 
@@ -564,27 +554,72 @@ Verify `/api/chat` still works end-to-end. No code changes expected — the orch
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| Current (8 clients) | Single `.claude/memory/` directory, flat files, manual pruning sufficient |
-| 20-50 clients | Add automated memory compaction script (quarterly), consider memory file size limits |
-| 50+ clients | DB-backed memory (migrate markdown files to `ClientMemory` Prisma model), keep CLI interface identical |
+| Current (10 workspaces, ~5 campaigns/week) | Single Validator Agent call per campaign write. Haiku cost ~$0.002/campaign. Negligible. |
+| 50 workspaces, 20 campaigns/week | Same architecture. Validator is stateless — scales horizontally. |
+| Signal campaigns at scale (100+ auto-generated) | Validator call per sequence. At $0.002 each, 100 = $0.20. Still negligible. May want to run structural checks only (no Haiku) for auto-generated signal copy to reduce latency. |
 
 ### Scaling Priorities
 
-1. **First bottleneck: Memory file bloat** — At 8 clients with weekly campaigns, files stay manageable. At 50+ clients with daily operations, file-per-client will need compaction automation.
+1. **Rewrite loop depth** — Max 2 validation loops prevents infinite recursion. If a workspace consistently generates violations after 2 loops, this is a rules file problem (too strict) or a writer prompt problem (not understanding the rules), not a scaling problem.
 
-2. **Second bottleneck: CLI spawn latency** — Each `claude --skill` invocation adds ~2-5 seconds startup. For parallel operations across multiple workspaces, consider a process pool. Not a problem at current scale.
+2. **Validator latency** — Haiku 4.5 at ~500 input tokens + 200 output tokens takes ~1-2 seconds. Acceptable in a workflow where the writer already takes 20-60 seconds. If latency becomes a concern, the structural checks (deterministic) can be separated from the coherence check (LLM) and the coherence check made optional for fast iteration modes.
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Validator Inside save-sequence.ts
+
+**What people do:** Move the validator call into the CLI wrapper (`save-sequence.ts`) so it "always runs."
+
+**Why it's wrong:** CLI wrappers are thin data bridges — no agent logic, no LLM calls. Putting a Haiku call inside a CLI script violates the tool boundary and makes it impossible to test the writer agent independently of the validator. It also makes the rewrite loop impossible — the CLI script would just return an error with no way to loop back into the writer.
+
+**Do this instead:** Validator call lives in `writer.ts` as a tool. The writer controls the loop. CLI script saves the final approved output.
+
+### Anti-Pattern 2: Separate Knowledge Base Documents for Platform Expertise
+
+**What people do:** Create a KB document titled "Prospeo Best Practices" and have the leads agent search for it.
+
+**Why it's wrong:** KB search is probabilistic — the agent might not search for it, might search with a bad query, or might get other results back. Platform expertise is mandatory pre-search context, not optional reference material.
+
+**Do this instead:** Put it in `leads-rules.md`. It loads unconditionally every time the leads agent runs.
+
+### Anti-Pattern 3: Blocking the Validator Agent with Tool Calls
+
+**What people do:** Give the Validator Agent tools (KB search, workspace lookup) so it can "make smarter decisions."
+
+**Why it's wrong:** A validator that can call external APIs is a second writer. It introduces latency, unpredictability, and scope creep. The validator's job is narrow: check the copy it was given against known rules. It needs no external context beyond what the writer passes in.
+
+**Do this instead:** Pass any needed context from the writer (channel, strategy, workspace vertical) as input params. Validator is stateless and tool-free.
+
+### Anti-Pattern 4: Hard-Blocking Saves on All Violations
+
+**What people do:** Return `quality_violation` from `saveCampaignSequence` for every violation type — including warnings that are judgement calls (UK English, tone consistency).
+
+**Why it's wrong:** The writer gets stuck in a rewrite loop on subjective issues. Admin frustration increases. Copy quality improves on the clear violations (banned phrases, word count) but degrades on the subjective ones as the writer tries to satisfy an overly strict gate.
+
+**Do this instead:** Two tiers. Structural violations (banned phrases, word count, variable syntax, LinkedIn spintax) are blockers. Coherence issues (angle dedup, tone) are warnings that appear in `reviewNotes` but do not block the save.
+
+### Anti-Pattern 5: Duplicating Quality Rules in Three Places
+
+**What people do:** Copy-paste the banned phrases list into `writer-rules.md`, `validator.ts` system prompt, and `copy-quality.ts` BANNED_PATTERNS array.
+
+**Why it's wrong:** Lists diverge. The `.md` files get updated but `copy-quality.ts` does not. Violations pass the LLM checks but fail the TypeScript check, or vice versa.
+
+**Do this instead:** Single source of truth is `copy-quality.ts`. The `writer-rules.md` describes the rules in plain English for agent comprehension. The validator's system prompt says "run the extended check functions" rather than listing patterns. The TypeScript implementation is the canonical list.
 
 ---
 
 ## Sources
 
-- Direct code inspection: `src/lib/agents/orchestrator.ts` (683 LOC), `runner.ts`, `types.ts`, `writer.ts`, `leads.ts`, `shared-tools.ts`, `utils.ts`
-- Direct code inspection: `src/app/api/chat/route.ts`, `scripts/chat.ts`, `scripts/generate-copy.ts`
-- Direct code inspection: `.claude/commands/nova.md` (existing skill definition)
-- Direct inspection: global `~/.claude/skills/nextjs16-skills/SKILL.MD` (skill format reference)
-- Direct inspection: global `~/.claude/skills/ui-ux-pro-max/SKILL.md` (skill with scripts/data subdirs)
-- Project context: `.planning/PROJECT.md` (v7.0 milestone definition)
+- Direct code inspection: `src/lib/agents/writer.ts`, `leads.ts`, `orchestrator.ts`, `runner.ts`, `types.ts`, `cli-spawn.ts`
+- Direct code inspection: `src/lib/copy-quality.ts`
+- Direct code inspection: `scripts/cli/save-draft.ts`, `save-sequence.ts`
+- Direct code inspection: `src/app/api/portal/campaigns/[id]/approve-content/route.ts`
+- Direct inspection: `.claude/rules/writer-rules.md`, `leads-rules.md`, `campaign-rules.md`
+- Project context: `.planning/PROJECT.md` — v8.0 milestone Active requirements
+- Architecture decision record: existing `ARCHITECTURE.md` for v7.0 baseline
 
 ---
-*Architecture research for: Nova CLI Agent Teams — v7.0 Outsignal milestone*
-*Researched: 2026-03-23*
+*Architecture research for: v8.0 Agent Quality Overhaul — Outsignal agents*
+*Researched: 2026-03-30*

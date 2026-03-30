@@ -1,18 +1,23 @@
 # Feature Research
 
-**Domain:** CLI-based agent teams with persistent memory (Nova v7.0)
-**Researched:** 2026-03-23
-**Confidence:** HIGH (official Claude Code docs verified)
+**Domain:** AI Agent Quality Systems — Cold Outreach Lead Engine (v8.0 Overhaul)
+**Researched:** 2026-03-30
+**Confidence:** HIGH (existing codebase well-understood; patterns from verified sources; benchmarks from industry data)
 
 ---
 
-## Context
+## Context: What Already Exists
 
-This is a **subsequent milestone** on an existing codebase. The research question is what is NEW:
-converting the existing API-based agent system to Claude Code CLI skills with client-specific
-persistent memory. Existing features (orchestrator, 4 specialist agents, 30+ tool functions,
-dashboard chat, AgentRun audit, quality gates, copy strategies, discovery, enrichment) are
-**already built and in production**. This research covers only what v7.0 adds.
+This is a v8.0 overhaul of an existing system. The features below are net-new additions to an established agent architecture:
+
+- **Writer agent** — 4 copy strategies, 13 banned patterns in copy-quality.ts, sequence generation
+- **Leads agent** — Discovery plan → approve → execute flow, 8+ discovery sources, staging table promotion
+- **Campaign agent** — Campaign lifecycle, target list linking, publish for approval flow
+- **13 banned patterns** already enforced in `copy-quality.ts` (runtime check, not agent-side)
+- **Per-workspace memory** — `.nova/memory/{slug}/` flat files (profile, campaigns, feedback, learnings)
+- **CLI wrapper scripts** — 55 scripts in `scripts/cli/` giving agents DB/API access
+
+The overhaul adds quality **gates** to the existing pipeline — not new pipelines.
 
 ---
 
@@ -20,114 +25,133 @@ dashboard chat, AgentRun audit, quality gates, copy strategies, discovery, enric
 
 ### Table Stakes (Users Expect These)
 
-Features the CLI agent system must have for it to be considered functional. Without these it is
-not a real skill system — it is just a renamed API call.
+Features the admin already assumes exist based on the v7.0 CLI agent architecture. Missing these means the overhaul doesn't deliver on its promise.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| SKILL.md definition per agent | The fundamental unit of a Claude Code skill. Without it you have no skill system. | LOW | One SKILL.md per agent (orchestrator, research, writer, leads, campaign). Frontmatter: name, description, disable-model-invocation (for user-triggered flows), allowed-tools |
-| Skill reads workspace context on invoke | CLI agents need to know which client they are operating for before doing any work | LOW | Pass workspaceSlug as `$ARGUMENTS[0]` or embed in invocation prompt. Agent reads workspace CLAUDE.md or client memory file first |
-| Bash wrapper scripts for existing tool functions | Existing TypeScript tool functions (DB queries, EmailBison API, discovery adapters, KB search) must be callable from CLI agents via Bash tool | MEDIUM | Thin node scripts in `scripts/agents/`. Each script: read args from stdin or argv, call existing lib function via dynamic require, return JSON stdout. Agent calls via `!` injection or Bash tool |
-| MEMORY.md file per workspace | Standard Claude Code auto-memory pattern. First 200 lines loaded every session. Client-specific context persists across runs | LOW | One MEMORY.md per workspace slug under `.claude/memory/[slug]/`. Claude reads/writes during sessions |
-| Memory read at skill invocation start | Agent must load client context before acting. Without this, every invocation is stateless | LOW | Skill frontmatter `!` injection: `!cat .claude/memory/[slug]/MEMORY.md` or agent reads via Bash tool at start of execution |
-| Dashboard-to-CLI bridge (API route to CLI exec) | Existing dashboard chat must still work. Users expect no regression in the chat interface | MEDIUM | Next.js API route executes `claude --print -p "[prompt]"` as child process via Node `exec`. Returns streamed or buffered response. Replaces direct `runAgent()` Anthropic SDK call |
-| Fallback preserved (existing API agents) | Production system must not break if CLI invocation fails | LOW | Existing `runAgent()` / `generateText()` code stays. CLI bridge catches exec failures and falls back to API path. Feature flag controls routing |
+| Writer mandatory self-review before save | Writer currently generates and saves without structured self-check — violations only caught post-save at runtime | MEDIUM | In-prompt review checklist covering all 12 quality rules from writer-rules.md before `save-draft.js` runs |
+| Automatic rewrite loop on violations | If writer catches a violation in self-review, it must fix it without human intervention | MEDIUM | Existing runner.ts supports multi-step; add a convention: generate → check → rewrite loop, max 3 iterations, escalate if still failing |
+| Post-search data quality report | After discovery executes, admin needs to know: how many have valid emails, how many have LinkedIn URLs, how many passed ICP filter | LOW | Already have per-source breakdown; extend `discovery-promote.js` output to include field-coverage stats |
+| Channel-aware enrichment routing | LinkedIn-only campaigns must not waste credits on email verification; email campaigns must require it | LOW | Add `channel` param to leads agent enrichment path; skip email API calls if channel=linkedin |
+| List overlap detection before campaign creation | Admin needs to know if a list being used in a new campaign already exists in another active campaign | LOW | DB query on PersonWorkspace junction + Campaign.targetListId; surface as warning, not blocker |
+| Company name normalisation gate | {COMPANYNAME} variable is the most common failure mode in copy; a gate before save is expected | LOW | Extend copy-quality.ts pattern check; also add writer rule to call `workspace-intelligence.js` normalizationPrompt before inserting company names |
+| Cost estimate before paid API calls | Admin expects to see "this will cost ~$X and use Y credits" before any paid discovery runs | LOW | Already partially in discovery plan; formalise as a required field in plan output |
+| Credit spend report after discovery | Total cost per discovery run, broken down by source, should be logged to the campaign/run record | LOW | `PROVIDER_COSTS` already exists in `src/lib/enrichment/costs.ts`; extend to sum per discovery run |
 
 ### Differentiators (Competitive Advantage)
 
-Features that make this more than a simple port — the actual value of v7.0.
+Features that go beyond what any competitor platform offers today. These are the reason v8.0 exists.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Client-specific memory namespacing | Each workspace accumulates its own tone profile, copy wins, ICP learnings, campaign history, feedback patterns — independent of other clients | MEDIUM | Directory per workspace: `.claude/memory/[slug]/`. Separate topic files: `tone.md`, `copy-wins.md`, `icp.md`, `campaigns.md`, `feedback.md`. MEMORY.md as index. Auto-memory builds this over time, manual seeding bootstraps it |
-| Memory accumulation from real usage | Writer agent auto-writes to `copy-wins.md` when a campaign performs above benchmark. Research agent updates `icp.md` when new patterns found. Campaign agent logs approval patterns | MEDIUM | Agents instructed in SKILL.md to write structured entries to memory files when they complete work. Uses Claude Code built-in Write/Edit tools. Standard auto-memory pattern from official docs |
-| Copy wins feedback loop | When reply rate exceeds threshold, agent reads existing copy, extracts what worked, and writes a structured entry to `copy-wins.md`. Next writer invocation loads this as context | HIGH | Requires: campaign performance query tool + threshold check + Claude analysis + write to memory. Trigger: campaign agent or scheduled check. High value: grounded in real performance data not training assumptions |
-| Approval pattern memory | Writer agent records which copy strategies the client approved vs rejected. Shapes future generation toward patterns that get approved | MEDIUM | Structured log in `feedback.md`: date, strategy, element, outcome (approved or rejected), note. Writer skill reads last 30 entries as context. Reduces revision cycles |
-| Cross-client learning namespace | A separate global memory file stores cross-client insights (e.g. "one-liner CTAs outperform PVP for recruitment verticals"). Shared across all agents | MEDIUM | Separate from per-client memory. Agents instructed to read global insights before per-client context. Written by admin explicitly or by orchestrator after pattern detection |
-| Zero API cost for primary agent operations | Moves primary orchestration from Anthropic API (paid) to Claude Code Max Plan (covered). Signal campaign Haiku calls remain as the only paid path | LOW | This is the architecture goal, not an implementation feature. CLI exec uses Max Plan credits not API credits. Fallback to API only on CLI failure |
+| LLM-as-Judge validator agent | Separate Haiku-based agent that reviews writer output against all quality rules before save — catches semantic violations (filler spintax, weak CTAs, generic copy) that regex cannot catch | HIGH | Separate agent invocation in runner; writer generates, validator scores 0-100 with explicit pass/fail per rule, writer rewrites if score < 85. Use Haiku for cost efficiency. Requires own `.claude/rules/validator-rules.md` |
+| Campaign-holistic copy awareness | Writer sees ALL existing steps in the campaign before generating new ones — prevents angle repetition, ensures natural follow-up progression, catches duplicate CTAs | MEDIUM | Pass full campaign context (all existing sequences) in writer system prompt via `campaign-context.js` output; writer must explicitly reference prior angles before writing new ones |
+| Expert-level platform recommendations | Leads agent recommends specific platforms with reasoning ("use Prospeo here because they support SIC codes for your manufacturing ICP; skip Apollo for this niche as coverage is weak") rather than always defaulting to all three | HIGH | Add `platform-expertise.md` knowledge file to leads agent context; encode platform-specific capabilities, known strengths/weaknesses per ICP type, verified vs unverified handling |
+| Cross-campaign CTA and angle dedup | Writer checks existing campaigns for the same ICP before writing — if another campaign already uses the "scaling pain" angle and "worth a chat?" CTA, it picks a different angle automatically | HIGH | New CLI script `existing-campaign-copy.js --slug {slug} --icp {description}` returns angles/CTAs used in recent campaigns for the workspace; writer must treat these as taken |
+| Filler spintax auto-detection and removal | Systematic detection of spintax variants that are semantically interchangeable — the most violated rule in the current system; regex cannot catch this | MEDIUM | Add LLM-based spintax evaluation to the validator: for each `{A|B}` pair, evaluate "does swapping A for B change the meaning?" — if no, it is filler and must be rewritten |
+| Pre-search input validation | Before executing paid API calls, validate filters for internal consistency: company domain searches on Apollo do not use keyword filters; Prospeo does not support certain filter combos; catch these before credits are spent | MEDIUM | Add validation function `validateDiscoveryFilters(source, filters)` in discovery adapters; return warnings before execution |
+| Validator reviews specialist agent output before save | No generated output (leads, copy, campaign config) reaches the database without a structured validation step that produces explicit PASS/FAIL with reasons | HIGH | Implement the Executor → Validator pattern: each specialist agent produces output, a lightweight validator agent checks it against defined rules before the save tool call executes |
+| Sequential pipeline with explicit stage gates | Each stage (discover → promote → enrich → qualify → list → copy → validate → publish) is explicit; gate function evaluated before handoff; failures surface at the correct stage rather than cascading | HIGH | Formalise as a pipeline state machine — add `PipelineStage` enum and gate functions in `src/lib/pipeline/`; each stage produces a gated result with PASS/WARN/FAIL status |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem like natural extensions but would create serious problems.
-
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Custom agent runtime / process manager | "We should own the execution environment" | You already have one: Claude Code. Building a custom runtime duplicates auth, tool management, context windowing, model routing — all solved by Claude Code | Use Claude Code CLI directly. Deploy via Node child_process exec from Next.js |
-| Database-backed memory (PostgreSQL/Redis) | "Memory should be queryable" | Massive over-engineering. CLAUDE.md and MEMORY.md are the standard pattern. DB adds schema migration, connection management, query layer — all for what is essentially a config file | Flat markdown files per workspace. Claude reads them natively. No query layer needed |
-| Memory schema enforcement / validation | "We need typed memory fields" | Memory is prose-first. Enforcing a schema fights Claude's native reading pattern and makes memory brittle when the agent writes something slightly differently | Write memory in structured markdown sections. Agent follows section headings as loose schema. No runtime validation |
-| Real-time memory sync across sessions | "Multiple agents should share live memory" | Claude Code sessions are independent. "Shared live memory" requires a coordination layer that does not exist in the skill system | Each session reads from disk at start. Writes flush to disk immediately. Next session picks up writes. File locking on concurrent writes is the only edge case worth handling |
-| Separate memory cleanup daemon / cron | "Old memory should expire automatically" | Adds operational complexity for marginal value. 200-line MEMORY.md limit is self-managing. Agents prune naturally when near limit | Include pruning instructions in SKILL.md: "If MEMORY.md exceeds 150 lines, summarize oldest entries". Agent handles it inline |
-| Full agent conversation history in memory | "Store every interaction for context" | Violates the 200-line MEMORY.md limit. Bloats context. Claude has conversation context within a session — persisting all of it is redundant | Store only distilled learnings and patterns, not raw conversations. AgentRun table already covers audit/history needs |
-| Replace AgentRun audit trail | "CLI agents don't need DB logging" | AgentRun table is used by the dashboard for agent monitoring. Removing it breaks the admin UI | Keep AgentRun. CLI bridge writes to AgentRun via a lightweight POST to the existing `/api/agent-runs` endpoint after CLI exec returns |
+| Hard-block on validator failure | "Don't let bad copy through ever" | Creates a stuck pipeline if writer fails 3 rewrites — admin gets no output and no way to proceed; review fatigue if thresholds too tight | Soft-block with escalation: after 3 rewrites, save as DRAFT with violations flagged, notify admin to review manually. Never silently discard work |
+| Fully autonomous validator-to-deployment | "Agent should deploy without human review" | Removes the dual-approval gate that is a core product promise; clients expect to review before deployment | Keep validator as a pre-save gate only; client approval gate stays mandatory downstream |
+| Per-lead approve/reject in validator | "Let me review each flagged lead" | Already out of scope (PROJECT.md); binary list-level approval is intentional to keep portal UX clean | List-level threshold (e.g., reject list if <60% verified emails) is the right lever |
+| Expand BANNED_PATTERNS regex to 50+ patterns | "More patterns = better quality" | Pattern bloat causes false positives on legitimate copy; regex cannot catch context — "no worries" in a specific reassurance context may be appropriate | Keep regex for unambiguous cases; use LLM judge for nuanced semantic violations |
+| Real-time copy quality score during editing | "Show quality score as I review" | This is an operations tool, not a CMS; the admin reviews agent output, not edits it inline | Quality gates are pre-save; admin reviews results, not scores |
+| Automatic A/B variant generation on every campaign | "Always give me two options" | Writer currently generates one angle per call by design; automatic double-generation doubles cost and creates decision paralysis | Keep explicit: admin requests variant with "write another angle" |
+| Global discovery filters applied to all workspaces | "Set ICP filters once, use everywhere" | Each workspace has a distinct ICP; global filters silently produce wrong leads for some clients | Per-workspace discovery defaults stored in workspace profile; no global filter inheritance |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[SKILL.md definitions]
-    └──requires──> [Bash wrapper scripts] (agents need tools to call)
-                       └──requires──> [Existing tool functions preserved]
+[Campaign-Holistic Copy Awareness]
+    └──requires──> [campaign-context.js already returns full sequence list] (already built)
+    └──requires──> [Writer system prompt includes all prior steps] (new: pass full context)
 
-[Dashboard-to-CLI bridge]
-    └──requires──> [SKILL.md definitions] (something to invoke)
-    └──requires──> [Fallback preserved] (production safety)
+[LLM-as-Judge Validator Agent]
+    └──requires──> [Campaign-Holistic Copy Awareness] (validator needs full campaign context to check angle repetition)
+    └──requires──> [Dedicated validator rules file: .claude/rules/validator-rules.md] (new file)
+    └──enhances──> [Writer mandatory self-review] (validator catches what self-review misses)
 
-[Client memory namespacing]
-    └──requires──> [SKILL.md definitions] (agent must know to read memory)
-    └──enables──> [Memory accumulation from real usage]
-                      └──enables──> [Copy wins feedback loop]
-                      └──enables──> [Approval pattern memory]
+[Cross-Campaign CTA and Angle Dedup]
+    └──requires──> [existing-campaign-copy.js CLI script] (new script needed)
+    └──requires──> [Campaign-Holistic Copy Awareness]
 
-[Cross-client learning namespace]
-    └──enhances──> [Client memory namespacing] (adds global layer on top of per-client)
-    └──requires──> [Memory accumulation from real usage] (needs data to generalize from)
+[Automatic Rewrite Loop]
+    └──requires──> [Writer mandatory self-review] (review must run before rewrite is triggered)
+    └──requires──> [max iteration guard in runner.ts] (prevent infinite loops — add rewriteCount param)
 
-[Memory read at skill invocation start]
-    └──requires──> [Client memory namespacing] (need the files to read)
+[Channel-Aware Enrichment Routing]
+    └──requires──> [Campaign entity has channel field] (already exists on Campaign model)
+    └──requires──> [Leads agent receives campaign channel context] (new: pass channel to discovery plan)
+
+[Sequential Pipeline State Machine]
+    └──requires──> [All individual gate functions to exist first] (cannot formalise until gates exist)
+    └──requires──> [Post-search quality report] (first gate)
+    └──requires──> [Channel-aware enrichment routing] (second gate)
+    └──requires──> [Writer self-review + validator] (third gate)
+
+[Unverified Email Rescue via BounceBan]
+    └──requires──> [Channel-aware enrichment routing] (only runs for email campaigns)
+    └──requires──> [BounceBan adapter] (new provider adapter in src/lib/enrichment/)
+
+[Pre-search Input Validation]
+    └──enhances──> [Existing discovery plan → approve flow] (adds validation step before plan is shown)
+
+[Expert-Level Platform Recommendations]
+    └──requires──> [platform-expertise.md knowledge file] (new file, must be authored based on real provider behaviour)
+    └──enhances──> [Existing discovery plan] (better recommendations in plan output)
+
+[Filler Spintax Detection]
+    └──requires──> [LLM-as-Judge Validator Agent] (semantic check belongs in validator, not regex layer)
 ```
 
 ### Dependency Notes
 
-- **Bash wrappers require existing tools preserved:** Wrappers must not reimplement tool logic. They call the existing TypeScript functions via `node -e` or dedicated script files. This is a hard constraint — the same tool code serves both the API path (Vercel) and the CLI path (local).
-
-- **Dashboard bridge requires fallback:** Bridge goes to production. It must not break existing dashboard users. Fallback to existing `runAgent()` is a day-one requirement, not an optimization.
-
-- **Copy wins loop requires campaign data tools:** The agent needs to query real campaign metrics. This is already in the existing `getCampaignPerformance` tool (writer.ts). The wrapper just needs to expose it.
-
-- **Memory namespace requires per-client directory structure:** Must be established before any accumulation features. Bootstrap with seed content (tone prompt, ICP summary) from existing workspace DB fields.
+- **Campaign-holistic awareness requires no new scripts** — `campaign-context.js` already returns linked sequences; the missing piece is passing all existing step bodies into the writer system prompt, not building new tooling.
+- **LLM-as-Judge requires its own rules file** — do not add validator logic to writer-rules.md; they are separate agents with separate responsibilities. The validator evaluates, the writer generates.
+- **Sequential pipeline state machine is a v8.2 concern** — build individual gates first, then formalise the abstraction. The state machine shell without gate content has no value.
+- **Rewrite loop requires a max-iteration guard** — runner.ts currently has `maxSteps`; add a separate `rewriteCount` tracker to prevent the writer from entering infinite correction loops.
+- **Channel-aware routing is a prerequisite for unverified email rescue** — rescue only makes sense for email campaigns; it must be gated by channel context first.
 
 ---
 
 ## MVP Definition
 
-### Launch With (v1 — Phase 1-3 of v7.0)
+### Launch With (v8.0 core)
 
-Minimum viable CLI skill system. Proves the architecture. Gets the cost savings.
+Minimum viable overhaul — addresses the documented quality failures without adding infrastructure complexity.
 
-- [ ] SKILL.md for all 5 agents (orchestrator, research, writer, leads, campaign) — defines the CLI interface
-- [ ] Bash wrapper scripts for top 10 most-used tool functions (getWorkspaceIntelligence, searchKnowledgeBase, getCampaignPerformance, queryPeople, getCampaigns, getLeadsList, createTargetList, saveWriterOutput, getCampaignContext, getReplies) — agents can actually do work
-- [ ] MEMORY.md file per workspace with seeded context (tone, ICP, last 3 campaigns) — gives agents immediate value from day one
-- [ ] Memory read at skill start — agents behave as client-aware from first invocation
-- [ ] Dashboard-to-CLI bridge for writer and orchestrator agents — covers 80% of usage
-- [ ] Fallback to existing API agents — production safety net
+- [ ] Writer mandatory self-review in-prompt before save — covers all 12 quality rules in writer-rules.md
+- [ ] Automatic rewrite loop (max 3 iterations) — writer auto-fixes before escalating to admin
+- [ ] Campaign-holistic copy awareness — writer receives all prior steps before generating
+- [ ] Post-search data quality report — field coverage stats (email %, LinkedIn URL %, ICP score distribution) after discovery-promote
+- [ ] Channel-aware enrichment routing — skip email enrichment for LinkedIn-only campaigns
+- [ ] Cost estimate required in discovery plan — pre-flight credit budget always shown
+- [ ] Company name normalisation gate — checked before {COMPANYNAME} used in any copy
 
-### Add After Validation (v1.x — Phase 4-5 of v7.0)
+### Add After Validation (v8.1)
 
-Once CLI path is proven stable and agents are behaving well:
+Features to add once the core quality loop is working and demonstrably reducing rewrite cycles.
 
-- [ ] Memory accumulation from real usage — trigger: first week of CLI agent operation shows stable results
-- [ ] Approval pattern memory — trigger: admin uses writer agent 5+ times via CLI
-- [ ] Bridge extended to leads and campaign agents — trigger: writer bridge working cleanly
-- [ ] Cross-client learning namespace — trigger: 3+ clients have meaningful per-client memory built up
+- [ ] LLM-as-Judge validator agent — adds a second opinion layer; high value but adds latency; validate that writer self-review improves quality first before layering a second review
+- [ ] Filler spintax auto-detection — LLM-based semantic check; add to validator once validator exists
+- [ ] Cross-campaign CTA and angle dedup — requires `existing-campaign-copy.js` script; defer until writer self-review is stable
+- [ ] Expert-level platform recommendations — `platform-expertise.md` knowledge file authoring
 
-### Future Consideration (v2+ — post v7.0)
+### Future Consideration (v8.2+)
 
-Defer until pattern is well understood from real usage:
-
-- [ ] Copy wins feedback loop — requires measuring impact of memory-informed generation vs baseline. Needs at least 2 months of data. High value but premature to build now.
-- [ ] Automated memory pruning beyond inline instructions — complex, low current need
-- [ ] Memory-driven copy strategy auto-selection — agent picks strategy based on past approval patterns without prompting. Requires solid approval pattern data first.
+- [ ] Sequential pipeline state machine — formal `PipelineStage` enum and gate handoffs; only worth the abstraction after all individual gates work reliably
+- [ ] Unverified email rescue via BounceBan — new enrichment provider adapter; cost/benefit analysis needed first
+- [ ] Pre-search input validation — `validateDiscoveryFilters()` per-adapter; add after observing filter errors in practice
+- [ ] Credit spend report logged to campaign entity — useful for future client billing; defer until billing phase
+- [ ] List overlap detection — warning when a list is reused across active campaigns
 
 ---
 
@@ -135,68 +159,182 @@ Defer until pattern is well understood from real usage:
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| SKILL.md definitions (5 agents) | HIGH | LOW | P1 |
-| Bash wrapper scripts (top 10 tools) | HIGH | MEDIUM | P1 |
-| Dashboard-to-CLI bridge (writer + orchestrator) | HIGH | MEDIUM | P1 |
-| Fallback to existing API agents | HIGH | LOW | P1 |
-| MEMORY.md per workspace (seeded) | HIGH | LOW | P1 |
-| Memory read at skill start | HIGH | LOW | P1 |
-| Memory accumulation from real usage | HIGH | MEDIUM | P2 |
-| Approval pattern memory | MEDIUM | MEDIUM | P2 |
-| Bridge extended to leads + campaign | MEDIUM | LOW | P2 |
-| Cross-client learning namespace | MEDIUM | MEDIUM | P2 |
-| Copy wins feedback loop | HIGH | HIGH | P3 |
-| Memory-driven strategy auto-selection | MEDIUM | HIGH | P3 |
-
-**Priority key:**
-- P1: Must have for launch — core architecture and production safety
-- P2: Should have, add when CLI path is proven
-- P3: Nice to have, requires real usage data to build well
+| Writer mandatory self-review | HIGH | LOW | P1 |
+| Automatic rewrite loop | HIGH | LOW | P1 |
+| Campaign-holistic copy awareness | HIGH | MEDIUM | P1 |
+| Post-search quality report | HIGH | LOW | P1 |
+| Channel-aware enrichment routing | HIGH | LOW | P1 |
+| Cost estimate in discovery plan | MEDIUM | LOW | P1 |
+| Company name normalisation gate | MEDIUM | LOW | P1 |
+| LLM-as-Judge validator agent | HIGH | HIGH | P2 |
+| Filler spintax detection | HIGH | MEDIUM | P2 |
+| Cross-campaign CTA dedup | MEDIUM | MEDIUM | P2 |
+| Expert-level platform recommendations | MEDIUM | HIGH | P2 |
+| Sequential pipeline state machine | MEDIUM | HIGH | P3 |
+| Unverified email rescue | LOW | HIGH | P3 |
+| Pre-search input validation | LOW | MEDIUM | P3 |
+| List overlap detection | LOW | LOW | P3 |
 
 ---
 
-## Skill Invocation Patterns (Reference)
+## Concrete Implementation Patterns
 
-Verified against official Claude Code docs (March 2026):
+### LLM Self-Review Pattern (Reflexion Architecture)
 
-**User-triggered via dashboard bridge:**
-Dashboard POST to `/api/chat` -> Node exec `claude --print -p "invoke /writer rise write pvp sequence for Q2 campaign"` -> streamed or buffered response back to UI.
+The Reflexion pattern (Shinn et al., 2023) is the research-backed approach for this use case. Applied to the writer agent:
 
-**CLI direct invocation:**
-`/writer rise "write pvp email sequence for Q2 pharmaceutical campaign"`
-
-**Agent auto-load:**
-User message matching skill description triggers Claude to load full skill content automatically. No slash required.
-
-**Memory injection at invocation (! syntax):**
-Frontmatter in SKILL.md: `!cat /path/to/project/.claude/memory/$ARGUMENTS[0]/MEMORY.md 2>/dev/null || echo "No memory yet"`
-This runs before Claude sees the skill content — output is injected as context.
-
-**Bash wrapper call pattern (inside skill instructions):**
 ```
-To get workspace intelligence: run `node scripts/agents/get-workspace.js $ARGUMENTS[0]`
-To search knowledge base: run `node scripts/agents/search-kb.js "$query"`
+1. GENERATE — Writer produces copy following strategy rules
+2. REFLECT — Writer evaluates its own output against explicit checklist
+   (in same agent call, as structured reasoning step before save tool call)
+3. CHECK — Each rule evaluated: PASS / FAIL with specific violation text
+4. REWRITE — If any FAIL, writer regenerates the failing steps only (not whole sequence)
+5. REPEAT — Back to step 2, max 3 iterations
+6. ESCALATE — After 3 failures, save with violations flagged, notify admin
 ```
 
-**Memory write pattern (inside skill instructions):**
+The key insight from the Reflexion paper: reflection must be **grounded**. The writer re-reads its output against each specific rule in sequence — not just "does this look good?". A structured checklist in the prompt produces higher-quality reflection than open-ended self-critique.
+
+Concrete checklist to embed in writer-rules.md (FINAL CHECK section):
 ```
-After completing copy generation, append to .claude/memory/[slug]/copy-wins.md:
-- Date: [date]
-- Campaign: [name]
-- Strategy: [pvp/creative-ideas/one-liner]
-- What worked: [brief description]
+FINAL CHECK before calling save-draft.js:
+[ ] BANNED_PHRASES — scan for each of the 30 banned phrases
+[ ] GREETING — first email must start with "Hi {FIRSTNAME}," or similar
+[ ] WORD COUNT — count body words; must be under 70
+[ ] VARIABLES — no {{double}} braces, no {lowercase} variables
+[ ] SPINTAX — if LinkedIn: zero spintax; if email: options are semantically distinct
+[ ] EM DASH / EN DASH — zero occurrences
+[ ] CTA — ends with soft question; no "Let me know" or "Book a call"
+[ ] SUBJECT LINE — no exclamation mark, 3-6 words, no spam triggers
+[ ] CAMPAIGN CONTEXT — no angle repeated from prior steps in this campaign
+
+If ANY item is FAIL: rewrite only the offending step. State violations and changes made.
 ```
+
+### LLM-as-Judge Validator Pattern
+
+Separate Haiku model invoked after writer saves draft. Uses direct assessment (point-wise scoring):
+
+```
+Validator receives:
+- Full campaign sequences (all steps)
+- Workspace ICP and value props
+- Complete quality rules list
+
+Validator outputs structured JSON:
+{
+  overallScore: 0-100,
+  pass: boolean,  // true if score >= 85 and no CRITICAL failures
+  violations: [{ rule, step, field, text, severity }],
+  rewriteSuggestions: [{ step, suggestion }]
+}
+
+Threshold: overall >= 85 AND zero CRITICAL violations
+If threshold not met:
+- Return violations to writer
+- Writer rewrites, validator re-evaluates
+- Max 2 validator cycles (not 3 — validator is the last gate)
+```
+
+The validator is a **separate agent with separate rules** file. It must not share system prompt with the writer. Using Haiku keeps cost to ~$0.001 per validation.
+
+### Campaign-Holistic Context Pattern
+
+Writer must receive the full campaign state before generating any step. This prevents angle repetition (the documented primary failure mode).
+
+```
+Before writing any content for campaignId:
+1. Run campaign-context.js --campaignId {id}
+2. Extract from response: all existing email steps (subject + body), all LinkedIn steps
+3. Build TAKEN ANGLES list: extract key theme/value prop from each existing step body
+4. Build TAKEN CTAs list: extract the closing question from each existing step
+5. Inject into system prompt as:
+   "[CAMPAIGN CONTEXT — do not repeat these angles or CTAs:
+    Step 1 angle: {angle}; CTA: {cta}
+    Step 2 angle: {angle}; CTA: {cta}]"
+
+Writer must:
+- Acknowledge each taken angle before writing
+- Explicitly state which new angle/angle each new step uses
+- Ensure each CTA question is unique across the sequence
+```
+
+### Channel-Aware Enrichment Decision Tree
+
+```
+Campaign.channel = "linkedin"
+  → Enrichment: LinkedIn URL only (from person DB record or LinkedIn search)
+  → Skip: all email finding (Prospeo/AI Ark/LeadMagic/FindyMail)
+  → Export gate: LinkedIn URL required
+
+Campaign.channel = "email"
+  → Enrichment: verified email required (full waterfall)
+  → Run: Prospeo → AI Ark → LeadMagic → FindyMail
+  → Export gate: verified email required (already enforced)
+  → Optional (v8.2): BounceBan for unverified before discard
+
+Campaign.channel = "email_linkedin"
+  → Enrichment: both required
+  → Run full email waterfall
+  → Ensure LinkedIn URL populated
+  → Export gate: both required
+```
+
+### Post-Search Quality Report Format
+
+```
+Discovery complete: {source} — {total found} leads staged
+
+Data Coverage:
+  Verified emails:   {n} ({pct}%)
+  Unverified emails: {n} ({pct}%)
+  No email found:    {n} ({pct}%)
+  LinkedIn URLs:     {n} ({pct}%)
+
+ICP Score Distribution:
+  High (≥70):   {n} ({pct}%)
+  Medium (40-70): {n} ({pct}%)
+  Low (<40):    {n} ({pct}%)
+
+Gate Result: [PASS / WARN / FAIL]
+  PASS: >60% verified emails AND >70% ICP score ≥ 70
+  WARN: 30-60% verified emails OR mixed ICP scores
+  FAIL: <30% verified emails OR <50% ICP score ≥ 40
+
+Estimated campaign-ready leads: {n}
+```
+
+---
+
+## Competitor Feature Analysis
+
+| Feature | Clay | Apollo | Instantly/Smartlead | Outsignal v8.0 Approach |
+|---------|------|--------|---------------------|------------------------|
+| Copy quality gates | None — manual review | None | Basic spam score (deliverability only) | Rule-based regex + LLM judge; semantic quality beyond spam |
+| Self-review loop | N/A | N/A | N/A | Reflexion: generate → reflect → rewrite, max 3 iterations |
+| Channel-aware enrichment | Manual flag per list | Manual per export | No | Automatic routing based on Campaign.channel field |
+| Campaign-holistic copy | N/A | N/A | N/A | Full campaign context injected into writer before each generation |
+| Discovery cost preview | Shows credits | Shows credits | N/A | Estimate before approval; itemised report after execution |
+| Lead quality gate | ICP score only | Intent score | None | Multi-factor: email coverage + LinkedIn URL + ICP score threshold |
+| Validator agent | None | None | None | Separate Haiku-based agent with explicit PASS/FAIL per rule |
+| Angle dedup | None | None | None | Cross-campaign angle tracking via `existing-campaign-copy.js` |
 
 ---
 
 ## Sources
 
-- [Extend Claude with skills — Claude Code Docs](https://code.claude.com/docs/en/skills) — HIGH confidence, official, verified March 2026
-- [How Claude remembers your project — Claude Code Docs](https://code.claude.com/docs/en/memory) — HIGH confidence, official, verified March 2026
-- [Orchestrate teams of Claude Code sessions — Claude Code Docs](https://code.claude.com/docs/en/agent-teams) — HIGH confidence, official, verified March 2026
-- [Inside Claude Code Skills: Structure, prompts, invocation](https://mikhail.io/2025/10/claude-code-skills/) — MEDIUM confidence, community analysis
-- Existing codebase `src/lib/agents/` — tool functions, types, runner pattern — HIGH confidence (read directly)
+- [Reflexion: Language Agents with Verbal Reinforcement Learning (arXiv)](https://arxiv.org/abs/2303.11366) — Core self-review architecture pattern; grounded reflection outperforms ungrounded self-critique
+- [Reflection Agents — LangChain Blog](https://blog.langchain.com/reflection-agents/) — Three implementation approaches: basic reflection, Reflexion, LATS; latency/quality tradeoff documented
+- [Multi-Agent Validation: Stop Agents from Hallucinating Silently](https://dev.to/aws/how-to-stop-ai-agents-from-hallucinating-silently-with-multi-agent-validation-3f7e) — Executor → Validator → Critic architecture; explicit PASS/FAIL over silent failures
+- [LLM-as-a-Judge Complete Guide — Evidently AI](https://www.evidentlyai.com/llm-guide/llm-as-a-judge) — Direct assessment (point-wise scoring) pattern for quality evaluation
+- [Automated Self-Testing as Quality Gate (arXiv 2603.15676)](https://arxiv.org/html/2603.15676) — Evidence-driven quality gates; multi-dimension evaluation before save
+- [Demystifying Evals for AI Agents — Anthropic](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) — Evaluation methodology for production agentic systems
+- [B2B Cold Outreach Benchmarks 2025 — Belkins](https://belkins.io/resources/b2b-cold-outreach-benchmarks) — Industry benchmarks for quality thresholds (email >60% verified, reply rate tiers)
+- [State of LinkedIn Outreach H1 2025 — Expandi](https://expandi.io/blog/state-of-li-outreach-h1-2025/) — LinkedIn-specific data requirements and channel benchmarks
+- [AI Lead Generation 2025 — Outreach.io](https://www.outreach.io/resources/blog/ai-lead-generation) — Quality gates in outreach pipeline design
+- Existing codebase: `src/lib/copy-quality.ts`, `src/lib/agents/types.ts`, `src/lib/agents/leads.ts`, `.claude/rules/writer-rules.md`, `src/lib/enrichment/costs.ts`
 
 ---
-*Feature research for: Nova CLI Agent Teams with Persistent Memory (v7.0)*
-*Researched: 2026-03-23*
+
+*Feature research for: Outsignal Agent Quality Overhaul (v8.0)*
+*Researched: 2026-03-30*
