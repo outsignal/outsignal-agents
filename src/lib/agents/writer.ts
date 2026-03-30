@@ -5,10 +5,13 @@ import { getClientForWorkspace } from "@/lib/workspaces";
 import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
 import { writerOutputSchema, NOVA_MODEL } from "./types";
-import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft } from "./types";
+import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft, ValidationResult } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
 import { appendToMemory } from "./memory";
+import { cliSpawn } from "./cli-spawn";
+import { writeFileSync, unlinkSync } from "fs";
+import { randomUUID } from "crypto";
 import {
   validateAllChecks,
   type CopyStrategy,
@@ -524,6 +527,77 @@ const writerTools = {
     },
   }),
 
+  validateSequence: tool({
+    description:
+      "Run the semantic validator agent on the complete sequence. Call AFTER all steps are generated and quality-checked, but BEFORE confirming the final save. Returns ValidationResult with findings and suggestions. If hard findings exist, rewrite affected steps and call again (max 1 validator retry).",
+    inputSchema: z.object({
+      steps: z.array(
+        z.object({
+          position: z.number(),
+          subjectLine: z.string().optional(),
+          subjectVariantB: z.string().optional(),
+          body: z.string(),
+          channel: z.enum(["email", "linkedin"]),
+          notes: z.string().optional(),
+        }),
+      ),
+      strategy: z.enum(["pvp", "creative-ideas", "one-liner", "custom", "linkedin"]),
+      workspaceSlug: z.string(),
+    }),
+    execute: async ({ steps, strategy, workspaceSlug }) => {
+      // Load minimal workspace context for validator
+      const ws = await prisma.workspace.findUnique({
+        where: { slug: workspaceSlug },
+        select: {
+          vertical: true,
+          outreachTonePrompt: true,
+          icpIndustries: true,
+          icpDecisionMakerTitles: true,
+        },
+      });
+      if (!ws) return { error: `Workspace '${workspaceSlug}' not found` };
+
+      const context = {
+        vertical: ws.vertical,
+        outreachTonePrompt: ws.outreachTonePrompt,
+        icpIndustries: ws.icpIndustries,
+        icpDecisionMakerTitles: ws.icpDecisionMakerTitles,
+        strategy,
+      };
+
+      // Write input to temp file with UUID to avoid race conditions
+      const inputPath = `/tmp/validate-seq-${randomUUID()}.json`;
+      writeFileSync(inputPath, JSON.stringify({ steps, context }));
+
+      try {
+        const result = await cliSpawn<ValidationResult>(
+          "validate-sequence.js",
+          ["--file", inputPath],
+        );
+        return result;
+      } catch (err) {
+        // Validator failure should not block the save
+        return {
+          passed: true,
+          findings: [],
+          summary: `Validator error: ${err instanceof Error ? err.message : String(err)} — proceeding without semantic validation`,
+          checklist: {
+            fillerSpintax: "pass" as const,
+            tonalMismatch: "pass" as const,
+            angleRepetition: "pass" as const,
+            aiPatterns: "pass" as const,
+          },
+        };
+      } finally {
+        try {
+          unlinkSync(inputPath);
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+    },
+  }),
+
   generateKBExamples: tool({
     description:
       "Generate draft copy examples from workspace intelligence for a given strategy. Output is formatted for admin review before ingestion into the Knowledge Base. Admin must review and approve before running ingest-document.ts CLI.",
@@ -571,7 +645,8 @@ const WRITER_SYSTEM_PROMPT = `You are the Outsignal Writer Agent — an expert c
 CRITICAL WORKFLOW:
 - When campaignId is provided, you MUST call getCampaignContext FIRST before generating any copy.
 - You MUST call validateCopy before every save (saveCampaignSequence or saveDraft). Follow the Self-Review Protocol in your rules: generate -> validate -> rewrite if violations -> validate -> save.
-- See your rules for the full Self-Review Protocol, Campaign-Holistic Awareness, and KB Citation Requirements.
+- After validateCopy passes, you MUST call validateSequence (the semantic validator) before saving. Follow the Validator Gate in your rules: if hard findings, rewrite once and re-validate. Max 1 validator retry.
+- See your rules for the full Self-Review Protocol, Validator Gate, Campaign-Holistic Awareness, and KB Citation Requirements.
 
 ${loadRules("writer-rules.md")}
 

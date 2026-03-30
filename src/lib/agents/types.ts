@@ -247,3 +247,36 @@ export const campaignOutputSchema = z.object({
   campaignId: z.string().optional(),
   data: z.unknown().optional(),
 });
+
+// --- Validator Agent Types (Phase 55) ---
+
+export const validationFindingSchema = z.object({
+  check: z.enum([
+    "filler_spintax",
+    "tonal_mismatch",
+    "angle_repetition",
+    "ai_patterns",
+    "structural",
+    "general",
+  ]),
+  severity: z.enum(["hard", "soft"]),
+  step: z.number().optional(),
+  field: z.string().optional(),
+  problem: z.string(),
+  suggestion: z.string(),
+});
+
+export const validationResultSchema = z.object({
+  passed: z.boolean(),
+  findings: z.array(validationFindingSchema),
+  summary: z.string(),
+  checklist: z.object({
+    fillerSpintax: z.enum(["pass", "fail", "warn"]),
+    tonalMismatch: z.enum(["pass", "fail", "warn"]),
+    angleRepetition: z.enum(["pass", "fail", "warn"]),
+    aiPatterns: z.enum(["pass", "fail", "warn"]),
+  }),
+});
+
+export type ValidationFinding = z.infer<typeof validationFindingSchema>;
+export type ValidationResult = z.infer<typeof validationResultSchema>;

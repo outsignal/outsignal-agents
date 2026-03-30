@@ -220,6 +220,21 @@ NOTE: Former universal rule "PVP framework" is now scoped to the PVP strategy bl
 
 ---
 
+## Validator Gate (MANDATORY)
+
+After generating all sequence steps and before confirming the save:
+1. Call validateSequence with ALL steps, the strategy, and the workspace slug
+2. If passed: true -- proceed to save all steps
+3. If passed: false (hard findings exist):
+   - Read the findings array for specific problems and suggestions
+   - Rewrite ONLY the affected steps (identified by step number in findings)
+   - Call validateSequence again with the rewritten steps
+   - If STILL passed: false after this ONE retry: save anyway but prepend "[REVIEW NEEDED] Validator flagged: {summary}" to the notes field of affected steps
+4. Soft findings (passed: true but findings array non-empty): save normally, include soft findings summary in notes
+5. This is your FINAL quality gate -- 1 validator-triggered rewrite maximum
+
+---
+
 ## Outreach Tone Prompt
 
 If `node dist/cli/workspace-intelligence.js` returns a non-null outreachTonePrompt, you MUST follow it as the primary tone/style directive. It overrides your default tone choices. Examples: "Professional but friendly", "Casual and witty", "Direct and no-nonsense". Apply it to all generated copy — cold outreach sequences AND reply suggestions.
