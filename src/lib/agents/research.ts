@@ -9,6 +9,7 @@ import { researchOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, ResearchInput, ResearchOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
+import { appendToMemory } from "./memory";
 
 // --- Research Agent Tools ---
 
@@ -181,6 +182,20 @@ const researchConfig: AgentConfig = {
   tools: researchTools,
   maxSteps: 8,
   outputSchema: researchOutputSchema,
+  onComplete: async (result, options) => {
+    const slug = options?.workspaceSlug;
+    if (!slug) return;
+
+    const output = result.output as ResearchOutput;
+    const industries = output.icpIndicators?.industries ?? "unknown";
+    const diffCount = output.differentiators?.length ?? 0;
+
+    await appendToMemory(
+      slug,
+      "learnings.md",
+      `Website analysis: ICP industries=${industries}, ${diffCount} differentiators, ${output.caseStudies?.length ?? 0} case studies found`,
+    );
+  },
 };
 
 // --- Public API ---

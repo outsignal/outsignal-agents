@@ -7,6 +7,7 @@ import { leadsOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, LeadsInput, LeadsOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
+import { appendToMemory } from "./memory";
 import { apolloAdapter } from "@/lib/discovery/adapters/apollo";
 import { prospeoSearchAdapter } from "@/lib/discovery/adapters/prospeo-search";
 import { aiarkSearchAdapter } from "@/lib/discovery/adapters/aiark-search";
@@ -997,6 +998,19 @@ const leadsConfig: AgentConfig = {
   tools: leadsTools,
   maxSteps: 15,
   outputSchema: leadsOutputSchema,
+  onComplete: async (result, options) => {
+    const slug = options?.workspaceSlug;
+    if (!slug) return;
+
+    const output = result.output as LeadsOutput;
+    if (output.action === "unknown" || !output.summary) return;
+
+    await appendToMemory(
+      slug,
+      "learnings.md",
+      `${output.action}: ${output.summary}`,
+    );
+  },
 };
 
 // --- Public API ---
