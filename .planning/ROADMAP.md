@@ -128,12 +128,12 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 **Milestone Goal:** Make agent team produce campaign-ready output without manual QA — expert-level lead sourcing with verified data, copy that passes all rules first time, validated pipeline end-to-end.
 
 - [x] **Phase 52: Copy Quality Module + Model Upgrade** - Extend copy-quality.ts with full structural rule set; upgrade all agents to Opus 4.6 (completed 2026-03-30)
-- [ ] **Phase 53: Platform Expertise + Input Rules** - Encode platform expertise in leads-rules.md; add pre-search input validation at CLI wrapper level
-- [ ] **Phase 54: Writer Agent Overhaul** - Mandatory self-review gate, campaign-holistic awareness, automatic rewrite loop
-- [ ] **Phase 55: Validator Agent** - Haiku-based stateless validator with structural + coherence checks
-- [ ] **Phase 56: Leads Quality Gates** - Post-search quality gates, channel-aware enrichment, credit budgeting, domain resolution
-- [ ] **Phase 57: Campaign Pipeline Validation** - Channel-aware list building, overlap detection, normalisation gate, portal hard-block
-- [ ] **Phase 58: End-to-End Validation** - Full pipeline integration test confirming all quality gates work as a unit
+- [x] **Phase 53: Platform Expertise + Input Rules** - Encode platform expertise in leads-rules.md; add pre-search input validation at CLI wrapper level
+- [x] **Phase 54: Writer Agent Overhaul** - Mandatory self-review gate, campaign-holistic awareness, automatic rewrite loop
+- [x] **Phase 55: Validator Agent** - Haiku-based stateless validator with structural + coherence checks
+- [x] **Phase 56: Leads Quality Gates** - Post-search quality gates, channel-aware enrichment, credit budgeting, domain resolution (completed 2026-03-30)
+- [x] **Phase 57: Campaign Pipeline Validation** - Channel-aware list building, overlap detection, normalisation gate, portal hard-block (completed 2026-03-30)
+- [x] **Phase 58: End-to-End Validation** - Full pipeline integration test confirming all quality gates work as a unit (completed 2026-03-30)
 
 ## Phase Details
 
@@ -417,12 +417,12 @@ Plans:
 | 50. Orchestrator CLI Spawn Integration | v7.0 | 2/2 | Complete | 2026-03-24 |
 | 51. Memory Accumulation and Full Validation | v7.0 | 2/2 | Complete | 2026-03-24 |
 | 52. Copy Quality Module + Model Upgrade | 2/2 | Complete   | 2026-03-30 | - |
-| 53. Platform Expertise + Input Rules | v8.0 | 0/TBD | Not started | - |
-| 54. Writer Agent Overhaul | v8.0 | 0/TBD | Not started | - |
-| 55. Validator Agent | v8.0 | 0/TBD | Not started | - |
-| 56. Leads Quality Gates | v8.0 | 0/TBD | Not started | - |
-| 57. Campaign Pipeline Validation | v8.0 | 0/TBD | Not started | - |
-| 58. End-to-End Validation | v8.0 | 0/TBD | Not started | - |
+| 53. Platform Expertise + Input Rules | v8.0 | 2/2 | Complete | 2026-03-30 |
+| 54. Writer Agent Overhaul | v8.0 | 2/2 | Complete | 2026-03-30 |
+| 55. Validator Agent | v8.0 | 2/2 | Complete | 2026-03-30 |
+| 56. Leads Quality Gates | v8.0 | 3/3 | Complete | 2026-03-30 |
+| 57. Campaign Pipeline Validation | v8.0 | 2/2 | Complete | 2026-03-30 |
+| 58. End-to-End Validation | v8.0 | 3/3 | Complete | 2026-03-30 |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
@@ -569,8 +569,8 @@ Plans:
   4. Agent pre-search sanity check flags mismatched ICP filters before any paid API call fires (e.g. Prospeo company.names instead of company.websites triggers a blocker warning)
 **Plans**: 2 plans
 Plans:
-- [ ] 53-01-PLAN.md — Platform Expertise section in leads-rules.md + Two-Path Routing + Input Validation Rules
-- [ ] 53-02-PLAN.md — discovery-validation.ts module + wire into all 6 CLI search wrappers
+- [x] 53-01-PLAN.md — Platform Expertise section in leads-rules.md + Two-Path Routing + Input Validation Rules
+- [x] 53-02-PLAN.md — discovery-validation.ts module + wire into all 6 CLI search wrappers
 
 ### Phase 54: Writer Agent Overhaul
 **Goal**: The writer never saves copy that violates quality rules — it self-reviews before every save, sees the full campaign as a unit, and rewrites automatically when violations are found
@@ -584,8 +584,8 @@ Plans:
   5. When a violation persists after 2 rewrite attempts, the copy is saved with inline review notes flagging the violation — admin sees the issue in the existing approval flow
 **Plans**: 2 plans
 Plans:
-- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
-- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
+- [x] 54-01-PLAN.md — Validation aggregator, validateCopy tool, enhanced save tools, intent-based anti-patterns, Self-Review Protocol
+- [x] 54-02-PLAN.md — Campaign-holistic awareness, KB citation enforcement, cross-step CTA dedup
 
 ### Phase 54.1: Agent Memory Write-Back (INSERTED)
 
@@ -609,8 +609,8 @@ Plans:
   4. The validator uses Opus 4.6 via Claude Code CLI (per CROSS-01) — no Haiku or lower-tier model references. Stateless — no DB calls, no tool access beyond the validation call
 **Plans**: 2 plans
 Plans:
-- [ ] 55-01-PLAN.md — Validator types, rules file, and wrapper script (structural + semantic checks via Claude CLI)
-- [ ] 55-02-PLAN.md — Wire validateSequence tool into writer agent with rewrite-once protocol
+- [x] 55-01-PLAN.md — Validator types, rules file, and wrapper script (structural + semantic checks via Claude CLI)
+- [x] 55-02-PLAN.md — Wire validateSequence tool into writer agent with rewrite-once protocol
 
 ### Phase 56: Leads Quality Gates
 **Goal**: Every discovery run produces a data quality report before enrichment credits are spent, channel-aware routing skips unnecessary enrichment steps, and cost is estimated before execution and reported after
@@ -624,9 +624,9 @@ Plans:
   5. The discovery plan always starts with a sourcing recommendation naming which platform(s) to use and why, awaiting explicit admin approval before any paid API call fires
 **Plans**: 3 plans
 Plans:
-- [ ] 56-01-PLAN.md — Quality gate, credit tracker, and channel-aware enrichment modules (pure functions + tests)
-- [ ] 56-02-PLAN.md — Domain resolver module with DB-first, Serper-fallback, HTTP-verified pipeline
-- [ ] 56-03-PLAN.md — Wire all modules into leads agent tools + update leads-rules.md
+- [x] 56-01-PLAN.md — Quality gate, credit tracker, and channel-aware enrichment modules (pure functions + tests)
+- [x] 56-02-PLAN.md — Domain resolver module with DB-first, Serper-fallback, HTTP-verified pipeline
+- [x] 56-03-PLAN.md — Wire all modules into leads agent tools + update leads-rules.md
 
 ### Phase 57: Campaign Pipeline Validation
 **Goal**: The campaign pipeline enforces channel-appropriate data at every hand-off point — list building, company name normalisation, and the portal approval route all gate on data quality before proceeding
@@ -640,8 +640,8 @@ Plans:
   5. A cost breakdown is accessible after any pipeline run: discovery cost + enrichment cost + total cost-per-verified-lead
 **Plans**: 2 plans
 Plans:
-- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
-- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
+- [x] 57-01-PLAN.md — TDD: validation modules, normalisation, overlap detection, cost tracking
+- [x] 57-02-PLAN.md — Integration: portal hard-block, publishForReview gates, portal error UI
 
 ### Phase 58: End-to-End Validation
 **Goal**: The complete v8.0 quality system is confirmed working as a unit — all gates fire correctly in sequence, no silent failures, and the audit trail captures quality decisions end-to-end
@@ -654,6 +654,6 @@ Plans:
   4. The portal approve-content route returns 422 when fed a sequence with structural violations — the error is surfaced to the user, not silently swallowed
 **Plans**: 3 plans
 Plans:
-- [ ] 58-01-PLAN.md — Test infrastructure: fixtures, audit assertions, scenario runner, Prisma mock extension, Nova memory seed
-- [ ] 58-02-PLAN.md — Core scenario tests: happy path, violation+rewrite, LinkedIn channel routing, portal 422
-- [ ] 58-03-PLAN.md — Edge case tests (budget, domain resolution, overlap) + CLI regression runner
+- [x] 58-01-PLAN.md — Test infrastructure: fixtures, audit assertions, scenario runner, Prisma mock extension, Nova memory seed
+- [x] 58-02-PLAN.md — Core scenario tests: happy path, violation+rewrite, LinkedIn channel routing, portal 422
+- [x] 58-03-PLAN.md — Edge case tests (budget, domain resolution, overlap) + CLI regression runner
