@@ -1,30 +1,31 @@
 ---
 gsd_state_version: 1.0
-milestone: v7.0
-milestone_name: Nova CLI Agent Teams — Client-Specific Intelligence
-status: complete
-last_updated: "2026-03-24T12:00:00.000Z"
+milestone: v8.0
+milestone_name: Agent Quality Overhaul
+status: defining_requirements
+last_updated: "2026-03-30T12:00:00.000Z"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-24)
+See: .planning/PROJECT.md (updated 2026-03-30)
 
-**Core value:** Convert Nova agents from paid API calls to Claude Code CLI skills with persistent client-specific memory, eliminating Opus API costs while accumulating intelligence per workspace.
-**Current focus:** v7.0 complete — planning next milestone via /gsd:new-milestone
+**Core value:** Make agent team produce campaign-ready output without manual QA — expert lead sourcing, first-time-right copy, validated pipeline.
+**Current focus:** v8.0 — defining requirements, research phase
 
 ## Current Position
 
-Milestone: v7.0 Nova CLI Agent Teams — SHIPPED 2026-03-24
-Status: All 6 phases complete (46-51), 14 plans, 36/36 requirements satisfied
-Last activity: 2026-03-24 — Milestone archived, VERIFICATION.md confirms all 5 VAL requirements PASS
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-30 — Milestone v8.0 started
 
 ## Performance Metrics
 
@@ -34,7 +35,7 @@ Last activity: 2026-03-24 — Milestone archived, VERIFICATION.md confirms all 5
 - Total execution time: ~28 hours
 
 **Recent Trend:**
-- v6.0 (8 phases, Phases 38-45) shipped cleanly; Trigger.dev migration complete
+- v7.0 (6 phases, Phases 46-51) shipped cleanly; Nova CLI agent teams live
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -43,50 +44,14 @@ Last activity: 2026-03-24 — Milestone archived, VERIFICATION.md confirms all 5
 
 ### Decisions
 
-Key v7.0 pre-milestone decisions:
-- [v7.0 Pre-Milestone]: CLI skills run via Claude Code Max Plan — zero Anthropic API cost vs ~$15/MTok for Opus calls
-- [v7.0 Pre-Milestone]: Memory stored as flat markdown files per workspace — not DB-backed; inspectable and correctable by admin
-- [v7.0 Pre-Milestone]: Existing API agent code preserved as fallback — controlled via USE_CLI_AGENTS env var, not deleted
-- [v7.0 Pre-Milestone]: Signal campaign runtime stays on Haiku API — only setup/copy planning moves to CLI
-- [v7.0 Pre-Milestone]: .claudeignore must exist before first CLI agent session — CVE-2025-59536 credential exposure risk
-- [v7.0 Pre-Milestone]: Dual-mode strategy decision gates Phase 46 — shared rules vs time-boxed fallback must be locked before any skill file is authored
-- [Phase 46]: Secrets-only sanitization scope: PII preserved intentionally
-- [Phase 46]: sanitizeOutput is a pure function — no process.env access
-- [Phase 46-02]: Dual-mode strategy locked: .claude/rules/ is single source of truth for both CLI skills and API agents
-- [Phase 46-02]: loadRules reads at invocation time so prompts always pick up latest rules
-- [Phase 46-02]: USER_INPUT_GUARD kept in TS agent configs, not in rules files (security boundary, not behavioral rule)
-- [Phase 46-02]: campaign-rules.md combines orchestrator + campaign behavioral rules (same workflow)
-- [Phase 47]: profile.md always overwritten on re-seed; other files skip if they exist to preserve accumulated intelligence
-- [Phase 47]: Governance headers embedded in every memory file to instruct agents on correct write behavior
-- [Phase 47]: Reply rate figures in campaigns.md are raw EmailBison format (values stored as whole-number percentages); no script bug
-- [Phase 47]: Vercel Blob backup deferred — removed from ARCHITECTURE.md, not implemented in this phase
-- [Phase 48-01]: PROJECT_ROOT set unconditionally in cli-harness.ts before any imports — prevents load-rules.ts __dirname hazard in dist/cli/ context
-- [Phase 48-01]: workspace-get uses direct Prisma query (not writer tool) for smoke test — validates pipeline without writer agent complexity
-- [Phase 48-01]: tsup esbuildOptions.alias maps '@' to path.resolve(__dirname, 'src') — tsup does not auto-read tsconfig.json paths for bundling
-- [Phase 48-02]: writerTools/researchTools/campaignTools imported directly from agent files — guaranteed parity, no logic reimplementation
-- [Phase 48-02]: JSON-file input pattern for 6 scripts with complex object inputs — agents write to /tmp/<uuid>.json before calling
-- [Phase 48-02]: kb-search is a single shared script for writer/leads/orchestrator agents (searchKnowledgeBase from shared-tools.ts)
-- [Phase 48-02]: signal-campaign-pause validates pause|resume enum before calling tool — catches invalid args with clear error before DB call
-- [Phase 48-03]: leadsTools exported from leads.ts to enable thin wrappers without reimplementing tool logic
-- [Phase 48-03]: Deliverability scripts use direct Prisma queries (not AI SDK tools) — computeDomainRollup, evaluateSender are internal library helpers
-- [Phase 48-03]: insight-list lists existing DB records (read-only, no LLM cost) — generateInsights runs via Trigger.dev cron only
-- [Phase 49-02]: $ARGUMENTS[0] used for slug in shell injection — first positional token ensures cat paths never contain spaces
-- [Phase 49-02]: All 4 memory files injected for every specialist agent — full workspace context per locked research decision
-- [Phase 49-02]: Skill file = identity + tools + memory only — behavioral rules overflow to .claude/rules/ via @ reference
-- [Phase 49-01]: deliverability/onboarding/intelligence rules: memory write governance assignments locked per agent type
-- [Phase 49-01]: global-insights.md is intelligence-agent-only for cross-client patterns; profile.md is seed-only for all 7 agents
-- [Phase 49-03]: nova-onboarding includes cross-agent domain-health.js tool for DNS verification post-setup
-- [Phase 49-03]: nova.md orchestrator loads only profile+campaigns (not feedback/learnings) — specialist-level context stays with specialists
-- [Phase 49-03]: nova.md references campaign-rules.md for orchestrator delegation rules — no separate orchestrator rules file
-- [Phase 50-01]: cli-spawn.ts uses spawn (not execFile) for streaming stdout collection during 300s timeout window
-- [Phase 50-01]: AbortController preferred over setTimeout+kill for cleaner AbortError detection in subprocess error handler
-- [Phase 50-01]: build:cli inserted between prisma generate and next build to guarantee dist/cli/ exists on Vercel (gitignored build artifact must be rebuilt on each deploy)
-- [Phase 50-02]: Writer CLI path branches on campaignId: save-sequence.js (campaign-aware) vs save-draft.js (standard) — mirrors inline writer agent logic
-- [Phase 50-02]: Campaign CLI path uses campaign-list.js as simplified stub — full campaign workflow runs in Nova CLI skill, not orchestrator bridge
-- [Phase 50-02]: CLI delegation tools return simplified status objects (message + data), not full agent return shapes — dashboard chat not used when USE_CLI_AGENTS=true
-- [Phase 51-memory-accumulation-and-full-validation]: insight-list.ts used removed schema fields (title, summary); fixed to use observation + actionDescription matching current Insight model
-- [Phase 51-memory-accumulation-and-full-validation]: Token budget ceiling: 40,000 bytes (~10,000 tokens) per workspace; current Rise state is 7,039 bytes (1,760 tokens); projected mature ceiling ~11,500 tokens including skill files
-- [Phase Phase 51-02]: Dashboard smoke test run as code path validation (browser unavailable in executor) — build success + isCliMode() guard presence in all 4 delegation tools is reliable proxy for runtime correctness
+Key v8.0 pre-milestone decisions:
+- [v8.0 Pre-Milestone]: Leads agent quality is TOP PRIORITY — $100 burnt on junk data last week, zero usable leads
+- [v8.0 Pre-Milestone]: Research into platform APIs + practitioner best practices before implementation
+- [v8.0 Pre-Milestone]: Agent should advise sourcing route (present recommendation + reasoning, wait for approval)
+- [v8.0 Pre-Milestone]: Channel-aware enrichment — LinkedIn-only campaigns skip email verification
+- [v8.0 Pre-Milestone]: Unverified emails verified via BounceBan/LeadMagic, not discarded
+- [v8.0 Pre-Milestone]: Writer must see full campaign holistically (all steps, both channels) not isolated messages
+- [v8.0 Pre-Milestone]: Every agent should be a knowledge expert in its field
 
 ### Pending Todos
 
@@ -94,22 +59,14 @@ None.
 
 ### Roadmap Evolution
 
-- v7.0 roadmap created 2026-03-23: 6 phases (46-51), 36 requirements mapped
-- Phase 46: Skill Architecture Foundation (SEC-01 to SEC-05)
-- Phase 47: Client Memory Namespace (MEM-01 to MEM-08)
-- Phase 48: CLI Wrapper Scripts (CLI-01 to CLI-04)
-- Phase 49: Specialist CLI Skill Files (SKL-01 to SKL-09)
-- Phase 50: Orchestrator CLI Spawn Integration (BRG-01 to BRG-05)
-- Phase 51: Memory Accumulation and Full Validation (VAL-01 to VAL-05)
+- v8.0 roadmap pending — research phase first
 
 ### Blockers/Concerns
 
-- Phase 50 (Bridge) needs a planning pass on Trigger.dev task queue pattern for dashboard-to-CLI delegation before implementation — exact task schema and polling mechanism are unspecified
-- Phase 48 (Wrappers) pipeline blocker RESOLVED: @/ aliases, Prisma external, dotenv all confirmed working in compiled dist/cli/ output
-- Phase 50 (Bridge) needs a planning pass on Trigger.dev task queue pattern for dashboard-to-CLI delegation before implementation — exact task schema and polling mechanism are unspecified
+- None currently
 
 ## Session Continuity
 
-Last session: 2026-03-24
-Stopped at: Completed 51-02-PLAN.md (Dashboard code path validation, VERIFICATION.md created, v7.0 milestone fully validated — all 5 VAL requirements PASS)
+Last session: 2026-03-30
+Stopped at: Milestone v8.0 started, research phase about to begin
 Resume file: None

@@ -60,7 +60,35 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 
 ### Active
 
-<!-- Next milestone TBD — see /gsd:new-milestone -->
+<!-- v8.0 Agent Quality Overhaul -->
+
+**Leads Agent — Expert-Level Discovery:**
+- [ ] Agent has deep platform expertise (Prospeo, AI Ark, Apollo, Leads Finder, Google Maps, Ecommerce Stores) — knows optimal filters, best practices, cost-per-lead, verified vs unverified handling for each
+- [ ] Agent advises optimal sourcing route per campaign with reasoning (which platforms, which filters, why)
+- [ ] Pre-search input validation (domain-based searches on Prospeo, ICP-matched filters, sanity checks before paid API calls)
+- [ ] Post-search quality gates (% with real emails, % with LinkedIn URLs, placeholder detection, ICP fit threshold)
+- [ ] Channel-aware enrichment — LinkedIn-only campaigns skip email verification; email campaigns require verified emails; hybrid campaigns need both
+- [ ] Unverified emails routed through BounceBan/LeadMagic verification (not discarded)
+- [ ] All discovered leads added to DB (staging → promotion flow)
+- [ ] Credit budgeting (estimate cost before search, report cost-per-verified-lead after)
+- [ ] Domain resolution step when working from company name lists
+- [ ] Target: 500-1000 validated leads per campaign
+
+**Writer Agent — Campaign-Holistic Copy:**
+- [ ] Mandatory self-review gate before save (word count, banned phrases, greetings, CTA quality, spintax, variables, LinkedIn format, UK English)
+- [ ] Automatic rewrite loop if any check fails (no bad copy reaches user)
+- [ ] Campaign-holistic awareness — sees full campaign (all email steps + all LinkedIn messages) as one unit, not isolated messages
+- [ ] KB consultation applied in output, not just referenced
+- [ ] Cross-campaign CTA and angle dedup for same ICP
+
+**Campaign Pipeline — Validation Gates:**
+- [ ] Channel-aware list building (email people → email campaigns, LinkedIn people → LinkedIn campaigns)
+- [ ] List overlap detection across campaigns
+- [ ] Company name normalisation gate before {COMPANYNAME} usage
+- [ ] Data quality pre-check before campaign creation
+- [ ] Validator reviews specialist agent output before save
+- [ ] Sequential pipeline with quality gates between stages
+- [ ] Cost tracking per pipeline stage
 
 ### Future
 
@@ -87,9 +115,14 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
 - Campaign builder UI — all campaign operations through Nova CLI agent teams (Cmd+J / CLI skills)
 
-## Current Milestone
+## Current Milestone: v8.0 Agent Quality Overhaul
 
-Next milestone TBD — see `/gsd:new-milestone`. v7.0 Nova CLI Agent Teams shipped 2026-03-24.
+**Goal:** Make agent team produce campaign-ready output without manual QA — expert-level lead sourcing with verified data, copy that passes all rules first time, validated pipeline end-to-end.
+
+**Target features:**
+- Leads agent with deep platform expertise, optimal sourcing recommendations, quality gates, and channel-aware enrichment
+- Writer agent with mandatory self-review, campaign-holistic awareness, and automatic rewrite loops
+- Campaign pipeline with validation gates, channel-aware list building, and cost tracking
 
 ## Current State
 
@@ -152,4 +185,4 @@ Next milestone TBD — see `/gsd:new-milestone`. v7.0 Nova CLI Agent Teams shipp
 | Railway for signal monitoring | Vercel Hobby 2-cron limit, Railway already running LinkedIn worker, needs continuous background process | — Pending |
 
 ---
-*Last updated: 2026-03-24 after v7.0 milestone*
+*Last updated: 2026-03-30 after v8.0 milestone start*
