@@ -1,7 +1,6 @@
 # Leads Rules
 <!-- Source: extracted from src/lib/agents/leads.ts -->
 <!-- Used by: CLI skill (! include), API agent (loadRules) -->
-<!-- Budget: keep under 200 lines; split if needed -->
 
 ## Capabilities
 Search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Apollo, Prospeo, AI Ark, Leads Finder, Serper, Firecrawl, Ecommerce Stores).
@@ -49,47 +48,310 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
 - Show up to 5 sample duplicate names (not the full list)
 - Mention that enrichment (email finding) is running in background
 
-## Source Selection Guide
+## Platform Expertise
 
-You decide which sources to use -- there are no rigid categories. Use these as starting points:
+Comprehensive playbooks for all 6 active discovery platforms. Consult this section when selecting sources, building filters, and estimating costs.
 
-**Enterprise B2B (title + seniority + industry + location + company size):**
-- `node dist/cli/search-apollo.js --file /tmp/{uuid}.json` -- 275M contacts, FREE search, best coverage for enterprise B2B. Basic filters only.
-- `node dist/cli/search-prospeo.js --file /tmp/{uuid}.json` -- Strong B2B coverage, COSTS CREDITS. Advanced filters: funding stage/amount, revenue, technologies, company type, NAICS/SIC codes, departments, years of experience.
-- `node dist/cli/search-aiark.js --file /tmp/{uuid}.json` -- B2B people search, COSTS CREDITS. Advanced filters: revenue, funding stage/amount, technologies, company type, NAICS codes, company keywords, founded year. Equal coverage to Apollo/Prospeo (not a fallback -- a full peer).
-- `node dist/cli/search-leads-finder.js --file /tmp/{uuid}.json` -- Apify Leads Finder, 300M+ B2B database, returns VERIFIED EMAILS + phones + LinkedIn in one step (~$2/1K leads). Best when you need leads WITH emails immediately (skips enrichment step). No pagination -- single batch.
+### Apollo
 
-Prospeo and AI Ark are PEERS -- always use both. Each has unique records the other misses. Cost difference is negligible (~$0.002/lead).
-- Need SIC codes or years of experience? Only Prospeo supports those specific filters.
-- Need verified emails in one step (skip enrichment)? Use Leads Finder -- it returns validated emails directly.
+**Overview:** 275M contacts. FREE search. Returns identity data only (no emails). Basic filter set.
+**Cost:** Free (no credits consumed).
+**Rate Limits:** Standard API rate limits apply; no published per-second cap.
+**Pagination:** Up to 100 results per page. Uses `pageToken` string for next page.
+**Results:** Identity only -- name, title, company, LinkedIn URL. No emails.
 
-**Google Ads Check** — Checks if specific domains are running Google Ads. Signal/qualification tool, not people discovery. Use after getting company domains from other sources to filter for companies with ad spend budget.
+**Supported Filters:**
 
-**Niche/Association/Government directories:**
-- `node dist/cli/search-google.js --file /tmp/{uuid}.json` (web mode) -- Find directory URLs first
-- `node dist/cli/extract-directory.js --url {url}` -- Extract contacts from the directory URL
+| Filter | Field Name | Notes |
+|--------|-----------|-------|
+| Job titles | jobTitles | Array of strings |
+| Seniority | seniority | Values: `c_suite`, `vp`, `director`, `manager`, `ic` |
+| Industries | industries | Array of industry names |
+| Locations | locations | Array of location strings |
+| Company sizes | companySizes | Values: `1-10`, `11-50`, `51-200`, `201-500`, `500+` |
+| Company domains | companyDomains | Array of domain strings (e.g. `acme.com`) |
+| Keywords | keywords | General keyword search |
 
-**Ecommerce / DTC brand discovery:**
-- `node dist/cli/search-ecommerce.js --file /tmp/{uuid}.json` -- PRIMARY tool for ecommerce store discovery. 14M+ store database. Filter by platform (Shopify, WooCommerce, BigCommerce, Magento), category, country, monthly traffic, keywords. Company-level data only.
+**Known Issues:** Free tier may throttle during high-volume sessions. Search does NOT return emails.
 
-**Local/SMB businesses:**
-- `node dist/cli/search-google-maps.js --file /tmp/{uuid}.json` -- Deep Google Maps/Places search via Apify. Returns name, address, phone, website, domain, rating, reviews, categories. Best for finding businesses by category in specific areas.
-- `node dist/cli/search-google.js --file /tmp/{uuid}.json` (maps mode) -- Lightweight Google Maps data via Serper. Fewer fields than search-google-maps but faster and cheaper.
+**HARD-BLOCKED Filters:** None -- all supported filters work correctly.
 
-**Mixed/Ambiguous requests:**
-- Make your best guess and build the plan. The plan IS the clarification -- admin reviews and adjusts before execution.
-- ALWAYS use ALL available paid sources (Prospeo + AI Ark) for every discovery run.
+**Example Filter Combos:**
+- Enterprise B2B: `jobTitles: ["CTO", "VP Engineering"], seniority: ["c_suite", "vp"], companySizes: ["201-500", "500+"], locations: ["United Kingdom"]`
+- SMB/Local: `jobTitles: ["Owner", "Managing Director"], companySizes: ["1-10", "11-50"], locations: ["London"]`
 
-Source execution order:
-1. `search-apollo.js` (free) -- broad search, no emails, use for initial volume
-2. `search-prospeo.js` ($0.001/credit) -- full enrichment, 20+ filters
-3. `search-aiark.js` (~$0.003/call) -- full enrichment, comparable filters to Prospeo
+**Routing Guidance:**
+- Use when: ALWAYS include (free, broad coverage, no downside)
+- Skip when: Never skip -- zero cost
+- Always pair with: Prospeo + AI Ark for comprehensive coverage
 
-For Apify sources, add when the ICP specifically calls for:
-- Local/map-based businesses -> `search-google-maps.js`
-- Ecommerce companies -> `search-ecommerce.js`
-- Verified emails at scale -> `search-leads-finder.js`
-- Web presence signals -> `search-google.js` (Serper)
+---
+
+### Prospeo
+
+**Overview:** Strong B2B people database. 20+ filters including unique ones (SIC codes, years of experience). Returns identity data only.
+**Cost:** 1 credit per request (~$0.002). 25 results per page (fixed by Prospeo).
+**Rate Limits:** Standard API limits.
+**Pagination:** 1-based page numbers.
+**Results:** Identity only -- name, title, company, LinkedIn URL. No emails.
+
+**Supported Filters:**
+
+| Filter | Field Name | Notes |
+|--------|-----------|-------|
+| Job titles | jobTitles | Array of strings |
+| Seniority | seniority | Array of seniority levels |
+| Industries | industries | Array of industry names |
+| Locations | locations | Format: `"Country Name #CC"` (e.g. `"United Kingdom #GB"`) |
+| Company sizes | companySizes | Auto-mapped to Prospeo's finer bands (e.g. `11-50` -> `["11-20", "21-50"]`) |
+| Company domains | companyDomains | Uses `company.websites` -- MUST be actual domains |
+| Keywords | keywords | General keyword search |
+| Company keywords | companyKeywords | Company-level keyword search |
+| Departments | departments | Specific department filters |
+| SIC codes | sicCodes | Prospeo-only: Standard Industrial Classification |
+| NAICS codes | naicsCodes | North American Industry Classification |
+| Years of experience | yearsExperience | Prospeo-only: filter by experience range |
+| Funding stages | fundingStages | e.g. Seed, Series A, Series B |
+| Revenue min/max | revenueMin / revenueMax | Revenue range filter |
+| Technologies | technologies | Technology stack filter |
+| Company type | companyType | e.g. Private, Public, Non-Profit |
+| Founded year | foundedYear | Year company was founded |
+
+**Known Issues:**
+- `company.websites` accepts company names without error but returns JUNK DATA. This is the $100 bug. Company names silently pass validation and produce garbage results.
+
+**HARD-BLOCKED Filters:**
+- Company names in `companyDomains`: HARD BLOCK. If any entry lacks a dot or contains spaces, it is a company name, not a domain. Use actual domains like `acme.com`.
+
+**Example Filter Combos:**
+- Enterprise B2B: `jobTitles: ["CFO", "Finance Director"], seniority: ["c_suite", "director"], industries: ["Financial Services"], locations: ["United Kingdom #GB"], companySizes: ["201-500", "500+"]`
+- SIC-targeted: `sicCodes: ["7372"], jobTitles: ["CTO"], locations: ["United Kingdom #GB"]`
+- Ecommerce: `companyDomains: ["shopify-store.com", ...], jobTitles: ["Founder", "Head of Marketing"]`
+
+**Routing Guidance:**
+- Use when: ALWAYS include alongside AI Ark (equal coverage peers)
+- Skip when: Never skip for B2B people search
+- Always pair with: AI Ark (each has unique records the other misses)
+- Unique advantage: SIC codes and years of experience filters (only Prospeo supports these)
+
+---
+
+### AI Ark
+
+**Overview:** B2B people and companies database. Up to 100 results per page. Smart job title matching. Identity data only.
+**Cost:** ~$0.003 per API call (regardless of result count).
+**Rate Limits:** 5 requests/second, 300 requests/minute.
+**Pagination:** Zero-based page numbers (page 0 = first page).
+**Results:** Identity only -- name, title, company, LinkedIn URL. No emails.
+
+**Supported Filters:**
+
+| Filter | Field Name | Notes |
+|--------|-----------|-------|
+| Job titles | jobTitles | SMART mode -- fuzzy matching |
+| Seniority | seniority | Array of seniority levels |
+| Industries | industries | Array of industry names |
+| Locations | locations | Company HQ location |
+| Company sizes | companySizes | RANGE type |
+| Company domains | companyDomains | `account.domain` filter |
+| Revenue | revenue | Revenue range filter |
+| Funding stages | fundingStages | Values: `SEED`, `SERIES_A`, `SERIES_B`, `SERIES_C`, `VENTURE_ROUND`, `ANGEL`, `IPO` |
+| Technologies | technologies | Technology stack filter |
+| Company type | companyType | Values: `PRIVATELY_HELD`, `PUBLIC_COMPANY`, `NON_PROFIT`, `SELF_OWNED`, `PARTNERSHIP` |
+| Founded year | foundedYear | Year company was founded |
+| NAICS codes | naicsCodes | Industry classification |
+| Company keywords | companyKeywords | **MUST use two-step workaround** (see below) |
+
+**Known Issues:**
+- `contact.department` filter is BUGGED: silently returns ALL records, completely ignoring the filter. You get unfiltered results with no error.
+- `contact.keyword` filter is BROKEN: returns 400 "request not readable" error.
+- `account.keyword` on /v1/people endpoint returns 500 "cannot serialize" error.
+
+**HARD-BLOCKED Filters:**
+- `departments`: HARD BLOCK. AI Ark `contact.department` is bugged -- silently ignores the filter and returns all records. Use Prospeo for department filtering instead.
+- `keywords` (contact-level): HARD BLOCK. AI Ark `contact.keyword` returns 400 error. Use job titles for people-level filtering.
+
+**Two-Step Workaround (MANDATORY for keyword searches):**
+When you need to search AI Ark by company keywords, you MUST use the two-step company-then-people workaround:
+1. Search `/v1/companies` by keyword to get company domains
+2. Use those domains as `account.domain` filter on `/v1/people`
+This is already implemented in the adapter code (`searchCompanyDomainsByKeyword`). The `companyKeywords` filter automatically triggers this workaround. Direct keyword searches on `/v1/people` will fail.
+
+**Example Filter Combos:**
+- Enterprise B2B: `jobTitles: ["CTO", "VP Engineering"], seniority: ["c_suite", "vp"], companySizes: ["201-500"], locations: ["United Kingdom"], fundingStages: ["SERIES_B", "SERIES_C"]`
+- Technology-targeted: `technologies: ["Salesforce", "HubSpot"], jobTitles: ["Head of Sales"], companyType: "PRIVATELY_HELD"`
+- Keyword search (two-step): `companyKeywords: ["umbrella company"], jobTitles: ["Director", "Owner"]`
+
+**Routing Guidance:**
+- Use when: ALWAYS include alongside Prospeo (equal coverage peers)
+- Skip when: Never skip for B2B people search
+- Always pair with: Prospeo (each has unique records)
+- Avoid: department and contact-level keyword filters (use Prospeo for those)
+
+---
+
+### Leads Finder (Apify)
+
+**Overview:** Apify actor (`code_crafter/leads-finder`). 300M+ B2B database. Returns VERIFIED EMAILS + phones + LinkedIn in one step. No separate enrichment needed.
+**Cost:** ~$0.002 per lead ($2/1K leads). Requires Apify paid plan.
+**Rate Limits:** Apify compute-based (credits reset monthly).
+**Pagination:** None -- single batch, all results returned at once.
+**Results:** Verified emails + phone numbers + LinkedIn URLs. The ONLY source that skips the enrichment step.
+
+**Supported Filters:**
+
+| Filter | Field Name | Notes |
+|--------|-----------|-------|
+| Job titles | jobTitles | Array of strings |
+| Seniority | seniority | Array of seniority levels |
+| Industries | industries | Array of industry names |
+| Locations | locations | Array of location strings |
+| Company sizes | companySizes | Array of size ranges |
+| Company domains | companyDomains | Array of domain strings |
+| Company keywords | companyKeywords | Company-level keyword search |
+| Departments | departments | Department filters |
+| Revenue min/max | revenueMin / revenueMax | Revenue range |
+| Funding stages | fundingStages | Funding stage filter |
+
+**Known Issues:** Requires Apify Starter plan ($29/mo). Credits can be exhausted before monthly reset.
+
+**HARD-BLOCKED Filters:** None -- all supported filters work correctly.
+
+**Example Filter Combos:**
+- Enterprise B2B with emails: `jobTitles: ["Head of Marketing"], seniority: ["director", "vp"], industries: ["SaaS"], locations: ["United Kingdom"], companySizes: ["51-200", "201-500"]`
+
+**Routing Guidance:**
+- Use when: Verified emails needed fast (skips enrichment step), supplementing the core 3 sources
+- Skip when: Apify credits exhausted, or when enrichment pipeline is preferred
+- Always pair with: Can standalone for quick email-ready lists
+
+---
+
+### Google Maps (Apify)
+
+**Overview:** Apify actor (`compass/crawler-google-places`). COMPANY-LEVEL data only. Discovers local/SMB businesses by category and location.
+**Cost:** ~$0.005 per search (Apify compute).
+**Rate Limits:** Apify compute-based.
+**Pagination:** None -- results returned in single batch.
+**Results:** Company-level only: name, address, phone, website, domain, rating, review count, categories. NO person data.
+
+**Supported Filters:**
+
+| Filter | Field Name | Notes |
+|--------|-----------|-------|
+| Search query | query | Business category or type (e.g. "umbrella companies") |
+| Location | location | Geographic area (e.g. "London, UK") |
+| Max results | maxResults | Limit returned results |
+
+**Known Issues:** None known.
+
+**HARD-BLOCKED Filters:** None.
+
+**Example Filter Combos:**
+- Local SMB: `query: "recruitment agencies", location: "Manchester, UK", maxResults: 50`
+- Service businesses: `query: "IT support companies", location: "London, UK", maxResults: 100`
+
+**Routing Guidance:**
+- Use when: Local/SMB ICP where you need to discover businesses by category and geography
+- Skip when: Enterprise B2B (use Apollo/Prospeo/AI Ark instead)
+- Always pair with: Prospeo + AI Ark for people search using the discovered domains (Google Maps returns companies, not people)
+
+---
+
+### Ecommerce Stores (Apify)
+
+**Overview:** Apify actor (`ecommerce_leads/store-leads-14m-e-commerce-leads`). 14M+ ecommerce store database. COMPANY-LEVEL data only.
+**Cost:** ~$0.004 per lead (pay-per-result).
+**Rate Limits:** Apify compute-based.
+**Pagination:** Results returned in batch.
+**Results:** Company-level only: domain, store name, platform, email, phone, country, traffic, technologies, categories. NO person data.
+
+**Supported Filters:**
+
+| Filter | Field Name | Notes |
+|--------|-----------|-------|
+| Platform | platform | Shopify, WooCommerce, BigCommerce, Magento |
+| Category | category | Store product category |
+| Country | country | Country code |
+| Monthly traffic | monthlyTraffic | Traffic range filter |
+| Keywords | keywords | Keyword search |
+| Max results | maxResults | Limit returned results |
+
+**Known Issues:** Status: UNDER MAINTENANCE. May be temporarily unavailable.
+
+**HARD-BLOCKED Filters:** None.
+
+**Example Filter Combos:**
+- UK Shopify stores: `platform: "shopify", country: "GB", category: "Apparel", maxResults: 100`
+- High-traffic ecommerce: `monthlyTraffic: "10000+", country: "GB", maxResults: 50`
+
+**Routing Guidance:**
+- Use when: Ecommerce ICP where you need to discover online stores by platform and category
+- Skip when: Non-ecommerce ICP, or when the source is under maintenance
+- Always pair with: Prospeo + AI Ark for people search using the discovered domains (Ecommerce Stores returns companies, not people)
+
+---
+
+## Two-Path Routing Decision Tree
+
+Use this routing logic when building discovery plans. Explain your routing choice in the plan presentation.
+
+```
+INPUT: ICP + optional company domains
+
+IF company domains provided:
+  PATH A (domain-based): Search Prospeo + AI Ark + Apollo by companyDomains
+  PATH B (ICP-filter): Search Prospeo + AI Ark + Apollo by ICP filters
+  RUN BOTH IN PARALLEL, dedup after
+  VERIFY DOMAINS: quick DNS check for valid/current domains before burning credits
+
+IF ICP-filter only (no domains):
+  ALWAYS use all three: Apollo (free) + Prospeo + AI Ark
+  Add Apify sources when ICP calls for them:
+    - Ecommerce ICP -> Ecommerce Stores first, then Prospeo/AI Ark for people
+    - Local/SMB ICP -> Google Maps first, then Prospeo/AI Ark for people
+    - Need verified emails fast -> Leads Finder
+
+IF company keyword search:
+  AI Ark: MUST use two-step workaround (companies -> domains -> people)
+  Prospeo: Direct companyKeywords filter works
+  Apollo: keywords filter works
+```
+
+**Routing reasoning requirement:** When presenting the plan, explain WHY you chose the routing. Example: "Using domain-based search on Prospeo because you provided 104 company domains. Also running AI Ark ICP filters to catch companies not on your list."
+
+## Pre-Search Input Validation Rules
+
+These rules are enforced at TWO layers: (1) the agent reads and follows these rules during plan generation, and (2) the `discovery-validation.ts` CLI module enforces them as a safety net before execution.
+
+### 1. Company Name vs Domain (HARD BLOCK)
+- If `companyDomains` entries lack a dot (`.`) or contain spaces, they are company names, not domains
+- Example violation: `["Acme Corp", "Widget Inc"]` -- these are company names
+- Example correct: `["acme.com", "widget.io"]`
+- This is the exact bug that burned $100 on Prospeo -- NEVER pass company names as domains
+
+### 2. Missing Required ICP Fields (HARD BLOCK)
+- If ALL of these are empty/missing: `jobTitles`, `seniority`, `industries`, `companyDomains` -- the search is too broad
+- At least ONE targeting filter must be present
+- Exception: Google Maps and Ecommerce Stores use different filter sets (categories, keywords, locations) -- this check does not apply to them
+
+### 3. Filter-Platform Mismatch (HARD BLOCK or WARNING)
+- AI Ark + `departments` -> HARD BLOCK: filter is bugged (silently ignores, returns all records)
+- AI Ark + `keywords` (contact-level) -> HARD BLOCK: returns 400 error
+- Apollo + `sicCodes` -> WARNING: Apollo does not support SIC codes, use Prospeo instead
+- Apollo + `yearsExperience` -> WARNING: Apollo does not support years of experience, use Prospeo
+- Apollo + `fundingStages` -> WARNING: Apollo free tier has limited funding filter support
+
+### 4. Budget Exceeded (WARNING)
+- If estimated cost exceeds remaining daily budget, show a warning
+- This is a WARNING, not a hard block -- admin can override
+- Suggestion: reduce page count or remove a paid source
+
+### 5. ICP Mismatch (WARNING)
+- Compare search filters against workspace ICP fields
+- If search industries do not overlap with workspace ICP industries -> WARNING
+- If search locations do not match workspace ICP geographies -> WARNING
+- These are informational warnings only
 
 ## Discovery Rules
 - All discovered leads go to the DiscoveredPerson staging table, NOT directly to the Person table. Run `node dist/cli/discovery-promote.js` to move them.
