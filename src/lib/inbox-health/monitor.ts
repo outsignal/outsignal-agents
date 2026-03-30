@@ -14,7 +14,7 @@ export interface InboxStatusChange {
 export async function checkAllWorkspaces(): Promise<InboxStatusChange[]> {
   // Get all workspaces with API tokens
   const workspaces = await prisma.workspace.findMany({
-    where: { apiToken: { not: null } },
+    where: { apiToken: { not: null }, monitoringEnabled: true },
     select: { slug: true, name: true, apiToken: true },
   });
 

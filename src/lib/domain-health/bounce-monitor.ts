@@ -403,6 +403,7 @@ export async function runBounceMonitor(): Promise<{
     where: {
       emailAddress: { not: null },
       status: { not: "disabled" },
+      workspace: { monitoringEnabled: true },
     },
     select: {
       id: true,

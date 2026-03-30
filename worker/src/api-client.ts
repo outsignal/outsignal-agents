@@ -62,6 +62,14 @@ export class ApiClient {
   }
 
   /**
+   * Get active workspace slugs from the API.
+   */
+  async getWorkspaceSlugs(): Promise<string[]> {
+    const result = await this.request<{ slugs: string[] }>("/api/linkedin/workspaces");
+    return result.slugs;
+  }
+
+  /**
    * Get next batch of ready actions for a sender.
    */
   async getNextActions(senderId: string, limit: number = 10): Promise<ActionItem[]> {

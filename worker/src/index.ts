@@ -26,16 +26,17 @@ if (!API_SECRET) {
   console.error("Missing API_SECRET environment variable");
   process.exit(1);
 }
-if (!WORKSPACE_SLUGS) {
-  console.error("Missing WORKSPACE_SLUGS environment variable");
-  process.exit(1);
-}
-
-const slugs = WORKSPACE_SLUGS.split(",").map((s) => s.trim()).filter(Boolean);
+const slugs = WORKSPACE_SLUGS
+  ? WORKSPACE_SLUGS.split(",").map((s) => s.trim()).filter(Boolean)
+  : [];
 
 console.log(`[Main] Starting LinkedIn worker`);
 console.log(`[Main] API: ${API_URL}`);
-console.log(`[Main] Workspaces: ${slugs.join(", ")}`);
+if (slugs.length > 0) {
+  console.log(`[Main] Workspaces (env override): ${slugs.join(", ")}`);
+} else {
+  console.log(`[Main] Workspaces: dynamic discovery from API`);
+}
 console.log(`[Main] Session server port: ${PORT}`);
 
 // Initialize shared API client

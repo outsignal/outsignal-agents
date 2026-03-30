@@ -65,7 +65,10 @@ const LOG_PREFIX = "[domain-health-cron]";
  */
 async function collectSendingDomains(): Promise<string[]> {
   const senders = await prisma.sender.findMany({
-    where: { emailAddress: { not: null } },
+    where: {
+      emailAddress: { not: null },
+      workspace: { monitoringEnabled: true },
+    },
     select: { emailAddress: true },
   });
 

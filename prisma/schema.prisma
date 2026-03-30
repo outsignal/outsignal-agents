@@ -113,6 +113,8 @@ model Workspace {
   billingClientEmail        String?   // Email address to send invoices to (may differ from clientEmails)
   billingCcEmails           String?   // Comma-separated CC emails for invoice sending
 
+  monitoringEnabled Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -70,6 +70,11 @@ export class Worker {
   private pollCycleCount = 0;
   /** Per-sender backoff counter for conversation fetch failures. */
   private conversationBackoff: Map<string, number> = new Map();
+  /** Cached workspace slugs from API discovery. */
+  private cachedSlugs: string[] = [];
+  /** Timestamp of last slug cache refresh. */
+  private slugsCachedAt = 0;
+  private static readonly SLUG_CACHE_TTL_MS = 5 * 60 * 1000;
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -116,11 +121,38 @@ export class Worker {
   }
 
   /**
+   * Resolve workspace slugs — uses env var override or dynamic API discovery with caching.
+   */
+  private async getWorkspaceSlugs(): Promise<string[]> {
+    if (this.options.workspaceSlugs.length > 0) {
+      return this.options.workspaceSlugs;
+    }
+
+    const now = Date.now();
+    if (this.cachedSlugs.length > 0 && now - this.slugsCachedAt < Worker.SLUG_CACHE_TTL_MS) {
+      return this.cachedSlugs;
+    }
+
+    try {
+      const slugs = await this.api.getWorkspaceSlugs();
+      this.cachedSlugs = slugs;
+      this.slugsCachedAt = now;
+      console.log(`[Worker] Discovered ${slugs.length} active workspace(s): ${slugs.join(", ")}`);
+      return slugs;
+    } catch (err) {
+      console.error("[Worker] Failed to fetch workspace slugs:", err);
+      return this.cachedSlugs;
+    }
+  }
+
+  /**
    * Single tick — process all senders.
    */
   private async tick(): Promise<void> {
+    const slugs = await this.getWorkspaceSlugs();
+
     // Run keepalives BEFORE business hours check — keepalives fire 24/7
-    for (const slug of this.options.workspaceSlugs) {
+    for (const slug of slugs) {
       if (!this.running) break;
       try {
         const senders = await this.api.getSenders(slug);
@@ -140,7 +172,7 @@ export class Worker {
     }
 
     // Process each workspace
-    for (const slug of this.options.workspaceSlugs) {
+    for (const slug of slugs) {
       if (!this.running) break;
       await this.processWorkspace(slug);
     }
@@ -153,7 +185,7 @@ export class Worker {
       this.pollCycleCount = 0;
       console.log("[Worker] Checking LinkedIn conversations for new messages...");
 
-      for (const slug of this.options.workspaceSlugs) {
+      for (const slug of slugs) {
         if (!this.running) break;
         try {
           const senders = await this.api.getSenders(slug);

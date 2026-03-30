@@ -153,6 +153,7 @@ export const bounceMonitorTask = schedules.task({
         where: {
           emailAddress: { not: null },
           status: { not: "disabled" },
+          workspace: { monitoringEnabled: true },
         },
         select: {
           emailAddress: true,
