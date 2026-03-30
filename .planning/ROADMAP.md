@@ -569,8 +569,8 @@ Plans:
   4. Agent pre-search sanity check flags mismatched ICP filters before any paid API call fires (e.g. Prospeo company.names instead of company.websites triggers a blocker warning)
 **Plans**: 2 plans
 Plans:
-- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
-- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
+- [ ] 53-01-PLAN.md — Platform Expertise section in leads-rules.md + Two-Path Routing + Input Validation Rules
+- [ ] 53-02-PLAN.md — discovery-validation.ts module + wire into all 6 CLI search wrappers
 
 ### Phase 54: Writer Agent Overhaul
 **Goal**: The writer never saves copy that violates quality rules — it self-reviews before every save, sees the full campaign as a unit, and rewrites automatically when violations are found
