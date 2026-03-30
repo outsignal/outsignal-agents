@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": {
+        "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
+      }
+    },
     "outsignal-leads": {
       "command": "npx",
       "args": ["tsx", "src/mcp/leads-agent/index.ts"],
