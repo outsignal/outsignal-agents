@@ -22,7 +22,7 @@ Requirements for the agent quality overhaul. Each maps to roadmap phases.
 
 ### Copy Quality
 
-- [ ] **COPY-01**: Extended copy-quality.ts — full rule set (word count tiered by strategy, all banned phrases, greeting check, CTA softness, variable format, subject line rules)
+- [x] **COPY-01**: Extended copy-quality.ts — full rule set (word count tiered by strategy, all banned phrases, greeting check, CTA softness, variable format, subject line rules)
 - [ ] **COPY-02**: Mandatory self-review gate before save — writer calls validate-copy CLI, auto-rewrites if violations (max 2 retries, then save with review notes)
 - [ ] **COPY-03**: Campaign-holistic awareness — writer loads all existing steps (email + LinkedIn) before generating, maintains "taken angles" and "taken CTAs" list
 - [ ] **COPY-04**: Intent-based anti-pattern descriptions in rules (not just banned phrases — describe the pattern to avoid)
@@ -77,7 +77,7 @@ Requirements for the agent quality overhaul. Each maps to roadmap phases.
 | LEAD-08 | Phase 56 | Pending |
 | LEAD-09 | Phase 53 | Pending |
 | LEAD-10 | Phase 56 | Pending |
-| COPY-01 | Phase 52 | Pending |
+| COPY-01 | Phase 52 | Complete |
 | COPY-02 | Phase 54 | Pending |
 | COPY-03 | Phase 54 | Pending |
 | COPY-04 | Phase 54 | Pending |

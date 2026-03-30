@@ -127,7 +127,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 **Milestone Goal:** Make agent team produce campaign-ready output without manual QA — expert-level lead sourcing with verified data, copy that passes all rules first time, validated pipeline end-to-end.
 
-- [ ] **Phase 52: Copy Quality Module + Model Upgrade** - Extend copy-quality.ts with full structural rule set; upgrade all agents to Opus 4.6
+- [x] **Phase 52: Copy Quality Module + Model Upgrade** - Extend copy-quality.ts with full structural rule set; upgrade all agents to Opus 4.6 (completed 2026-03-30)
 - [ ] **Phase 53: Platform Expertise + Input Rules** - Encode platform expertise in leads-rules.md; add pre-search input validation at CLI wrapper level
 - [ ] **Phase 54: Writer Agent Overhaul** - Mandatory self-review gate, campaign-holistic awareness, automatic rewrite loop
 - [ ] **Phase 55: Validator Agent** - Haiku-based stateless validator with structural + coherence checks
@@ -416,7 +416,7 @@ Plans:
 | 49. Specialist CLI Skill Files | v7.0 | 3/3 | Complete | 2026-03-24 |
 | 50. Orchestrator CLI Spawn Integration | v7.0 | 2/2 | Complete | 2026-03-24 |
 | 51. Memory Accumulation and Full Validation | v7.0 | 2/2 | Complete | 2026-03-24 |
-| 52. Copy Quality Module + Model Upgrade | 1/2 | In Progress|  | - |
+| 52. Copy Quality Module + Model Upgrade | 2/2 | Complete   | 2026-03-30 | - |
 | 53. Platform Expertise + Input Rules | v8.0 | 0/TBD | Not started | - |
 | 54. Writer Agent Overhaul | v8.0 | 0/TBD | Not started | - |
 | 55. Validator Agent | v8.0 | 0/TBD | Not started | - |
