@@ -75,6 +75,9 @@ export class Worker {
   /** Timestamp of last slug cache refresh. */
   private slugsCachedAt = 0;
   private static readonly SLUG_CACHE_TTL_MS = 5 * 60 * 1000;
+  /** Timestamp of last expired-session recovery attempt. */
+  private lastRecoveryAttempt = 0;
+  private static readonly RECOVERY_INTERVAL_MS = 10 * 60 * 1000;
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -146,6 +149,75 @@ export class Worker {
   }
 
   /**
+   * Attempt to recover senders whose sessions have already expired.
+   * These senders are filtered out of processWorkspace() and never reach processSender(),
+   * so this separate loop picks them up and attempts auto-re-login.
+   * Throttled to run at most once every 10 minutes.
+   */
+  private async recoverExpiredSessions(slugs: string[]): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastRecoveryAttempt < Worker.RECOVERY_INTERVAL_MS) {
+      return;
+    }
+    this.lastRecoveryAttempt = now;
+
+    console.log("[Worker] Running expired session recovery check...");
+
+    let totalExpired = 0;
+    let totalRecovered = 0;
+
+    for (const slug of slugs) {
+      if (!this.running) break;
+
+      let senders: SenderConfig[];
+      try {
+        senders = await this.api.getSenders(slug);
+      } catch (err) {
+        console.error(`[Worker] Recovery: failed to get senders for ${slug}:`, err);
+        continue;
+      }
+
+      const expiredSenders = senders.filter(
+        (s) => s.status === "active" && s.healthStatus === "session_expired",
+      );
+
+      if (expiredSenders.length === 0) continue;
+
+      totalExpired += expiredSenders.length;
+      console.log(
+        `[Worker] Recovery: found ${expiredSenders.length} expired session(s) in ${slug}: ${expiredSenders.map((s) => s.name).join(", ")}`,
+      );
+
+      for (const sender of expiredSenders) {
+        if (!this.running) break;
+
+        console.log(`[Worker] Recovery: attempting auto-re-login for ${sender.name}...`);
+
+        // Clear any cached client for this sender (stale session)
+        this.activeClients.delete(sender.id);
+        this.lastSessionCheck.delete(sender.id);
+
+        const success = await this.attemptAutoRelogin(sender);
+
+        if (success) {
+          totalRecovered++;
+          console.log(`[Worker] Recovery: successfully recovered session for ${sender.name}`);
+        } else {
+          console.warn(`[Worker] Recovery: failed to recover session for ${sender.name}`);
+        }
+      }
+    }
+
+    if (totalExpired === 0) {
+      console.log("[Worker] Recovery: no expired sessions found");
+    } else {
+      console.log(
+        `[Worker] Recovery: ${totalRecovered}/${totalExpired} session(s) recovered`,
+      );
+    }
+  }
+
+  /**
    * Single tick — process all senders.
    */
   private async tick(): Promise<void> {
@@ -161,6 +233,9 @@ export class Worker {
         console.error(`[Worker] Keepalive check failed for ${slug}:`, err);
       }
     }
+
+    // Recover expired sessions — runs 24/7, throttled to every 10 minutes
+    await this.recoverExpiredSessions(slugs);
 
     // Check business hours (default schedule) — actions only during business hours
     if (!isWithinBusinessHours()) {
