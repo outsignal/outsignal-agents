@@ -9,7 +9,7 @@
 | Website | https://www.1210solutions.co.uk/ |
 | Type | Client |
 | Vertical | Umbrella Company Solutions |
-| Package | Email |
+| Package | Email + LinkedIn |
 | Status | Active |
 
 ## Key Contacts

@@ -144,9 +144,15 @@ export function CampaignApprovalLeads({
       )}
 
       {leads.length === 0 ? (
-        <p className="text-center py-10 text-muted-foreground text-sm">
-          No leads linked to this campaign yet.
-        </p>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="rounded-full bg-[#635BFF]/10 p-3 mb-4">
+            <Loader2 className="h-6 w-6 text-[#635BFF] animate-spin" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-1">Leads are currently being processed</h3>
+          <p className="text-sm text-muted-foreground max-w-md">
+            We&apos;re building your target list. You&apos;ll be notified when leads are ready for review. In the meantime, you can review the campaign content.
+          </p>
+        </div>
       ) : (
         <>
           {/* Lead count line */}

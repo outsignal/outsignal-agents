@@ -161,7 +161,7 @@ export default async function PortalCampaignDetailPage({
   const isPendingApproval = campaign.status === "pending_approval";
 
   // Wizard step: default to "content" if leads already approved, otherwise "leads".
-  // User can override via ?step=leads to review approved leads.
+  // User can override via ?step= to navigate freely between steps.
   const activeStep = isPendingApproval
     ? (stepParam === "leads" || stepParam === "content")
       ? stepParam
@@ -222,21 +222,19 @@ export default async function PortalCampaignDetailPage({
               <div className={`mx-2.5 h-px w-8 ${campaign.leadsApproved ? "bg-brand" : "bg-border"}`} />
               <Link
                 href={`/portal/campaigns/${campaign.id}?step=content`}
-                className={`flex items-center gap-1.5 transition-opacity ${campaign.leadsApproved ? "hover:opacity-80" : "pointer-events-none"}`}
+                className="flex items-center gap-1.5 transition-opacity hover:opacity-80"
               >
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
                     campaign.contentApproved
                       ? "bg-brand text-white"
-                      : campaign.leadsApproved
-                        ? "border-2 border-brand text-brand"
-                        : "border-2 border-muted-foreground/30 text-muted-foreground"
+                      : "border-2 border-brand text-brand"
                   }`}
                 >
                   {campaign.contentApproved ? <CheckCircle2 className="h-3.5 w-3.5" /> : "2"}
                 </div>
                 <span className={`text-xs font-medium ${
-                  campaign.contentApproved ? "text-brand" : campaign.leadsApproved ? "text-foreground" : "text-muted-foreground"
+                  campaign.contentApproved ? "text-brand" : "text-foreground"
                 }`}>
                   Content
                 </span>

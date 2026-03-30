@@ -40,8 +40,11 @@ export default async function PortalCampaignsPage({
     }
   }
 
+  // Exclude draft campaigns from the portal — only show published/pending
+  const visibleCampaigns = internalCampaigns.filter((c) => c.status !== "draft");
+
   // Merge internal campaigns with EB data
-  const merged: MergedCampaign[] = internalCampaigns.map((c) => {
+  const merged: MergedCampaign[] = visibleCampaigns.map((c) => {
     // Match by EB campaign ID first, fall back to name match
     const ebMatch = c.emailBisonCampaignId
       ? ebCampaigns.find((eb) => eb.id === c.emailBisonCampaignId)
