@@ -587,6 +587,17 @@ Plans:
 - [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
 - [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
+### Phase 54.1: Agent Memory Write-Back (INSERTED)
+
+**Goal:** Close the v7.0 memory gap — agents load workspace memory context but never persist insights. Add onComplete post-hook to runner.ts, appendToMemory utility, and wire all 4 specialist agents to write back after successful runs.
+**Requirements**: None (inserted gap fix, no formal requirement IDs)
+**Depends on:** Phase 54
+**Plans:** 2 plans
+
+Plans:
+- [ ] 54.1-01-PLAN.md — Create appendToMemory utility + onComplete hook on AgentConfig + runner.ts
+- [ ] 54.1-02-PLAN.md — Wire onComplete hooks in all 4 specialist agents (writer, leads, campaign, research)
+
 ### Phase 55: Validator Agent
 **Goal**: A stateless validator (Opus 4.6 via Claude Code CLI) reviews every completed sequence for semantic quality issues that structural checks miss — angle repetition, tone mismatch, filler spintax — before the copy is confirmed saved
 **Depends on**: Phase 52 (extended copy-quality.ts is imported by validator.ts), Phase 54 (writer calls validateSequence tool)
