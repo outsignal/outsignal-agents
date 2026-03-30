@@ -611,10 +611,11 @@ Plans:
   3. After any search returning results, the agent reports verified email %, LinkedIn URL %, ICP fit score distribution, and placeholder detection count — and flags if verified email rate is below 30%
   4. Leads with CATCH_ALL or unverified email status are routed to BounceBan/LeadMagic verification rather than silently discarded — the routing decision is visible in the post-search report
   5. The discovery plan always starts with a sourcing recommendation naming which platform(s) to use and why, awaiting explicit admin approval before any paid API call fires
-**Plans**: 2 plans
+**Plans**: 3 plans
 Plans:
-- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
-- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
+- [ ] 56-01-PLAN.md — Quality gate, credit tracker, and channel-aware enrichment modules (pure functions + tests)
+- [ ] 56-02-PLAN.md — Domain resolver module with DB-first, Serper-fallback, HTTP-verified pipeline
+- [ ] 56-03-PLAN.md — Wire all modules into leads agent tools + update leads-rules.md
 
 ### Phase 57: Campaign Pipeline Validation
 **Goal**: The campaign pipeline enforces channel-appropriate data at every hand-off point — list building, company name normalisation, and the portal approval route all gate on data quality before proceeding
