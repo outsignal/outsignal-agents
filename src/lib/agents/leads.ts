@@ -22,6 +22,11 @@ import { stageDiscoveredPeople } from "@/lib/discovery/staging";
 import { incrementDailySpend, PROVIDER_COSTS } from "@/lib/enrichment/costs";
 import { getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
 import { deduplicateAndPromote as runDeduplicateAndPromote } from "@/lib/discovery/promotion";
+import { assessSearchQuality } from "@/lib/discovery/quality-gate";
+import { getPlatformBalance, estimateSearchCost, reportSearchCost } from "@/lib/discovery/credit-tracker";
+import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
+import { resolveCompanyDomains } from "@/lib/discovery/domain-resolver";
+import type { DiscoveredPersonResult } from "@/lib/discovery/types";
 import { prisma } from "@/lib/db";
 
 // --- Leads Agent Tools ---
@@ -166,7 +171,7 @@ export const leadsTools = {
 
   buildDiscoveryPlan: tool({
     description:
-      "Build a discovery plan showing sources, estimated cost, estimated volume, and quota impact. ALWAYS call this before executing any discovery searches. Does NOT make external API calls — just computes projections from workspace quota data. Present the returned plan to admin and wait for approval before calling search tools.",
+      "Build a discovery plan showing sources, estimated cost, estimated volume, quota impact, and per-platform credit balances. Includes credit cost estimate and platform balance check. ALWAYS call this before executing any discovery searches. Present the returned plan to admin and wait for approval before calling search tools.",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace slug for quota lookup"),
       sources: z.array(
@@ -247,6 +252,30 @@ export const leadsTools = {
       const quotaAfter = usage.totalLeadsUsed + totalEstimatedLeads;
       const overQuota = quotaAfter > quotaLimit;
 
+      // Credit estimate from credit-tracker
+      const creditEstimate = estimateSearchCost(
+        params.sources.map((s) => ({ name: s.name, estimatedVolume: s.estimatedVolume })),
+      );
+
+      // Platform balances for each unique source
+      const uniquePlatforms = [...new Set(params.sources.map((s) => {
+        const map: Record<string, string> = {
+          apollo: "apollo-search",
+          prospeo: "prospeo-search",
+          aiark: "aiark-search",
+          "leads-finder": "apify-leads-finder",
+          "serper-web": "serper-web",
+          "serper-maps": "serper-maps",
+          firecrawl: "firecrawl-extract",
+          "google-maps": "google-maps",
+          "ecommerce-stores": "ecommerce-stores",
+        };
+        return map[s.name] ?? s.name;
+      }))];
+      const platformBalances = await Promise.all(
+        uniquePlatforms.map((p) => getPlatformBalance(p)),
+      );
+
       return {
         sources: sourcesWithCost,
         totalEstimatedLeads,
@@ -255,24 +284,216 @@ export const leadsTools = {
         quotaAfter,
         quotaLimit,
         overQuota,
+        creditEstimate,
+        platformBalances,
       };
     },
   }),
 
   deduplicateAndPromote: tool({
     description:
-      "After discovery searches complete for an approved plan, deduplicate staged leads against the Person DB and promote non-duplicates. Triggers enrichment waterfall for promoted leads. Call this AFTER all search tools for an approved plan have finished.",
+      "After discovery searches complete for an approved plan, deduplicate staged leads against the Person DB and promote non-duplicates. Triggers enrichment waterfall for promoted leads. Call this AFTER all search tools for an approved plan have finished. Pass campaignId to enable channel-aware enrichment (LinkedIn-only campaigns skip email enrichment).",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
       discoveryRunIds: z
         .array(z.string())
         .describe("Run IDs returned by each search tool call"),
+      campaignId: z
+        .string()
+        .optional()
+        .describe("Campaign ID to determine enrichment profile (LinkedIn-only skips email enrichment)"),
     }),
     execute: async (params) => {
-      return runDeduplicateAndPromote(
+      let enrichmentProfile: "full" | "linkedin-only" = "full";
+      let enrichmentNote = "Full enrichment (email + LinkedIn URLs)";
+
+      if (params.campaignId) {
+        const campaign = await prisma.campaign.findUnique({
+          where: { id: params.campaignId },
+          select: { channels: true },
+        });
+        if (campaign) {
+          const channels = getCampaignChannels(campaign);
+          enrichmentProfile = getEnrichmentProfile(channels);
+          if (enrichmentProfile === "linkedin-only") {
+            enrichmentNote = "LinkedIn-only campaign — email enrichment skipped, saving credits";
+          }
+        }
+      }
+
+      const result = await runDeduplicateAndPromote(
         params.workspaceSlug,
         params.discoveryRunIds,
       );
+
+      return {
+        ...result,
+        enrichmentProfile,
+        enrichmentNote,
+      };
+    },
+  }),
+
+  assessQuality: tool({
+    description:
+      "Run post-search quality assessment on staged discovery results. Reports verified email %, LinkedIn URL %, ICP fit distribution, and junk detection count. Call this AFTER each search completes, BEFORE promoting. Flags results below 50% verified email threshold.",
+    inputSchema: z.object({
+      discoveryRunIds: z
+        .array(z.string())
+        .describe("Discovery run IDs to assess"),
+      workspaceSlug: z.string().describe("Workspace slug for ICP fit scoring"),
+      costUsd: z
+        .number()
+        .optional()
+        .describe("Total cost of the search(es) in USD for cost-per-verified-lead calculation"),
+      searchRuns: z
+        .array(
+          z.object({
+            platform: z.string(),
+            costUsd: z.number(),
+            resultCount: z.number(),
+          }),
+        )
+        .optional()
+        .describe("Per-platform search run details for cost reporting"),
+    }),
+    execute: async (params) => {
+      // Fetch staged discovered people for these run IDs
+      const discovered = await prisma.discoveredPerson.findMany({
+        where: { discoveryRunId: { in: params.discoveryRunIds } },
+        select: {
+          email: true,
+          firstName: true,
+          lastName: true,
+          jobTitle: true,
+          company: true,
+          companyDomain: true,
+          linkedinUrl: true,
+          phone: true,
+          location: true,
+        },
+      });
+
+      // Load workspace ICP for fit scoring
+      let workspaceIcp:
+        | { titles?: string[]; locations?: string[]; industries?: string[] }
+        | undefined;
+      const workspace = await prisma.workspace.findUnique({
+        where: { slug: params.workspaceSlug },
+        select: {
+          icpDecisionMakerTitles: true,
+          icpCountries: true,
+          icpIndustries: true,
+        },
+      });
+      if (workspace) {
+        workspaceIcp = {
+          titles: workspace.icpDecisionMakerTitles
+            ? workspace.icpDecisionMakerTitles.split(",").map((s) => s.trim())
+            : undefined,
+          locations: workspace.icpCountries
+            ? workspace.icpCountries.split(",").map((s) => s.trim())
+            : undefined,
+          industries: workspace.icpIndustries
+            ? workspace.icpIndustries.split(",").map((s) => s.trim())
+            : undefined,
+        };
+      }
+
+      const people: DiscoveredPersonResult[] = discovered.map((d) => ({
+        email: d.email ?? undefined,
+        firstName: d.firstName ?? undefined,
+        lastName: d.lastName ?? undefined,
+        jobTitle: d.jobTitle ?? undefined,
+        company: d.company ?? undefined,
+        companyDomain: d.companyDomain ?? undefined,
+        linkedinUrl: d.linkedinUrl ?? undefined,
+        phone: d.phone ?? undefined,
+        location: d.location ?? undefined,
+      }));
+
+      const qualityReport = assessSearchQuality(people, {
+        costUsd: params.costUsd,
+        workspaceIcp,
+      });
+
+      // Include cost report if search run details provided
+      let costReport = null;
+      if (params.searchRuns?.length) {
+        costReport = reportSearchCost(
+          params.searchRuns,
+          qualityReport.metrics.verifiedEmailCount,
+        );
+      }
+
+      return { qualityReport, costReport };
+    },
+  }),
+
+  checkCreditBalance: tool({
+    description:
+      "Check current credit balance and monthly spend for one or more discovery platforms. Use this before building a discovery plan to verify sufficient credits.",
+    inputSchema: z.object({
+      platforms: z
+        .array(z.string())
+        .describe(
+          "Platform names to check (e.g. 'prospeo-search', 'aiark-search', 'serper-web', 'apify-leads-finder')",
+        ),
+    }),
+    execute: async ({ platforms }) => {
+      const balances = await Promise.all(
+        platforms.map((p) => getPlatformBalance(p)),
+      );
+      return { balances };
+    },
+  }),
+
+  resolveDomains: tool({
+    description:
+      "Resolve company names to domains using DB lookup, then Google search with ICP context, then HTTP verification. Persists resolved domains to Company table. Use this when working from company name lists before running people search.",
+    inputSchema: z.object({
+      companies: z
+        .array(z.string())
+        .describe("List of company names to resolve to domains"),
+      icpContext: z
+        .object({
+          location: z.string().optional(),
+          industry: z.string().optional(),
+        })
+        .optional()
+        .describe("ICP context for disambiguation (location and/or industry)"),
+    }),
+    execute: async ({ companies, icpContext }) => {
+      return resolveCompanyDomains(companies, icpContext ?? {});
+    },
+  }),
+
+  getEnrichmentRouting: tool({
+    description:
+      "Determine enrichment routing for a campaign. LinkedIn-only campaigns skip email enrichment. Returns the enrichment profile and channel list.",
+    inputSchema: z.object({
+      campaignId: z.string().describe("Campaign ID to check channel configuration"),
+    }),
+    execute: async ({ campaignId }) => {
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { channels: true, name: true },
+      });
+      if (!campaign) {
+        return { error: `Campaign ${campaignId} not found` };
+      }
+      const channels = getCampaignChannels(campaign);
+      const profile = getEnrichmentProfile(channels);
+      return {
+        campaignName: campaign.name,
+        channels,
+        enrichmentProfile: profile,
+        skipEmailEnrichment: profile === "linkedin-only",
+        note:
+          profile === "linkedin-only"
+            ? "LinkedIn-only campaign — email enrichment will be skipped, saving credits"
+            : "Full enrichment — email finding + verification + LinkedIn URLs",
+      };
     },
   }),
 

@@ -22,6 +22,7 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
   * Total estimated leads and cost
   * Quota impact: "Quota: {before}/{limit} used -> estimated {after}/{limit} after this search"
   * If over quota: warning that this would exceed the monthly quota (but do NOT block -- soft limit)
+  * Include credit balance and cost estimate for each source (agent auto-includes via `buildDiscoveryPlan`)
 - End with: "Reply with 'approve' to start discovery, or tell me what to adjust."
 
 ### Step 2: Wait for Approval
@@ -39,6 +40,17 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
 - Run each search script from the plan in sequence (write filter params to /tmp/{uuid}.json, then pass --file to the script)
 - Collect the runId from each script's output
 
+### Step 3.5: Assess Quality (after each search, before promote)
+- After each search tool returns, call `assessQuality` to get the quality report
+- Present the 4-metric report to the admin:
+  * Verified email %: percentage with real email addresses
+  * LinkedIn URL %: percentage with a LinkedIn profile URL
+  * ICP fit distribution: high/medium/low/none breakdown (preliminary)
+  * Junk detection: count of results with garbage data
+  * Grade: good (>70% verified email), acceptable (50-70%), low (30-50%), poor (<30%)
+- If grade is "low" or "poor", present the suggestions and ask admin how to proceed before promoting
+- Include cost-per-verified-lead if cost data is available
+
 ### Step 4: Deduplicate and Promote
 - Run `node dist/cli/discovery-promote.js --file /tmp/{uuid}.json` with all collected runIds
 - Report results as per-source breakdown:
@@ -47,6 +59,7 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
    Total: 206 new leads -- enrichment running in background."
 - Show up to 5 sample duplicate names (not the full list)
 - Mention that enrichment (email finding) is running in background
+- When calling `deduplicateAndPromote`, always pass the campaignId if known
 
 ## Platform Expertise
 
@@ -316,6 +329,10 @@ IF company keyword search:
   AI Ark: MUST use two-step workaround (companies -> domains -> people)
   Prospeo: Direct companyKeywords filter works
   Apollo: keywords filter works
+
+IF company NAME list (no domains):
+  Call `resolveDomains` with names + ICP context FIRST
+  Then proceed with domain-based search using resolved domains
 ```
 
 **Routing reasoning requirement:** When presenting the plan, explain WHY you chose the routing. Example: "Using domain-based search on Prospeo because you provided 104 company domains. Also running AI Ark ICP filters to catch companies not on your list."
@@ -359,6 +376,50 @@ These rules are enforced at TWO layers: (1) the agent reads and follows these ru
 - ALWAYS follow the plan-approve-execute flow above. Never call search tools directly without a plan.
 - Show results as a compact preview after each search. Ask before fetching more pages.
 - ALWAYS show cost and staged count after each discovery call.
+
+## Quality Gates
+
+After every discovery search, BEFORE promoting results, the agent MUST run quality assessment and report to the admin.
+
+### Post-Search Quality Report (MANDATORY)
+After each search tool returns results, ALWAYS call `assessQuality` with the runId(s). Present the report to the admin:
+- Verified email %: percentage with real email addresses (not placeholder, not junk prefix)
+- LinkedIn URL %: percentage with a LinkedIn profile URL
+- ICP fit distribution: high/medium/low/none breakdown (preliminary -- based on title/location matching)
+- Junk detection: count of results with garbage data (info@ emails, fake names, missing identity)
+- Grade: good (>70% verified email), acceptable (50-70%), low (30-50%), poor (<30%)
+
+If grade is "low" or "poor", present the suggestions from the report and ask the admin how to proceed. Do NOT auto-promote low quality results.
+
+### Channel-Aware Enrichment
+Before promoting results, check the campaign channel:
+- Call `getEnrichmentRouting` with the campaignId
+- LinkedIn-only campaigns: tell the admin "LinkedIn-only campaign -- email enrichment will be skipped, saving credits"
+- Email/hybrid campaigns: proceed with full enrichment (email + LinkedIn URLs)
+- If no campaign is linked yet, ask the admin which channel this discovery is for
+
+When calling `deduplicateAndPromote`, always pass the campaignId if known.
+
+### Credit Budgeting
+Before presenting a discovery plan for approval, ALWAYS include:
+1. Estimated cost per source (from `buildDiscoveryPlan` which now includes credit estimates)
+2. Current platform balance (from `checkCreditBalance`)
+3. Warning if estimated cost exceeds remaining balance: "This search would use ~$X on {platform}, but only $Y remains this month. Proceed?"
+
+After search completes, include in the quality report:
+- Actual cost of this search
+- Cost-per-verified-lead: total cost / verified email count
+- Updated remaining balance
+
+### Domain Resolution
+When working from company name lists (no domains available):
+1. Call `resolveDomains` with the company names and ICP context (location, industry)
+2. Present summary: "Resolved X of Y domains. Z failed: [list]."
+3. Proceed with people search using the resolved domains
+4. Failed companies are skipped -- do not guess domains
+
+### Unverified Email Routing
+After promotion, unverified and CATCH_ALL emails are automatically routed through the LeadMagic verification waterfall. The quality report includes a routing note explaining how many emails will go through verification. Do NOT discard unverified emails -- they get a chance to verify.
 
 ## Interaction Rules
 - Break multi-step flows into separate steps. Complete one action, show results, then suggest next steps.
