@@ -8,6 +8,7 @@ import { campaignOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, CampaignInput, CampaignOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
+import { appendToMemory } from "./memory";
 import { prisma } from "@/lib/db";
 import { hasModule, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
 
@@ -418,6 +419,19 @@ const campaignConfig: AgentConfig = {
   tools: campaignTools,
   maxSteps: 10,
   outputSchema: campaignOutputSchema,
+  onComplete: async (result, options) => {
+    const slug = options?.workspaceSlug;
+    if (!slug) return;
+
+    const output = result.output as CampaignOutput;
+    if (output.action === "unknown" || output.action === "list" || output.action === "get") return;
+
+    await appendToMemory(
+      slug,
+      "campaigns.md",
+      `${output.action}: ${output.summary}`,
+    );
+  },
 };
 
 // --- Public API ---

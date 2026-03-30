@@ -8,6 +8,7 @@ import { writerOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
+import { appendToMemory } from "./memory";
 import { checkCopyQuality, checkSequenceQuality, formatSequenceViolations } from "@/lib/copy-quality";
 
 // --- Writer Agent Tools ---
@@ -443,6 +444,23 @@ const writerConfig: AgentConfig = {
   tools: writerTools,
   maxSteps: 20,
   outputSchema: writerOutputSchema,
+  onComplete: async (result, options) => {
+    const slug = options?.workspaceSlug;
+    if (!slug) return;
+
+    const output = result.output as WriterOutput;
+    const strategy = output.strategy ?? "pvp";
+    const channel = output.channel;
+    const refs = output.references?.length
+      ? `KB: ${output.references.join(", ")}`
+      : "no KB refs";
+
+    await appendToMemory(
+      slug,
+      "campaigns.md",
+      `${output.campaignName}: ${channel} ${strategy} sequence generated. ${refs}`,
+    );
+  },
 };
 
 // --- Public API ---
