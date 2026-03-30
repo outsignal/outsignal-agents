@@ -16,6 +16,10 @@ export interface AgentConfig {
   tools: Record<string, Tool>;
   maxSteps?: number; // default 10
   outputSchema?: z.ZodType<unknown>; // Optional Zod schema for validating parsed output
+  onComplete?: (
+    result: AgentRunResult,
+    options?: { workspaceSlug?: string },
+  ) => Promise<void>;
 }
 
 // --- Agent Run Logging ---

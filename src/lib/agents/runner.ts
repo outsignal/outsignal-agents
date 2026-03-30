@@ -112,6 +112,21 @@ export async function runAgent<TOutput = unknown>(
       },
     });
 
+    // Memory write-back hook (best-effort, never fails the run)
+    if (config.onComplete) {
+      try {
+        await config.onComplete(
+          { output, text: result.text, steps, durationMs },
+          options,
+        );
+      } catch (hookError) {
+        console.error(
+          `[Agent ${config.name}] onComplete hook failed:`,
+          hookError,
+        );
+      }
+    }
+
     return {
       output,
       text: result.text,
