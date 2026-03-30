@@ -553,7 +553,10 @@ Plans:
   3. checkCTAFormat() returns a violation when a CTA contains a statement rather than a question (e.g. "Book a call" fails; "worth a chat?" passes)
   4. checkLinkedInSpintax() returns a violation when any spintax pattern {option1|option2} appears in LinkedIn copy
   5. All Nova agent skill files reference Opus 4.6 (claude-opus-4-6) as the model — no Haiku or Sonnet model references remain in agent delegation paths
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
 ### Phase 53: Platform Expertise + Input Rules
 **Goal**: The leads agent arrives at every session knowing exactly how to use each discovery platform correctly — optimal filters, known bugs, cost models, and the mandatory two-path search routing — encoded in rules that load at startup
@@ -564,7 +567,10 @@ Plans:
   2. AI Ark searches always use the two-step company-then-people workaround — the broken contact.department and contact.keyword filters are documented as hard-blocked in leads-rules.md
   3. When a company name list is provided (not domains), the agent plan includes a domain resolution step before any people search — not optional
   4. Agent pre-search sanity check flags mismatched ICP filters before any paid API call fires (e.g. Prospeo company.names instead of company.websites triggers a blocker warning)
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
 ### Phase 54: Writer Agent Overhaul
 **Goal**: The writer never saves copy that violates quality rules — it self-reviews before every save, sees the full campaign as a unit, and rewrites automatically when violations are found
@@ -576,7 +582,10 @@ Plans:
   3. LinkedIn messages saved by the writer contain no spintax patterns — any {option1|option2} syntax triggers an auto-rewrite to a single direct line
   4. When a KB search returns a relevant principle, the writer output names the specific principle applied rather than just noting KB was consulted
   5. When a violation persists after 2 rewrite attempts, the copy is saved with inline review notes flagging the violation — admin sees the issue in the existing approval flow
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
 ### Phase 55: Validator Agent
 **Goal**: A stateless validator (Opus 4.6 via Claude Code CLI) reviews every completed sequence for semantic quality issues that structural checks miss — angle repetition, tone mismatch, filler spintax — before the copy is confirmed saved
@@ -587,7 +596,10 @@ Plans:
   2. When a sequence contains two steps with identical CTA phrasing, the validator returns pass: false with an angle-repetition coherence issue — the writer receives structured violation data it can act on
   3. When a sequence uses consistent UK English and maintains a coherent tone throughout, the validator returns pass: true with no coherence issues
   4. The validator uses Opus 4.6 via Claude Code CLI (per CROSS-01) — no Haiku or lower-tier model references. Stateless — no DB calls, no tool access beyond the validation call
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
 ### Phase 56: Leads Quality Gates
 **Goal**: Every discovery run produces a data quality report before enrichment credits are spent, channel-aware routing skips unnecessary enrichment steps, and cost is estimated before execution and reported after
@@ -599,7 +611,10 @@ Plans:
   3. After any search returning results, the agent reports verified email %, LinkedIn URL %, ICP fit score distribution, and placeholder detection count — and flags if verified email rate is below 30%
   4. Leads with CATCH_ALL or unverified email status are routed to BounceBan/LeadMagic verification rather than silently discarded — the routing decision is visible in the post-search report
   5. The discovery plan always starts with a sourcing recommendation naming which platform(s) to use and why, awaiting explicit admin approval before any paid API call fires
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
 ### Phase 57: Campaign Pipeline Validation
 **Goal**: The campaign pipeline enforces channel-appropriate data at every hand-off point — list building, company name normalisation, and the portal approval route all gate on data quality before proceeding
@@ -611,7 +626,10 @@ Plans:
   3. Company names in a list pass through normalizeCompanyNameForCopy() before any {COMPANYNAME} variable is used in copy generation
   4. The portal approve-content route returns HTTP 422 (not 200 with warnings) when structural copy violations exist — the portal UI handles the error state and displays the violation to the client
   5. A cost breakdown is accessible after any pipeline run: discovery cost + enrichment cost + total cost-per-verified-lead
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
 
 ### Phase 58: End-to-End Validation
 **Goal**: The complete v8.0 quality system is confirmed working as a unit — all gates fire correctly in sequence, no silent failures, and the audit trail captures quality decisions end-to-end
@@ -622,4 +640,7 @@ Plans:
   2. A deliberately invalid sequence (banned phrases + wrong variable format) is blocked by the validator, triggers a rewrite, and the saved copy is clean — the AgentRun audit log shows the rewrite loop occurred
   3. A LinkedIn-only pipeline run confirms email enrichment was skipped in the cost report and the list contains LinkedIn URLs only — channel-aware routing is observable in the output
   4. The portal approve-content route returns 422 when fed a sequence with structural violations — the error is surfaced to the user, not silently swallowed
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
+- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
