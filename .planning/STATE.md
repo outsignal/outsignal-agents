@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Agent Quality Overhaul
 status: unknown
-last_updated: "2026-03-30T13:23:50.371Z"
+last_updated: "2026-03-30T20:38:50.271Z"
 progress:
-  total_phases: 49
-  completed_phases: 46
-  total_plans: 143
-  completed_plans: 143
+  total_phases: 56
+  completed_phases: 47
+  total_plans: 158
+  completed_plans: 145
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Make agent team produce campaign-ready output without manual QA — expert lead sourcing, first-time-right copy, validated pipeline.
-**Current focus:** v8.0 Phase 53 — Platform Expertise + Input Rules
+**Current focus:** v8.0 Phase 54.1 — Agent Memory Write-Back
 
 ## Current Position
 
-Phase: 52 of 58 (Copy Quality Module + Model Upgrade)
-Plan: 2 of 2 complete
-Status: Phase 52 complete
-Last activity: 2026-03-30 — 52-01 copy quality checks implemented (5 functions, 38 banned patterns, 77 tests)
+Phase: 54.1 of 58 (Agent Memory Write-Back)
+Plan: 1 of 2 complete
+Status: In progress
+Last activity: 2026-03-30 — 54.1-01 memory write-back infrastructure (appendToMemory + onComplete hook)
 
-Progress: [█░░░░░░░░░] ~14% (1/7 phases)
+Progress: [██░░░░░░░░] ~20% (2/7 phases)
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Progress: [█░░░░░░░░░] ~14% (1/7 phases)
 |-------|------|----------|-------|-------|
 | 52    | 01   | 3min     | 1     | 2     |
 | 52    | 02   | 2min     | 2     | 7     |
+| 54.1  | 01   | 1min     | 2     | 3     |
 
 **Recent Trend:**
 - v7.0 (6 phases, 46-51) shipped cleanly; Nova CLI agent teams live
@@ -62,10 +63,17 @@ Key v8.0 pre-milestone decisions:
 - [v8.0]: BounceBan adapter deferred to v8.2 — LEAD-06 uses routing logic only, not full adapter
 - [Phase 52]: NOVA_MODEL constant in types.ts for centralised model management across all agents
 - [Phase 52]: BANNED_CTA_PATTERNS kept internal to checkCTAFormat; word-boundary free pattern avoids false positives
+- [Phase 54.1]: appendToMemory never throws -- best-effort with console warnings on failure
+- [Phase 54.1]: onComplete hook runs in success path only, wrapped in own try/catch
+- [Phase 54.1]: MemoryFile type excludes profile.md (seed-only per governance rules)
 
 ### Pending Todos
 
 None.
+
+### Roadmap Evolution
+
+- Phase 54.1 inserted after Phase 54: Agent Memory Write-Back (URGENT) — v7.0 gap fix: memory reads/seeds work but writes were never implemented. Agents load memory context but never persist insights after runs. ~100 lines: onComplete post-hook in runner.ts + appendToMemory utility + insight extraction per specialist agent.
 
 ### Blockers/Concerns
 
@@ -75,5 +83,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-30
-Stopped at: Phase 52 complete — ready for Phase 53 (Platform Expertise + Input Rules)
+Stopped at: Completed 54.1-01-PLAN.md — ready for 54.1-02 (per-agent onComplete hooks)
 Resume file: None

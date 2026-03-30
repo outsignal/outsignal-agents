@@ -592,7 +592,7 @@ Plans:
 **Goal:** Close the v7.0 memory gap — agents load workspace memory context but never persist insights. Add onComplete post-hook to runner.ts, appendToMemory utility, and wire all 4 specialist agents to write back after successful runs.
 **Requirements**: None (inserted gap fix, no formal requirement IDs)
 **Depends on:** Phase 54
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 54.1-01-PLAN.md — Create appendToMemory utility + onComplete hook on AgentConfig + runner.ts
