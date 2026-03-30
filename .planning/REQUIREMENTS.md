@@ -41,7 +41,7 @@ Requirements for the agent quality overhaul. Each maps to roadmap phases.
 
 ### Cross-Cutting
 
-- [ ] **CROSS-01**: All agents use Opus 4.6 (best available model) — no cost-optimised model downgrades since Max Plan covers all usage
+- [x] **CROSS-01**: All agents use Opus 4.6 (best available model) — no cost-optimised model downgrades since Max Plan covers all usage
 
 ## v9.0 Requirements (Future)
 
@@ -90,7 +90,7 @@ Requirements for the agent quality overhaul. Each maps to roadmap phases.
 | PIPE-04 | Phase 57 | Pending |
 | PIPE-05 | Phase 57 | Pending |
 | PIPE-06 | Phase 57 | Pending |
-| CROSS-01 | Phase 52 | Pending |
+| CROSS-01 | Phase 52 | Complete |
 
 **Coverage:**
 - v8.0 requirements: 24 total
