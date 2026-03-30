@@ -91,5 +91,32 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    // E2E models (Phase 58)
+    agentRun: {
+      create: vi.fn(),
+      update: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    campaign: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      findMany: vi.fn(),
+    },
+    targetList: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+    },
+    targetListPerson: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+    },
+    discoveredPerson: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
   },
 }));
