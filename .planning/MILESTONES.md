@@ -71,3 +71,13 @@
 
 ---
 
+
+## v8.0 Agent Quality Overhaul (Shipped: 2026-03-30)
+
+**Phases completed:** 56 phases, 159 plans, 32 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
