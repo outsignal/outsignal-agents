@@ -13,6 +13,10 @@ import {
   checkCopyQuality,
   checkSequenceQuality,
   formatSequenceViolations,
+  // Phase 54: validateAllChecks aggregator
+  validateAllChecks,
+  type ValidateAllOptions,
+  type StepValidationResult,
 } from "../copy-quality";
 
 // ---------------------------------------------------------------------------
@@ -389,5 +393,112 @@ describe("existing exports (regression)", () => {
       { step: 1, field: "body", violations: ["test violation"] },
     ]);
     expect(formatted).toContain("Step 1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAllChecks (Phase 54)
+// ---------------------------------------------------------------------------
+describe("validateAllChecks", () => {
+  const emailOpts: ValidateAllOptions = {
+    strategy: "pvp",
+    channel: "email",
+    isFirstStep: true,
+  };
+
+  const linkedinOpts: ValidateAllOptions = {
+    strategy: "pvp",
+    channel: "linkedin",
+    isFirstStep: true,
+  };
+
+  it("returns clean result for valid email body (first step)", () => {
+    const text = "Hi {FIRSTNAME}, we help companies scale outreach. Seen similar results at Acme Corp. Worth 15 minutes?";
+    const result = validateAllChecks(text, "body", emailOpts);
+    expect(result.field).toBe("body");
+    expect(result.checks).toHaveLength(0);
+    expect(result.hasHardViolation).toBe(false);
+  });
+
+  it("returns empty checks for empty text", () => {
+    const result = validateAllChecks("", "body", emailOpts);
+    expect(result.checks).toHaveLength(0);
+    expect(result.hasHardViolation).toBe(false);
+  });
+
+  it("catches word count violation on email body", () => {
+    const text = "Hi {FIRSTNAME}, " + Array(80).fill("word").join(" ") + "?";
+    const result = validateAllChecks(text, "body", emailOpts);
+    expect(result.checks.length).toBeGreaterThan(0);
+    expect(result.checks.some((c) => c.violation.includes("word count"))).toBe(true);
+  });
+
+  it("catches missing greeting on first email step", () => {
+    const text = "We help companies scale. Worth a call?";
+    const result = validateAllChecks(text, "body", emailOpts);
+    expect(result.checks.some((c) => c.violation.includes("greeting"))).toBe(true);
+    expect(result.hasHardViolation).toBe(true);
+  });
+
+  it("does not check greeting on non-first step", () => {
+    const opts: ValidateAllOptions = { ...emailOpts, isFirstStep: false };
+    const text = "We help companies scale outreach. Worth exploring?";
+    const result = validateAllChecks(text, "body", opts);
+    expect(result.checks.some((c) => c.violation.includes("greeting"))).toBe(false);
+  });
+
+  it("catches banned patterns in body", () => {
+    const text = "Hi {FIRSTNAME}, I have a quick question about your business. Worth a call?";
+    const result = validateAllChecks(text, "body", emailOpts);
+    expect(result.checks.some((c) => c.violation.includes("banned pattern: quick question"))).toBe(true);
+    expect(result.hasHardViolation).toBe(true);
+  });
+
+  it("catches spintax in LinkedIn body", () => {
+    const text = "Hey {FIRSTNAME}, {just checking in|wanted to reach out} about your role. Worth a chat?";
+    const result = validateAllChecks(text, "body", linkedinOpts);
+    expect(result.checks.some((c) => c.violation.includes("spintax"))).toBe(true);
+    expect(result.hasHardViolation).toBe(true);
+  });
+
+  it("uses linkedin word count limit for linkedin channel", () => {
+    // 105 words = over pvp limit (70) but under linkedin limit (100) soft ceiling (110)
+    const text = "Hey {FIRSTNAME}, " + Array(103).fill("word").join(" ") + "?";
+    const result = validateAllChecks(text, "body", linkedinOpts);
+    // Should be soft violation (over 100 but under 110)
+    const wcCheck = result.checks.find((c) => c.violation.includes("word count"));
+    if (wcCheck) {
+      expect(wcCheck.severity).toBe("soft");
+    }
+  });
+
+  it("checks subject line for exclamation marks", () => {
+    const result = validateAllChecks("great news for you!", "subject", emailOpts);
+    expect(result.checks.some((c) => c.violation.includes("exclamation"))).toBe(true);
+    expect(result.hasHardViolation).toBe(true);
+  });
+
+  it("checks subject line for banned patterns", () => {
+    const result = validateAllChecks("quick question for you", "subject", emailOpts);
+    expect(result.checks.some((c) => c.violation.includes("banned pattern: quick question"))).toBe(true);
+  });
+
+  it("checks subjectVariantB field correctly", () => {
+    const result = validateAllChecks("good subject", "subjectVariantB", emailOpts);
+    expect(result.checks).toHaveLength(0);
+  });
+
+  it("does not run CTA check on LinkedIn body", () => {
+    // LinkedIn body ending without ? should not trigger CTA violation
+    const text = "Hey {FIRSTNAME}, wanted to connect about growth opportunities.";
+    const result = validateAllChecks(text, "body", linkedinOpts);
+    expect(result.checks.some((c) => c.violation.includes("CTA must be a question"))).toBe(false);
+  });
+
+  it("runs CTA check on email body", () => {
+    // Email body ending without ? should trigger CTA violation
+    const text = "Hi {FIRSTNAME}, we help companies scale outreach.";
+    const result = validateAllChecks(text, "body", emailOpts);
+    expect(result.checks.some((c) => c.violation.includes("CTA must be a question"))).toBe(true);
   });
 });

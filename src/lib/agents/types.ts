@@ -123,6 +123,7 @@ export interface EmailStep {
   subjectVariantB?: string;
   body: string;
   delayDays: number;
+  /** Include 'Applied: [principle] from [KB doc]' citation. Prefix with '[REVIEW NEEDED]' if violations persist after 2 rewrite attempts. */
   notes: string;
 }
 
@@ -131,6 +132,7 @@ export interface LinkedInStep {
   type: "connection_request" | "message" | "inmail";
   body: string;
   delayDays: number;
+  /** Include 'Applied: [principle] from [KB doc]' citation. Prefix with '[REVIEW NEEDED]' if violations persist after 2 rewrite attempts. */
   notes: string;
 }
 
@@ -142,7 +144,8 @@ export interface WriterOutput {
   reviewNotes: string;
   creativeIdeas?: CreativeIdeaDraft[]; // Populated when strategy=creative-ideas
   strategy?: string;                   // Which strategy was used (e.g. "creative-ideas", "pvp")
-  references?: string[];               // KB doc titles cited during generation
+  /** KB doc titles cited. Per-step application details go in each step's `notes` field as 'Applied: [principle] from [doc]'. */
+  references?: string[];
 }
 
 // --- Campaign Agent ---

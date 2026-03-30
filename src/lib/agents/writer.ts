@@ -9,7 +9,12 @@ import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIde
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
 import { appendToMemory } from "./memory";
-import { checkCopyQuality, checkSequenceQuality, formatSequenceViolations } from "@/lib/copy-quality";
+import {
+  validateAllChecks,
+  type CopyStrategy,
+  type ValidateAllOptions,
+  type StepValidationResult,
+} from "@/lib/copy-quality";
 
 // --- Writer Agent Tools ---
 
@@ -229,17 +234,60 @@ const writerTools = {
         .describe("The copy strategy used to generate this sequence"),
     }),
     execute: async ({ campaignId, emailSequence, linkedinSequence, copyStrategy }) => {
-      // Quality gate: check email sequence for banned patterns before saving
+      // Defense-in-depth: run full validation on all steps before saving
+      const hardViolations: string[] = [];
+      const softWarnings: string[] = [];
+      const strategy = (copyStrategy ?? "pvp") as CopyStrategy;
+
+      // Validate email sequence
       if (emailSequence && emailSequence.length > 0) {
-        const violations = checkSequenceQuality(emailSequence);
-        if (violations.length > 0) {
-          const summary = formatSequenceViolations(violations);
-          return {
-            status: "quality_violation",
-            message: `Banned patterns detected — rewrite these steps to remove violations before saving: ${summary}`,
-            violations,
+        for (const step of emailSequence) {
+          const opts: ValidateAllOptions = {
+            strategy,
+            channel: "email",
+            isFirstStep: step.position === 1,
           };
+          for (const [field, value] of [
+            ["body", step.body],
+            ["subject", step.subjectLine],
+            ["subjectVariantB", step.subjectVariantB],
+          ] as const) {
+            if (!value) continue;
+            const result = validateAllChecks(value, field as "body" | "subject" | "subjectVariantB", opts);
+            for (const c of result.checks) {
+              const msg = `Step ${step.position} ${field}: ${c.violation}`;
+              if (c.severity === "hard") hardViolations.push(msg);
+              else softWarnings.push(msg);
+            }
+          }
         }
+      }
+
+      // Validate LinkedIn sequence
+      if (linkedinSequence && linkedinSequence.length > 0) {
+        for (const step of linkedinSequence) {
+          const opts: ValidateAllOptions = {
+            strategy: "linkedin",
+            channel: "linkedin",
+            isFirstStep: step.position === 1,
+          };
+          const result = validateAllChecks(step.body, "body", opts);
+          for (const c of result.checks) {
+            const msg = `LinkedIn step ${step.position} body: ${c.violation}`;
+            if (c.severity === "hard") hardViolations.push(msg);
+            else softWarnings.push(msg);
+          }
+        }
+      }
+
+      // Block on hard violations
+      if (hardViolations.length > 0) {
+        return {
+          status: "quality_violation",
+          message: `Hard violations detected — rewrite these steps before saving:\n${hardViolations.join("\n")}`,
+          hardViolations,
+          softWarnings,
+        };
       }
 
       const { saveCampaignSequences } = await import(
@@ -256,6 +304,7 @@ const writerTools = {
         emailStepCount: emailSequence?.length ?? 0,
         linkedinStepCount: linkedinSequence?.length ?? 0,
         copyStrategy: copyStrategy ?? null,
+        ...(softWarnings.length > 0 ? { warnings: softWarnings } : {}),
       };
     },
   }),
@@ -300,25 +349,35 @@ const writerTools = {
       bodyHtml,
       delayDays,
     }) => {
-      // Quality gate: check all text fields for banned patterns before saving
-      const allViolations: string[] = [];
+      // Defense-in-depth: run full validation on all fields before saving
+      const hardViolations: string[] = [];
+      const softWarnings: string[] = [];
+      const opts: ValidateAllOptions = {
+        strategy: channel === "linkedin" ? "linkedin" as CopyStrategy : "pvp" as CopyStrategy,
+        channel,
+        isFirstStep: sequenceStep === 1,
+      };
+
       for (const [field, value] of [
+        ["body", bodyText],
         ["subject", subjectLine],
         ["subjectVariantB", subjectVariantB],
-        ["body", bodyText],
       ] as const) {
         if (!value) continue;
-        const { violations } = checkCopyQuality(value);
-        if (violations.length > 0) {
-          allViolations.push(`${field}: ${violations.join(", ")}`);
+        const result = validateAllChecks(value, field as "body" | "subject" | "subjectVariantB", opts);
+        for (const c of result.checks) {
+          const msg = `${field}: ${c.violation}`;
+          if (c.severity === "hard") hardViolations.push(msg);
+          else softWarnings.push(msg);
         }
       }
 
-      if (allViolations.length > 0) {
+      if (hardViolations.length > 0) {
         return {
           status: "quality_violation",
-          message: `Banned patterns detected in step ${sequenceStep} — rewrite to remove violations before saving: ${allViolations.join("; ")}`,
-          violations: allViolations,
+          message: `Hard violations in step ${sequenceStep} — rewrite before saving:\n${hardViolations.join("\n")}`,
+          hardViolations,
+          softWarnings,
         };
       }
 
@@ -340,6 +399,127 @@ const writerTools = {
         id: draft.id,
         status: "saved",
         message: `Draft saved: ${campaignName} — ${channel} step ${sequenceStep}`,
+        ...(softWarnings.length > 0 ? { warnings: softWarnings } : {}),
+      };
+    },
+  }),
+
+  validateCopy: tool({
+    description:
+      "Validate copy against ALL quality rules before saving. Run this BEFORE every saveCampaignSequence or saveDraft call. Returns per-step validation results with hard/soft violations. Hard violations MUST be fixed before saving.",
+    inputSchema: z.object({
+      steps: z.array(
+        z.object({
+          position: z.number(),
+          subjectLine: z.string().optional(),
+          subjectVariantB: z.string().optional(),
+          body: z.string(),
+          channel: z.enum(["email", "linkedin"]),
+          notes: z.string().optional(),
+        }),
+      ),
+      strategy: z.enum(["pvp", "creative-ideas", "one-liner", "custom", "linkedin"]),
+    }),
+    execute: async ({ steps, strategy }) => {
+      const stepResults: Array<{
+        position: number;
+        violations: StepValidationResult[];
+        clean: boolean;
+      }> = [];
+
+      for (const step of steps) {
+        const isFirstStep = step.position === 1;
+        const opts: ValidateAllOptions = {
+          strategy: strategy as CopyStrategy,
+          channel: step.channel,
+          isFirstStep,
+        };
+
+        const violations: StepValidationResult[] = [];
+
+        // Validate body
+        const bodyResult = validateAllChecks(step.body, "body", opts);
+        if (bodyResult.checks.length > 0) violations.push(bodyResult);
+
+        // Validate subject lines (email only)
+        if (step.subjectLine) {
+          const subjResult = validateAllChecks(step.subjectLine, "subject", opts);
+          if (subjResult.checks.length > 0) violations.push(subjResult);
+        }
+        if (step.subjectVariantB) {
+          const subjBResult = validateAllChecks(step.subjectVariantB, "subjectVariantB", opts);
+          if (subjBResult.checks.length > 0) violations.push(subjBResult);
+        }
+
+        stepResults.push({
+          position: step.position,
+          violations,
+          clean: violations.length === 0,
+        });
+      }
+
+      // Cross-step CTA dedup: extract last sentence from each body, compare pairwise
+      const ctaDupes: string[] = [];
+      const ctaMap: Array<{ position: number; cta: string }> = [];
+      for (const step of steps) {
+        const sentences = step.body.trim().split(/(?<=[.!?])\s+/);
+        const lastSentence = sentences[sentences.length - 1]?.trim().toLowerCase() ?? "";
+        ctaMap.push({ position: step.position, cta: lastSentence });
+      }
+      for (let i = 0; i < ctaMap.length; i++) {
+        for (let j = i + 1; j < ctaMap.length; j++) {
+          if (ctaMap[i].cta && ctaMap[i].cta === ctaMap[j].cta) {
+            ctaDupes.push(
+              `Steps ${ctaMap[i].position} and ${ctaMap[j].position} share identical CTA: '${ctaMap[i].cta}' — vary the closing question`,
+            );
+          }
+        }
+      }
+
+      // Check for missing KB citations in notes when references likely exist
+      const missingCitations: string[] = [];
+      for (const step of steps) {
+        if (step.notes && !step.notes.includes("Applied:") && step.notes.length > 0) {
+          missingCitations.push(
+            `Step ${step.position}: notes field does not contain 'Applied:' KB citation — add 'Applied: [principle] from [KB doc]' if KB was consulted`,
+          );
+        }
+      }
+
+      const allClean = stepResults.every((s) => s.clean) && ctaDupes.length === 0;
+
+      if (allClean && missingCitations.length === 0) {
+        return {
+          status: "clean",
+          message: "All steps pass quality checks.",
+          steps: stepResults,
+        };
+      }
+
+      // Build summary
+      const summaryParts: string[] = [];
+      for (const sr of stepResults) {
+        if (!sr.clean) {
+          for (const v of sr.violations) {
+            for (const c of v.checks) {
+              summaryParts.push(`Step ${sr.position} ${v.field}: ${c.violation} [${c.severity}]`);
+            }
+          }
+        }
+      }
+      for (const dupe of ctaDupes) {
+        summaryParts.push(`[soft] ${dupe}`);
+      }
+      for (const cite of missingCitations) {
+        summaryParts.push(`[soft] ${cite}`);
+      }
+
+      return {
+        status: "violations_found",
+        steps: stepResults,
+        ctaDuplicates: ctaDupes,
+        missingCitations,
+        summary: summaryParts.join("\n"),
       };
     },
   }),
@@ -387,6 +567,11 @@ const writerTools = {
 // --- System Prompt ---
 
 const WRITER_SYSTEM_PROMPT = `You are the Outsignal Writer Agent — an expert cold outreach copywriter specialising in email and LinkedIn campaigns that get replies.
+
+CRITICAL WORKFLOW:
+- When campaignId is provided, you MUST call getCampaignContext FIRST before generating any copy.
+- You MUST call validateCopy before every save (saveCampaignSequence or saveDraft). Follow the Self-Review Protocol in your rules: generate -> validate -> rewrite if violations -> validate -> save.
+- See your rules for the full Self-Review Protocol, Campaign-Holistic Awareness, and KB Citation Requirements.
 
 ${loadRules("writer-rules.md")}
 

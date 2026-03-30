@@ -163,6 +163,22 @@ export interface CheckResult {
   violation: string;
 }
 
+// ---------------------------------------------------------------------------
+// Validation aggregator types (Phase 54)
+// ---------------------------------------------------------------------------
+
+export interface ValidateAllOptions {
+  strategy: CopyStrategy;
+  channel: "email" | "linkedin";
+  isFirstStep: boolean;
+}
+
+export interface StepValidationResult {
+  field: string; // "body" | "subject" | "subjectVariantB"
+  checks: CheckResult[]; // All violations found
+  hasHardViolation: boolean;
+}
+
 /**
  * Check word count against strategy-specific limit with 10% grace period.
  *
@@ -310,4 +326,67 @@ export function checkSubjectLine(text: string): CheckResult | null {
     };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Validation aggregator (Phase 54 — runs ALL checks for a single field)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run all applicable quality checks for a single text field.
+ *
+ * Dispatches to the correct checks based on field type and channel:
+ *   - body + email:    wordCount, greeting, CTA, banned patterns
+ *   - body + linkedin: wordCount(linkedin), linkedInSpintax, greeting, banned patterns
+ *   - subject/subjectVariantB: subjectLine, banned patterns
+ *
+ * Banned pattern violations from checkCopyQuality() are converted to hard CheckResults.
+ */
+export function validateAllChecks(
+  text: string,
+  field: "body" | "subject" | "subjectVariantB",
+  options: ValidateAllOptions,
+): StepValidationResult {
+  const checks: CheckResult[] = [];
+
+  if (!text) {
+    return { field, checks, hasHardViolation: false };
+  }
+
+  if (field === "body") {
+    // Word count — use "linkedin" strategy for linkedin channel, otherwise the provided strategy
+    const wcStrategy = options.channel === "linkedin" ? "linkedin" as CopyStrategy : options.strategy;
+    const wc = checkWordCount(text, wcStrategy);
+    if (wc) checks.push(wc);
+
+    // Greeting check (first step only)
+    const gr = checkGreeting(text, options.isFirstStep);
+    if (gr) checks.push(gr);
+
+    // Channel-specific checks
+    if (options.channel === "linkedin") {
+      const sp = checkLinkedInSpintax(text);
+      if (sp) checks.push(sp);
+    } else {
+      // CTA format check (email only — LinkedIn CTAs are more conversational)
+      const cta = checkCTAFormat(text);
+      if (cta) checks.push(cta);
+    }
+  } else {
+    // subject or subjectVariantB
+    const sl = checkSubjectLine(text);
+    if (sl) checks.push(sl);
+  }
+
+  // Banned patterns apply to ALL fields
+  const { violations: bannedViolations } = checkCopyQuality(text);
+  for (const v of bannedViolations) {
+    checks.push({ severity: "hard", violation: `banned pattern: ${v}` });
+  }
+
+  return {
+    field,
+    checks,
+    hasHardViolation: checks.some((c) => c.severity === "hard"),
+  };
 }
