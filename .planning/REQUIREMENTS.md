@@ -67,36 +67,36 @@ Requirements for the agent quality overhaul. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LEAD-01 | — | Pending |
-| LEAD-02 | — | Pending |
-| LEAD-03 | — | Pending |
-| LEAD-04 | — | Pending |
-| LEAD-05 | — | Pending |
-| LEAD-06 | — | Pending |
-| LEAD-07 | — | Pending |
-| LEAD-08 | — | Pending |
-| LEAD-09 | — | Pending |
-| LEAD-10 | — | Pending |
-| COPY-01 | — | Pending |
-| COPY-02 | — | Pending |
-| COPY-03 | — | Pending |
-| COPY-04 | — | Pending |
-| COPY-05 | — | Pending |
-| COPY-06 | — | Pending |
-| COPY-07 | — | Pending |
-| PIPE-01 | — | Pending |
-| PIPE-02 | — | Pending |
-| PIPE-03 | — | Pending |
-| PIPE-04 | — | Pending |
-| PIPE-05 | — | Pending |
-| PIPE-06 | — | Pending |
-| CROSS-01 | — | Pending |
+| LEAD-01 | Phase 56 | Pending |
+| LEAD-02 | Phase 53 | Pending |
+| LEAD-03 | Phase 53 | Pending |
+| LEAD-04 | Phase 56 | Pending |
+| LEAD-05 | Phase 56 | Pending |
+| LEAD-06 | Phase 56 | Pending |
+| LEAD-07 | Phase 53 | Pending |
+| LEAD-08 | Phase 56 | Pending |
+| LEAD-09 | Phase 53 | Pending |
+| LEAD-10 | Phase 56 | Pending |
+| COPY-01 | Phase 52 | Pending |
+| COPY-02 | Phase 54 | Pending |
+| COPY-03 | Phase 54 | Pending |
+| COPY-04 | Phase 54 | Pending |
+| COPY-05 | Phase 54 | Pending |
+| COPY-06 | Phase 54 | Pending |
+| COPY-07 | Phase 55 | Pending |
+| PIPE-01 | Phase 57 | Pending |
+| PIPE-02 | Phase 57 | Pending |
+| PIPE-03 | Phase 57 | Pending |
+| PIPE-04 | Phase 57 | Pending |
+| PIPE-05 | Phase 57 | Pending |
+| PIPE-06 | Phase 57 | Pending |
+| CROSS-01 | Phase 52 | Pending |
 
 **Coverage:**
 - v8.0 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after initial definition*
+*Last updated: 2026-03-30 after v8.0 roadmap creation — all 24 requirements mapped*

@@ -10,6 +10,7 @@
 - ✅ **v5.0 Client Portal Inbox** — Phases 33-37 (shipped 2026-03-11)
 - ✅ **v6.0 Trigger.dev Migration — Background Jobs Infrastructure** — Phases 38-45 (shipped 2026-03-23)
 - ✅ **v7.0 Nova CLI Agent Teams — Client-Specific Intelligence** — Phases 46-51 (shipped 2026-03-24)
+- 🚧 **v8.0 Agent Quality Overhaul** — Phases 52-58 (in progress)
 
 ## Phases
 
@@ -121,6 +122,18 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] Phase 51: Memory Accumulation and Full Validation (2/2 plans) — completed 2026-03-24
 
 </details>
+
+### 🚧 v8.0 Agent Quality Overhaul (In Progress)
+
+**Milestone Goal:** Make agent team produce campaign-ready output without manual QA — expert-level lead sourcing with verified data, copy that passes all rules first time, validated pipeline end-to-end.
+
+- [ ] **Phase 52: Copy Quality Module + Model Upgrade** - Extend copy-quality.ts with full structural rule set; upgrade all agents to Opus 4.6
+- [ ] **Phase 53: Platform Expertise + Input Rules** - Encode platform expertise in leads-rules.md; add pre-search input validation at CLI wrapper level
+- [ ] **Phase 54: Writer Agent Overhaul** - Mandatory self-review gate, campaign-holistic awareness, automatic rewrite loop
+- [ ] **Phase 55: Validator Agent** - Haiku-based stateless validator with structural + coherence checks
+- [ ] **Phase 56: Leads Quality Gates** - Post-search quality gates, channel-aware enrichment, credit budgeting, domain resolution
+- [ ] **Phase 57: Campaign Pipeline Validation** - Channel-aware list building, overlap detection, normalisation gate, portal hard-block
+- [ ] **Phase 58: End-to-End Validation** - Full pipeline integration test confirming all quality gates work as a unit
 
 ## Phase Details
 
@@ -403,6 +416,13 @@ Plans:
 | 49. Specialist CLI Skill Files | v7.0 | 3/3 | Complete | 2026-03-24 |
 | 50. Orchestrator CLI Spawn Integration | v7.0 | 2/2 | Complete | 2026-03-24 |
 | 51. Memory Accumulation and Full Validation | v7.0 | 2/2 | Complete | 2026-03-24 |
+| 52. Copy Quality Module + Model Upgrade | v8.0 | 0/TBD | Not started | - |
+| 53. Platform Expertise + Input Rules | v8.0 | 0/TBD | Not started | - |
+| 54. Writer Agent Overhaul | v8.0 | 0/TBD | Not started | - |
+| 55. Validator Agent | v8.0 | 0/TBD | Not started | - |
+| 56. Leads Quality Gates | v8.0 | 0/TBD | Not started | - |
+| 57. Campaign Pipeline Validation | v8.0 | 0/TBD | Not started | - |
+| 58. End-to-End Validation | v8.0 | 0/TBD | Not started | - |
 
 ### Phase 44: OOO Re-engagement Pipeline
 
@@ -522,3 +542,84 @@ Plans:
 Plans:
 - [ ] 51-01-PLAN.md — CLI agent validation (writer + intelligence + full pipeline) + memory accumulation + token budget
 - [ ] 51-02-PLAN.md — Dashboard chat smoke tests (CLI mode + API fallback) + VERIFICATION.md compilation
+
+### Phase 52: Copy Quality Module + Model Upgrade
+**Goal**: copy-quality.ts covers the full structural rule set and all agents run on Opus 4.6 — the deterministic foundation every downstream quality gate depends on
+**Depends on**: Phase 51 (existing codebase baseline)
+**Requirements**: COPY-01, CROSS-01
+**Success Criteria** (what must be TRUE):
+  1. checkWordCount() enforces tiered thresholds by strategy: PVP max 70 words, Creative Ideas max 90 words, One-liner max 50 words, LinkedIn max 100 words — a 75-word PVP email fails, a 75-word Creative Ideas email passes
+  2. checkGreeting() returns a violation when an email step has no greeting line starting with "Hi", "Hello", or "Hey"
+  3. checkCTAFormat() returns a violation when a CTA contains a statement rather than a question (e.g. "Book a call" fails; "worth a chat?" passes)
+  4. checkLinkedInSpintax() returns a violation when any spintax pattern {option1|option2} appears in LinkedIn copy
+  5. All Nova agent skill files reference Opus 4.6 (claude-opus-4-6) as the model — no Haiku or Sonnet model references remain in agent delegation paths
+**Plans**: TBD
+
+### Phase 53: Platform Expertise + Input Rules
+**Goal**: The leads agent arrives at every session knowing exactly how to use each discovery platform correctly — optimal filters, known bugs, cost models, and the mandatory two-path search routing — encoded in rules that load at startup
+**Depends on**: Phase 52
+**Requirements**: LEAD-09, LEAD-02, LEAD-03, LEAD-07
+**Success Criteria** (what must be TRUE):
+  1. leads-rules.md contains a "Platform Expertise" section with per-platform guidance for Prospeo, AI Ark, Apollo, Leads Finder, Google Maps, and Ecommerce Stores — covering optimal filters, cost-per-lead, known broken filters, and verified vs unverified handling
+  2. AI Ark searches always use the two-step company-then-people workaround — the broken contact.department and contact.keyword filters are documented as hard-blocked in leads-rules.md
+  3. When a company name list is provided (not domains), the agent plan includes a domain resolution step before any people search — not optional
+  4. Agent pre-search sanity check flags mismatched ICP filters before any paid API call fires (e.g. Prospeo company.names instead of company.websites triggers a blocker warning)
+**Plans**: TBD
+
+### Phase 54: Writer Agent Overhaul
+**Goal**: The writer never saves copy that violates quality rules — it self-reviews before every save, sees the full campaign as a unit, and rewrites automatically when violations are found
+**Depends on**: Phase 52 (extended copy-quality.ts), Phase 53 (writer-rules.md self-review checklist section)
+**Requirements**: COPY-02, COPY-03, COPY-04, COPY-05, COPY-06
+**Success Criteria** (what must be TRUE):
+  1. When the writer generates a 90-word PVP email, it catches the word count violation, rewrites to under 70 words, and saves the corrected version — the original violation never reaches the database
+  2. When generating step 3 of a 3-step sequence, the writer loads existing steps 1 and 2 first and does not reuse the same CTA angle already present in step 1
+  3. LinkedIn messages saved by the writer contain no spintax patterns — any {option1|option2} syntax triggers an auto-rewrite to a single direct line
+  4. When a KB search returns a relevant principle, the writer output names the specific principle applied rather than just noting KB was consulted
+  5. When a violation persists after 2 rewrite attempts, the copy is saved with inline review notes flagging the violation — admin sees the issue in the existing approval flow
+**Plans**: TBD
+
+### Phase 55: Validator Agent
+**Goal**: A stateless validator (Opus 4.6 via Claude Code CLI) reviews every completed sequence for semantic quality issues that structural checks miss — angle repetition, tone mismatch, filler spintax — before the copy is confirmed saved
+**Depends on**: Phase 52 (extended copy-quality.ts is imported by validator.ts), Phase 54 (writer calls validateSequence tool)
+**Requirements**: COPY-07
+**Success Criteria** (what must be TRUE):
+  1. src/lib/agents/validator.ts exports a validateSequence() function that returns a typed ValidationResult with pass, structuralViolations (blocker list), coherenceIssues (warning list), and suggestedFixes
+  2. When a sequence contains two steps with identical CTA phrasing, the validator returns pass: false with an angle-repetition coherence issue — the writer receives structured violation data it can act on
+  3. When a sequence uses consistent UK English and maintains a coherent tone throughout, the validator returns pass: true with no coherence issues
+  4. The validator uses Opus 4.6 via Claude Code CLI (per CROSS-01) — no Haiku or lower-tier model references. Stateless — no DB calls, no tool access beyond the validation call
+**Plans**: TBD
+
+### Phase 56: Leads Quality Gates
+**Goal**: Every discovery run produces a data quality report before enrichment credits are spent, channel-aware routing skips unnecessary enrichment steps, and cost is estimated before execution and reported after
+**Depends on**: Phase 53 (platform expertise in leads-rules.md)
+**Requirements**: LEAD-01, LEAD-04, LEAD-05, LEAD-06, LEAD-08, LEAD-10
+**Success Criteria** (what must be TRUE):
+  1. The leads agent discovery plan always includes a credit cost estimate shown before approval, and reports actual cost after execution with a cost-per-verified-lead figure
+  2. For a LinkedIn-only campaign, the enrichment step skips email verification entirely and confirms "LinkedIn URLs only — email enrichment skipped" in its output
+  3. After any search returning results, the agent reports verified email %, LinkedIn URL %, ICP fit score distribution, and placeholder detection count — and flags if verified email rate is below 30%
+  4. Leads with CATCH_ALL or unverified email status are routed to BounceBan/LeadMagic verification rather than silently discarded — the routing decision is visible in the post-search report
+  5. The discovery plan always starts with a sourcing recommendation naming which platform(s) to use and why, awaiting explicit admin approval before any paid API call fires
+**Plans**: TBD
+
+### Phase 57: Campaign Pipeline Validation
+**Goal**: The campaign pipeline enforces channel-appropriate data at every hand-off point — list building, company name normalisation, and the portal approval route all gate on data quality before proceeding
+**Depends on**: Phase 54 (writer validation in place), Phase 55 (validator agent exists), Phase 56 (leads quality gates in place)
+**Requirements**: PIPE-01, PIPE-02, PIPE-03, PIPE-04, PIPE-05, PIPE-06
+**Success Criteria** (what must be TRUE):
+  1. An email campaign list built from a LinkedIn-only discovery run fails the data quality pre-check — the error names the specific gap ("0 verified emails in this list")
+  2. When a person appears in two active campaigns for the same workspace, list-building returns a warning naming the overlapping campaign before proceeding
+  3. Company names in a list pass through normalizeCompanyNameForCopy() before any {COMPANYNAME} variable is used in copy generation
+  4. The portal approve-content route returns HTTP 422 (not 200 with warnings) when structural copy violations exist — the portal UI handles the error state and displays the violation to the client
+  5. A cost breakdown is accessible after any pipeline run: discovery cost + enrichment cost + total cost-per-verified-lead
+**Plans**: TBD
+
+### Phase 58: End-to-End Validation
+**Goal**: The complete v8.0 quality system is confirmed working as a unit — all gates fire correctly in sequence, no silent failures, and the audit trail captures quality decisions end-to-end
+**Depends on**: Phase 57 (all quality gates must be in place)
+**Requirements**: (integration validation — no new requirements)
+**Success Criteria** (what must be TRUE):
+  1. A full pipeline run on a test workspace (discovery plan -> quality gate -> list build -> write copy -> validate -> save) completes without errors and the final copy is free of structural violations
+  2. A deliberately invalid sequence (banned phrases + wrong variable format) is blocked by the validator, triggers a rewrite, and the saved copy is clean — the AgentRun audit log shows the rewrite loop occurred
+  3. A LinkedIn-only pipeline run confirms email enrichment was skipped in the cost report and the list contains LinkedIn URLs only — channel-aware routing is observable in the output
+  4. The portal approve-content route returns 422 when fed a sequence with structural violations — the error is surfaced to the user, not silently swallowed
+**Plans**: TBD
