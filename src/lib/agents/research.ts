@@ -5,7 +5,7 @@ import { crawlWebsite, scrapeUrl } from "@/lib/firecrawl/client";
 import { notify } from "@/lib/notify";
 import { runAgent } from "./runner";
 import { searchKnowledgeBase } from "./shared-tools";
-import { researchOutputSchema } from "./types";
+import { researchOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, ResearchInput, ResearchOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
@@ -176,7 +176,7 @@ ${loadRules("research-rules.md")}`;
 
 const researchConfig: AgentConfig = {
   name: "research",
-  model: "claude-opus-4-20250514",
+  model: NOVA_MODEL,
   systemPrompt: RESEARCH_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: researchTools,
   maxSteps: 8,

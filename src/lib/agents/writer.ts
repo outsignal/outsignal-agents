@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getClientForWorkspace } from "@/lib/workspaces";
 import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
-import { writerOutputSchema } from "./types";
+import { writerOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
@@ -438,7 +438,7 @@ Always include "strategy" and "references" fields.`;
 
 const writerConfig: AgentConfig = {
   name: "writer",
-  model: "claude-sonnet-4-20250514",
+  model: NOVA_MODEL,
   systemPrompt: WRITER_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: writerTools,
   maxSteps: 20,

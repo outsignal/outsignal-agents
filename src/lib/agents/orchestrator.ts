@@ -16,6 +16,7 @@ import { generateProposalToken } from "@/lib/tokens";
 import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { searchKnowledgeBase } from "./shared-tools";
 import { getWorkspaceQuotaUsage, parseModules } from "@/lib/workspaces/quota";
+import { NOVA_MODEL } from "./types";
 import type { AgentConfig } from "./types";
 import { USER_INPUT_GUARD, isCliMode } from "./utils";
 import { loadRules } from "./load-rules";
@@ -685,7 +686,7 @@ ${loadRules("campaign-rules.md")}`;
 
 export const orchestratorConfig: AgentConfig = {
   name: "orchestrator",
-  model: "claude-sonnet-4-20250514",
+  model: NOVA_MODEL,
   systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: orchestratorTools,
   maxSteps: 12,

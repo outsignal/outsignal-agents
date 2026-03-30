@@ -4,7 +4,7 @@ import { z } from "zod";
 import * as campaignOperations from "@/lib/campaigns/operations";
 import * as leadsOperations from "@/lib/leads/operations";
 import { runAgent } from "./runner";
-import { campaignOutputSchema } from "./types";
+import { campaignOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, CampaignInput, CampaignOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
@@ -43,7 +43,7 @@ async function extractIcpCriteria(
   description: string,
 ): Promise<z.infer<typeof icpCriteriaSchema>> {
   const { object } = await generateObject({
-    model: anthropic("claude-haiku-4-5"),
+    model: anthropic(NOVA_MODEL),
     schema: icpCriteriaSchema,
     prompt: `Extract structured ICP (Ideal Customer Profile) criteria from this description. Return arrays for each field. If a field is not mentioned, return an empty array.\n\nDescription: "${description}"`,
   });
@@ -413,7 +413,7 @@ ${loadRules("campaign-rules.md")}`;
 
 const campaignConfig: AgentConfig = {
   name: "campaign",
-  model: "claude-sonnet-4-20250514",
+  model: NOVA_MODEL,
   systemPrompt: CAMPAIGN_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: campaignTools,
   maxSteps: 10,

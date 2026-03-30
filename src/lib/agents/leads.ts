@@ -3,7 +3,7 @@ import { z } from "zod";
 import * as operations from "@/lib/leads/operations";
 import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
-import { leadsOutputSchema } from "./types";
+import { leadsOutputSchema, NOVA_MODEL } from "./types";
 import type { AgentConfig, LeadsInput, LeadsOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
@@ -992,7 +992,7 @@ ${loadRules("leads-rules.md")}`;
 
 const leadsConfig: AgentConfig = {
   name: "leads",
-  model: "claude-sonnet-4-20250514",
+  model: NOVA_MODEL,
   systemPrompt: LEADS_SYSTEM_PROMPT + USER_INPUT_GUARD,
   tools: leadsTools,
   maxSteps: 15,
