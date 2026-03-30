@@ -3,9 +3,12 @@ import { z } from "zod";
 
 // --- Agent Configuration ---
 
+export const NOVA_MODEL = "claude-opus-4-6" as const;
+
 export interface AgentConfig {
   name: string;
   model:
+    | "claude-opus-4-6"
     | "claude-opus-4-20250514"
     | "claude-sonnet-4-20250514"
     | "claude-haiku-4-5-20251001";
