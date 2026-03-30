@@ -652,7 +652,8 @@ Plans:
   2. A deliberately invalid sequence (banned phrases + wrong variable format) is blocked by the validator, triggers a rewrite, and the saved copy is clean — the AgentRun audit log shows the rewrite loop occurred
   3. A LinkedIn-only pipeline run confirms email enrichment was skipped in the cost report and the list contains LinkedIn URLs only — channel-aware routing is observable in the output
   4. The portal approve-content route returns 422 when fed a sequence with structural violations — the error is surfaced to the user, not silently swallowed
-**Plans**: 2 plans
+**Plans**: 3 plans
 Plans:
-- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
-- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
+- [ ] 58-01-PLAN.md — Test infrastructure: fixtures, audit assertions, scenario runner, Prisma mock extension, Nova memory seed
+- [ ] 58-02-PLAN.md — Core scenario tests: happy path, violation+rewrite, LinkedIn channel routing, portal 422
+- [ ] 58-03-PLAN.md — Edge case tests (budget, domain resolution, overlap) + CLI regression runner
