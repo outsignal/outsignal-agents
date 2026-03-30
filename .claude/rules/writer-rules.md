@@ -98,10 +98,13 @@ When [INTERNAL SIGNAL CONTEXT — never mention to recipient] appears in your ta
 
 1. **CRITICAL — NEVER USE THESE PHRASES (automatic rejection):**
    - "quick question" <-- MOST COMMON VIOLATION
+   - "genuine question" / "honest question"
+   - "curious if" / "curious whether"
+   - "ring any bells" / "sound familiar"
    - "I hope this email finds you well" / "I hope this finds you well"
    - "My name is"
    - "I wanted to reach out"
-   - "just following up"
+   - "just following up" / "following up"
    - "touching base"
    - "circling back" / "circle back"
    - "synergy"
@@ -123,15 +126,17 @@ When [INTERNAL SIGNAL CONTEXT — never mention to recipient] appears in your ta
    - "at your earliest convenience"
    - "as per my last email"
    If ANY of these appear in generated copy, it is an automatic rejection. Rewrite before saving.
-2. **No em dashes, en dashes, or hyphens used as separators**: Never use —, –, or ' - ' to separate clauses. Use commas, periods, or "and" instead.
-3. **Word count**: All emails under 70 words. No exceptions. Count before saving.
-4. **No exclamation marks in subjects**: Subject lines never contain "!"
-5. **Subject lines**: 3-6 words, all lowercase, create curiosity or relevance. No spam triggers.
-6. **Soft CTAs only**: Every CTA must be a question. "worth a chat?" not "book a call". "open to exploring?" not "schedule a demo". Never use "Let me know", "Are you free Tuesday?", "Can I send you...?"
-7. **Variables — MOST VIOLATED RULE**: Uppercase with single curly braces ONLY. WRONG: `{{firstName}}`, `{{companyName}}`, `{firstName}`. RIGHT: `{FIRSTNAME}`, `{COMPANYNAME}`, `{JOBTITLE}`, `{LOCATION}`, `{LASTEMAILMONTH}`. Never use double braces. Never use lowercase. This is the writer's most common violation — check EVERY variable before saving.
-8. **Confirmed variables only**: Only use variables that are confirmed available in the TargetList. If unsure, ask, do not guess.
-9. **Spintax (EMAIL ONLY)**: Include spintax in 10-30% of email content. Format: {option1|option2|option3}. NEVER spin statistics, CTAs, variable names, or company-specific claims. All options must be grammatically interchangeable. **LinkedIn messages must NEVER contain spintax** — LinkedIn is 1-to-1 chat, not broadcast email. Spintax exists for spam avoidance which is not needed on LinkedIn. **Filler spintax is BANNED**: if the options are interchangeable throwaways (e.g. {just a thought|one more thing}, {meant to ask|been meaning to say}, {quick one|genuine question}), delete the spintax and write a single direct line instead. Every spintax option must carry substantive meaning — different value props, different proof points, different angles. If swapping the options makes no difference to the message, it's filler.
-10. **Spintax grammar**: Every spintax option must be grammatically correct when substituted. Read each variant aloud mentally before saving.
+2. **Greetings are mandatory**: Every first email in a sequence MUST start with a greeting: "Hi {FIRSTNAME}," or "Hello {FIRSTNAME},". Follow-up emails can drop the greeting or use a lighter opener, but the initial email must have one. LinkedIn messages should use "Hey {FIRSTNAME}," or "Hi {FIRSTNAME},".
+3. **Write like a real person**: Copy must read as if a real human typed it themselves. Simple, natural language. No marketing-speak, no clever constructions, no rhetorical questions that feel scripted. Read it aloud — if it sounds like a template, rewrite it. UK English spelling for UK audiences (e.g. "organisation" not "organization", "favour" not "favor").
+4. **No em dashes, en dashes, or hyphens used as separators**: Never use —, –, or ' - ' to separate clauses. Use commas, periods, or "and" instead.
+5. **Word count**: All emails under 70 words. No exceptions. Count before saving.
+6. **No exclamation marks in subjects**: Subject lines never contain "!"
+7. **Subject lines**: 3-6 words, all lowercase, create curiosity or relevance. No spam triggers.
+8. **Soft CTAs only**: Every CTA must be a question. "worth a chat?" not "book a call". "open to exploring?" not "schedule a demo". Never use "Let me know", "Are you free Tuesday?", "Can I send you...?"
+9. **Variables — MOST VIOLATED RULE**: Uppercase with single curly braces ONLY. WRONG: `{{firstName}}`, `{{companyName}}`, `{firstName}`. RIGHT: `{FIRSTNAME}`, `{COMPANYNAME}`, `{JOBTITLE}`, `{LOCATION}`, `{LASTEMAILMONTH}`. Never use double braces. Never use lowercase. This is the writer's most common violation — check EVERY variable before saving.
+10. **Confirmed variables only**: Only use variables that are confirmed available in the TargetList. If unsure, ask, do not guess.
+11. **Spintax (EMAIL ONLY)**: Include spintax in 10-30% of email content. Format: {option1|option2|option3}. NEVER spin statistics, CTAs, variable names, or company-specific claims. All options must be grammatically interchangeable. **LinkedIn messages must NEVER contain spintax** — LinkedIn is 1-to-1 chat, not broadcast email. Spintax exists for spam avoidance which is not needed on LinkedIn. **Filler spintax is BANNED**: if the options are interchangeable throwaways (e.g. {just a thought|one more thing}, {meant to ask|been meaning to say}, {quick one|genuine question}), delete the spintax and write a single direct line instead. Every spintax option must carry substantive meaning — different value props, different proof points, different angles. If swapping the options makes no difference to the message, it's filler.
+12. **Spintax grammar**: Every spintax option must be grammatically correct when substituted. Read each variant aloud mentally before saving.
 
 NOTE: Former universal rule "PVP framework" is now scoped to the PVP strategy block only. It does NOT apply to Creative Ideas, One-liner, or Custom strategies.
 
