@@ -206,7 +206,7 @@ export default async function PortalDashboardPage({
   // LinkedIn worker online status — only query if package includes LinkedIn
   const linkedInSender = hasLinkedIn
     ? await prisma.sender.findFirst({
-        where: { workspaceSlug, linkedinProfileUrl: { not: null } },
+        where: { workspaceSlug, sessionStatus: { not: "not_setup" } },
         select: { lastPolledAt: true },
       })
     : null;

@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
         package: true,
         _count: {
           select: {
-            senders: { where: { linkedinProfileUrl: { not: null } } },
+            senders: { where: { sessionStatus: { not: "not_setup" } } },
           },
         },
       },
