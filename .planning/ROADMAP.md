@@ -598,8 +598,8 @@ Plans:
   4. The validator uses Opus 4.6 via Claude Code CLI (per CROSS-01) — no Haiku or lower-tier model references. Stateless — no DB calls, no tool access beyond the validation call
 **Plans**: 2 plans
 Plans:
-- [ ] 52-01-PLAN.md — TDD: extend copy-quality.ts with five new check functions + expanded banned phrases
-- [ ] 52-02-PLAN.md — Upgrade all Nova agents to Opus 4.6 via NOVA_MODEL constant + GSD quality profile
+- [ ] 55-01-PLAN.md — Validator types, rules file, and wrapper script (structural + semantic checks via Claude CLI)
+- [ ] 55-02-PLAN.md — Wire validateSequence tool into writer agent with rewrite-once protocol
 
 ### Phase 56: Leads Quality Gates
 **Goal**: Every discovery run produces a data quality report before enrichment credits are spent, channel-aware routing skips unnecessary enrichment steps, and cost is estimated before execution and reported after
