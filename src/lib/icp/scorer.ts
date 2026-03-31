@@ -18,7 +18,7 @@ export interface IcpScoreResult {
   confidence: "high" | "medium" | "low";
 }
 
-const IcpScoreSchema = z.object({
+export const IcpScoreSchema = z.object({
   score: z.number().describe("ICP fit score from 0 to 100"),
   reasoning: z.string().describe("1-3 sentence explanation of ICP fit"),
   confidence: z.enum(["high", "medium", "low"]).describe(
@@ -29,7 +29,7 @@ const IcpScoreSchema = z.object({
 /**
  * Build a scoring prompt from person + company + website data.
  */
-function buildScoringPrompt(params: {
+export function buildScoringPrompt(params: {
   person: {
     firstName: string | null;
     lastName: string | null;
