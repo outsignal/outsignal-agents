@@ -11,6 +11,9 @@
  * `fetch_count`. Set hasMore: false always.
  */
 import { runApifyActor } from "../../apify/client";
+import { bulkEnrichPeople } from "../bulk-enrich";
+import { enrichViaAiArk } from "../aiark-email";
+import { enrichViaLeadMagic } from "../leadmagic-email";
 import type {
   DiscoveryAdapter,
   DiscoveryFilter,
@@ -211,7 +214,32 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
       };
     });
 
-    const costUsd = people.length * this.estimatedCostPerResult;
+    let costUsd = people.length * this.estimatedCostPerResult;
+
+    // ---------------------------------------------------------------------------
+    // Fallback enrichment waterfall for people without emails
+    // ---------------------------------------------------------------------------
+
+    // Stage 1: Prospeo fallback for people without email
+    const needsEnrich = people.filter((p) => !p.email);
+    if (needsEnrich.length > 0) {
+      const prospeoResult = await bulkEnrichPeople(people, "leads-finder");
+      costUsd += prospeoResult.costUsd;
+
+      // Stage 2: AI Ark fallback
+      const stillNeedsEmail = people.filter((p) => !p.email);
+      if (stillNeedsEmail.length > 0) {
+        const aiarkResult = await enrichViaAiArk(people);
+        costUsd += aiarkResult.costUsd;
+
+        // Stage 3: LeadMagic fallback
+        const finalCheck = people.filter((p) => !p.email);
+        if (finalCheck.length > 0) {
+          const lmResult = await enrichViaLeadMagic(people);
+          costUsd += lmResult.costUsd;
+        }
+      }
+    }
 
     return {
       people,

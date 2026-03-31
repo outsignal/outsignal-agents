@@ -17,7 +17,8 @@ import Link from "next/link";
 
 const PAGE_SIZE = 50;
 
-function maskEmail(email: string): string {
+function maskEmail(email: string | null): string {
+  if (!email) return "\u2014";
   const [local, domain] = email.split("@");
   if (!local || !domain) return email;
   return `${local.charAt(0)}***@${domain}`;

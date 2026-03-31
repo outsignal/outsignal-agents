@@ -351,8 +351,8 @@ async function processSingleCampaign(
           company: true,
         },
       });
-      // Skip placeholder emails — these leads have no real email yet
-      if (!person || !person.email || person.email.includes("@discovery.internal")) continue;
+      // Skip leads without a real email
+      if (!person || !person.email) continue;
 
       try {
         await ebClient.createLead({

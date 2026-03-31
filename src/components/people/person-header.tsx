@@ -11,7 +11,7 @@ interface WorkspaceScore {
 
 export interface PersonHeaderProps {
   id: string;
-  email: string;
+  email: string | null;
   firstName: string | null;
   lastName: string | null;
   company: string | null;

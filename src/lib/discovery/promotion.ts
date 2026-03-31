@@ -7,12 +7,11 @@
  *   3. Name + company fuzzy match (Levenshtein at 0.85 threshold)
  *
  * Non-duplicates are promoted to the Person table with a PersonWorkspace junction record.
- * Leads without email get a placeholder email so the unique constraint is satisfied.
+ * Leads without email are promoted with email=null (schema allows nullable email).
  * Promoted leads are enqueued for full-waterfall enrichment via the EnrichmentJob queue.
  * Duplicate records are marked status='duplicate' with personId set (no promotedAt — duplicates are free for quota).
  */
 
-import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
 
@@ -110,7 +109,7 @@ interface DedupMaps {
 async function buildDedupMaps(staged: StagedRecord[]): Promise<DedupMaps> {
   // Collect unique lookup keys
   const emails = staged
-    .filter((dp) => dp.email && !dp.email.includes("@discovery.internal"))
+    .filter((dp) => dp.email)
     .map((dp) => dp.email!);
   const linkedinUrls = staged
     .filter((dp) => dp.linkedinUrl)
@@ -143,7 +142,7 @@ async function buildDedupMaps(staged: StagedRecord[]): Promise<DedupMaps> {
       : [],
   ]);
 
-  const byEmail = new Map(emailMatches.map((p) => [p.email, p.id]));
+  const byEmail = new Map(emailMatches.filter((p) => p.email).map((p) => [p.email!, p.id]));
   const byLinkedin = new Map(
     linkedinMatches.filter((p) => p.linkedinUrl).map((p) => [p.linkedinUrl!, p.id]),
   );
@@ -165,7 +164,7 @@ async function buildDedupMaps(staged: StagedRecord[]): Promise<DedupMaps> {
  */
 function findExistingPersonFromMaps(dp: StagedRecord, maps: DedupMaps): string | null {
   // Leg 1: Email exact match
-  if (dp.email && !dp.email.includes("@discovery.internal")) {
+  if (dp.email) {
     const match = maps.byEmail.get(dp.email);
     if (match) return match;
   }
@@ -201,32 +200,50 @@ async function promoteToPerson(
   dp: StagedRecord,
   workspaceSlug: string
 ): Promise<{ id: string }> {
-  // Use real email if available; otherwise generate a placeholder so the unique
-  // constraint on Person.email is satisfied.
-  const email =
-    dp.email && !dp.email.includes("@discovery.internal")
-      ? dp.email
-      : `placeholder-${randomUUID()}@discovery.internal`;
+  // Use real email if available; otherwise leave null (schema allows nullable email).
+  // No more placeholder @discovery.internal emails.
+  const email = dp.email ?? null;
 
-  // Upsert Person — if the email already exists (race condition), use existing record.
-  const person = await prisma.person.upsert({
-    where: { email },
-    create: {
-      email,
-      firstName: dp.firstName ?? null,
-      lastName: dp.lastName ?? null,
-      jobTitle: dp.jobTitle ?? null,
-      company: dp.company ?? null,
-      companyDomain: dp.companyDomain ?? null,
-      linkedinUrl: dp.linkedinUrl ?? null,
-      phone: dp.phone ?? null,
-      location: dp.location ?? null,
-      source: `discovery-${dp.discoverySource}`,
-      status: "new",
-    },
-    update: {},
-    select: { id: true },
-  });
+  // If we have an email, upsert by email (handles race conditions).
+  // If no email, create a new Person record (null emails are not subject to unique constraint).
+  let person: { id: string };
+  if (email) {
+    person = await prisma.person.upsert({
+      where: { email },
+      create: {
+        email,
+        firstName: dp.firstName ?? null,
+        lastName: dp.lastName ?? null,
+        jobTitle: dp.jobTitle ?? null,
+        company: dp.company ?? null,
+        companyDomain: dp.companyDomain ?? null,
+        linkedinUrl: dp.linkedinUrl ?? null,
+        phone: dp.phone ?? null,
+        location: dp.location ?? null,
+        source: `discovery-${dp.discoverySource}`,
+        status: "new",
+      },
+      update: {},
+      select: { id: true },
+    });
+  } else {
+    person = await prisma.person.create({
+      data: {
+        email: null,
+        firstName: dp.firstName ?? null,
+        lastName: dp.lastName ?? null,
+        jobTitle: dp.jobTitle ?? null,
+        company: dp.company ?? null,
+        companyDomain: dp.companyDomain ?? null,
+        linkedinUrl: dp.linkedinUrl ?? null,
+        phone: dp.phone ?? null,
+        location: dp.location ?? null,
+        source: `discovery-${dp.discoverySource}`,
+        status: "new",
+      },
+      select: { id: true },
+    });
+  }
 
   // Upsert PersonWorkspace junction — idempotent
   await prisma.personWorkspace.upsert({
@@ -323,7 +340,7 @@ export async function deduplicateAndPromote(
 
   function countNonNullFields(dp: StagedRecord): number {
     let count = 0;
-    if (dp.email && !dp.email.includes("@discovery.internal")) count++;
+    if (dp.email) count++;
     if (dp.firstName) count++;
     if (dp.lastName) count++;
     if (dp.jobTitle) count++;
@@ -337,7 +354,7 @@ export async function deduplicateAndPromote(
 
   for (let i = 0; i < staged.length; i++) {
     const dp = staged[i];
-    const email = dp.email && !dp.email.includes("@discovery.internal") ? dp.email.toLowerCase() : null;
+    const email = dp.email ? dp.email.toLowerCase() : null;
     const linkedin = dp.linkedinUrl ?? null;
 
     // Check email match within batch

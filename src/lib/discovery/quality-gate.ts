@@ -65,7 +65,6 @@ export interface QualityReport {
  *
  * Returns true if:
  * - Email starts with junk prefixes (info@, admin@, support@, etc.)
- * - Email contains @discovery.internal (placeholder from promotion.ts)
  * - Name matches junk patterns (single char, "N/A", "Unknown", "Test", "None", "null")
  * - Both firstName AND lastName are missing/empty
  * - Both email AND linkedinUrl are missing/null
@@ -75,7 +74,6 @@ export function detectJunk(person: DiscoveredPersonResult): boolean {
   if (person.email) {
     const lower = person.email.toLowerCase();
     if (JUNK_EMAIL_PREFIXES.some((p) => lower.startsWith(p))) return true;
-    if (lower.includes("@discovery.internal")) return true;
   }
 
   // Check junk names
@@ -105,7 +103,6 @@ export function detectJunk(person: DiscoveredPersonResult): boolean {
 function hasRealEmail(person: DiscoveredPersonResult): boolean {
   if (!person.email) return false;
   const lower = person.email.toLowerCase();
-  if (lower.includes("@discovery.internal")) return false;
   if (JUNK_EMAIL_PREFIXES.some((p) => lower.startsWith(p))) return false;
   return true;
 }

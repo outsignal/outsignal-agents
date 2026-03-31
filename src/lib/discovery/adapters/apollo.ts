@@ -18,6 +18,9 @@ import type {
   DiscoveredPersonResult,
   DiscoveryResult,
 } from "../types";
+import { bulkEnrichPeople } from "../bulk-enrich";
+import { enrichViaAiArk } from "../aiark-email";
+import { enrichViaLeadMagic } from "../leadmagic-email";
 
 const APOLLO_ENDPOINT =
   "https://api.apollo.io/api/v1/mixed_people/api_search";
@@ -223,12 +226,43 @@ export class ApolloAdapter implements DiscoveryAdapter {
     const hasMore = page * perPage < totalEntries;
     const nextPageToken = hasMore ? String(page + 1) : undefined;
 
+    // Three-stage email enrichment waterfall:
+    // 1. Prospeo bulk-enrich (uses LinkedIn URLs and name+company)
+    // 2. AI Ark /export/single fallback (uses LinkedIn URLs)
+    // 3. LeadMagic fallback (uses LinkedIn URLs or name+company)
+    let enrichCost = 0;
+    if (people.length > 0) {
+      // Stage 1: Prospeo bulk-enrich
+      const prospeoResult = await bulkEnrichPeople(people, "apollo");
+      enrichCost += prospeoResult.costUsd;
+
+      // Stage 2: AI Ark fallback for people still missing email (uses LinkedIn URLs)
+      const needsAiArk = people.filter((p) => !p.email);
+      if (needsAiArk.length > 0) {
+        console.log(
+          `[apollo] ${prospeoResult.enrichedCount} emails from Prospeo, ${needsAiArk.length} remaining — falling back to AI Ark`,
+        );
+        const aiArkResult = await enrichViaAiArk(people);
+        enrichCost += aiArkResult.costUsd;
+      }
+
+      // Stage 3: LeadMagic fallback for people still missing email
+      const needsLeadMagic = people.filter((p) => !p.email);
+      if (needsLeadMagic.length > 0) {
+        console.log(
+          `[apollo] ${needsLeadMagic.length} still without email after Prospeo + AI Ark — falling back to LeadMagic`,
+        );
+        const leadMagicResult = await enrichViaLeadMagic(people);
+        enrichCost += leadMagicResult.costUsd;
+      }
+    }
+
     return {
       people,
       totalAvailable: totalEntries,
       hasMore,
       nextPageToken,
-      costUsd: 0, // Apollo search is free
+      costUsd: enrichCost, // Apollo search is free, enrichment costs per match
       rawResponse: raw,
     };
   }

@@ -91,7 +91,7 @@ export interface EvaluateSequenceRulesParams {
     company?: string | null;
     jobTitle?: string | null;
     linkedinUrl?: string | null;
-    email: string;
+    email: string | null;
   };
   emailContext?: {
     stepRef?: string;

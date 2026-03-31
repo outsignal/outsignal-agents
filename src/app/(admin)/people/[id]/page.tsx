@@ -178,7 +178,7 @@ export default async function PersonDetailPage({
       <Breadcrumb
         items={[
           { label: "People", href: "/people" },
-          { label: fullName ?? person.email },
+          { label: fullName ?? person.email ?? "Unknown" },
         ]}
       />
 

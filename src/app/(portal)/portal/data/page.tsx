@@ -14,7 +14,8 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Users, Building2, ExternalLink } from "lucide-react";
 
-function maskEmail(email: string): string {
+function maskEmail(email: string | null): string {
+  if (!email) return "\u2014";
   const [local, domain] = email.split("@");
   if (!local || !domain) return email;
   return `${local.charAt(0)}***@${domain}`;

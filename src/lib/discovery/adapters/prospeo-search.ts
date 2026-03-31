@@ -22,6 +22,9 @@ import type {
   DiscoveredPersonResult,
   DiscoveryResult,
 } from "../types";
+import { bulkEnrichPeople } from "../bulk-enrich";
+import { enrichViaAiArk } from "../aiark-email";
+import { enrichViaLeadMagic } from "../leadmagic-email";
 
 const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
@@ -297,12 +300,43 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     const hasMore = page < totalPages;
     const nextPageToken = hasMore ? String(page + 1) : undefined;
 
+    // Three-stage email enrichment waterfall:
+    // 1. Prospeo bulk-enrich (uses person_id from search results)
+    // 2. AI Ark /export/single fallback (uses LinkedIn URLs)
+    // 3. LeadMagic fallback (uses LinkedIn URLs or name+company)
+    let enrichCost = 0;
+    if (people.length > 0) {
+      // Stage 1: Prospeo bulk-enrich with person_id
+      const prospeoResult = await bulkEnrichPeople(people, "prospeo");
+      enrichCost += prospeoResult.costUsd;
+
+      // Stage 2: AI Ark fallback for people still missing email (uses LinkedIn URLs)
+      const needsAiArk = people.filter((p) => !p.email);
+      if (needsAiArk.length > 0) {
+        console.log(
+          `[prospeo-search] ${prospeoResult.enrichedCount} emails from Prospeo, ${needsAiArk.length} remaining — falling back to AI Ark`,
+        );
+        const aiArkResult = await enrichViaAiArk(people);
+        enrichCost += aiArkResult.costUsd;
+      }
+
+      // Stage 3: LeadMagic fallback for people still missing email
+      const needsLeadMagic = people.filter((p) => !p.email);
+      if (needsLeadMagic.length > 0) {
+        console.log(
+          `[prospeo-search] ${needsLeadMagic.length} still without email after Prospeo + AI Ark — falling back to LeadMagic`,
+        );
+        const leadMagicResult = await enrichViaLeadMagic(people);
+        enrichCost += leadMagicResult.costUsd;
+      }
+    }
+
     return {
       people,
       totalAvailable: totalCount,
       hasMore,
       nextPageToken,
-      costUsd: PROSPEO_SEARCH_CREDIT_COST, // 1 credit per /search-person call
+      costUsd: PROSPEO_SEARCH_CREDIT_COST + enrichCost,
       rawResponse: raw,
     };
   }

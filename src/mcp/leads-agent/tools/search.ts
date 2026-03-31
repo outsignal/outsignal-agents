@@ -32,7 +32,7 @@ function formatPeopleTable(
     const vertical = p.vertical ?? "_—_";
     // Escape pipe characters to avoid breaking markdown table
     const escape = (s: string) => s.replace(/\|/g, "\\|");
-    return `| ${escape(name)} | ${escape(p.email)} | ${escape(company)} | ${escape(title)} | ${escape(p.status)} | ${escape(vertical)} |`;
+    return `| ${escape(name)} | ${escape(p.email ?? "—")} | ${escape(company)} | ${escape(title)} | ${escape(p.status)} | ${escape(vertical)} |`;
   });
 
   return [header, divider, ...rows].join("\n");

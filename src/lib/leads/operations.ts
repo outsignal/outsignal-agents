@@ -25,7 +25,7 @@ import type { TargetList, Person, Workspace } from "@prisma/client";
 
 export interface PersonSearchResult {
   id: string;
-  email: string;
+  email: string | null;
   firstName: string | null;
   lastName: string | null;
   company: string | null;
@@ -128,7 +128,7 @@ export interface ResolvedEmail {
 export interface UpdatePersonStatusResult {
   firstName: string | null;
   lastName: string | null;
-  email: string;
+  email: string | null;
 }
 
 export interface EnrichmentHistoryEntry {
@@ -150,7 +150,7 @@ export interface UnscoredPersonWorkspace {
     id: string;
     firstName: string | null;
     lastName: string | null;
-    email: string;
+    email: string | null;
   };
 }
 

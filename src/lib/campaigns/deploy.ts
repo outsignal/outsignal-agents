@@ -160,9 +160,12 @@ async function deployEmailChannel(
         continue;
       }
 
+      // Skip leads without a real email — cannot deploy to EmailBison
+      if (!person.email) continue;
+
       await withRetry(() =>
         ebClient.createLead({
-          email: person.email,
+          email: person.email!,
           firstName: person.firstName ?? undefined,
           lastName: person.lastName ?? undefined,
           jobTitle: person.jobTitle ?? undefined,

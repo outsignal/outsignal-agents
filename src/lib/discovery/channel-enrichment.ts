@@ -69,7 +69,7 @@ export function getUnverifiedRoutingSuggestion(
   let noEmailCount = 0;
 
   for (const person of people) {
-    if (person.email && !person.email.includes("@discovery.internal")) {
+    if (person.email) {
       totalWithEmail++;
     } else {
       noEmailCount++;

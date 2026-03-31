@@ -29,7 +29,7 @@ export const smokeTest = task({
         results.prisma = {
           ok: person !== null,
           ms: Date.now() - t0,
-          detail: person ? person.email.substring(0, 3) + "***" : "no records found",
+          detail: person ? (person.email?.substring(0, 3) ?? "no-email") + "***" : "no records found",
         };
       } catch (err) {
         results.prisma = {

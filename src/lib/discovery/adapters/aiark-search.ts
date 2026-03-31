@@ -29,6 +29,9 @@
 
 import { z } from "zod";
 import type { DiscoveredPersonResult, DiscoveryAdapter, DiscoveryFilter, DiscoveryResult } from "../types";
+import { enrichViaAiArk } from "../aiark-email";
+import { bulkEnrichPeople } from "../bulk-enrich";
+import { enrichViaLeadMagic } from "../leadmagic-email";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
@@ -571,14 +574,44 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
     const hasMore = totalElements > 0 ? fetchedSoFar < totalElements : people.length === size;
     const nextPageToken = hasMore ? String(page + 1) : undefined;
 
+    // Three-stage email enrichment waterfall:
+    // 1. AI Ark native email finding (uses sourceId from search results)
+    // 2. Prospeo bulk-enrich fallback for anyone still without an email
+    // 3. LeadMagic fallback for anyone still without an email
+    let enrichCost = 0;
+    if (people.length > 0) {
+      // Stage 1: AI Ark /export/single for people with sourceId
+      const aiArkResult = await enrichViaAiArk(people);
+      enrichCost += aiArkResult.costUsd;
+
+      // Stage 2: Prospeo fallback for people still missing email
+      const needsProspeo = people.filter((p) => !p.email);
+      if (needsProspeo.length > 0) {
+        console.log(
+          `[aiark-search] ${aiArkResult.enriched} emails from AI Ark, ${needsProspeo.length} remaining — falling back to Prospeo`,
+        );
+        const prospeoResult = await bulkEnrichPeople(people, "aiark");
+        enrichCost += prospeoResult.costUsd;
+      }
+
+      // Stage 3: LeadMagic fallback for people still missing email
+      const needsLeadMagic = people.filter((p) => !p.email);
+      if (needsLeadMagic.length > 0) {
+        console.log(
+          `[aiark-search] ${needsLeadMagic.length} still without email after AI Ark + Prospeo — falling back to LeadMagic`,
+        );
+        const leadMagicResult = await enrichViaLeadMagic(people);
+        enrichCost += leadMagicResult.costUsd;
+      }
+    }
+
     return {
       people,
       totalAvailable: totalElements || undefined,
       hasMore,
       nextPageToken,
-      // Cost: one credit per people API call + optional companies keyword call
-      costUsd: 0.003 + extraCost,
-      // Include trackId in rawResponse for potential email finding later
+      // Cost: one credit per people API call + optional companies keyword call + enrichment
+      costUsd: 0.003 + extraCost + enrichCost,
       rawResponse: raw,
     };
   }
