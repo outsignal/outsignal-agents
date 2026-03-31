@@ -1,4 +1,4 @@
-export type LinkedInActionType = "connect" | "message" | "profile_view" | "check_connection";
+export type LinkedInActionType = "connect" | "connection_request" | "message" | "profile_view" | "check_connection";
 
 export type LinkedInActionStatus =
   | "pending"
@@ -66,6 +66,7 @@ export interface WarmupLimits {
 // Maps action types to their daily usage counter field
 export const ACTION_TYPE_TO_USAGE_FIELD: Record<string, string> = {
   connect: "connectionsSent",
+  connection_request: "connectionsSent",
   message: "messagesSent",
   profile_view: "profileViews",
   check_connection: "profileViews", // counts as a profile view
@@ -74,6 +75,7 @@ export const ACTION_TYPE_TO_USAGE_FIELD: Record<string, string> = {
 // Maps action types to their daily limit field on Sender
 export const ACTION_TYPE_TO_LIMIT_FIELD: Record<string, string> = {
   connect: "dailyConnectionLimit",
+  connection_request: "dailyConnectionLimit",
   message: "dailyMessageLimit",
   profile_view: "dailyProfileViewLimit",
   check_connection: "dailyProfileViewLimit",

@@ -289,12 +289,17 @@ async function deployLinkedInChannel(
       }
     }
 
-    // Seed CampaignSequenceRules so EMAIL_SENT webhooks can trigger LinkedIn actions
-    if (hasEmailChannel && linkedinSequence.length > 0) {
+    // Seed CampaignSequenceRules for follow-up messages
+    if (linkedinSequence.length > 1) {
+      const followUpSteps = linkedinSequence.slice(1).map((step) => ({
+        ...step,
+        // LinkedIn-only: follow-ups fire on connection_accepted, not email_sent
+        triggerEvent: step.triggerEvent ?? (hasEmailChannel ? "email_sent" : "connection_accepted"),
+      }));
       await createSequenceRulesForCampaign({
         workspaceSlug,
         campaignName: campaign.name,
-        linkedinSequence,
+        linkedinSequence: followUpSteps,
       });
     }
 
