@@ -390,9 +390,9 @@ export async function executeDeploy(
       throw new Error(`Campaign not found: ${campaignId}`);
     }
 
-    if (campaign.status !== "deployed") {
+    if (campaign.status !== "deployed" && campaign.status !== "active") {
       throw new Error(
-        `Campaign is not in 'deployed' status (got '${campaign.status}'). Deploy aborted.`,
+        `Campaign is not in 'deployed' or 'active' status (got '${campaign.status}'). Deploy aborted.`,
       );
     }
 

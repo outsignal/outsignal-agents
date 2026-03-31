@@ -31,8 +31,7 @@ export default async function PortalLinkedInPage() {
   const senders = await prisma.sender.findMany({
     where: {
       workspaceSlug,
-      emailBisonSenderId: null,
-      OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }],
+      channel: { in: ["linkedin", "both"] },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -43,7 +42,7 @@ export default async function PortalLinkedInPage() {
   const liveCampaignCount = await prisma.campaign.count({
     where: {
       workspaceSlug,
-      status: "deployed",
+      status: { in: ["active", "deployed"] },
       channels: { contains: "linkedin" },
     },
   });

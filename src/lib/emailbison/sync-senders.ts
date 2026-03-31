@@ -63,6 +63,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
           emailAddress: true,
           emailBisonSenderId: true,
           emailSenderName: true,
+          channel: true,
         },
       });
 
@@ -72,6 +73,10 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
         if (s.emailBisonSenderId) byEbId.set(s.emailBisonSenderId, s);
         if (s.emailAddress) byEmail.set(s.emailAddress.toLowerCase(), s);
       }
+
+      // Helper: determine updated channel when adding email capability to an existing sender
+      const mergedChannel = (existing: (typeof existingSenders)[0]) =>
+        existing.channel === "linkedin" ? "both" : existing.channel;
 
       // Only add to byName if the name is unique in this workspace
       const nameCounts = new Map<string, number>();
@@ -94,15 +99,18 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
         // Priority 0: match by emailBisonSenderId (most reliable)
         const matchedByEbId = byEbId.get(senderEmail.id);
         if (matchedByEbId) {
+          const newChannel = mergedChannel(matchedByEbId);
           const needsUpdate =
             matchedByEbId.emailAddress?.toLowerCase() !== emailKey ||
-            (senderEmail.name && matchedByEbId.emailSenderName !== senderEmail.name);
+            (senderEmail.name && matchedByEbId.emailSenderName !== senderEmail.name) ||
+            matchedByEbId.channel !== newChannel;
 
           if (needsUpdate) {
             await prisma.sender.update({
               where: { id: matchedByEbId.id },
               data: {
                 emailAddress: senderEmail.email,
+                channel: newChannel,
                 ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
               },
             });
@@ -117,15 +125,18 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
         // Priority 1: match by email address
         const matchedByEmail = byEmail.get(emailKey);
         if (matchedByEmail) {
+          const newChannel = mergedChannel(matchedByEmail);
           const needsUpdate =
             matchedByEmail.emailBisonSenderId !== senderEmail.id ||
-            (senderEmail.name && matchedByEmail.emailSenderName !== senderEmail.name);
+            (senderEmail.name && matchedByEmail.emailSenderName !== senderEmail.name) ||
+            matchedByEmail.channel !== newChannel;
 
           if (needsUpdate) {
             await prisma.sender.update({
               where: { id: matchedByEmail.id },
               data: {
                 emailBisonSenderId: senderEmail.id,
+                channel: newChannel,
                 ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
               },
             });
@@ -140,11 +151,31 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
         // Priority 2: match by name (only if unique in workspace)
         const matchedByName = byName.get(nameKey);
         if (matchedByName) {
+          // Guard: do not merge email data into a linkedin-only sender — create a new email record instead
+          if (matchedByName.channel === "linkedin") {
+            await prisma.sender.create({
+              data: {
+                workspaceSlug: slug,
+                name: senderEmail.name ?? senderEmail.email,
+                emailAddress: senderEmail.email,
+                emailBisonSenderId: senderEmail.id,
+                channel: "email",
+                ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
+                status: "active",
+              },
+            });
+            console.log(`[sync-senders] ${slug}: name-matched sender is linkedin-only, created separate email inbox — ${senderEmail.email}`);
+            result.created++;
+            continue;
+          }
+
+          const newChannel = mergedChannel(matchedByName);
           await prisma.sender.update({
             where: { id: matchedByName.id },
             data: {
               emailAddress: senderEmail.email,
               emailBisonSenderId: senderEmail.id,
+              channel: newChannel,
               ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
             },
           });
@@ -160,6 +191,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
             name: senderEmail.name ?? senderEmail.email,
             emailAddress: senderEmail.email,
             emailBisonSenderId: senderEmail.id,
+            channel: "email",
             ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
             status: "active",
           },

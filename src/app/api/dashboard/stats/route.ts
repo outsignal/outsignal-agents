@@ -198,12 +198,12 @@ export async function GET(request: NextRequest) {
       senderHealthMap[item.healthStatus] = item._count.healthStatus;
     }
 
-    // LinkedIn session health (senders with LinkedIn profiles)
+    // LinkedIn session health (senders with LinkedIn channel)
     const linkedinSessionStats = await prisma.sender.groupBy({
       by: ["sessionStatus"],
       where: {
         ...wsFilterSlug,
-        linkedinProfileUrl: { not: null },
+        channel: { in: ["linkedin", "both"] },
       },
       _count: { sessionStatus: true },
     });
@@ -478,7 +478,7 @@ export async function GET(request: NextRequest) {
     const expiredLinkedIn = await prisma.sender.findMany({
       where: {
         ...wsFilterSlug,
-        linkedinProfileUrl: { not: null },
+        channel: { in: ["linkedin", "both"] },
         sessionStatus: "expired",
       },
       select: { id: true, name: true, workspaceSlug: true },

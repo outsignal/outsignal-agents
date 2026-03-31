@@ -80,11 +80,14 @@ export async function POST(request: NextRequest) {
     const encryptedPassword = cleanPassword ? encrypt(cleanPassword) : undefined;
     const encryptedTotp = cleanTotp ? encrypt(cleanTotp) : undefined;
 
+    const channel = (emptyToUndefined(linkedinProfileUrl) || loginMethod !== "none") ? "linkedin" : "email";
+
     const sender = await prisma.sender.create({
       data: {
         workspaceSlug,
         name,
         inviteToken: randomUUID(),
+        channel,
         sessionStatus: "not_setup",
         status: "setup",
         healthStatus: "healthy",

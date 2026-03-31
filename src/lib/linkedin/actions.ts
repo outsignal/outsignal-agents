@@ -18,6 +18,7 @@ export async function addLinkedInAccount(
     data: {
       workspaceSlug,
       name,
+      channel: "linkedin",
       status: "setup",
       loginMethod: "credentials",
     },

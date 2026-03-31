@@ -23,8 +23,7 @@ export async function GET(request: NextRequest) {
     const senders = await prisma.sender.findMany({
       where: {
         ...(workspaceSlug ? { workspaceSlug } : {}),
-        emailBisonSenderId: null,
-        OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }],
+        channel: { in: ["linkedin", "both"] },
       },
       include: {
         workspace: {
@@ -97,11 +96,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const channel = linkedinProfileUrl ? "linkedin" : "email";
+
     const sender = await prisma.sender.create({
       data: {
         workspaceSlug,
         name,
         inviteToken: randomUUID(),
+        channel,
         ...(emailAddress !== undefined && { emailAddress }),
         ...(linkedinProfileUrl !== undefined && { linkedinProfileUrl }),
         ...(linkedinEmail !== undefined && { linkedinEmail }),

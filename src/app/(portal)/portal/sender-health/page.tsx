@@ -182,8 +182,7 @@ export default async function PortalSenderHealthPage() {
   const linkedinSenders = await prisma.sender.findMany({
     where: {
       workspaceSlug,
-      emailBisonSenderId: null,
-      OR: [{ linkedinProfileUrl: { not: null } }, { loginMethod: { not: "none" } }],
+      channel: { in: ["linkedin", "both"] },
     },
     orderBy: { createdAt: "desc" },
   });

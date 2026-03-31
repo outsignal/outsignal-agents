@@ -41,6 +41,7 @@ export async function createSender(params: CreateSenderParams) {
       linkedinProfileUrl: linkedinProfileUrl ?? null,
       linkedinTier,
       proxyUrl: proxyUrl ?? null,
+      channel: "linkedin",
       status: "setup",
       healthStatus: "healthy",
       sessionStatus: "not_setup",

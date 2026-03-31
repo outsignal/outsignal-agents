@@ -892,6 +892,7 @@ model Sender {
   dailyProfileViewLimit Int @default(15)
 
   status    String   @default("setup") // setup | active | paused | disabled
+  channel   String   @default("email") // "email" | "linkedin" | "both"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -907,6 +908,7 @@ model Sender {
   @@index([workspaceSlug])
   @@index([status])
   @@index([healthStatus])
+  @@index([channel])
 }
 
 model SenderHealthEvent {

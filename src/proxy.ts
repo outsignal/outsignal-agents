@@ -20,6 +20,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/portal/",          // Client portal (magic link session)
   "/api/inbox-health/",    // Cron job (API_SECRET)
   "/api/enrichment/jobs/", // Cron job (API_SECRET)
+  "/api/enrichment/run",   // Enqueue enrichment job (API_SECRET)
   "/api/linkedin/",        // Worker API (WORKER_API_SECRET)
   "/api/pipeline/",        // Railway worker (PIPELINE_INTERNAL_SECRET)
   "/api/people/enrich",    // Ingest webhook (x-api-key)

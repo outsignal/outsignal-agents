@@ -19,6 +19,7 @@ interface SenderSnapshot {
   workspaceSlug: string;
   emailBounceStatus: string;
   consecutiveHealthyChecks: number;
+  channel: string;
   emailBisonSenderId: number | null;
   originalDailyLimit: number | null;
   originalWarmupEnabled: boolean | null;
@@ -134,7 +135,11 @@ export async function evaluateSender(params: {
     if (!EMAILBISON_MGMT_ENABLED) {
       console.warn(`${LOG_PREFIX} ${sender.emailAddress}: EMAILBISON_SENDER_MGMT_ENABLED is not set — skipping ${newStatus} remediation (daily limit / campaign changes will NOT be applied)`);
       action = "skipped_mgmt_disabled";
+    } else if (sender.channel !== "email" && sender.channel !== "both") {
+      console.warn(`${LOG_PREFIX} ${sender.emailAddress}: non-email channel (${sender.channel}) — skipping ${newStatus} remediation`);
+      action = "skipped_non_email_channel";
     } else if (sender.emailBisonSenderId === null) {
+      // Secondary guard: even for email-channel senders, we need the EB sender ID to call the API
       console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no emailBisonSenderId — skipping ${newStatus} remediation`);
       action = "skipped_no_sender_id";
     } else if (!workspaceApiToken) {
@@ -281,7 +286,11 @@ export async function evaluateSender(params: {
       if (currentStatus === "warning" && !EMAILBISON_MGMT_ENABLED) {
         console.warn(`${LOG_PREFIX} ${sender.emailAddress}: EMAILBISON_SENDER_MGMT_ENABLED is not set — skipping daily limit restore on step-down from warning`);
         action = "skipped_mgmt_disabled";
-      } else if (currentStatus === "warning" && sender.emailBisonSenderId === null) {
+      } else if (currentStatus === "warning" && sender.channel !== "email" && sender.channel !== "both") {
+        console.warn(`${LOG_PREFIX} ${sender.emailAddress}: non-email channel (${sender.channel}) — skipping daily limit restore on step-down from warning`);
+        action = "skipped_non_email_channel";
+      } else if (currentStatus === "warning" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId === null) {
+        // Secondary guard: need EB sender ID even for email-channel senders
         console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no emailBisonSenderId — skipping daily limit restore on step-down from warning`);
         action = "skipped_no_sender_id";
       } else if (currentStatus === "warning" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId !== null && !workspaceApiToken) {
@@ -302,7 +311,11 @@ export async function evaluateSender(params: {
       if (currentStatus === "critical" && !EMAILBISON_MGMT_ENABLED) {
         console.warn(`${LOG_PREFIX} ${sender.emailAddress}: EMAILBISON_SENDER_MGMT_ENABLED is not set — skipping critical recovery (daily limit + warmup will NOT be restored)`);
         action = "skipped_mgmt_disabled";
-      } else if (currentStatus === "critical" && sender.emailBisonSenderId === null) {
+      } else if (currentStatus === "critical" && sender.channel !== "email" && sender.channel !== "both") {
+        console.warn(`${LOG_PREFIX} ${sender.emailAddress}: non-email channel (${sender.channel}) — skipping critical recovery`);
+        action = "skipped_non_email_channel";
+      } else if (currentStatus === "critical" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId === null) {
+        // Secondary guard: need EB sender ID even for email-channel senders
         console.warn(`${LOG_PREFIX} ${sender.emailAddress}: no emailBisonSenderId — skipping critical recovery`);
         action = "skipped_no_sender_id";
       } else if (currentStatus === "critical" && EMAILBISON_MGMT_ENABLED && sender.emailBisonSenderId !== null && !workspaceApiToken) {
@@ -411,6 +424,7 @@ export async function runBounceMonitor(): Promise<{
       workspaceSlug: true,
       emailBounceStatus: true,
       consecutiveHealthyChecks: true,
+      channel: true,
       emailBisonSenderId: true,
       originalDailyLimit: true,
       originalWarmupEnabled: true,

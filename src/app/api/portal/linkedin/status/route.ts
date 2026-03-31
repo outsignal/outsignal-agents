@@ -17,11 +17,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 2. Fetch senders with LinkedIn profiles
+  // 2. Fetch senders with LinkedIn channel
   const senders = await prisma.sender.findMany({
     where: {
       workspaceSlug: session.workspaceSlug,
-      linkedinProfileUrl: { not: null },
+      channel: { in: ["linkedin", "both"] },
     },
     select: {
       id: true,

@@ -30,11 +30,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
     include: {
       senders: {
         where: {
-          emailBisonSenderId: null,
-          OR: [
-            { linkedinProfileUrl: { not: null } },
-            { loginMethod: { not: "none" } },
-          ],
+          channel: { in: ["linkedin", "both"] },
         },
         orderBy: { createdAt: "desc" },
       },
