@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ## Current Position
 
-Phase: 60 of 60 (Intelligence Closed Loop)
-Plan: 3 of 3 complete
-Status: Complete
-Last activity: 2026-04-01 — 60-03 analysis pipeline + weekly cron
+Phase: 61 of 61 (Complete Agent Memory Coverage)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-04-01 — 61-01 build 3 specialist agents (deliverability, intelligence, onboarding)
 
-Progress: [████░░░░░░] ~40% (4/7 phases)
+Progress: [████░░░░░░] ~45% (4.5/7 phases)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [████░░░░░░] ~40% (4/7 phases)
 | 60    | 01   | 4min     | 2     | 3     |
 | 60    | 02   | 4min     | 2     | 3     |
 | 60    | 03   | 5min     | 3     | 3     |
+| 61    | 01   | 4min     | 2     | 4     |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Key v8.0 pre-milestone decisions:
 - [Phase 60-03]: Insight DB storage uses real Insight schema (category, observation, evidence JSON, dedupKey) not simplified type/content
 - [Phase 60-03]: Hybrid sync pattern: Trigger.dev stores to DB, local sync script pulls to .nova/memory/ files
 - [Phase 60-03]: Weekly cron Monday 09:00 UTC via Trigger.dev, after generate-insights at 08:10
+- [Phase 61-01]: BounceSnapshot queried by workspaceSlug directly (no Sender relation in schema)
+- [Phase 61-01]: Intelligence agent global-insights write gated by keyword heuristic (benchmark, cross-client patterns)
+- [Phase 61-01]: memberInvite tool is a stub returning not_yet_implemented (no auth system for invites yet)
 
 ### Pending Todos
 
@@ -106,5 +110,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-01
-Stopped at: Completed 60-03-PLAN.md -- analysis pipeline + weekly cron, Phase 60 complete
+Stopped at: Completed 61-01-PLAN.md -- built 3 specialist agents (deliverability, intelligence, onboarding)
 Resume file: None
