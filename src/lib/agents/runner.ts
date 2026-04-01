@@ -2,6 +2,7 @@ import { generateText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/db";
 import type { AgentConfig, AgentRunResult, ToolCallStep } from "./types";
+import { loadMemoryContext } from "./memory";
 
 /**
  * Run a specialist agent with the given configuration and user message.
@@ -35,9 +36,22 @@ export async function runAgent<TOutput = unknown>(
   });
 
   try {
+    // Load persistent memory context (best-effort, never fails the run)
+    let memoryContext = "";
+    try {
+      memoryContext = await loadMemoryContext(options?.workspaceSlug);
+    } catch (err) {
+      console.warn("[runner] Memory context load failed, proceeding without:", err);
+    }
+
+    // Merge static prompt with dynamic memory
+    const systemPrompt = memoryContext
+      ? `${config.systemPrompt}\n\n${memoryContext}`
+      : config.systemPrompt;
+
     const result = await generateText({
       model: anthropic(config.model),
-      system: config.systemPrompt,
+      system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
       tools: config.tools,
       stopWhen: stepCountIs(config.maxSteps ?? 10),
