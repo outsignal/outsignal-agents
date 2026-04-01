@@ -39,6 +39,7 @@ interface LinkedInTimelineStep {
     | "inmail";
   body?: string;
   delayDays: number;
+  notes?: string;
 }
 
 export type TimelineStep = EmailTimelineStep | LinkedInTimelineStep;
@@ -239,6 +240,9 @@ function LinkedInCard({
           <span className="text-blue-600 shrink-0">{meta.icon}</span>
           <span className="font-medium text-sm">{meta.label}</span>
         </div>
+        {step.notes && (
+          <p className="text-xs text-muted-foreground mt-0.5 pl-7">{step.notes}</p>
+        )}
         <div className="flex items-center gap-2 shrink-0">
           {showChannel && (
             <span className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground">

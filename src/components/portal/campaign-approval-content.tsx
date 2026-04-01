@@ -145,6 +145,7 @@ export function CampaignApprovalContent({
       actionType: (s.type || "message") as "profile_view" | "connect_request" | "message" | "follow_up" | "like_post" | "inmail",
       body: s.body,
       delayDays: s.delayDays,
+      notes: s.notes,
     })),
   ].sort((a, b) => a.position - b.position);
 
