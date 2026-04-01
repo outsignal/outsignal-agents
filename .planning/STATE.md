@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Make agent team produce campaign-ready output without manual QA — expert lead sourcing, first-time-right copy, validated pipeline.
-**Current focus:** v8.0 Phase 59 — Agent Memory Read System
+**Current focus:** v8.0 Phase 60 — Intelligence Closed Loop
 
 ## Current Position
 
-Phase: 59 of 59 (Agent Memory Read System)
-Plan: 1 of 2 complete
+Phase: 60 of 60 (Intelligence Closed Loop)
+Plan: 2 of 3 complete
 Status: In progress
-Last activity: 2026-04-01 — 59-01 memory read functions + runner.ts injection
+Last activity: 2026-04-01 — 60-02 chat memory fix + reply analysis module
 
 Progress: [████░░░░░░] ~40% (4/7 phases)
 
@@ -50,6 +50,8 @@ Progress: [████░░░░░░] ~40% (4/7 phases)
 *Updated after each plan completion*
 | 59    | 01   | 3min     | 2     | 2     |
 | Phase 59 P02 | 2min | 2 tasks | 3 files |
+| 60    | 01   | 4min     | 2     | 3     |
+| 60    | 02   | 4min     | 2     | 3     |
 
 ## Accumulated Context
 
@@ -75,6 +77,12 @@ Key v8.0 pre-milestone decisions:
 - [Phase 59-01]: Memory loaded in parallel via Promise.all for all 3 layers
 - [Phase 59-01]: XML-style tags for context delimitation, centralized injection in runner.ts
 - [Phase 59-01]: Seed-only files detected via hasRealEntries() regex and skipped
+- [Phase 60-01]: Standalone backfill script (not extending backfill-all-replies.ts) for single-purpose clarity
+- [Phase 60-01]: In-memory cache per emailBisonCampaignId to avoid repeated EB API calls during backfill
+- [Phase 60-01]: Off-by-one position fallback for EB API indexing mismatch
+- [Phase 60-02]: appendToGlobalMemory uses bare timestamp prefix (no dash) to match global-insights.md convention
+- [Phase 60-02]: Reply analysis queries run in parallel via Promise.all for performance
+- [Phase 60-02]: synthesizeInsights returns empty arrays on LLM parse failure (best-effort)
 
 ### Pending Todos
 
@@ -93,5 +101,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-01
-Stopped at: Completed 59-01-PLAN.md -- memory read functions + runner.ts injection, ready for 59-02
+Stopped at: Completed 60-01-PLAN.md -- outbound copy backfill + EB API fallback, ready for 60-02
 Resume file: None
