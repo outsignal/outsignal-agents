@@ -46,6 +46,8 @@ export async function POST(
           safeMessage = "Campaign cannot be published without content.";
         } else if (err.message.includes("without a target list")) {
           safeMessage = "Campaign cannot be published without a target list.";
+        } else if (err.message.includes("list validation failed")) {
+          safeMessage = err.message.replace("Cannot publish campaign — ", "");
         } else {
           safeMessage = "Cannot publish campaign.";
         }
