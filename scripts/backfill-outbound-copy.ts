@@ -14,8 +14,7 @@ import { config } from "dotenv";
 config({ path: ".env.local", override: true });
 
 import { PrismaClient } from "@prisma/client";
-import { EmailBisonClient } from "../src/lib/emailbison/client";
-import type { SequenceStep } from "../src/lib/emailbison/types";
+import { lookupOutboundCopy } from "../src/lib/outbound-copy-lookup";
 
 const prisma = new PrismaClient();
 const dryRun = process.argv.includes("--dry-run");
@@ -59,24 +58,16 @@ async function main() {
 
   console.log(`Grouped into ${byCampaign.size} campaigns\n`);
 
-  // 3. Cache workspace API tokens
-  const tokenCache = new Map<string, string>();
-
-  // 4. Process each campaign group
+  // 3. Process each campaign group
   const stats: Record<string, { populated: number; skipped: number }> = {};
   let totalPopulated = 0;
   let totalSkipped = 0;
 
   for (const [campaignId, campaignReplies] of byCampaign) {
-    // Look up campaign details
+    // Look up campaign name for logging
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: {
-        emailSequence: true,
-        emailBisonCampaignId: true,
-        workspaceSlug: true,
-        name: true,
-      },
+      select: { workspaceSlug: true, name: true },
     });
 
     if (!campaign) {
@@ -88,77 +79,15 @@ async function main() {
     const ws = campaign.workspaceSlug;
     if (!stats[ws]) stats[ws] = { populated: 0, skipped: 0 };
 
-    // Try local emailSequence first
-    let localSteps: { position: number; subjectLine?: string; body?: string }[] | null = null;
-    if (campaign.emailSequence) {
-      try {
-        localSteps = JSON.parse(campaign.emailSequence);
-      } catch {
-        // ignore
-      }
-    }
-
-    // Fetch from EB API if no local steps
-    let ebSteps: SequenceStep[] | null = null;
-    if (!localSteps && campaign.emailBisonCampaignId) {
-      // Get API token (cached)
-      if (!tokenCache.has(ws)) {
-        const workspace = await prisma.workspace.findUnique({
-          where: { slug: ws },
-          select: { apiToken: true },
-        });
-        if (workspace?.apiToken) tokenCache.set(ws, workspace.apiToken);
-      }
-
-      const token = tokenCache.get(ws);
-      if (token) {
-        try {
-          const client = new EmailBisonClient(token);
-          ebSteps = await client.getSequenceSteps(campaign.emailBisonCampaignId);
-        } catch (err) {
-          console.warn(`  EB API error for campaign "${campaign.name}" (EB ID ${campaign.emailBisonCampaignId}):`, err);
-        }
-      } else {
-        console.log(`  No API token for workspace "${ws}", skipping campaign "${campaign.name}"`);
-      }
-    }
-
-    // Match each reply
+    // Match each reply using the shared lookup utility
     let campaignPopulated = 0;
     let campaignSkipped = 0;
 
     for (const reply of campaignReplies) {
-      let subject: string | null = null;
-      let body: string | null = null;
-
-      // Try local match
-      if (localSteps && reply.sequenceStep != null) {
-        const match = localSteps.find((s) => s.position === reply.sequenceStep);
-        if (match) {
-          subject = match.subjectLine ?? null;
-          body = match.body ?? null;
-        }
-      }
-
-      // Try EB API match
-      if (!subject && ebSteps) {
-        if (reply.sequenceStep != null) {
-          // Exact match
-          let match = ebSteps.find((s) => s.position === reply.sequenceStep);
-          // Off-by-one fallback
-          if (!match) {
-            match = ebSteps.find((s) => s.position === reply.sequenceStep! - 1);
-          }
-          if (match) {
-            subject = match.subject || null;
-            body = match.body || null;
-          }
-        } else if (ebSteps.length === 1) {
-          // Single-step campaign fallback
-          subject = ebSteps[0].subject || null;
-          body = ebSteps[0].body || null;
-        }
-      }
+      const { subject, body } = await lookupOutboundCopy(
+        campaignId,
+        reply.sequenceStep,
+      );
 
       if (subject || body) {
         if (!dryRun) {
