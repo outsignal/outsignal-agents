@@ -96,6 +96,7 @@ None.
 
 - Phase 54.1 inserted after Phase 54: Agent Memory Write-Back (URGENT) — v7.0 gap fix: memory reads/seeds work but writes were never implemented. Agents load memory context but never persist insights after runs. ~100 lines: onComplete post-hook in runner.ts + appendToMemory utility + insight extraction per specialist agent.
 - Phase 60 added: Intelligence Closed Loop
+- Phase 61 added: Complete Agent Memory Coverage
 
 ### Blockers/Concerns
 

@@ -690,3 +690,13 @@ Plans:
 - [ ] 60-01-PLAN.md — Outbound copy lookup utility + backfill script + process-reply EB API fallback
 - [ ] 60-02-PLAN.md — Chat.ts memory fix + reply analysis module (per-workspace and cross-workspace)
 - [ ] 60-03-PLAN.md — Run analysis pipeline, write to memory files, sync script for future automation
+
+### Phase 61: Complete Agent Memory Coverage
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 60
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 61 to break down)
