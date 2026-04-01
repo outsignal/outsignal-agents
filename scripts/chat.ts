@@ -22,7 +22,7 @@ import {
   orchestratorConfig,
   orchestratorTools,
 } from "../src/lib/agents/orchestrator";
-import { loadMemoryContext } from "../src/lib/agents/memory";
+import { loadMemoryContext, appendToMemory } from "../src/lib/agents/memory";
 
 // --- State ---
 
@@ -112,6 +112,27 @@ async function chat(userInput: string): Promise<string> {
   const responseText =
     result.text || "(No text response — agent used tools only)";
   messages.push({ role: "assistant", content: responseText });
+
+  // Write orchestrator memory after delegation turns
+  const delegationCalls = result.steps
+    .flatMap((s) => s.toolCalls)
+    .filter((tc) => tc.toolName.startsWith("delegateTo"));
+
+  if (delegationCalls.length > 0 && workspaceSlug) {
+    const actions = delegationCalls
+      .map((tc) => tc.toolName.replace("delegateTo", ""))
+      .join(", ");
+    try {
+      await appendToMemory(
+        workspaceSlug,
+        "learnings.md",
+        `Orchestrator session: delegated to ${actions}`,
+      );
+    } catch {
+      // Best-effort — memory write failure should never break chat
+    }
+  }
+
   return responseText;
 }
 
