@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { classifyReply } from "@/lib/classification/classify-reply";
 import { notifyReply } from "@/lib/notifications";
 import { extractOooDetails } from "@/lib/ooo/extract-ooo";
+import { lookupOutboundCopy } from "@/lib/outbound-copy-lookup";
 import { anthropicQueue } from "./queues";
 
 export interface ProcessReplyPayload {
@@ -96,6 +97,22 @@ export const processReply = task({
               }
             } catch {
               // JSON parse failure — skip outbound snapshot
+            }
+          }
+
+          // EB API fallback when local emailSequence is missing or didn't match
+          if (outboundSubject == null && campaign.id) {
+            try {
+              const result = await lookupOutboundCopy(campaign.id, sequenceStep);
+              if (result.subject || result.body) {
+                outboundSubject = result.subject;
+                outboundBody = result.body;
+                console.log(
+                  `[process-reply] Outbound copy resolved via EB API for campaign ${campaignId}`,
+                );
+              }
+            } catch {
+              // EB API fallback failure — non-blocking
             }
           }
         }
