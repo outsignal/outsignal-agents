@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 60 of 60 (Intelligence Closed Loop)
-Plan: 2 of 3 complete
-Status: In progress
-Last activity: 2026-04-01 — 60-02 chat memory fix + reply analysis module
+Plan: 3 of 3 complete
+Status: Complete
+Last activity: 2026-04-01 — 60-03 analysis pipeline + weekly cron
 
 Progress: [████░░░░░░] ~40% (4/7 phases)
 
@@ -52,6 +52,7 @@ Progress: [████░░░░░░] ~40% (4/7 phases)
 | Phase 59 P02 | 2min | 2 tasks | 3 files |
 | 60    | 01   | 4min     | 2     | 3     |
 | 60    | 02   | 4min     | 2     | 3     |
+| 60    | 03   | 5min     | 3     | 3     |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Key v8.0 pre-milestone decisions:
 - [Phase 60-02]: appendToGlobalMemory uses bare timestamp prefix (no dash) to match global-insights.md convention
 - [Phase 60-02]: Reply analysis queries run in parallel via Promise.all for performance
 - [Phase 60-02]: synthesizeInsights returns empty arrays on LLM parse failure (best-effort)
+- [Phase 60-03]: Insight DB storage uses real Insight schema (category, observation, evidence JSON, dedupKey) not simplified type/content
+- [Phase 60-03]: Hybrid sync pattern: Trigger.dev stores to DB, local sync script pulls to .nova/memory/ files
+- [Phase 60-03]: Weekly cron Monday 09:00 UTC via Trigger.dev, after generate-insights at 08:10
 
 ### Pending Todos
 
@@ -101,5 +105,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-01
-Stopped at: Completed 60-02-PLAN.md -- chat memory fix + reply analysis module, ready for 60-03
+Stopped at: Completed 60-03-PLAN.md -- analysis pipeline + weekly cron, Phase 60 complete
 Resume file: None
