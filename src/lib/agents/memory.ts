@@ -8,6 +8,14 @@ const MAX_LINES = 200;
 
 type MemoryFile = "campaigns.md" | "feedback.md" | "learnings.md";
 
+function isValidEntry(entry: string): boolean {
+  if (!entry || entry.trim().length === 0) return false;
+  if (entry.includes("undefined: undefined")) return false;
+  if (entry.includes("undefined --")) return false;
+  if (entry.trim() === "undefined") return false;
+  return true;
+}
+
 /**
  * Append an insight entry to a workspace memory file.
  *
@@ -42,6 +50,12 @@ export async function appendToMemory(
       console.warn(
         `[memory] ${slug}/${file} at max lines (${lineCount}), skipping`,
       );
+      return false;
+    }
+
+    // Validate entry content
+    if (!isValidEntry(entry)) {
+      console.warn(`[memory] Rejecting malformed entry for ${slug}/${file}: "${entry.slice(0, 50)}"`);
       return false;
     }
 
