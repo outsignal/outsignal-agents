@@ -165,6 +165,42 @@ export interface CampaignOutput {
   data?: unknown;
 }
 
+// --- Deliverability Agent ---
+
+export interface DeliverabilityInput {
+  workspaceSlug: string;
+  task: string;
+}
+export interface DeliverabilityOutput {
+  action: string;
+  summary: string;
+  data?: unknown;
+}
+
+// --- Intelligence Agent ---
+
+export interface IntelligenceInput {
+  workspaceSlug: string;
+  task: string;
+}
+export interface IntelligenceOutput {
+  action: string;
+  summary: string;
+  data?: unknown;
+}
+
+// --- Onboarding Agent ---
+
+export interface OnboardingInput {
+  workspaceSlug: string;
+  task: string;
+}
+export interface OnboardingOutput {
+  action: string;
+  summary: string;
+  data?: unknown;
+}
+
 // --- Zod Output Schemas (for runtime validation in runner.ts) ---
 // Zod v4: objects are loose by default (extra keys pass through), no .passthrough() needed.
 
