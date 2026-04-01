@@ -63,6 +63,12 @@ export interface WarmupLimits {
   profileViews: number;
 }
 
+export interface CircuitBreakerResult {
+  tripped: boolean;
+  reason?: string;
+  consecutiveFailures: number;
+}
+
 // Maps action types to their daily usage counter field
 export const ACTION_TYPE_TO_USAGE_FIELD: Record<string, string> = {
   connect: "connectionsSent",

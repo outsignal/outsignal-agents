@@ -836,6 +836,7 @@ export class Worker {
           break;
 
         case "connect":
+        case "connection_request":
           result = await client.sendConnectionRequest(profileUrl);
           break;
 

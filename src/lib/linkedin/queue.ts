@@ -7,7 +7,7 @@
  */
 import { prisma } from "@/lib/db";
 import type { EnqueueActionParams, LinkedInActionType } from "./types";
-import { checkBudget } from "./rate-limiter";
+import { checkBudget, checkCircuitBreaker } from "./rate-limiter";
 
 /**
  * Enqueue a LinkedIn action. Returns the action ID.
@@ -95,6 +95,13 @@ export async function getNextBatch(
   campaignName: string | null;
   linkedInConversationId: string | null;
 }>> {
+  // Circuit breaker: stop serving actions if the sender has too many consecutive failures
+  const circuitBreaker = await checkCircuitBreaker(senderId);
+  if (circuitBreaker.tripped) {
+    console.warn(`[Queue] Circuit breaker tripped for sender ${senderId}: ${circuitBreaker.reason}`);
+    return [];
+  }
+
   const now = new Date();
 
   // Get all ready actions for this sender

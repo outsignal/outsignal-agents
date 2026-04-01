@@ -5,8 +5,11 @@
  * handles warm-up progression, and reserves budget for priority 1 actions.
  */
 import { prisma } from "@/lib/db";
-import type { BudgetCheckResult, LinkedInActionType, WarmupLimits } from "./types";
+import type { BudgetCheckResult, CircuitBreakerResult, LinkedInActionType, WarmupLimits } from "./types";
 import { ACTION_TYPE_TO_LIMIT_FIELD, ACTION_TYPE_TO_USAGE_FIELD } from "./types";
+
+/** Circuit breaker threshold — trip after this many consecutive failures */
+const CIRCUIT_BREAKER_THRESHOLD = 5;
 
 /** Priority 1 budget reservation — hold back this fraction of daily connections for warm leads */
 const PRIORITY_RESERVE_FRACTION = 0.2;
@@ -168,7 +171,7 @@ export async function checkBudget(
   let effectiveLimit = jitteredLimit;
 
   // For connections, reserve a portion for priority 1 actions
-  if (actionType === "connect" && priority > 1) {
+  if ((actionType === "connect" || actionType === "connection_request") && priority > 1) {
     const reserved = Math.ceil(jitteredLimit * PRIORITY_RESERVE_FRACTION);
     effectiveLimit = jitteredLimit - reserved;
   }
@@ -276,4 +279,60 @@ export async function progressWarmup(senderId: string): Promise<void> {
       dailyProfileViewLimit: limits.profileViews,
     },
   });
+}
+
+/**
+ * Check the circuit breaker for a sender. Trips when the last
+ * CIRCUIT_BREAKER_THRESHOLD actions all failed (within the last 24 hours).
+ * This prevents systematic failures (session expired, IP blocked) from
+ * burning through the entire daily budget.
+ *
+ * The circuit resets naturally when a successful action breaks the
+ * consecutive failure streak.
+ */
+export async function checkCircuitBreaker(
+  senderId: string,
+): Promise<CircuitBreakerResult> {
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const recentActions = await prisma.linkedInAction.findMany({
+    where: {
+      senderId,
+      lastAttemptAt: { gte: twentyFourHoursAgo },
+      status: { in: ["complete", "failed"] },
+    },
+    orderBy: { lastAttemptAt: "desc" },
+    take: CIRCUIT_BREAKER_THRESHOLD,
+    select: { status: true, result: true },
+  });
+
+  // Not enough recent actions to evaluate
+  if (recentActions.length < CIRCUIT_BREAKER_THRESHOLD) {
+    return { tripped: false, consecutiveFailures: recentActions.filter((a) => a.status === "failed").length };
+  }
+
+  const allFailed = recentActions.every((a) => a.status === "failed");
+
+  if (allFailed) {
+    // Extract the most recent error for context
+    let lastError = "unknown";
+    try {
+      const parsed = JSON.parse(recentActions[0].result ?? "{}");
+      lastError = parsed.error ?? "unknown";
+    } catch {
+      // ignore parse errors
+    }
+
+    return {
+      tripped: true,
+      reason: `Last ${CIRCUIT_BREAKER_THRESHOLD} actions all failed (last error: ${lastError})`,
+      consecutiveFailures: CIRCUIT_BREAKER_THRESHOLD,
+    };
+  }
+
+  const consecutiveFailures = recentActions.findIndex((a) => a.status !== "failed");
+  return {
+    tripped: false,
+    consecutiveFailures: consecutiveFailures === -1 ? recentActions.length : consecutiveFailures,
+  };
 }

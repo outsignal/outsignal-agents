@@ -31,6 +31,21 @@ export async function GET(request: NextRequest) {
     const actions = await getNextBatch(senderId, limit);
 
     if (actions.length === 0) {
+      // Check if there are pending actions — if so, budget or circuit breaker is blocking
+      const pendingCount = await prisma.linkedInAction.count({
+        where: {
+          senderId,
+          status: "pending",
+          scheduledFor: { lte: new Date() },
+        },
+      });
+
+      if (pendingCount > 0) {
+        console.warn(
+          `[next] No actions returned for sender ${senderId} despite ${pendingCount} pending — budget exhausted or circuit breaker active`,
+        );
+      }
+
       return NextResponse.json({ actions: [] });
     }
 
