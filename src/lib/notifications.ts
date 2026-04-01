@@ -2109,3 +2109,90 @@ export async function notifyLinkedInMessage(params: {
     }
   }
 }
+
+export async function notifyCreditExhaustion(params: {
+  provider: string;
+  httpStatus: number;
+  context: string;
+}): Promise<void> {
+  // ---------- Slack (admin alerts channel) ----------
+
+  const alertsChannelId = process.env.ALERTS_SLACK_CHANNEL_ID;
+  if (alertsChannelId) {
+    if (verifySlackChannel(alertsChannelId, "admin", "notifyCreditExhaustion")) {
+      try {
+        const headerText = `Credits Exhausted: ${params.provider}`;
+        const blocks: KnownBlock[] = [
+          {
+            type: "header",
+            text: { type: "plain_text", text: headerText },
+          },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*Provider:* ${params.provider}` },
+          },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*HTTP Status:* ${params.httpStatus}` },
+          },
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `*Context:* ${params.context}` },
+          },
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":rotating_light: The enrichment/discovery pipeline has been *PAUSED*. No data has been skipped or lost. Top up your account and the pipeline will resume on the next run.",
+            },
+          },
+        ];
+
+        await audited(
+          { notificationType: "credit_exhaustion", channel: "slack", recipient: alertsChannelId },
+          () => postMessage(alertsChannelId, headerText, blocks),
+        );
+      } catch (err) {
+        console.error("[notifyCreditExhaustion] Slack notification failed:", err);
+      }
+    }
+  }
+
+  // ---------- Email (admin only) ----------
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    try {
+      const verified = verifyEmailRecipients([adminEmail], "admin", "notifyCreditExhaustion");
+      if (verified.length > 0) {
+        const subject = `[Outsignal] Credits Exhausted: ${params.provider} — enrichment paused`;
+
+        const bodyParts: string[] = [
+          emailBanner("Credit Exhaustion", { color: "#991b1b", bgColor: "#fef2f2", borderColor: "#fecaca" }),
+          emailDetailCard([
+            { label: "Provider", value: params.provider },
+            { label: "HTTP Status", value: String(params.httpStatus) },
+            { label: "Context", value: params.context },
+          ]),
+          emailText(
+            `The enrichment/discovery pipeline has been PAUSED. No data has been skipped or lost. Top up your ${params.provider} account and the pipeline will resume on the next run.`,
+          ),
+        ];
+
+        await audited(
+          { notificationType: "credit_exhaustion", channel: "email", recipient: verified.join(",") },
+          () => sendNotificationEmail({
+            to: verified,
+            subject,
+            html: emailLayout({
+              body: bodyParts.join(""),
+              footerNote: `Credit exhaustion alert. You received this because you are the system administrator.`,
+            }),
+          }),
+        );
+      }
+    } catch (err) {
+      console.error("[notifyCreditExhaustion] Email notification failed:", err);
+    }
+  }
+}

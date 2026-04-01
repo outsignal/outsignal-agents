@@ -208,46 +208,26 @@ async function promoteToPerson(
   // No more placeholder @discovery.internal emails.
   const email = dp.email ?? null;
 
-  // If we have an email, upsert by email (handles race conditions).
-  // If no email, create a new Person record (null emails are not subject to unique constraint).
-  let person: { id: string };
-  if (email) {
-    person = await prisma.person.upsert({
-      where: { email },
-      create: {
-        email,
-        firstName: dp.firstName ?? null,
-        lastName: dp.lastName ?? null,
-        jobTitle: dp.jobTitle ?? null,
-        company: dp.company ?? null,
-        companyDomain: dp.companyDomain ?? null,
-        linkedinUrl: dp.linkedinUrl ?? null,
-        phone: dp.phone ?? null,
-        location: dp.location ?? null,
-        source: `discovery-${dp.discoverySource}`,
-        status: "new",
-      },
-      update: {},
-      select: { id: true },
-    });
-  } else {
-    person = await prisma.person.create({
-      data: {
-        email: null,
-        firstName: dp.firstName ?? null,
-        lastName: dp.lastName ?? null,
-        jobTitle: dp.jobTitle ?? null,
-        company: dp.company ?? null,
-        companyDomain: dp.companyDomain ?? null,
-        linkedinUrl: dp.linkedinUrl ?? null,
-        phone: dp.phone ?? null,
-        location: dp.location ?? null,
-        source: `discovery-${dp.discoverySource}`,
-        status: "new",
-      },
-      select: { id: true },
-    });
-  }
+  // Upsert by email (handles race conditions).
+  // Null-email records are filtered out before reaching this function.
+  const person = await prisma.person.upsert({
+    where: { email: email! },
+    create: {
+      email: email!,
+      firstName: dp.firstName ?? null,
+      lastName: dp.lastName ?? null,
+      jobTitle: dp.jobTitle ?? null,
+      company: dp.company ?? null,
+      companyDomain: dp.companyDomain ?? null,
+      linkedinUrl: dp.linkedinUrl ?? null,
+      phone: dp.phone ?? null,
+      location: dp.location ?? null,
+      source: `discovery-${dp.discoverySource}`,
+      status: "new",
+    },
+    update: {},
+    select: { id: true },
+  });
 
   // Upsert PersonWorkspace junction — idempotent
   await prisma.personWorkspace.upsert({

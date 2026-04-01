@@ -12,6 +12,8 @@
  * AI Ark-sourced leads, since AI Ark already has the person data indexed.
  */
 
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
+import { notifyCreditExhaustion } from "@/lib/notifications";
 import type { DiscoveredPersonResult } from "./types";
 
 const AIARK_EXPORT_SINGLE_ENDPOINT =
@@ -74,16 +76,12 @@ export async function enrichViaAiArk(
 
   let enriched = 0;
   let costUsd = 0;
-  let creditsExhausted = false;
 
   for (let i = 0; i < people.length; i++) {
     const person = people[i];
 
     // Skip if already has an email, or no identifier to look up
     if (person.email || (!person.sourceId && !person.linkedinUrl)) continue;
-
-    // If credits were exhausted on a previous call, stop trying
-    if (creditsExhausted) break;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -106,13 +104,8 @@ export async function enrichViaAiArk(
 
       clearTimeout(timeoutId);
 
-      if (response.status === 402) {
-        // Credits exhausted — abort all remaining AI Ark enrichment
-        console.warn(
-          "[aiark-email] AI Ark credits exhausted (402). Skipping remaining people — will fall back to Prospeo.",
-        );
-        creditsExhausted = true;
-        continue;
+      if (response.status === 402 || response.status === 403) {
+        throw new CreditExhaustionError("aiark", response.status);
       }
 
       if (response.status === 404) {
@@ -149,6 +142,14 @@ export async function enrichViaAiArk(
       // If no email in the 200 response, no cost charged (AI Ark only charges for emails found)
     } catch (err) {
       clearTimeout(timeoutId);
+      if (err instanceof CreditExhaustionError) {
+        await notifyCreditExhaustion({
+          provider: err.provider,
+          httpStatus: err.httpStatus,
+          context: "discovery enrichment (AI Ark email)",
+        });
+        throw err;
+      }
       const identifier = person.sourceId ?? person.linkedinUrl;
       console.warn(
         `[aiark-email] Error exporting person ${identifier}:`,
@@ -163,11 +164,9 @@ export async function enrichViaAiArk(
     }
   }
 
-  if (enriched > 0 || creditsExhausted) {
+  if (enriched > 0) {
     console.log(
-      `[aiark-email] AI Ark native enrichment: ${enriched} emails found (cost: $${costUsd.toFixed(4)})${
-        creditsExhausted ? " [credits exhausted — partial run]" : ""
-      }`,
+      `[aiark-email] AI Ark native enrichment: ${enriched} emails found (cost: $${costUsd.toFixed(4)})`,
     );
   }
 

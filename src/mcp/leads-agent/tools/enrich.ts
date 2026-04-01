@@ -14,6 +14,7 @@ import {
   enrichCompany,
   createCircuitBreaker,
 } from "@/lib/enrichment/waterfall";
+import { isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import type { EmailAdapterInput } from "@/lib/enrichment/types";
 import * as operations from "@/lib/leads/operations";
 
@@ -93,6 +94,16 @@ export function registerEnrichTools(server: McpServer): void {
       try {
         await enrichEmail(person_id, input, breaker, workspace);
       } catch (err) {
+        if (isCreditExhaustion(err)) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Enrichment PAUSED: ${err.provider} credits exhausted (HTTP ${err.httpStatus}). Admin has been notified. Do not retry — wait for admin to top up credits.`,
+              },
+            ],
+          };
+        }
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === "DAILY_CAP_HIT") {
           return {
@@ -119,9 +130,15 @@ export function registerEnrichTools(server: McpServer): void {
         try {
           await enrichCompany(person.companyDomain, breaker, workspace);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg !== "DAILY_CAP_HIT") {
-            console.error("[enrich_person] enrichCompany error:", err);
+          if (isCreditExhaustion(err)) {
+            // Company enrichment credit exhaustion — don't block, but inform the caller
+            console.error(`[enrich_person] enrichCompany credit exhaustion: ${err.provider}`);
+            // Continue — email enrichment may have succeeded
+          } else {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg !== "DAILY_CAP_HIT") {
+              console.error("[enrich_person] enrichCompany error:", err);
+            }
           }
           // Don't block on company enrichment failure — email enrichment may have succeeded
         }

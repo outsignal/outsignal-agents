@@ -11,6 +11,7 @@
  * - Fallback email extraction from common alternative paths
  */
 import { z } from "zod";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { EmailAdapter, EmailProviderResult } from "../types";
 
@@ -65,6 +66,10 @@ export const findymailAdapter: EmailAdapter = async (
       body: JSON.stringify({ linkedin_url: input.linkedinUrl }),
       signal: controller.signal,
     });
+
+    if (res.status === 402 || res.status === 403) {
+      throw new CreditExhaustionError("findymail", res.status);
+    }
 
     if (!res.ok) {
       if (res.status === 429) {

@@ -16,6 +16,7 @@
  */
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { incrementDailySpend } from "@/lib/enrichment/costs";
 import { recordEnrichment } from "@/lib/enrichment/log";
 
@@ -102,9 +103,7 @@ async function kittFetch(endpoint: string, body: Record<string, unknown>): Promi
       throw new Error("Kitt API authentication failed (401). Check KITT_API_KEY.");
     }
     if (res.status === 402) {
-      throw new Error(
-        "Kitt API rate limit or insufficient funds (402). Check your Kitt account balance."
-      );
+      throw new CreditExhaustionError("kitt", 402);
     }
     if (!res.ok) {
       throw new Error(`Kitt API HTTP error: ${res.status} ${res.statusText}`);

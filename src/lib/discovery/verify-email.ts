@@ -10,6 +10,8 @@
  */
 import { verifyEmail as bouncebanVerify } from "@/lib/verification/bounceban";
 import { verifyEmail as kittVerify } from "@/lib/verification/kitt";
+import { isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
+import { notifyCreditExhaustion } from "@/lib/notifications";
 import type { DiscoveredPersonResult } from "./types";
 
 /** Delay between verification calls to respect rate limits (ms) */
@@ -19,37 +21,77 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+interface VerifySingleResult {
+  isValid: boolean;
+  /** Approximate cost in USD for this single verification */
+  costUsd: number;
+}
+
+const BOUNCEBAN_COST = 0.005;
+const KITT_COST = 0.0015;
+
 /**
  * Verify a single email via BounceBan + Kitt fallback.
- * Returns true if the email is valid, false otherwise.
+ * Returns validity and actual cost based on which providers ran.
+ *
+ * Cost logic:
+ * - BounceBan succeeds → charge BounceBan only
+ * - BounceBan errors (Kitt fallback) → charge Kitt only (BounceBan didn't complete)
+ * - BounceBan returns unknown (Kitt fallback) → charge both (both ran)
  */
-async function verifySingleEmail(email: string): Promise<boolean> {
+async function verifySingleEmail(email: string): Promise<VerifySingleResult> {
   try {
     const bbResult = await bouncebanVerify(email);
 
     if (bbResult.status === "valid" || bbResult.status === "valid_catch_all") {
-      return true;
+      return { isValid: true, costUsd: BOUNCEBAN_COST };
     }
 
     if (bbResult.status === "unknown") {
-      // BounceBan inconclusive — try Kitt
+      // BounceBan inconclusive — try Kitt. Charge both since BounceBan ran.
       try {
         const kittResult = await kittVerify(email);
-        return kittResult.status === "valid";
-      } catch {
-        return false; // both failed — reject
+        return { isValid: kittResult.status === "valid", costUsd: BOUNCEBAN_COST + KITT_COST };
+      } catch (kittErr) {
+        if (isCreditExhaustion(kittErr)) {
+          await notifyCreditExhaustion({
+            provider: kittErr.provider,
+            httpStatus: kittErr.httpStatus,
+            context: "discovery email verification (Kitt fallback)",
+          });
+          throw kittErr;
+        }
+        // Kitt failed but BounceBan ran — charge BounceBan only
+        return { isValid: false, costUsd: BOUNCEBAN_COST };
       }
     }
 
-    // invalid, risky, catch_all — reject
-    return false;
-  } catch {
-    // BounceBan error — try Kitt fallback
+    // invalid, risky, catch_all — reject. BounceBan ran successfully.
+    return { isValid: false, costUsd: BOUNCEBAN_COST };
+  } catch (err) {
+    // Credit exhaustion — notify admin and re-throw to halt the entire pipeline
+    if (isCreditExhaustion(err)) {
+      await notifyCreditExhaustion({
+        provider: err.provider,
+        httpStatus: err.httpStatus,
+        context: "discovery email verification (BounceBan)",
+      });
+      throw err;
+    }
+    // BounceBan error — try Kitt fallback. Charge Kitt only (BounceBan didn't complete).
     try {
       const kittResult = await kittVerify(email);
-      return kittResult.status === "valid";
-    } catch {
-      return false;
+      return { isValid: kittResult.status === "valid", costUsd: KITT_COST };
+    } catch (kittErr) {
+      if (isCreditExhaustion(kittErr)) {
+        await notifyCreditExhaustion({
+          provider: kittErr.provider,
+          httpStatus: kittErr.httpStatus,
+          context: "discovery email verification (Kitt fallback after BounceBan error)",
+        });
+        throw kittErr;
+      }
+      return { isValid: false, costUsd: 0 };
     }
   }
 }
@@ -79,8 +121,6 @@ export async function verifyDiscoveredEmails(
   let rejectedCount = 0;
   let costUsd = 0;
 
-  const BOUNCEBAN_COST = 0.005;
-
   for (let i = 0; i < people.length; i++) {
     const person = people[i];
     if (!person.email) continue;
@@ -91,10 +131,10 @@ export async function verifyDiscoveredEmails(
       continue;
     }
 
-    const isValid = await verifySingleEmail(person.email);
-    costUsd += BOUNCEBAN_COST; // BounceBan always charged
+    const result = await verifySingleEmail(person.email);
+    costUsd += result.costUsd;
 
-    if (isValid) {
+    if (result.isValid) {
       validCount++;
     } else {
       console.warn(

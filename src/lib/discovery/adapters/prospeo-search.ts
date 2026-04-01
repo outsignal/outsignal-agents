@@ -26,6 +26,7 @@ import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaAiArk } from "../aiark-email";
 import { enrichViaKitt } from "../kitt-email";
 import { verifyDiscoveredEmails } from "../verify-email";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 
 const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
@@ -249,6 +250,9 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
       });
 
       if (!res.ok) {
+        if (res.status === 402 || res.status === 403) {
+          throw new CreditExhaustionError("prospeo", res.status, "Prospeo search credits exhausted");
+        }
         if (res.status === 429) {
           const err = new Error("Prospeo Search rate-limited: HTTP 429");
           (err as any).status = 429;

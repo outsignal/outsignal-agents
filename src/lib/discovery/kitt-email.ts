@@ -9,6 +9,8 @@
  * Auth: x-api-key header (KITT_API_KEY env var)
  */
 
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
+import { notifyCreditExhaustion } from "@/lib/notifications";
 import type { DiscoveredPersonResult } from "./types";
 import { findEmail } from "@/lib/verification/kitt";
 
@@ -72,8 +74,17 @@ export async function enrichViaKitt(
         enriched++;
       }
     } catch (err: unknown) {
+      // Credit exhaustion — notify admin and re-throw to halt the entire pipeline
+      if (err instanceof CreditExhaustionError) {
+        await notifyCreditExhaustion({
+          provider: (err as CreditExhaustionError).provider,
+          httpStatus: (err as CreditExhaustionError).httpStatus,
+          context: "discovery enrichment (Kitt email)",
+        });
+        throw err;
+      }
       if (err instanceof Error) {
-        if (err.message.includes("401") || err.message.includes("402")) {
+        if (err.message.includes("401")) {
           console.warn(
             `[kitt-email] Kitt error: ${err.message}. Stopping Kitt enrichment.`,
           );

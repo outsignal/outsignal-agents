@@ -14,6 +14,7 @@
  */
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { incrementDailySpend } from "@/lib/enrichment/costs";
 import { recordEnrichment } from "@/lib/enrichment/log";
 
@@ -117,9 +118,7 @@ async function makeRequest(
     }
 
     if (res.status === 403) {
-      throw new Error(
-        "BounceBan verify failed: insufficient credits (HTTP 403). Top up your BounceBan account.",
-      );
+      throw new CreditExhaustionError("bounceban", 403);
     }
 
     if (res.status === 429) {

@@ -19,6 +19,7 @@
  *  12. Update lastSignalProcessedAt timestamp
  */
 
+import { isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import { prisma } from "@/lib/db";
 import { apolloAdapter } from "@/lib/discovery/adapters/apollo";
 import { stageDiscoveredPeople } from "@/lib/discovery/staging";
@@ -95,6 +96,10 @@ export async function processSignalCampaigns(): Promise<PipelineResult> {
       result.totalLeadsAdded += campaignResult.leadsAdded;
       result.totalSignalsMatched += campaignResult.signalsMatched;
     } catch (error) {
+      if (isCreditExhaustion(error)) {
+        result.errors.push(`${campaign.name}: Credit exhaustion — pipeline paused`);
+        break; // stop processing remaining campaigns
+      }
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[Pipeline] Error processing campaign "${campaign.name}":`, error);
       result.errors.push(`${campaign.name}: ${msg}`);
@@ -213,6 +218,11 @@ async function processSingleCampaign(
       Math.min(remainingCapacity * 2, 50),
     );
   } catch (error) {
+    if (isCreditExhaustion(error)) {
+      // Re-throw to halt the campaign loop — don't update lastSignalProcessedAt
+      // so these signals get retried after credits are topped up
+      throw error;
+    }
     console.error(`[Pipeline] Discovery failed for campaign "${campaign.name}":`, error);
     // Still update lastSignalProcessedAt to avoid re-attempting the same signals
     await prisma.campaign.update({

@@ -33,6 +33,7 @@ import { enrichViaAiArk } from "../aiark-email";
 import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaKitt } from "../kitt-email";
 import { verifyDiscoveredEmails } from "../verify-email";
+import { CreditExhaustionError, isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
@@ -451,6 +452,7 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
       raw = await response.json();
     } catch (err) {
       clearTimeout(timeoutId);
+      if (isCreditExhaustion(err)) throw err;
       console.warn("AI Ark companies keyword search error:", err);
       return [];
     }
@@ -518,7 +520,11 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
 
       clearTimeout(timeoutId);
 
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 402 || response.status === 403) {
+        throw new CreditExhaustionError("aiark", response.status, "AI Ark search credits exhausted");
+      }
+
+      if (response.status === 401) {
         console.warn(
           `AI Ark search auth failed (${response.status}) — verify AIARK_API_KEY env var. ` +
             `Auth header: "${AUTH_HEADER_NAME}".`,

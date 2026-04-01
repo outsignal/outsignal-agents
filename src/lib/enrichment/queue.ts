@@ -7,6 +7,8 @@
  *   // Then call processNextChunk() repeatedly (via cron or manual trigger) until complete
  */
 import { prisma } from "@/lib/db";
+import { isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
+import { notifyCreditExhaustion } from "@/lib/notifications";
 import type { EntityType, Provider } from "./types";
 
 export interface EnqueueJobParams {
@@ -109,6 +111,29 @@ export async function processNextChunk(
           });
           processedInChunk++;
         } catch (err) {
+          // Credit exhaustion — notify admin and pause the job
+          if (isCreditExhaustion(err)) {
+            await notifyCreditExhaustion({
+              provider: (err as any).provider,
+              httpStatus: (err as any).httpStatus,
+              context: `enrichment queue processing (job ${job.id})`,
+            });
+            // Pause the job — same mechanism as DAILY_CAP_HIT but no resumeAt
+            await prisma.enrichmentJob.update({
+              where: { id: job.id },
+              data: {
+                status: "paused",
+                processedCount: chunkStart + processedInChunk,
+              },
+            });
+            return {
+              jobId: job.id,
+              processed: processedInChunk,
+              total: job.totalCount,
+              done: false,
+              status: "paused",
+            };
+          }
           const errMsg = err instanceof Error ? err.message : String(err);
           if (errMsg === "DAILY_CAP_HIT") {
             // Pause the job — resume at midnight UTC tomorrow

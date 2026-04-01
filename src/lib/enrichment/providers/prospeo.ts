@@ -9,6 +9,7 @@
  * NOTE: /social-url-finder was removed March 2026 — use /enrich-person exclusively.
  */
 import { z } from "zod";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { EmailAdapter, EmailProviderResult } from "../types";
 
@@ -83,6 +84,10 @@ export const prospeoAdapter: EmailAdapter = async (
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+
+    if (res.status === 402 || res.status === 403) {
+      throw new CreditExhaustionError("prospeo", res.status);
+    }
 
     if (!res.ok) {
       if (res.status === 429) {

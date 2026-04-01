@@ -18,6 +18,8 @@
  * Reference: https://prospeo.io/api/bulk-enrich-person
  */
 
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
+import { notifyCreditExhaustion } from "@/lib/notifications";
 import type { DiscoveredPersonResult } from "./types";
 
 const PROSPEO_BULK_ENRICH_ENDPOINT =
@@ -94,6 +96,10 @@ async function callBulkEnrich(
       signal: controller.signal,
     });
 
+    if (res.status === 402 || res.status === 403) {
+      throw new CreditExhaustionError("prospeo", res.status);
+    }
+
     if (!res.ok) {
       if (res.status === 429) {
         console.warn("[bulk-enrich] Prospeo rate-limited (429)");
@@ -107,6 +113,15 @@ async function callBulkEnrich(
 
     return (await res.json()) as BulkEnrichResponse;
   } catch (err) {
+    // Credit exhaustion — notify admin and re-throw to halt the entire pipeline
+    if (err instanceof CreditExhaustionError) {
+      await notifyCreditExhaustion({
+        provider: err.provider,
+        httpStatus: err.httpStatus,
+        context: "discovery bulk enrichment (Prospeo)",
+      });
+      throw err;
+    }
     console.warn("[bulk-enrich] Prospeo bulk-enrich failed:", err);
     return { matched: [], not_matched: datapoints, invalid_datapoints: [] };
   } finally {

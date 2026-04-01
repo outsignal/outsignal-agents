@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { EmailAdapterInput, PersonAdapter, PersonProviderResult } from "../types";
 
@@ -138,7 +139,11 @@ export const aiarkPersonAdapter: PersonAdapter = async (input: EmailAdapterInput
 
     clearTimeout(timeoutId);
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 402 || response.status === 403) {
+      throw new CreditExhaustionError("aiark", response.status, "AI Ark person data credits exhausted");
+    }
+
+    if (response.status === 401) {
       console.warn(`AI Ark people auth failed: HTTP ${response.status}`);
       throw new Error(`AI Ark people auth error: HTTP ${response.status}`);
     }

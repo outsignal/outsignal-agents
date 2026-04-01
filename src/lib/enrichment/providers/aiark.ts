@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { CompanyAdapter, CompanyProviderResult } from "../types";
 
@@ -98,9 +99,13 @@ export const aiarkAdapter: CompanyAdapter = async (domain: string): Promise<Comp
 
     clearTimeout(timeoutId);
 
-    if (response.status === 401 || response.status === 403) {
-      console.warn(`AI Ark auth failed: HTTP ${response.status}`);
-      throw new Error(`AI Ark auth error: HTTP ${response.status}`);
+    if (response.status === 403) {
+      throw new CreditExhaustionError("aiark", 403);
+    }
+
+    if (response.status === 401) {
+      console.warn(`AI Ark auth failed: HTTP 401`);
+      throw new Error(`AI Ark auth error: HTTP 401`);
     }
 
     if (response.status === 429) {

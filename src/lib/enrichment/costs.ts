@@ -7,8 +7,6 @@ import { prisma } from "@/lib/db";
 /** Fixed cost per API call by provider. Update when pricing changes. */
 export const PROVIDER_COSTS: Record<string, number> = {
   prospeo: 0.002,
-  leadmagic: 0.005,
-  "leadmagic-verify": 0.05,  // Email verification — $0.05 per valid/invalid/valid_catch_all result
   findymail: 0.001,
   aiark: 0.003,
   "kitt-find": 0.005,         // $0.005 per found email (free if not found)
