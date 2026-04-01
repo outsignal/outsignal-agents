@@ -37,7 +37,7 @@ interface SenderConfig {
 interface ActionItem {
   id: string;
   personId: string;
-  actionType: "connect" | "message" | "profile_view" | "check_connection";
+  actionType: "connect" | "connection_request" | "message" | "profile_view" | "check_connection";
   messageBody: string | null;
   priority: number;
   linkedinUrl: string | null;
