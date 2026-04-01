@@ -21,7 +21,7 @@ import * as operations from "@/lib/leads/operations";
 export function registerEnrichTools(server: McpServer): void {
   server.tool(
     "enrich_person",
-    "Trigger the enrichment waterfall for a person (AI Ark → Prospeo → LeadMagic → FindyMail for email; AI Ark → Firecrawl for company). Call first without confirm=true to see what will happen.",
+    "Trigger the enrichment waterfall for a person (FindyMail → Prospeo → Kitt for email; AI Ark → Firecrawl for company). Call first without confirm=true to see what will happen.",
     {
       person_id: z.string().describe("Person ID to enrich"),
       workspace: z
@@ -60,7 +60,7 @@ export function registerEnrichTools(server: McpServer): void {
         const willRun: string[] = [];
         if (!enrichedProviders.includes("aiark")) willRun.push("AI Ark (person data)");
         if (!enrichedProviders.includes("prospeo")) willRun.push("Prospeo (email finding)");
-        if (!enrichedProviders.includes("leadmagic")) willRun.push("LeadMagic (email finding)");
+        if (!enrichedProviders.includes("kitt-find")) willRun.push("Kitt (email finding)");
         if (!enrichedProviders.includes("findymail")) willRun.push("FindyMail (email finding)");
         if (person.companyDomain && !enrichedProviders.includes("firecrawl")) {
           willRun.push("Firecrawl (company data)");

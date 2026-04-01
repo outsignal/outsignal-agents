@@ -6,7 +6,7 @@
  * Body: { entityType: "person" | "company", workspaceSlug?: string, limit?: number }
  *
  * For "person": finds people without email who have a LinkedIn URL or name+company,
- *   then queues them for the email waterfall (Prospeo → LeadMagic → FindyMail).
+ *   then queues them for the email waterfall (FindyMail → Prospeo → Kitt).
  *
  * For "company": finds companies missing key data (industry, headcount, or description),
  *   then queues them for the company waterfall (AI Ark → Firecrawl).

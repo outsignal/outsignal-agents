@@ -2110,11 +2110,23 @@ export async function notifyLinkedInMessage(params: {
   }
 }
 
+// Simple in-memory dedup — don't notify for the same provider within 5 minutes
+const _creditNotifyCache = new Map<string, number>();
+const CREDIT_NOTIFY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
 export async function notifyCreditExhaustion(params: {
   provider: string;
   httpStatus: number;
   context: string;
 }): Promise<void> {
+  const now = Date.now();
+  const lastNotified = _creditNotifyCache.get(params.provider);
+  if (lastNotified && now - lastNotified < CREDIT_NOTIFY_COOLDOWN_MS) {
+    console.log(`[notifications] Skipping duplicate credit exhaustion notification for ${params.provider} (cooldown)`);
+    return;
+  }
+  _creditNotifyCache.set(params.provider, now);
+
   // ---------- Slack (admin alerts channel) ----------
 
   const alertsChannelId = process.env.ALERTS_SLACK_CHANNEL_ID;

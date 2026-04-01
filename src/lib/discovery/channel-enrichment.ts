@@ -89,7 +89,7 @@ export function getUnverifiedRoutingSuggestion(
 
   if (totalWithEmail > 0) {
     suggestionParts.push(
-      `After promotion, ${totalWithEmail} leads with emails will be routed through LeadMagic verification. CATCH_ALL and unverified emails will be flagged for review.`,
+      `After promotion, ${totalWithEmail} leads with emails will be routed through BounceBan verification. CATCH_ALL and unverified emails will be flagged for review.`,
     );
   }
 

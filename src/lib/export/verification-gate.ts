@@ -12,7 +12,8 @@
  * 5. Export readyPeople only (blocked are auto-excluded)
  */
 
-import { getVerificationStatus, verifyEmail, VerificationResult } from "@/lib/verification/leadmagic";
+import { getVerificationStatus, verifyEmail, VerificationResult } from "@/lib/verification/bounceban";
+import { verifyEmail as verifyEmailKitt } from "@/lib/verification/kitt";
 import { prisma } from "@/lib/db";
 
 /** Shape of a Person record as returned by the TargetListPerson include. */
@@ -167,7 +168,19 @@ export async function verifyAndFilter(
   people: { id: string; email: string }[]
 ): Promise<{ verified: VerificationResult[]; excluded: VerificationResult[] }> {
   const results = await Promise.all(
-    people.map(({ id, email }) => verifyEmail(email, id))
+    people.map(async ({ id, email }) => {
+      const bbResult = await verifyEmail(email, id);
+      // Kitt fallback: if BounceBan returns unknown, try Kitt for a definitive answer
+      if (bbResult.status === "unknown") {
+        try {
+          return await verifyEmailKitt(email, id);
+        } catch {
+          // Kitt failed — fall back to the BounceBan unknown result
+          return bbResult;
+        }
+      }
+      return bbResult;
+    })
   );
 
   const verified: VerificationResult[] = [];
