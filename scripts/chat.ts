@@ -22,6 +22,7 @@ import {
   orchestratorConfig,
   orchestratorTools,
 } from "../src/lib/agents/orchestrator";
+import { loadMemoryContext } from "../src/lib/agents/memory";
 
 // --- State ---
 
@@ -79,11 +80,20 @@ function trimMessages<T extends { role: string }>(msgs: T[]): T[] {
 async function chat(userInput: string): Promise<string> {
   messages.push({ role: "user", content: userInput });
 
+  let memoryContext = "";
+  try {
+    memoryContext = await loadMemoryContext(workspaceSlug);
+  } catch (err) {
+    console.warn("[chat] Memory context load failed, proceeding without:", err);
+  }
+
+  const systemWithMemory = memoryContext
+    ? `${orchestratorConfig.systemPrompt}\n\n${memoryContext}\n\nCurrent workspace: ${workspaceSlug}\nInterface: CLI chat (no browser available)`
+    : `${orchestratorConfig.systemPrompt}\n\nCurrent workspace: ${workspaceSlug}\nInterface: CLI chat (no browser available)`;
+
   const result = await generateText({
     model: anthropic(orchestratorConfig.model),
-    system:
-      orchestratorConfig.systemPrompt +
-      `\n\nCurrent workspace: ${workspaceSlug}\nInterface: CLI chat (no browser available)`,
+    system: systemWithMemory,
     messages: trimMessages(messages),
     tools: orchestratorTools,
     stopWhen: stepCountIs(orchestratorConfig.maxSteps ?? 12),

@@ -70,6 +70,55 @@ export async function appendToMemory(
   }
 }
 
+/**
+ * Append an insight entry to the global-insights.md file.
+ *
+ * Same contract as appendToMemory but targets the cross-client
+ * global-insights.md file instead of per-workspace files.
+ * Enforces the 200-line cap to prevent unbounded growth.
+ *
+ * @returns true if appended, false if skipped
+ */
+export async function appendToGlobalMemory(entry: string): Promise<boolean> {
+  try {
+    const projectRoot = process.env.PROJECT_ROOT ?? process.cwd();
+    const filePath = join(projectRoot, MEMORY_ROOT, "global-insights.md");
+
+    // File must exist (seeded by nova-memory.ts)
+    try {
+      await access(filePath, constants.F_OK);
+    } catch {
+      console.warn(`[memory] Global insights file not found, skipping: ${filePath}`);
+      return false;
+    }
+
+    // Enforce max line count
+    const content = await readFile(filePath, "utf8");
+    const lineCount = content.split("\n").length;
+    if (lineCount >= MAX_LINES) {
+      console.warn(
+        `[memory] global-insights.md at max lines (${lineCount}), skipping`,
+      );
+      return false;
+    }
+
+    // Validate entry content
+    if (!isValidEntry(entry)) {
+      console.warn(`[memory] Rejecting malformed global insight: "${entry.slice(0, 50)}"`);
+      return false;
+    }
+
+    // Append with ISO timestamp
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] ${entry}\n`;
+    await appendFile(filePath, line, "utf8");
+    return true;
+  } catch (error) {
+    console.error("[memory] Failed to append to global-insights.md:", error);
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Memory Read System
 // ---------------------------------------------------------------------------
