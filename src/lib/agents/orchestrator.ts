@@ -6,6 +6,9 @@ import { runResearchAgent } from "./research";
 import { runWriterAgent } from "./writer";
 import { runLeadsAgent } from "./leads";
 import { runCampaignAgent } from "./campaign";
+import { runDeliverabilityAgent } from "./deliverability";
+import { runIntelligenceAgent } from "./intelligence";
+import { runOnboardingAgent } from "./onboarding";
 import {
   getAllWorkspaces,
   getWorkspaceDetails,
@@ -283,6 +286,126 @@ const delegateToCampaign = tool({
       return {
         status: "failed",
         error: error instanceof Error ? error.message : "Campaign Agent failed",
+      };
+    }
+  },
+});
+
+const delegateToDeliverability = tool({
+  description:
+    "Delegate a task to the Deliverability Agent. Use this when the user wants to: check inbox health, diagnose domain DNS issues, review warmup status, investigate bounce rates, or manage sender rotation.",
+  inputSchema: z.object({
+    workspaceSlug: z.string().describe("Workspace slug"),
+    task: z.string().describe("What to check or diagnose"),
+  }),
+  execute: async ({ workspaceSlug, task }) => {
+    if (isCliMode()) {
+      try {
+        const result = await cliSpawn("sender-health.js", ["--slug", workspaceSlug]);
+        return {
+          status: "complete",
+          message: "Deliverability check completed via CLI",
+          data: result,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Deliverability CLI failed",
+        };
+      }
+    }
+    try {
+      const result = await runDeliverabilityAgent({ workspaceSlug, task });
+      return {
+        status: "complete",
+        action: result.action,
+        summary: result.summary,
+        data: result.data,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Deliverability Agent failed",
+      };
+    }
+  },
+});
+
+const delegateToIntelligence = tool({
+  description:
+    "Delegate a task to the Intelligence Agent. Use this when the user wants to: analyze campaign performance, get cross-client benchmarks, review reply rate trends, compare workspace metrics, or surface optimization insights.",
+  inputSchema: z.object({
+    workspaceSlug: z.string().describe("Workspace slug"),
+    task: z.string().describe("What to analyze or benchmark"),
+  }),
+  execute: async ({ workspaceSlug, task }) => {
+    if (isCliMode()) {
+      try {
+        const result = await cliSpawn("cached-metrics.js", ["--slug", workspaceSlug]);
+        return {
+          status: "complete",
+          message: "Intelligence analysis completed via CLI",
+          data: result,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Intelligence CLI failed",
+        };
+      }
+    }
+    try {
+      const result = await runIntelligenceAgent({ workspaceSlug, task });
+      return {
+        status: "complete",
+        action: result.action,
+        summary: result.summary,
+        data: result.data,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Intelligence Agent failed",
+      };
+    }
+  },
+});
+
+const delegateToOnboarding = tool({
+  description:
+    "Delegate a task to the Onboarding Agent. Use this when the user wants to: create a new workspace, configure a client package, set up DNS records, guide inbox provisioning, or invite team members.",
+  inputSchema: z.object({
+    workspaceSlug: z.string().describe("Workspace slug (or slug for the new workspace)"),
+    task: z.string().describe("What onboarding step to perform"),
+  }),
+  execute: async ({ workspaceSlug, task }) => {
+    if (isCliMode()) {
+      try {
+        const result = await cliSpawn("workspace-get.js", ["--slug", workspaceSlug]);
+        return {
+          status: "complete",
+          message: "Onboarding operation completed via CLI",
+          data: result,
+        };
+      } catch (error) {
+        return {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Onboarding CLI failed",
+        };
+      }
+    }
+    try {
+      const result = await runOnboardingAgent({ workspaceSlug, task });
+      return {
+        status: "complete",
+        action: result.action,
+        summary: result.summary,
+        data: result.data,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Onboarding Agent failed",
       };
     }
   },
@@ -658,6 +781,9 @@ export const orchestratorTools = {
   delegateToLeads,
   delegateToWriter,
   delegateToCampaign,
+  delegateToDeliverability,
+  delegateToIntelligence,
+  delegateToOnboarding,
   // Shared knowledge base tool (direct access without delegation overhead)
   searchKnowledgeBase,
   // Existing dashboard tools (for simple queries)
@@ -676,11 +802,14 @@ Use these to delegate work to specialist agents:
 - **delegateToLeads**: For searching people, building target lists, scoring against ICP, exporting to EmailBison
 - **delegateToWriter**: For email and LinkedIn copy generation, sequence writing, campaign performance analysis, draft revisions
 - **delegateToCampaign**: For creating campaigns, managing campaign lifecycle, linking target lists, and publishing for client approval
+- **delegateToDeliverability**: For inbox health checks, domain DNS diagnostics, warmup status, bounce investigation, sender rotation
+- **delegateToIntelligence**: For campaign performance analysis, cross-client benchmarks, reply rate trends, optimization insights
+- **delegateToOnboarding**: For workspace creation, package configuration, DNS setup guidance, inbox provisioning, member invites
 
 ## 2. Dashboard Tools (for quick queries)
 Use these directly for simple data lookups:
 - listWorkspaces, getWorkspaceInfo, getCampaigns, getReplies, getSenderHealth, queryPeople, listProposals, createProposal
-- **updateWorkspacePackage**: Update a workspace's campaign package — enabled modules, lead quotas, campaign allowance
+- **updateWorkspacePackage**: Update a workspace's campaign package — enabled modules, lead quotas, campaign allowance. For guided setup, use delegateToOnboarding instead.
 
 ${loadRules("campaign-rules.md")}`;
 
