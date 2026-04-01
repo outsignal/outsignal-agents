@@ -10,7 +10,8 @@
 - ✅ **v5.0 Client Portal Inbox** — Phases 33-37 (shipped 2026-03-11)
 - ✅ **v6.0 Trigger.dev Migration — Background Jobs Infrastructure** — Phases 38-45 (shipped 2026-03-23)
 - ✅ **v7.0 Nova CLI Agent Teams — Client-Specific Intelligence** — Phases 46-51 (shipped 2026-03-24)
-- 🚧 **v8.0 Agent Quality Overhaul** — Phases 52-58 (in progress)
+- ✅ **v8.0 Agent Quality Overhaul** — Phases 52-58 (shipped 2026-03-30)
+- 🚧 **v9.0 Agent Memory & Intelligence** — Phase 59 (in progress)
 
 ## Phases
 
@@ -134,6 +135,10 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 56: Leads Quality Gates** - Post-search quality gates, channel-aware enrichment, credit budgeting, domain resolution (completed 2026-03-30)
 - [x] **Phase 57: Campaign Pipeline Validation** - Channel-aware list building, overlap detection, normalisation gate, portal hard-block (completed 2026-03-30)
 - [x] **Phase 58: End-to-End Validation** - Full pipeline integration test confirming all quality gates work as a unit (completed 2026-03-30)
+
+### v9.0 Agent Memory & Intelligence
+
+- [ ] **Phase 59: Agent Memory Read System** - Fix broken memory read: load 3-layer context (system-wide + cross-client + workspace) into every agent session. Agents must compound — learn from past campaigns, know current system state, improve over time.
 
 ## Phase Details
 
@@ -657,3 +662,19 @@ Plans:
 - [x] 58-01-PLAN.md — Test infrastructure: fixtures, audit assertions, scenario runner, Prisma mock extension, Nova memory seed
 - [x] 58-02-PLAN.md — Core scenario tests: happy path, violation+rewrite, LinkedIn channel routing, portal 422
 - [x] 58-03-PLAN.md — Edge case tests (budget, domain resolution, overlap) + CLI regression runner
+
+### Phase 59: Agent Memory Read System
+**Goal**: Every agent session loads 3 layers of persistent context (system-wide MEMORY.md + cross-client global-insights.md + workspace-specific learnings/campaigns/feedback). Agents compound — they learn from past campaigns, know the current system state, and improve over time. No more blank-slate sessions.
+**Depends on**: Phase 54.1 (agent memory write-back must exist)
+**Requirements**: MEMORY-READ-01, MEMORY-READ-02, MEMORY-READ-03
+**Success Criteria** (what must be TRUE):
+  1. When Nova starts a session for workspace "lime-recruitment", the agent knows Lime's past campaign performance, copy wins/losses, client feedback, and ICP learnings from previous sessions
+  2. When any agent runs, it knows the current system state — which providers are active (BounceBan, Kitt), which are cancelled (LeadMagic), discovery limits, verification flow
+  3. Cross-client learnings from global-insights.md are available to all agents — patterns that work across workspaces inform new campaigns
+  4. Agent system prompts are built dynamically per-session (not statically at module load time) incorporating workspace memory
+  5. Memory read integrates with existing memory write — agents read past learnings AND append new ones in the same session
+  6. Memory loading handles missing files gracefully, truncates oversized memory to protect context window
+**Plans**: 2 plans
+Plans:
+- [ ] 59-01-PLAN.md — Core memory read system: 3-layer context loading + runner.ts injection
+- [ ] 59-02-PLAN.md — Malformed memory data cleanup + appendToMemory write validation
