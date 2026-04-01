@@ -693,10 +693,11 @@ Plans:
 
 ### Phase 61: Complete Agent Memory Coverage
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** All 7 specialist agents (4 existing + 3 new) have full agent configs with tools, onComplete hooks, and memory writes. Orchestrator can delegate to all 7 and writes session memory after delegation turns
+**Requirements**: MEM-01, MEM-02, MEM-03, MEM-04
 **Depends on:** Phase 60
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 61 to break down)
+- [ ] 61-01-PLAN.md — Build 3 new specialist agents (deliverability, intelligence, onboarding) + types
+- [ ] 61-02-PLAN.md — Wire 3 agents into orchestrator + chat.ts memory write
