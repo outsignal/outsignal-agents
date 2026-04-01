@@ -11,6 +11,9 @@ export const PROVIDER_COSTS: Record<string, number> = {
   "leadmagic-verify": 0.05,  // Email verification — $0.05 per valid/invalid/valid_catch_all result
   findymail: 0.001,
   aiark: 0.003,
+  "kitt-find": 0.005,         // $0.005 per found email (free if not found)
+  "kitt-verify": 0.0015,       // $0.0015 per verification
+  "bounceban-verify": 0.005,   // $0.005 per verification
   firecrawl: 0.001,
   // Discovery source costs
   "apollo-search": 0,        // Apollo search is free

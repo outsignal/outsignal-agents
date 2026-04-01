@@ -13,6 +13,9 @@ export type Provider =
   | "firecrawl"
   | "clay" // historical — Clay cancelled 2026-03-18
   | "ai-normalizer"
+  | "bounceban-verify"
+  | "kitt-find"
+  | "kitt-verify"
   | "waterfall";
 
 /** Entity types that can be enriched. */

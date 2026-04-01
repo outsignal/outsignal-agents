@@ -24,7 +24,8 @@ import type {
 } from "../types";
 import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaAiArk } from "../aiark-email";
-import { enrichViaLeadMagic } from "../leadmagic-email";
+import { enrichViaKitt } from "../kitt-email";
+import { verifyDiscoveredEmails } from "../verify-email";
 
 const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
@@ -300,10 +301,11 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     const hasMore = page < totalPages;
     const nextPageToken = hasMore ? String(page + 1) : undefined;
 
-    // Three-stage email enrichment waterfall:
+    // Three-stage email enrichment waterfall + verification:
     // 1. Prospeo bulk-enrich (uses person_id from search results)
-    // 2. AI Ark /export/single fallback (uses LinkedIn URLs)
-    // 3. LeadMagic fallback (uses LinkedIn URLs or name+company)
+    // 2. AI Ark /export/single fallback (uses LinkedIn URLs — emails pre-verified)
+    // 3. Kitt find fallback (replaces LeadMagic)
+    // 4. Verify all non-AI-Ark emails via BounceBan
     let enrichCost = 0;
     if (people.length > 0) {
       // Stage 1: Prospeo bulk-enrich with person_id
@@ -311,23 +313,42 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
       enrichCost += prospeoResult.costUsd;
 
       // Stage 2: AI Ark fallback for people still missing email (uses LinkedIn URLs)
+      // Track which indices get emails from AI Ark (pre-verified, skip re-verification)
+      const aiArkEmailIndices = new Set<number>();
       const needsAiArk = people.filter((p) => !p.email);
       if (needsAiArk.length > 0) {
         console.log(
           `[prospeo-search] ${prospeoResult.enrichedCount} emails from Prospeo, ${needsAiArk.length} remaining — falling back to AI Ark`,
         );
+        const beforeAiArk = people.map((p) => p.email);
         const aiArkResult = await enrichViaAiArk(people);
         enrichCost += aiArkResult.costUsd;
+
+        for (let idx = 0; idx < people.length; idx++) {
+          if (!beforeAiArk[idx] && people[idx].email) {
+            aiArkEmailIndices.add(idx);
+          }
+        }
       }
 
-      // Stage 3: LeadMagic fallback for people still missing email
-      const needsLeadMagic = people.filter((p) => !p.email);
-      if (needsLeadMagic.length > 0) {
+      // Stage 3: Kitt fallback for people still missing email
+      const needsKitt = people.filter((p) => !p.email);
+      if (needsKitt.length > 0) {
         console.log(
-          `[prospeo-search] ${needsLeadMagic.length} still without email after Prospeo + AI Ark — falling back to LeadMagic`,
+          `[prospeo-search] ${needsKitt.length} still without email after Prospeo + AI Ark — falling back to Kitt`,
         );
-        const leadMagicResult = await enrichViaLeadMagic(people);
-        enrichCost += leadMagicResult.costUsd;
+        const kittResult = await enrichViaKitt(people);
+        enrichCost += kittResult.costUsd;
+      }
+
+      // Stage 4: Verify all non-AI-Ark emails via BounceBan
+      const emailsToVerify = people.filter((p, idx) => p.email && !aiArkEmailIndices.has(idx));
+      if (emailsToVerify.length > 0) {
+        console.log(
+          `[prospeo-search] Verifying ${emailsToVerify.length} non-AI-Ark emails via BounceBan`,
+        );
+        const verifyResult = await verifyDiscoveredEmails(people, aiArkEmailIndices);
+        enrichCost += verifyResult.costUsd;
       }
     }
 

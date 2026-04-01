@@ -377,6 +377,28 @@ These rules are enforced at TWO layers: (1) the agent reads and follows these ru
 - Show results as a compact preview after each search. Ask before fetching more pages.
 - ALWAYS show cost and staged count after each discovery call.
 
+### Exhaustive Search Rules
+- When searching, ALWAYS request limit=100 (not the default 25) to maximise results per page.
+- After receiving results, check if there are more pages available (hasMore/nextPageToken). If yes, ALWAYS fetch subsequent pages until exhausted or a reasonable cap (500 results per source per search).
+- Do NOT stop at page 1 — exhaust each source before moving to the next.
+- When presenting discovery plans, estimate total available results per source and note if pagination will be needed.
+- For domain-based searches (companyDomains provided), search EACH domain individually or in small batches to ensure complete coverage.
+
+### Funnel Drop-Off Awareness
+- The discovery-to-verified-lead funnel has significant natural drop-off at every stage: email not found (~30-50%), verification rejects invalid/risky/catch-all (~10-20%), dedup removes cross-source duplicates (~10-15%), quality gate filters junk (~5-10%).
+- To deliver N verified leads, you typically need to discover 2-3x that number of raw people. For example: 2,000 verified leads requires discovering 4,000-6,000+ raw people.
+- When building discovery plans, ALWAYS over-discover relative to the target. If the admin wants 2,000 leads, plan to find 4,000-5,000 raw people across all sources.
+- Present this to the admin: "To land ~{target} verified leads, we need to discover ~{target * 2.5} raw people, accounting for enrichment failures, verification rejections, and dedup."
+- If a source is producing fewer results than expected, proactively suggest additional sources or broader filters rather than accepting a thin pipeline.
+
+## Email Integrity Rules
+- NEVER create, accept, or stage placeholder emails (e.g. `placeholder-{uuid}@discovery.internal`, `@discovered.local`, or any fabricated email).
+- If an email cannot be found through the enrichment waterfall (FindyMail -> Prospeo -> Kitt -> BounceBan verification), store email as null.
+- People with null emails are NEVER saved to the Person table — they are discarded during promotion.
+- Only people with verified valid emails (emailVerificationStatus = "valid") enter the system.
+- The enrichment waterfall handles email finding and verification automatically — agents do NOT generate emails themselves.
+- If a discovery source returns person data without an email, the enrichment waterfall will attempt to find and verify one. If it fails, the person is discarded.
+
 ## Quality Gates
 
 After every discovery search, BEFORE promoting results, the agent MUST run quality assessment and report to the admin.

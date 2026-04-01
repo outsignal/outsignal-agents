@@ -13,7 +13,8 @@
 import { runApifyActor } from "../../apify/client";
 import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaAiArk } from "../aiark-email";
-import { enrichViaLeadMagic } from "../leadmagic-email";
+import { enrichViaKitt } from "../kitt-email";
+import { verifyDiscoveredEmails } from "../verify-email";
 import type {
   DiscoveryAdapter,
   DiscoveryFilter,
@@ -217,8 +218,11 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
     let costUsd = people.length * this.estimatedCostPerResult;
 
     // ---------------------------------------------------------------------------
-    // Fallback enrichment waterfall for people without emails
+    // Fallback enrichment waterfall for people without emails + verification
     // ---------------------------------------------------------------------------
+
+    // Track AI Ark email indices for skipping re-verification
+    const aiArkEmailIndices = new Set<number>();
 
     // Stage 1: Prospeo fallback for people without email
     const needsEnrich = people.filter((p) => !p.email);
@@ -229,16 +233,34 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
       // Stage 2: AI Ark fallback
       const stillNeedsEmail = people.filter((p) => !p.email);
       if (stillNeedsEmail.length > 0) {
+        const beforeAiArk = people.map((p) => p.email);
         const aiarkResult = await enrichViaAiArk(people);
         costUsd += aiarkResult.costUsd;
 
-        // Stage 3: LeadMagic fallback
+        for (let idx = 0; idx < people.length; idx++) {
+          if (!beforeAiArk[idx] && people[idx].email) {
+            aiArkEmailIndices.add(idx);
+          }
+        }
+
+        // Stage 3: Kitt fallback (replaces LeadMagic)
         const finalCheck = people.filter((p) => !p.email);
         if (finalCheck.length > 0) {
-          const lmResult = await enrichViaLeadMagic(people);
-          costUsd += lmResult.costUsd;
+          const kittResult = await enrichViaKitt(people);
+          costUsd += kittResult.costUsd;
         }
       }
+    }
+
+    // Stage 4: Verify all emails via BounceBan
+    // Leads Finder emails also need verification. AI Ark emails skip (pre-verified).
+    const emailsToVerify = people.filter((p, idx) => p.email && !aiArkEmailIndices.has(idx));
+    if (emailsToVerify.length > 0) {
+      console.log(
+        `[leads-finder] Verifying ${emailsToVerify.length} emails via BounceBan`,
+      );
+      const verifyResult = await verifyDiscoveredEmails(people, aiArkEmailIndices);
+      costUsd += verifyResult.costUsd;
     }
 
     return {

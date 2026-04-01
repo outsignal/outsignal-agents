@@ -31,7 +31,8 @@ import { z } from "zod";
 import type { DiscoveredPersonResult, DiscoveryAdapter, DiscoveryFilter, DiscoveryResult } from "../types";
 import { enrichViaAiArk } from "../aiark-email";
 import { bulkEnrichPeople } from "../bulk-enrich";
-import { enrichViaLeadMagic } from "../leadmagic-email";
+import { enrichViaKitt } from "../kitt-email";
+import { verifyDiscoveredEmails } from "../verify-email";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
@@ -574,15 +575,27 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
     const hasMore = totalElements > 0 ? fetchedSoFar < totalElements : people.length === size;
     const nextPageToken = hasMore ? String(page + 1) : undefined;
 
-    // Three-stage email enrichment waterfall:
-    // 1. AI Ark native email finding (uses sourceId from search results)
+    // Three-stage email enrichment waterfall + verification:
+    // 1. AI Ark native email finding (uses sourceId — emails are BounceBan-verified at source)
     // 2. Prospeo bulk-enrich fallback for anyone still without an email
-    // 3. LeadMagic fallback for anyone still without an email
+    // 3. Kitt find fallback for anyone still without an email (replaces LeadMagic)
+    // 4. Verify all non-AI-Ark emails via BounceBan (AI Ark emails skip — already verified)
     let enrichCost = 0;
     if (people.length > 0) {
+      // Track which indices got emails from AI Ark (pre-verified, skip re-verification)
+      const aiArkEmailIndices = new Set<number>();
+
       // Stage 1: AI Ark /export/single for people with sourceId
+      const beforeAiArk = people.map((p) => p.email);
       const aiArkResult = await enrichViaAiArk(people);
       enrichCost += aiArkResult.costUsd;
+
+      // Record indices that got emails from AI Ark
+      for (let idx = 0; idx < people.length; idx++) {
+        if (!beforeAiArk[idx] && people[idx].email) {
+          aiArkEmailIndices.add(idx);
+        }
+      }
 
       // Stage 2: Prospeo fallback for people still missing email
       const needsProspeo = people.filter((p) => !p.email);
@@ -594,14 +607,24 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
         enrichCost += prospeoResult.costUsd;
       }
 
-      // Stage 3: LeadMagic fallback for people still missing email
-      const needsLeadMagic = people.filter((p) => !p.email);
-      if (needsLeadMagic.length > 0) {
+      // Stage 3: Kitt fallback for people still missing email
+      const needsKitt = people.filter((p) => !p.email);
+      if (needsKitt.length > 0) {
         console.log(
-          `[aiark-search] ${needsLeadMagic.length} still without email after AI Ark + Prospeo — falling back to LeadMagic`,
+          `[aiark-search] ${needsKitt.length} still without email after AI Ark + Prospeo — falling back to Kitt`,
         );
-        const leadMagicResult = await enrichViaLeadMagic(people);
-        enrichCost += leadMagicResult.costUsd;
+        const kittResult = await enrichViaKitt(people);
+        enrichCost += kittResult.costUsd;
+      }
+
+      // Stage 4: Verify all non-AI-Ark emails via BounceBan
+      const emailsToVerify = people.filter((p, idx) => p.email && !aiArkEmailIndices.has(idx));
+      if (emailsToVerify.length > 0) {
+        console.log(
+          `[aiark-search] Verifying ${emailsToVerify.length} non-AI-Ark emails via BounceBan`,
+        );
+        const verifyResult = await verifyDiscoveredEmails(people, aiArkEmailIndices);
+        enrichCost += verifyResult.costUsd;
       }
     }
 

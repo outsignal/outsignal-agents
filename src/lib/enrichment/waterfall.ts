@@ -1,10 +1,12 @@
 /**
  * Waterfall enrichment orchestrators.
  *
- * enrichEmail: AI Ark (person data) → FindyMail → Prospeo → LeadMagic (cheapest-first).
+ * enrichEmail: AI Ark (person data) → FindyMail → Prospeo → Kitt (cheapest-first).
  *   AI Ark runs first as a person-data step (fills jobTitle, company, location, etc.).
- *   Then FindyMail → Prospeo → LeadMagic run in cheapest-first order to find the email.
- *   Stops at the first email found (from any step).
+ *   Then FindyMail → Prospeo → Kitt run in cheapest-first order to find the email.
+ *   Each found email is verified via BounceBan (+ Kitt fallback for unknowns).
+ *   If verification fails, the email is rejected and the next provider is tried.
+ *   Only verified-valid emails are accepted and saved.
  * enrichCompany: Tries AI Ark → Firecrawl in order, stopping at first success with data.
  *
  * Both functions apply:
@@ -20,13 +22,15 @@ import { recordEnrichment } from "./log";
 import { checkDailyCap, incrementDailySpend } from "./costs";
 import { mergePersonData, mergeCompanyData } from "./merge";
 import { prospeoAdapter } from "./providers/prospeo";
-import { leadmagicAdapter } from "./providers/leadmagic";
 import { findymailAdapter } from "./providers/findymail";
+import { kittAdapter } from "./providers/kitt";
 import { aiarkAdapter } from "./providers/aiark";
 import { aiarkPersonAdapter } from "./providers/aiark-person";
 import { firecrawlCompanyAdapter } from "./providers/firecrawl-company";
 import { classifyIndustry, classifyJobTitle, classifyCompanyName } from "@/lib/normalizer";
 import { isRateLimited } from "@/lib/http-error";
+import { verifyEmail as bouncebanVerify } from "@/lib/verification/bounceban";
+import { verifyEmail as kittVerify } from "@/lib/verification/kitt";
 import type { Provider, EmailAdapterInput, EmailAdapter, CompanyAdapter, PersonAdapter, PersonProviderResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +62,70 @@ const CIRCUIT_BREAKER_THRESHOLD = 5;
 const MAX_RETRIES = 3;
 
 // ---------------------------------------------------------------------------
+// Email verification helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify a found email via BounceBan, with Kitt as fallback for unknown results.
+ *
+ * Returns true if the email is valid (should be accepted).
+ * Returns false if the email is invalid/risky/undeliverable (should be rejected).
+ *
+ * Flow:
+ *   1. BounceBan verify → "valid" → accept (true)
+ *   2. BounceBan verify → "unknown" → Kitt verify fallback
+ *      - Kitt "valid" → accept (true)
+ *      - Kitt anything else → reject (false)
+ *   3. BounceBan verify → "invalid"/"risky"/"catch_all" → reject (false)
+ *   4. BounceBan error → treat as unknown → Kitt fallback
+ */
+async function verifyFoundEmail(
+  email: string,
+  personId: string,
+): Promise<boolean> {
+  try {
+    const bbResult = await bouncebanVerify(email, personId);
+
+    if (bbResult.status === "valid" || bbResult.status === "valid_catch_all") {
+      return true; // verified deliverable
+    }
+
+    if (bbResult.status === "unknown") {
+      // BounceBan inconclusive — try Kitt as fallback verifier
+      console.log(`[waterfall] BounceBan returned unknown for ${email} — trying Kitt verify`);
+      try {
+        const kittResult = await kittVerify(email, personId);
+        if (kittResult.status === "valid") {
+          return true; // Kitt says valid
+        }
+        console.warn(`[waterfall] Kitt verify returned ${kittResult.status} for ${email} — rejecting`);
+        return false;
+      } catch (kittErr) {
+        console.warn(`[waterfall] Kitt verify error for ${email}:`, kittErr);
+        return false; // both verifiers failed — reject
+      }
+    }
+
+    // invalid, risky, catch_all — reject
+    console.warn(`[waterfall] BounceBan returned ${bbResult.status} for ${email} — rejecting`);
+    return false;
+  } catch (err) {
+    // BounceBan error — try Kitt as fallback
+    console.warn(`[waterfall] BounceBan error for ${email}:`, err, "— trying Kitt fallback");
+    try {
+      const kittResult = await kittVerify(email, personId);
+      if (kittResult.status === "valid") {
+        return true;
+      }
+      return false;
+    } catch (kittErr) {
+      console.warn(`[waterfall] Kitt verify also failed for ${email}:`, kittErr);
+      return false; // both verifiers unavailable — reject to be safe
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // enrichEmail
 // ---------------------------------------------------------------------------
 
@@ -69,16 +137,17 @@ interface EmailProvider {
 const EMAIL_PROVIDERS: EmailProvider[] = [
   { adapter: findymailAdapter, name: "findymail" },  // $0.001 — cheapest first
   { adapter: prospeoAdapter, name: "prospeo" },      // $0.002
-  { adapter: leadmagicAdapter, name: "leadmagic" },  // $0.005 — most expensive last
+  { adapter: kittAdapter, name: "kitt-find" },       // $0.005 — replaces LeadMagic (cancelled)
 ];
 
 /**
  * Run the email enrichment waterfall for a person.
  *
- * Tries FindyMail → Prospeo → LeadMagic (cheapest-first). Stops at the first
- * provider that returns a non-null email. When no LinkedIn URL is present,
- * FindyMail is skipped (requires LinkedIn URL) and only Prospeo and LeadMagic
- * are attempted.
+ * Tries FindyMail → Prospeo → Kitt (cheapest-first). Each found email is
+ * verified via BounceBan before acceptance. If BounceBan returns "unknown",
+ * Kitt verify is used as fallback. Invalid/risky emails are rejected and
+ * the waterfall continues to the next provider. Only verified-valid emails
+ * are saved. When no LinkedIn URL is present, FindyMail is skipped.
  *
  * Throws "DAILY_CAP_HIT" when the daily cost cap is reached — the queue
  * processor catches this and pauses the job until midnight UTC.
@@ -222,9 +291,18 @@ export async function enrichEmail(
             }
           }
 
-          // If AI Ark returned an email, treat as waterfall success — stop here
+          // If AI Ark returned an email, verify it before accepting
           if (aiarkResult.email) {
-            return;
+            const verified = await verifyFoundEmail(aiarkResult.email, personId);
+            if (verified) {
+              return; // verified valid — waterfall success
+            }
+            // Verification failed — null out the email and continue to email-finding waterfall
+            console.warn(`[waterfall] AI Ark email ${aiarkResult.email} failed verification for person ${personId} — continuing waterfall`);
+            await prisma.person.update({
+              where: { id: personId },
+              data: { email: null },
+            });
           }
         } else {
           // API call succeeded but no data returned
@@ -248,11 +326,12 @@ export async function enrichEmail(
   }
 
   // ---------------------------------------------------------------------------
-  // Email-finding waterfall: FindyMail → Prospeo → LeadMagic (cheapest-first)
+  // Email-finding waterfall: FindyMail → Prospeo → Kitt (cheapest-first)
+  // Each found email is verified before acceptance. Invalid → try next provider.
   // ---------------------------------------------------------------------------
 
   // FindyMail requires a LinkedIn URL (endpoint: /api/search/linkedin).
-  // When no LinkedIn URL is present, skip FindyMail and try Prospeo + LeadMagic.
+  // When no LinkedIn URL is present, skip FindyMail and try Prospeo + Kitt.
   const providers = input.linkedinUrl
     ? EMAIL_PROVIDERS
     : EMAIL_PROVIDERS.filter(p => p.name !== "findymail");
@@ -333,7 +412,31 @@ export async function enrichEmail(
       continue; // try next provider
     }
 
-    // --- Email found — write and normalize ---
+    // --- Email found — verify before accepting ---
+    // Record the finder cost and success regardless of verification outcome
+    await incrementDailySpend(name, result.costUsd);
+    await recordEnrichment({
+      entityId: personId,
+      entityType: "person",
+      provider: name,
+      status: "success",
+      fieldsWritten: result.email ? ["email"] : [],
+      costUsd: result.costUsd,
+      rawResponse: result.rawResponse,
+      workspaceSlug,
+    });
+    breaker.consecutiveFailures.set(name, 0);
+
+    // Verify the found email via BounceBan (+ Kitt fallback for unknowns)
+    const emailValid = await verifyFoundEmail(result.email, personId);
+
+    if (!emailValid) {
+      // Verification failed — reject this email, continue to next provider
+      console.warn(`[waterfall] ${name} email ${result.email} failed verification for person ${personId} — trying next provider`);
+      continue;
+    }
+
+    // --- Verified valid — write person data and normalize ---
     const personData: Parameters<typeof mergePersonData>[1] = {
       email: result.email,
     };
@@ -345,24 +448,9 @@ export async function enrichEmail(
 
     const fieldsWritten = await mergePersonData(personId, personData);
 
-    await incrementDailySpend(name, result.costUsd);
-    await recordEnrichment({
-      entityId: personId,
-      entityType: "person",
-      provider: name,
-      status: "success",
-      fieldsWritten,
-      costUsd: result.costUsd,
-      rawResponse: result.rawResponse,
-      workspaceSlug,
-    });
-    breaker.consecutiveFailures.set(name, 0);
-
     // --- Run normalizers inline ---
-    // Re-fetch the updated person to get current field values
     const updatedPerson = await prisma.person.findUnique({ where: { id: personId } });
     if (updatedPerson) {
-      // Normalize job title
       if (updatedPerson.jobTitle) {
         try {
           const titleResult = await classifyJobTitle(updatedPerson.jobTitle);
@@ -370,7 +458,6 @@ export async function enrichEmail(
             const normalizedUpdates: Record<string, unknown> = {
               jobTitle: titleResult.canonical,
             };
-            // Store seniority in enrichmentData JSON (no dedicated seniority column)
             const existing = updatedPerson.enrichmentData
               ? (() => {
                   try {
@@ -394,7 +481,6 @@ export async function enrichEmail(
         }
       }
 
-      // Normalize company name
       if (fieldsWritten.includes("company") && updatedPerson.company) {
         try {
           const normalizedName = await classifyCompanyName(updatedPerson.company);
@@ -410,7 +496,7 @@ export async function enrichEmail(
       }
     }
 
-    return; // first email wins — stop waterfall
+    return; // verified email — waterfall success
   }
 }
 

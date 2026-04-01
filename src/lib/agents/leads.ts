@@ -536,7 +536,7 @@ export const leadsTools = {
         .array(z.string())
         .optional()
         .describe("Free-text keywords"),
-      limit: z.number().default(25).describe("Results per page (max 100)"),
+      limit: z.number().default(100).describe("Results per page (max 100)"),
       pageToken: z
         .string()
         .optional()
@@ -647,7 +647,7 @@ export const leadsTools = {
       yearsExperienceMax: z.number().optional().describe("Max years of experience"),
       limit: z
         .number()
-        .default(25)
+        .default(100)
         .describe("Results per page (fixed at 25 by Prospeo)"),
       pageToken: z
         .string()
@@ -745,7 +745,7 @@ export const leadsTools = {
       departments: z.array(z.string()).optional().describe("Person departments (may have limited support)"),
       limit: z
         .number()
-        .default(25)
+        .default(100)
         .describe("Results per page (max 100)"),
       pageToken: z
         .string()
@@ -860,7 +860,7 @@ export const leadsTools = {
         .describe("Funding stages (e.g., ['seed', 'series_a', 'series_b'])"),
       limit: z
         .number()
-        .default(25)
+        .default(100)
         .describe("Number of leads to fetch (no pagination — all returned in one batch)"),
     }),
     execute: async (params) => {

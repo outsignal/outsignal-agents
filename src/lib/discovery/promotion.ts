@@ -7,7 +7,9 @@
  *   3. Name + company fuzzy match (Levenshtein at 0.85 threshold)
  *
  * Non-duplicates are promoted to the Person table with a PersonWorkspace junction record.
- * Leads without email are promoted with email=null (schema allows nullable email).
+ * Leads without a verified email are DISCARDED (not promoted) — email verification
+ * happens during discovery enrichment, so null email means all providers failed to
+ * find a valid email for this person.
  * Promoted leads are enqueued for full-waterfall enrichment via the EnrichmentJob queue.
  * Duplicate records are marked status='duplicate' with personId set (no promotedAt — duplicates are free for quota).
  */
@@ -24,6 +26,8 @@ export interface PromotionResult {
   promoted: number;
   /** Number of DiscoveredPerson records marked as duplicates */
   duplicates: number;
+  /** Number of DiscoveredPerson records discarded (no valid email) */
+  discarded: number;
   /** Up to 5 sample names of duplicate records (for display) */
   duplicateNames: string[];
   /** Person IDs of newly promoted leads */
@@ -329,6 +333,7 @@ export async function deduplicateAndPromote(
   const promotedIds: string[] = [];
   const duplicatePersonIds: string[] = [];
   const duplicateNames: string[] = [];
+  let discardedCount = 0;
   const now = new Date();
 
   // --- Intra-batch dedup (cross-source within the same discovery run) ---
@@ -413,6 +418,18 @@ export async function deduplicateAndPromote(
   for (let i = 0; i < staged.length; i++) {
     if (skipIndices.has(i)) continue; // already handled as intra-batch dupe
     const dp = staged[i];
+
+    // Discard people with no email — email verification happens during discovery
+    // enrichment, so null email means no provider found a valid email for this person.
+    if (!dp.email) {
+      await prisma.discoveredPerson.update({
+        where: { id: dp.id },
+        data: { status: "discarded" },
+      });
+      discardedCount++;
+      continue;
+    }
+
     const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps);
 
     if (existingPersonId) {
@@ -454,6 +471,12 @@ export async function deduplicateAndPromote(
     }
   }
 
+  if (discardedCount > 0) {
+    console.log(
+      `[promotion] Discarded ${discardedCount} people with no valid email`,
+    );
+  }
+
   // Enqueue enrichment for all newly promoted leads
   const enrichmentJobId = await triggerEnrichmentForPeople(
     promotedIds,
@@ -463,6 +486,7 @@ export async function deduplicateAndPromote(
   return {
     promoted: promotedIds.length,
     duplicates: duplicatePersonIds.length,
+    discarded: discardedCount,
     duplicateNames,
     promotedIds,
     enrichmentJobId,
