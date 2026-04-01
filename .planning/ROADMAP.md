@@ -678,3 +678,15 @@ Plans:
 Plans:
 - [ ] 59-01-PLAN.md — Core memory read system: 3-layer context loading + runner.ts injection
 - [ ] 59-02-PLAN.md — Malformed memory data cleanup + appendToMemory write validation
+
+### Phase 60: Intelligence Closed Loop
+
+**Goal:** Close the feedback loop: reply data -> analysis -> memory -> better copy. Populate outbound copy on replies, run cross-workspace analysis, write findings to agent memory files, fix chat.ts memory gap.
+**Requirements**: [INTEL-01, INTEL-02, INTEL-03, INTEL-04, INTEL-05, INTEL-06, INTEL-07]
+**Depends on:** Phase 59
+**Plans:** 3 plans
+
+Plans:
+- [ ] 60-01-PLAN.md — Outbound copy lookup utility + backfill script + process-reply EB API fallback
+- [ ] 60-02-PLAN.md — Chat.ts memory fix + reply analysis module (per-workspace and cross-workspace)
+- [ ] 60-03-PLAN.md — Run analysis pipeline, write to memory files, sync script for future automation
