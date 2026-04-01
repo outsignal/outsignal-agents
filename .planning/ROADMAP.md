@@ -138,7 +138,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 ### v9.0 Agent Memory & Intelligence
 
-- [ ] **Phase 59: Agent Memory Read System** - Fix broken memory read: load 3-layer context (system-wide + cross-client + workspace) into every agent session. Agents must compound — learn from past campaigns, know current system state, improve over time.
+- [x] **Phase 59: Agent Memory Read System** - Fix broken memory read: load 3-layer context (system-wide + cross-client + workspace) into every agent session. Agents must compound — learn from past campaigns, know current system state, improve over time. (completed 2026-04-01)
 
 ## Phase Details
 

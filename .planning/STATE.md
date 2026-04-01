@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Make agent team produce campaign-ready output without manual QA — expert lead sourcing, first-time-right copy, validated pipeline.
-**Current focus:** v8.0 Phase 54.1 — Agent Memory Write-Back
+**Current focus:** v8.0 Phase 59 — Agent Memory Read System
 
 ## Current Position
 
-Phase: 55 of 58 (Validator Agent)
-Plan: 0 of N complete
-Status: Ready for next phase
-Last activity: 2026-03-30 — 54.1-02 per-agent onComplete hooks (writer, leads, campaign, research)
+Phase: 59 of 59 (Agent Memory Read System)
+Plan: 1 of 2 complete
+Status: In progress
+Last activity: 2026-04-01 — 59-01 memory read functions + runner.ts injection
 
-Progress: [███░░░░░░░] ~30% (3/7 phases)
+Progress: [████░░░░░░] ~40% (4/7 phases)
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Progress: [███░░░░░░░] ~30% (3/7 phases)
 - Trend: Stable
 
 *Updated after each plan completion*
+| 59    | 01   | 3min     | 2     | 2     |
 | Phase 59 P02 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
@@ -71,6 +72,9 @@ Key v8.0 pre-milestone decisions:
 - [Phase 54.1]: Writer/campaign -> campaigns.md, leads/research -> learnings.md (per governance rules)
 - [Phase 54.1]: Campaign hook skips noisy list/get/unknown actions to avoid filling 200-line cap
 - [Phase 59]: Memory files (.nova/memory/) are gitignored by design -- cleanup is local-only, isValidEntry() guard in source prevents future corruption
+- [Phase 59-01]: Memory loaded in parallel via Promise.all for all 3 layers
+- [Phase 59-01]: XML-style tags for context delimitation, centralized injection in runner.ts
+- [Phase 59-01]: Seed-only files detected via hasRealEntries() regex and skipped
 
 ### Pending Todos
 
@@ -88,5 +92,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-01
-Stopped at: Completed 59-02-PLAN.md -- Phase 59 complete, memory read system + write validation shipped
+Stopped at: Completed 59-01-PLAN.md -- memory read functions + runner.ts injection, ready for 59-02
 Resume file: None
