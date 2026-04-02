@@ -147,25 +147,29 @@ async function checkAiArk(): Promise<ProviderBalance> {
   const apiKey = process.env.AIARK_API_KEY;
   if (!apiKey) return { provider: "AI Ark", status: "error", creditsRemaining: null, details: "AIARK_API_KEY not set", thresholds: null };
 
+  const thresholds = { warning: 2000, critical: 500 };
   const { signal, clear } = makeController();
   try {
-    const res = await fetch("https://api.ai-ark.com/api/developer-portal/v1/companies", {
-      method: "POST",
+    const res = await fetch("https://api.ai-ark.com/api/developer-portal/v1/payments/credits", {
       headers: {
         "X-TOKEN": apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ filter: { domain: ["google.com"] }, page: 0, limit: 1 }),
       signal,
     });
 
-    if (res.status === 402 || res.status === 403) {
-      return { provider: "AI Ark", status: "critical", creditsRemaining: 0, details: "Credits exhausted (API returned 402/403)", thresholds: null };
+    if (!res.ok) {
+      return { provider: "AI Ark", status: "error", creditsRemaining: null, details: `API returned ${res.status}`, thresholds: null };
     }
-    if (res.ok) {
-      return { provider: "AI Ark", status: "ok", creditsRemaining: null, details: "API responding (no balance endpoint available)", thresholds: null };
-    }
-    return { provider: "AI Ark", status: "error", creditsRemaining: null, details: `Unexpected status ${res.status}`, thresholds: null };
+    const data = await res.json();
+    const remaining: number = data.total ?? 0;
+    return {
+      provider: "AI Ark",
+      status: statusFromCredits(remaining, thresholds.warning, thresholds.critical),
+      creditsRemaining: remaining,
+      details: `${remaining} credits remaining`,
+      thresholds,
+    };
   } catch (err: unknown) {
     return { provider: "AI Ark", status: "error", creditsRemaining: null, details: `Fetch failed: ${(err as Error).message}`, thresholds: null };
   } finally {
