@@ -50,13 +50,22 @@ export class KeepaliveManager {
     const activeSenders = senders.filter((s) => s.sessionStatus === "active");
 
     for (const sender of activeSenders) {
-      // Initialize state for new senders
+      // Initialize state for new senders (e.g. after worker restart)
       if (!this.state.has(sender.id)) {
+        const lastKeepaliveAge = sender.lastKeepaliveAt
+          ? now - new Date(sender.lastKeepaliveAt).getTime()
+          : Infinity;
+        const needsImmediateKeepalive = lastKeepaliveAge > 4 * 60 * 60 * 1000; // >4h or never
+
         this.state.set(sender.id, {
-          nextKeepaliveAt: now + this.getInterval(),
+          nextKeepaliveAt: needsImmediateKeepalive ? 0 : now + this.getInterval(),
           lastEndpoint: ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)],
         });
-        continue; // Don't keepalive immediately on first sight
+
+        if (!needsImmediateKeepalive) {
+          continue; // Recent keepalive — schedule normally
+        }
+        // Fall through to run keepalive immediately
       }
 
       const senderState = this.state.get(sender.id)!;

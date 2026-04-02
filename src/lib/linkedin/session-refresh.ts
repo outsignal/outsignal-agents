@@ -5,7 +5,7 @@ import { notifySessionDrop } from "@/lib/notifications";
  * Find active senders with stale LinkedIn sessions and flag them as expired.
  *
  * Detection priority:
- * 1. If lastKeepaliveAt exists and is >8h old → expired (keepalive should fire every 4-6h)
+ * 1. If lastKeepaliveAt exists and is >12h old → expired (keepalive should fire every 4-6h)
  * 2. Fallback: if updatedAt >6 days old → expired (legacy check)
  *
  * Extracted from /api/cron/session-refresh so it can be called
@@ -15,7 +15,7 @@ export async function refreshStaleSessions(): Promise<{
   count: number;
   senders: string[];
 }> {
-  const EIGHT_HOURS_AGO = new Date(Date.now() - 8 * 60 * 60 * 1000);
+  const TWELVE_HOURS_AGO = new Date(Date.now() - 12 * 60 * 60 * 1000);
   const SIX_DAYS_AGO = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
 
   // Find active senders with stale keepalive OR stale updatedAt
@@ -25,8 +25,8 @@ export async function refreshStaleSessions(): Promise<{
       sessionStatus: "active",
       sessionData: { not: null },
       OR: [
-        // Keepalive-based: has keepalive tracking but it's stale (>8h)
-        { lastKeepaliveAt: { not: null, lt: EIGHT_HOURS_AGO } },
+        // Keepalive-based: has keepalive tracking but it's stale (>12h)
+        { lastKeepaliveAt: { not: null, lt: TWELVE_HOURS_AGO } },
         // Legacy fallback: no keepalive tracking, session older than 6 days
         { lastKeepaliveAt: null, updatedAt: { lt: SIX_DAYS_AGO } },
       ],
@@ -52,7 +52,7 @@ export async function refreshStaleSessions(): Promise<{
   const flagged: string[] = [];
   for (const sender of staleSenders) {
     const staleSource = sender.lastKeepaliveAt
-      ? `keepalive stale: last at ${sender.lastKeepaliveAt.toISOString()}, >8h ago`
+      ? `keepalive stale: last at ${sender.lastKeepaliveAt.toISOString()}, >12h ago`
       : `session last updated ${sender.updatedAt.toISOString()}, >6 days ago`;
 
     await prisma.sender.update({

@@ -28,6 +28,7 @@ import { getPlatformBalance, estimateSearchCost, reportSearchCost } from "@/lib/
 import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
 import { resolveCompanyDomains } from "@/lib/discovery/domain-resolver";
 import type { DiscoveredPersonResult } from "@/lib/discovery/types";
+import { expandJobTitles } from "@/lib/discovery/title-expansion";
 import { prisma } from "@/lib/db";
 
 // --- Leads Agent Tools ---
@@ -571,8 +572,12 @@ export const leadsTools = {
         .describe("Pagination token from previous search"),
     }),
     execute: async (params) => {
+      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
+      if (params.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (apollo): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      }
       const filters = {
-        jobTitles: params.jobTitles,
+        jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,
@@ -683,8 +688,12 @@ export const leadsTools = {
         .describe("Pagination token from previous search"),
     }),
     execute: async (params) => {
+      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
+      if (params.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (prospeo): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      }
       const filters = {
-        jobTitles: params.jobTitles,
+        jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,
@@ -781,8 +790,12 @@ export const leadsTools = {
         .describe("Pagination token"),
     }),
     execute: async (params) => {
+      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
+      if (params.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (aiark): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      }
       const filters = {
-        jobTitles: params.jobTitles,
+        jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,
@@ -892,8 +905,12 @@ export const leadsTools = {
         .describe("Number of leads to fetch (no pagination — all returned in one batch)"),
     }),
     execute: async (params) => {
+      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
+      if (params.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (leads-finder): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      }
       const filters = {
-        jobTitles: params.jobTitles,
+        jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,

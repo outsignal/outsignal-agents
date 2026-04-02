@@ -56,7 +56,7 @@ export interface IPRoyalOrder {
   quantity: number;
   proxy_data: {
     ports: { socks5: number; "http|https": number };
-    proxies: string[];
+    proxies: (string | Record<string, unknown>)[];
   };
   auto_extend_settings: {
     order_id: number;
@@ -235,13 +235,35 @@ export class IPRoyalClient {
 export function parseProxyCredentials(order: IPRoyalOrder): ProxyCredentials | null {
   if (!order.proxy_data?.proxies?.length) return null;
 
-  const parts = order.proxy_data.proxies[0].split(":");
+  const proxy = order.proxy_data.proxies[0];
+
+  // Handle object format (IPRoyal API sometimes returns objects instead of strings)
+  if (typeof proxy === "object" && proxy !== null) {
+    const obj = proxy as Record<string, unknown>;
+    const host = String(obj.ip ?? obj.host ?? "");
+    const port = Number(obj.port ?? order.proxy_data.ports["http|https"] ?? 0);
+    const username = String(obj.username ?? "");
+    const password = String(obj.password ?? "");
+    if (!host || !port || !username || !password) return null;
+    return {
+      host,
+      port,
+      username,
+      password,
+      url: `http://${username}:${password}@${host}:${port}`,
+    };
+  }
+
+  // Handle string format: "host:port:username:password"
+  if (typeof proxy !== "string") return null;
+
+  const parts = proxy.split(":");
   if (parts.length < 4) return null;
 
   const host = parts[0];
   const port = order.proxy_data.ports["http|https"] || Number(parts[1]);
   const username = parts[2];
-  const password = parts[3];
+  const password = parts.slice(3).join(":");
 
   return {
     host,
