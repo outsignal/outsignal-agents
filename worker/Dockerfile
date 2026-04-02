@@ -22,8 +22,8 @@ RUN npm ci --omit=dev
 
 # Install Chromium + headless shell + OS-level deps (libglib, libnss, libatk, etc.)
 # Must run AFTER npm ci so npx resolves the correct playwright version.
-# Playwright 1.58+ uses chromium_headless_shell for headless: true launches.
-RUN npx playwright install chromium --with-deps \
+# agent-browser uses headless:true which needs chromium-headless-shell (separate from chromium).
+RUN npx playwright install chromium chromium-headless-shell --with-deps \
     && rm -rf /tmp/* /var/tmp/*
 
 # Copy compiled output from build stage
