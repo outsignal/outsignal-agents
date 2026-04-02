@@ -39,7 +39,7 @@ async function checkProspeo(): Promise<ProviderBalance> {
       signal,
     });
     const data = await res.json();
-    const remaining: number = data.remaining_credits ?? 0;
+    const remaining: number = data.response?.remaining_credits ?? data.remaining_credits ?? 0;
     const thresholds = { warning: 500, critical: 100 };
     return {
       provider: "Prospeo",
@@ -66,7 +66,7 @@ async function checkFindyMail(): Promise<ProviderBalance> {
       signal,
     });
     const data = await res.json();
-    const emailCredits: number = data.email_credits ?? 0;
+    const emailCredits: number = data.credits ?? data.email_credits ?? 0;
     const verifierCredits: number = data.verifier_credits ?? 0;
     const thresholds = { warning: 500, critical: 100 };
     return {
@@ -95,8 +95,8 @@ async function checkApify(): Promise<ProviderBalance> {
     });
     const data = await res.json();
     const limits = data.data ?? data;
-    const monthlyUsageUsd: number = limits.currentMonthlyUsageUsd ?? limits.current?.monthlyUsageUsd ?? 0;
-    const monthlyLimitUsd: number = limits.monthlyUsageLimitUsd ?? limits.limits?.monthlyUsageUsd ?? 0;
+    const monthlyUsageUsd: number = limits.current?.monthlyUsageUsd ?? limits.currentMonthlyUsageUsd ?? 0;
+    const monthlyLimitUsd: number = limits.limits?.maxMonthlyUsageUsd ?? limits.monthlyUsageLimitUsd ?? 0;
     const remainingUsd = Math.max(0, monthlyLimitUsd - monthlyUsageUsd);
     const thresholds = { warning: 5, critical: 1 };
     return {
