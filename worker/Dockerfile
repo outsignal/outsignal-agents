@@ -19,8 +19,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Install Playwright Chromium matching the version agent-browser depends on
-RUN npx playwright install chromium --with-deps
+# Install Playwright browsers matching agent-browser's playwright-core version
+# Use --with-deps to get OS-level libs (libglib, libnss, libatk, etc.)
+RUN npx playwright install --with-deps
 
 # Copy compiled output from build stage
 COPY --from=build /app/dist ./dist
