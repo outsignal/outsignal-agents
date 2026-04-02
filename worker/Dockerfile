@@ -27,9 +27,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Install Chromium headless shell (what agent-browser uses with headless:true)
-# Uses the playwright version from node_modules (installed by npm ci above)
-RUN npx playwright install chromium-headless-shell \
+# Install Chromium headless shell matching playwright-core 1.58.2 (agent-browser dep).
+# Must use playwright@1.58.2 explicitly — npx without version fetches latest which
+# installs browser binaries incompatible with the playwright-core in node_modules.
+RUN npx playwright@1.58.2 install chromium-headless-shell \
     && rm -rf /tmp/* /var/tmp/*
 
 # Copy compiled output from build stage
