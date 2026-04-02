@@ -1,8 +1,107 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { emailguard } from "@/lib/emailguard/client";
 
 export const maxDuration = 30;
+
+// ---------------------------------------------------------------------------
+// EmailGuard blacklist check (real-time, runs on every Monty poll)
+// ---------------------------------------------------------------------------
+
+interface BlacklistCheckResult {
+  status: "ok" | "critical" | "degraded";
+  domainsChecked: number;
+  blacklistedDomains: Array<{
+    domain: string;
+    blacklists: string[];
+  }>;
+  error?: string;
+}
+
+async function runEmailGuardBlacklistCheck(): Promise<BlacklistCheckResult> {
+  if (!process.env.EMAILGUARD_API_TOKEN) {
+    return {
+      status: "degraded",
+      domainsChecked: 0,
+      blacklistedDomains: [],
+      error: "EMAILGUARD_API_TOKEN not configured",
+    };
+  }
+
+  try {
+    // 1. List all registered domains
+    const domains = await emailguard.listDomains();
+
+    if (domains.length === 0) {
+      return { status: "ok", domainsChecked: 0, blacklistedDomains: [] };
+    }
+
+    // 2. Run ad-hoc blacklist check on each (500ms throttle handled by client)
+    const blacklistedDomains: Array<{ domain: string; blacklists: string[] }> =
+      [];
+
+    const results = await Promise.allSettled(
+      domains.map(async (domain) => {
+        const check = await emailguard.runAdHocBlacklist(domain.name);
+        const listed: string[] = [];
+        if (check.blacklists) {
+          for (const bl of check.blacklists) {
+            if (bl.listed) listed.push(bl.name);
+          }
+        }
+        return { domain: domain.name, listed };
+      }),
+    );
+
+    let checkedCount = 0;
+    const errors: string[] = [];
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        checkedCount++;
+        if (result.value.listed.length > 0) {
+          blacklistedDomains.push({
+            domain: result.value.domain,
+            blacklists: result.value.listed,
+          });
+        }
+      } else {
+        errors.push(String(result.reason));
+      }
+    }
+
+    // If ALL checks failed, report degraded
+    if (checkedCount === 0 && errors.length > 0) {
+      return {
+        status: "degraded",
+        domainsChecked: 0,
+        blacklistedDomains: [],
+        error: `All ${errors.length} blacklist checks failed: ${errors[0]}`,
+      };
+    }
+
+    // If some checks failed, still report what we got but note partial failure
+    const partialError =
+      errors.length > 0
+        ? `${errors.length} of ${domains.length} checks failed`
+        : undefined;
+
+    return {
+      status: blacklistedDomains.length > 0 ? "critical" : "ok",
+      domainsChecked: checkedCount,
+      blacklistedDomains,
+      error: partialError,
+    };
+  } catch (err) {
+    return {
+      status: "degraded",
+      domainsChecked: 0,
+      blacklistedDomains: [],
+      error: `EmailGuard API error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
 
 export async function GET(request: NextRequest) {
   // --- Auth (same pattern as /api/people/enrich) ---
@@ -45,6 +144,9 @@ export async function GET(request: NextRequest) {
   const todayEnd = new Date();
   todayEnd.setUTCHours(23, 59, 59, 999);
   const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // Kick off EmailGuard blacklist check in parallel with workspace queries
+  const blacklistCheckPromise = runEmailGuardBlacklistCheck();
 
   const workspaceResults = await Promise.all(
     workspaces.map(async (ws) => {
@@ -257,8 +359,12 @@ export async function GET(request: NextRequest) {
     }),
   );
 
+  // Await the blacklist check (started in parallel above)
+  const blacklistCheck = await blacklistCheckPromise;
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     workspaces: workspaceResults,
+    blacklistCheck,
   });
 }

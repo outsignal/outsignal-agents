@@ -64,7 +64,7 @@ const ProspeoSearchResultSchema = z
         current_job_title: z.string().optional().nullable(),
         seniority: z.string().optional().nullable(),
         linkedin_url: z.string().optional().nullable(),
-        email: z.string().optional().nullable(),
+        email: z.unknown().optional().nullable(),
         location: z.unknown().optional().nullable(),
       })
       .passthrough(),
@@ -166,7 +166,7 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
         if (VALID_PROSPEO_VALUES.has(size)) return [size];
         return PROSPEO_HEADCOUNT_MAP[size] ?? [size];
       });
-      f.company_headcount_range = { include: [...new Set(mapped)] };
+      f.company_headcount_range = [...new Set(mapped)];
     }
 
     if (filters.companyDomains?.length) {
@@ -312,8 +312,8 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
         lastName: result.person.last_name ?? undefined,
         jobTitle: result.person.current_job_title ?? result.person.job_title ?? undefined,
         linkedinUrl: result.person.linkedin_url ?? undefined,
-        // Extract email when present (Prospeo does return emails for some contacts)
-        email: result.person.email ?? undefined,
+        // Extract email when present (Prospeo may return string or object)
+        email: typeof result.person.email === "string" ? result.person.email : undefined,
         location: typeof result.person.location === "string"
           ? result.person.location
           : result.person.location && typeof result.person.location === "object"
