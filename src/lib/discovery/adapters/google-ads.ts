@@ -13,9 +13,18 @@
  */
 
 import { runApifyActor } from "@/lib/apify/client";
+import type { RateLimits } from "../rate-limit";
 
 const ACTOR_ID = "lexis-solutions/google-ads-scraper";
 const TRANSPARENCY_BASE = "https://adstransparency.google.com";
+
+/** Adyntel / Google Ads Transparency adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,
+  delayBetweenCalls: 0,
+  maxConcurrent: 1,
+  dailyCap: 900,
+};
 
 // ---------------------------------------------------------------------------
 // Types

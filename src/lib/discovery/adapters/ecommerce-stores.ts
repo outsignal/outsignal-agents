@@ -12,8 +12,17 @@
  */
 
 import { runApifyActor } from "@/lib/apify/client";
+import type { RateLimits } from "../rate-limit";
 
 const ACTOR_ID = "ecommerce_leads/store-leads-14m-e-commerce-leads";
+
+/** Ecommerce Stores adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 100,
+  delayBetweenCalls: 0,
+  maxConcurrent: 1,
+  dailyCap: null,
+};
 
 // ---------------------------------------------------------------------------
 // Types

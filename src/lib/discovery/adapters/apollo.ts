@@ -22,10 +22,19 @@ import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaAiArk } from "../aiark-email";
 import { enrichViaKitt } from "../kitt-email";
 import { verifyDiscoveredEmails } from "../verify-email";
+import { stripWwwAll, type RateLimits } from "../rate-limit";
 
 const APOLLO_ENDPOINT =
   "https://api.apollo.io/api/v1/mixed_people/api_search";
 const TIMEOUT_MS = 15_000;
+
+/** Apollo adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 25,
+  delayBetweenCalls: 200,
+  maxConcurrent: 1,
+  dailyCap: null,
+};
 
 function getApiKey(): string {
   const key = process.env.APOLLO_API_KEY;
@@ -158,7 +167,8 @@ export class ApolloAdapter implements DiscoveryAdapter {
     }
 
     if (filters.companyDomains?.length) {
-      body.organization_domains = filters.companyDomains;
+      // Strip www. prefixes before sending to API
+      body.organization_domains = stripWwwAll(filters.companyDomains);
     }
 
     const controller = new AbortController();

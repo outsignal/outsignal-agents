@@ -21,6 +21,15 @@ import Firecrawl from "@mendable/firecrawl-js";
 import { z } from "zod";
 import { PROVIDER_COSTS } from "../../enrichment/costs";
 import type { DiscoveredPersonResult } from "../types";
+import type { RateLimits } from "../rate-limit";
+
+/** Firecrawl Directory adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,
+  delayBetweenCalls: 1000,
+  maxConcurrent: 1,
+  dailyCap: null,
+};
 
 /** Safety timeout — directory pages can be large. */
 const EXTRACT_TIMEOUT_MS = 45_000;

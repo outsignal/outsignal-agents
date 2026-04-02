@@ -29,6 +29,8 @@ import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/chann
 import { resolveCompanyDomains } from "@/lib/discovery/domain-resolver";
 import type { DiscoveredPersonResult } from "@/lib/discovery/types";
 import { expandJobTitles } from "@/lib/discovery/title-expansion";
+import { applyDiscoveryFilters, getUncoveredDomains } from "@/lib/discovery/filters";
+import { stripWwwAll } from "@/lib/discovery/rate-limit";
 import { prisma } from "@/lib/db";
 
 // --- Leads Agent Tools ---
@@ -576,13 +578,25 @@ export const leadsTools = {
       if (params.jobTitles && expandedTitles) {
         console.log(`[leads] Title expansion (apollo): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
       }
+
+      // Pre-search domain coverage check: skip already-covered domains
+      let companyDomains = params.companyDomains;
+      if (companyDomains?.length) {
+        companyDomains = stripWwwAll(companyDomains);
+        companyDomains = await getUncoveredDomains(params.workspaceSlug, companyDomains);
+        if (companyDomains.length === 0) {
+          console.log(`[leads] All domains already covered for workspace ${params.workspaceSlug} — skipping Apollo search`);
+          return { source: "apollo", found: 0, staged: 0, duplicatesSkipped: 0, runId: "", totalAvailable: 0, hasMore: false, costUsd: 0, people: [] };
+        }
+      }
+
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,
         companySizes: params.companySizes,
-        companyDomains: params.companyDomains,
+        companyDomains,
         keywords: params.keywords,
       };
       const result = await apolloAdapter.search(
@@ -590,23 +604,30 @@ export const leadsTools = {
         params.limit,
         params.pageToken,
       );
-      const { staged, runId } = await stageDiscoveredPeople({
-        people: result.people,
+
+      // Apply ICP title + company-type filters before staging
+      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+
+      const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
+        people: passed,
         discoverySource: "apollo",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
-        rawResponses: result.people.map(() => result.rawResponse),
+        rawResponses: passed.map(() => result.rawResponse),
       });
       return {
         source: "apollo",
         found: result.people.length,
         staged,
+        duplicatesSkipped,
+        titleFiltered,
+        companyFiltered,
         runId,
         totalAvailable: result.totalAvailable,
         hasMore: result.hasMore,
         nextPageToken: result.nextPageToken,
         costUsd: result.costUsd,
-        people: result.people.slice(0, 10).map((p) => ({
+        people: passed.slice(0, 10).map((p) => ({
           name: [p.firstName, p.lastName].filter(Boolean).join(" "),
           title: p.jobTitle,
           company: p.company,
@@ -692,13 +713,25 @@ export const leadsTools = {
       if (params.jobTitles && expandedTitles) {
         console.log(`[leads] Title expansion (prospeo): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
       }
+
+      // Pre-search domain coverage check
+      let companyDomains = params.companyDomains;
+      if (companyDomains?.length) {
+        companyDomains = stripWwwAll(companyDomains);
+        companyDomains = await getUncoveredDomains(params.workspaceSlug, companyDomains);
+        if (companyDomains.length === 0) {
+          console.log(`[leads] All domains already covered for workspace ${params.workspaceSlug} — skipping Prospeo search`);
+          return { source: "prospeo", found: 0, staged: 0, duplicatesSkipped: 0, runId: "", totalAvailable: 0, hasMore: false, costUsd: 0, people: [] };
+        }
+      }
+
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,
         companySizes: params.companySizes,
-        companyDomains: params.companyDomains,
+        companyDomains,
         keywords: params.keywords,
         companyKeywords: params.companyKeywords,
         fundingStages: params.fundingStages,
@@ -722,8 +755,12 @@ export const leadsTools = {
         params.pageToken,
       );
       await incrementDailySpend("prospeo-search", result.costUsd);
-      const { staged, runId } = await stageDiscoveredPeople({
-        people: result.people,
+
+      // Apply ICP title + company-type filters before staging
+      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+
+      const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
+        people: passed,
         discoverySource: "prospeo",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
@@ -732,12 +769,15 @@ export const leadsTools = {
         source: "prospeo",
         found: result.people.length,
         staged,
+        duplicatesSkipped,
+        titleFiltered,
+        companyFiltered,
         runId,
         totalAvailable: result.totalAvailable,
         hasMore: result.hasMore,
         nextPageToken: result.nextPageToken,
         costUsd: result.costUsd,
-        people: result.people.slice(0, 10).map((p) => ({
+        people: passed.slice(0, 10).map((p) => ({
           name: [p.firstName, p.lastName].filter(Boolean).join(" "),
           title: p.jobTitle,
           company: p.company,
@@ -794,6 +834,18 @@ export const leadsTools = {
       if (params.jobTitles && expandedTitles) {
         console.log(`[leads] Title expansion (aiark): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
       }
+
+      // Pre-search domain coverage check
+      let companyDomains = params.companyDomains;
+      if (companyDomains?.length) {
+        companyDomains = stripWwwAll(companyDomains);
+        companyDomains = await getUncoveredDomains(params.workspaceSlug, companyDomains);
+        if (companyDomains.length === 0) {
+          console.log(`[leads] All domains already covered for workspace ${params.workspaceSlug} — skipping AI Ark search`);
+          return { source: "aiark", found: 0, staged: 0, duplicatesSkipped: 0, runId: "", totalAvailable: 0, hasMore: false, costUsd: 0, people: [] };
+        }
+      }
+
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
@@ -801,7 +853,7 @@ export const leadsTools = {
         locations: params.locations,
         companySizes: params.companySizes,
         keywords: params.keywords,
-        companyDomains: params.companyDomains,
+        companyDomains,
         companyKeywords: params.companyKeywords,
         revenueMin: params.revenueMin,
         revenueMax: params.revenueMax,
@@ -821,8 +873,12 @@ export const leadsTools = {
         params.pageToken,
       );
       await incrementDailySpend("aiark-search", result.costUsd);
-      const { staged, runId } = await stageDiscoveredPeople({
-        people: result.people,
+
+      // Apply ICP title + company-type filters before staging
+      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+
+      const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
+        people: passed,
         discoverySource: "aiark",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
@@ -831,12 +887,15 @@ export const leadsTools = {
         source: "aiark",
         found: result.people.length,
         staged,
+        duplicatesSkipped,
+        titleFiltered,
+        companyFiltered,
         runId,
         totalAvailable: result.totalAvailable,
         hasMore: result.hasMore,
         nextPageToken: result.nextPageToken,
         costUsd: result.costUsd,
-        people: result.people.slice(0, 10).map((p) => ({
+        people: passed.slice(0, 10).map((p) => ({
           name: [p.firstName, p.lastName].filter(Boolean).join(" "),
           title: p.jobTitle,
           company: p.company,
@@ -909,13 +968,25 @@ export const leadsTools = {
       if (params.jobTitles && expandedTitles) {
         console.log(`[leads] Title expansion (leads-finder): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
       }
+
+      // Pre-search domain coverage check
+      let companyDomains = params.companyDomains;
+      if (companyDomains?.length) {
+        companyDomains = stripWwwAll(companyDomains);
+        companyDomains = await getUncoveredDomains(params.workspaceSlug, companyDomains);
+        if (companyDomains.length === 0) {
+          console.log(`[leads] All domains already covered for workspace ${params.workspaceSlug} — skipping Leads Finder search`);
+          return { source: "apify-leads-finder", found: 0, staged: 0, duplicatesSkipped: 0, runId: "", totalAvailable: 0, hasMore: false, costUsd: 0, people: [] };
+        }
+      }
+
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
         industries: params.industries,
         locations: params.locations,
         companySizes: params.companySizes,
-        companyDomains: params.companyDomains,
+        companyDomains,
         companyKeywords: params.companyKeywords,
         departments: params.departments,
         revenueMin: params.revenueMin,
@@ -927,8 +998,12 @@ export const leadsTools = {
         params.limit,
       );
       await incrementDailySpend("apify-leads-finder", result.costUsd);
-      const { staged, runId } = await stageDiscoveredPeople({
-        people: result.people,
+
+      // Apply ICP title + company-type filters before staging
+      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+
+      const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
+        people: passed,
         discoverySource: "apify-leads-finder",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
@@ -937,11 +1012,14 @@ export const leadsTools = {
         source: "apify-leads-finder",
         found: result.people.length,
         staged,
+        duplicatesSkipped,
+        titleFiltered,
+        companyFiltered,
         runId,
         totalAvailable: result.totalAvailable,
         hasMore: result.hasMore,
         costUsd: result.costUsd,
-        people: result.people.slice(0, 10).map((p) => ({
+        people: passed.slice(0, 10).map((p) => ({
           name: [p.firstName, p.lastName].filter(Boolean).join(" "),
           title: p.jobTitle,
           company: p.company,
@@ -981,8 +1059,12 @@ export const leadsTools = {
           companyDomain: r.companyDomain,
           location: r.address,
         }));
-        const { staged, runId } = await stageDiscoveredPeople({
-          people,
+
+        // Apply company-type filters before staging (no title filter for company-level results)
+        const { passed: companyPassed, companyFiltered } = applyDiscoveryFilters(people);
+
+        const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
+          people: companyPassed,
           discoverySource: "serper-maps",
           workspaceSlug: params.workspaceSlug,
           searchQuery: params.query,
@@ -991,6 +1073,8 @@ export const leadsTools = {
           source: "serper-maps",
           found: results.length,
           staged,
+          duplicatesSkipped,
+          companyFiltered,
           runId,
           costUsd,
           places: results.slice(0, 10).map((r) => ({
@@ -1042,8 +1126,12 @@ export const leadsTools = {
     execute: async (params) => {
       const result = await firecrawlDirectoryAdapter.extract(params.url);
       await incrementDailySpend("firecrawl-extract", result.costUsd);
-      const { staged, runId } = await stageDiscoveredPeople({
-        people: result.people,
+
+      // Apply ICP title + company-type filters before staging
+      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+
+      const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
+        people: passed,
         discoverySource: "firecrawl",
         workspaceSlug: params.workspaceSlug,
         searchQuery: params.url,
@@ -1053,6 +1141,9 @@ export const leadsTools = {
         source: "firecrawl",
         found: result.validCount,
         staged,
+        duplicatesSkipped,
+        titleFiltered,
+        companyFiltered,
         skipped: result.skippedCount,
         runId,
         costUsd: result.costUsd,

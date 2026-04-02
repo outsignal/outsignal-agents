@@ -34,9 +34,18 @@ import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaKitt } from "../kitt-email";
 import { verifyDiscoveredEmails } from "../verify-email";
 import { CreditExhaustionError, isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
+import { stripWwwAll, type RateLimits } from "../rate-limit";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
+
+/** AI Ark adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 100,
+  delayBetweenCalls: 200,
+  maxConcurrent: 1,
+  dailyCap: null,
+};
 
 /** Auth header name — confirmed working via live testing. */
 const AUTH_HEADER_NAME = "X-TOKEN";
@@ -284,7 +293,8 @@ function buildRequestBody(
 
   // companyDomains → account.domain (should work — same any/include pattern)
   if (filters.companyDomains?.length) {
-    account.domain = { any: { include: filters.companyDomains } };
+    // Strip www. prefixes before sending to API
+    account.domain = { any: { include: stripWwwAll(filters.companyDomains) } };
   }
 
   // revenue → account.revenue (RANGE filter)

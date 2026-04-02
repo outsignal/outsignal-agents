@@ -12,8 +12,17 @@
  */
 
 import { runApifyActor } from "@/lib/apify/client";
+import type { RateLimits } from "../rate-limit";
 
 const ACTOR_ID = "compass/crawler-google-places";
+
+/** Google Maps adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 20,
+  delayBetweenCalls: 0,
+  maxConcurrent: 1,
+  dailyCap: null,
+};
 
 // ---------------------------------------------------------------------------
 // Types

@@ -17,8 +17,18 @@
  * on rate limit for upstream retry handling.
  */
 
+import type { RateLimits } from "../rate-limit";
+
 const SERPER_ENDPOINT = "https://google.serper.dev/search";
 const REQUEST_TIMEOUT_MS = 10_000;
+
+/** Serper adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 100,
+  delayBetweenCalls: 0,
+  maxConcurrent: 50,
+  dailyCap: null,
+};
 
 function getApiKey(): string {
   const key = process.env.SERPER_API_KEY;

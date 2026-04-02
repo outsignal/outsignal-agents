@@ -13,8 +13,17 @@
  */
 
 import { runApifyActor } from "@/lib/apify/client";
+import type { RateLimits } from "../rate-limit";
 
 const ACTOR_ID = "automation-lab/tech-stack-detector";
+
+/** BuiltWith / tech-stack-detector rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,
+  delayBetweenCalls: 0,
+  maxConcurrent: 1,
+  dailyCap: 500,
+};
 
 // ---------------------------------------------------------------------------
 // Types

@@ -15,6 +15,7 @@ import { bulkEnrichPeople } from "../bulk-enrich";
 import { enrichViaAiArk } from "../aiark-email";
 import { enrichViaKitt } from "../kitt-email";
 import { verifyDiscoveredEmails } from "../verify-email";
+import { stripWwwAll, type RateLimits } from "../rate-limit";
 import type {
   DiscoveryAdapter,
   DiscoveryFilter,
@@ -23,6 +24,14 @@ import type {
 } from "../types";
 
 const ACTOR_ID = "code_crafter/leads-finder";
+
+/** Apify Leads Finder rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,
+  delayBetweenCalls: 0,
+  maxConcurrent: 3,
+  dailyCap: null,
+};
 
 // ---------------------------------------------------------------------------
 // Mapping helpers
@@ -180,7 +189,8 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
     }
 
     if (filters.companyDomains?.length) {
-      input.company_domain = filters.companyDomains;
+      // Strip www. prefixes before sending to API
+      input.company_domain = stripWwwAll(filters.companyDomains);
     }
 
     if (filters.revenueMin) {

@@ -27,9 +27,18 @@ import { enrichViaAiArk } from "../aiark-email";
 import { enrichViaKitt } from "../kitt-email";
 import { verifyDiscoveredEmails } from "../verify-email";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
+import { stripWwwAll, type RateLimits } from "../rate-limit";
 
 const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
+
+/** Prospeo adapter rate limits */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 500,
+  delayBetweenCalls: 200,
+  maxConcurrent: 1,
+  dailyCap: null,
+};
 
 /** Cost of 1 Prospeo credit in USD (1 credit per /search-person request) */
 const PROSPEO_SEARCH_CREDIT_COST = 0.002;
@@ -55,6 +64,7 @@ const ProspeoSearchResultSchema = z
         current_job_title: z.string().optional().nullable(),
         seniority: z.string().optional().nullable(),
         linkedin_url: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
         location: z.unknown().optional().nullable(),
       })
       .passthrough(),
@@ -160,10 +170,12 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.companyDomains?.length) {
+      // Strip www. prefixes before sending to API
+      const cleanDomains = stripWwwAll(filters.companyDomains);
       // Prospeo uses a nested `company.websites` filter, not `company_domain`
       f.company = {
         ...(f.company as Record<string, unknown> | undefined),
-        websites: { include: filters.companyDomains },
+        websites: { include: cleanDomains },
       };
     }
 
@@ -258,6 +270,17 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
           (err as any).status = 429;
           throw err;
         }
+        // Handle 400 with NO_RESULTS gracefully — it's not an error, just empty results
+        if (res.status === 400) {
+          const errorBody = await res.json().catch(() => null);
+          if (errorBody && (errorBody as Record<string, unknown>).error_code === "NO_RESULTS") {
+            console.log("[ProspeoSearchAdapter] No results found (NO_RESULTS) — returning empty");
+            return { people: [], costUsd: PROSPEO_SEARCH_CREDIT_COST, rawResponse: errorBody };
+          }
+          throw new Error(
+            `Prospeo Search API error: ${res.status} ${res.statusText}`
+          );
+        }
         throw new Error(
           `Prospeo Search API error: ${res.status} ${res.statusText}`
         );
@@ -289,6 +312,8 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
         lastName: result.person.last_name ?? undefined,
         jobTitle: result.person.current_job_title ?? result.person.job_title ?? undefined,
         linkedinUrl: result.person.linkedin_url ?? undefined,
+        // Extract email when present (Prospeo does return emails for some contacts)
+        email: result.person.email ?? undefined,
         location: typeof result.person.location === "string"
           ? result.person.location
           : result.person.location && typeof result.person.location === "object"
@@ -297,8 +322,6 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
         company: result.company?.name ?? undefined,
         companyDomain: result.company?.domain ?? undefined,
         sourceId: result.person.person_id,
-        // email is always undefined — Prospeo search does not return emails
-        // Use /enrich-person (Phase 17) with person_id for email lookup
       })
     );
 
