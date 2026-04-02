@@ -1,48 +1,33 @@
-FROM node:22-slim
-
-# agent-browser uses playwright-core which needs these browser dependencies.
-# No VNC/Xvfb needed — agent-browser manages its own headless Chromium.
-RUN apt-get update && apt-get install -y \
-    fonts-liberation \
-    libglib2.0-0 \
-    libnss3 \
-    libnspr4 \
-    libdbus-1-3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libatspi2.0-0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libx11-xcb1 \
-    dbus \
-    procps \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install agent-browser CLI globally and its bundled browser
-RUN npm install -g agent-browser && agent-browser install
+# ---------- build stage ----------
+FROM node:22-slim AS build
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm install
-RUN npx playwright install --with-deps chromium
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc
-RUN npm prune --production
 
-# Expose the session server port (Railway assigns PORT dynamically)
+# ---------- production stage ----------
+FROM node:22-slim
+
+WORKDIR /app
+
+# Install Playwright Chromium + all OS-level dependencies (libglib, libnss, libatk, etc.)
+RUN npx playwright install chromium --with-deps
+
+# Copy production dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy compiled output from build stage
+COPY --from=build /app/dist ./dist
+
+ENV NODE_ENV=production
+ENV PATH="/app/node_modules/.bin:$PATH"
+
 EXPOSE 8080
 
 CMD ["node", "dist/index.js"]
