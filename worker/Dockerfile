@@ -15,13 +15,16 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Copy production dependencies first (so playwright install uses the correct version)
+# Production dependencies first — playwright install must use the version
+# that agent-browser depends on (playwright-core 1.58.x)
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Install Playwright browsers matching agent-browser's playwright-core version
-# Use --with-deps to get OS-level libs (libglib, libnss, libatk, etc.)
-RUN npx playwright install --with-deps
+# Install Chromium + headless shell + OS-level deps (libglib, libnss, libatk, etc.)
+# Must run AFTER npm ci so npx resolves the correct playwright version.
+# Playwright 1.58+ uses chromium_headless_shell for headless: true launches.
+RUN npx playwright install chromium --with-deps \
+    && rm -rf /tmp/* /var/tmp/*
 
 # Copy compiled output from build stage
 COPY --from=build /app/dist ./dist
