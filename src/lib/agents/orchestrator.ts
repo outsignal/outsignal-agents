@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { writeFileSync } from "fs";
 import { randomUUID } from "crypto";
+import { execSync } from "child_process";
 import { runResearchAgent } from "./research";
 import { runWriterAgent } from "./writer";
 import { runLeadsAgent } from "./leads";
@@ -411,6 +412,35 @@ const delegateToOnboarding = tool({
   },
 });
 
+// --- Client Sweep Tool ---
+
+const clientSweep = tool({
+  description:
+    "Run a comprehensive sweep of a workspace to get the full picture before starting any work. Checks DB records, local data files, client docs, memory, KB, scripts, senders, campaigns, and more. MUST be called before any workspace-specific task.",
+  inputSchema: z.object({
+    workspaceSlug: z.string().describe("The workspace slug to sweep"),
+  }),
+  execute: async ({ workspaceSlug }) => {
+    try {
+      const result = execSync(
+        `npx tsx scripts/cli/client-sweep.ts ${workspaceSlug}`,
+        {
+          cwd: process.env.PROJECT_ROOT ?? process.cwd(),
+          encoding: "utf8",
+          timeout: 30000,
+        }
+      );
+      return JSON.parse(result);
+    } catch (error) {
+      return {
+        ok: false,
+        error:
+          error instanceof Error ? error.message : "Client sweep failed",
+      };
+    }
+  },
+});
+
 // --- Existing Dashboard Tools (kept from src/lib/chat/tools.ts) ---
 
 const dashboardTools = {
@@ -776,6 +806,8 @@ const dashboardTools = {
 // --- Combined Tools for Orchestrator ---
 
 export const orchestratorTools = {
+  // Client sweep (run before any workspace-specific task)
+  clientSweep,
   // Delegation tools (specialist agents)
   delegateToResearch,
   delegateToLeads,
@@ -794,7 +826,10 @@ export const orchestratorTools = {
 
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are the Outsignal AI Orchestrator — the central coordinator for a team of specialist AI agents that manage cold outbound campaigns.
 
-You have TWO types of tools:
+You have THREE types of tools:
+
+## 0. Client Sweep (MANDATORY before workspace work)
+- **clientSweep**: Run a comprehensive sweep of a workspace before starting ANY workspace-specific task. Returns DB records, local data files, client docs, memory context, sender health, campaigns, target lists, scripts, and KB matches. ALWAYS call this first when working on a specific workspace.
 
 ## 1. Delegation Tools (for complex tasks)
 Use these to delegate work to specialist agents:

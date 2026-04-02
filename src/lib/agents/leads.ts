@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { execSync } from "child_process";
 import * as operations from "@/lib/leads/operations";
 import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
@@ -32,6 +33,33 @@ import { prisma } from "@/lib/db";
 // --- Leads Agent Tools ---
 
 export const leadsTools = {
+  clientSweep: tool({
+    description:
+      "Run a comprehensive sweep of a workspace to get the full picture before starting any work. Checks DB records, local data files, client docs, memory, KB, scripts, senders, campaigns, and more. MUST be called before any workspace-specific task.",
+    inputSchema: z.object({
+      workspaceSlug: z.string().describe("The workspace slug to sweep"),
+    }),
+    execute: async ({ workspaceSlug }) => {
+      try {
+        const result = execSync(
+          `npx tsx scripts/cli/client-sweep.ts ${workspaceSlug}`,
+          {
+            cwd: process.env.PROJECT_ROOT ?? process.cwd(),
+            encoding: "utf8",
+            timeout: 30000,
+          }
+        );
+        return JSON.parse(result);
+      } catch (error) {
+        return {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "Client sweep failed",
+        };
+      }
+    },
+  }),
+
   searchPeople: tool({
     description:
       "Search people in the database by criteria. Use for: finding leads by title, vertical, company, location, ICP score. Searches are FREE (no credit cost). Returns up to 25 results per page with ICP scores where available.",
