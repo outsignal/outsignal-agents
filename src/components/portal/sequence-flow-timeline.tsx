@@ -128,11 +128,13 @@ function DelayPill({
 
 function EmailCard({
   step,
+  variantLabel,
   expanded,
   onToggle,
   showChannel,
 }: {
   step: EmailTimelineStep;
+  variantLabel: string;
   expanded: boolean;
   onToggle: () => void;
   showChannel: boolean;
@@ -146,8 +148,8 @@ function EmailCard({
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-full bg-[#635BFF]/10 text-[#635BFF] text-[10px] font-semibold">
-            {step.position}
+          <span className="shrink-0 inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-full bg-[#635BFF]/10 text-[#635BFF] text-[10px] font-semibold">
+            {variantLabel}
           </span>
           <span className="font-medium text-sm truncate">
             {step.subject || "(No subject)"}
@@ -206,11 +208,13 @@ function EmailCard({
 
 function LinkedInCard({
   step,
+  variantLabel,
   expanded,
   onToggle,
   showChannel,
 }: {
   step: LinkedInTimelineStep;
+  variantLabel: string;
   expanded: boolean;
   onToggle: () => void;
   showChannel: boolean;
@@ -234,8 +238,8 @@ function LinkedInCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-full bg-[#635BFF]/10 text-[#635BFF] text-[10px] font-semibold">
-            {step.position}
+          <span className="shrink-0 inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-full bg-[#635BFF]/10 text-[#635BFF] text-[10px] font-semibold">
+            {variantLabel}
           </span>
           <span className="text-blue-600 shrink-0">{meta.icon}</span>
           <span className="font-medium text-sm">{meta.label}</span>
@@ -283,7 +287,7 @@ function LinkedInCard({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SequenceFlowTimeline({ steps }: Props) {
-  const [expandedStep, setExpandedStep] = useState<number | null>(null);
+  const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   if (steps.length === 0) {
     return (
@@ -298,8 +302,31 @@ export function SequenceFlowTimeline({ steps }: Props) {
     sorted.some((s) => s.type === "email") &&
     sorted.some((s) => s.type === "linkedin");
 
-  function toggle(position: number) {
-    setExpandedStep((prev) => (prev === position ? null : position));
+  // Count how many steps share each position to determine variant labels
+  const positionCounts = new Map<number, number>();
+  for (const step of sorted) {
+    positionCounts.set(step.position, (positionCounts.get(step.position) ?? 0) + 1);
+  }
+
+  // Assign variant letters (A, B, C...) for positions with multiple steps
+  const VARIANT_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const positionIndexTracker = new Map<number, number>();
+
+  const stepsWithLabels = sorted.map((step) => {
+    const count = positionCounts.get(step.position) ?? 1;
+    const variantIdx = positionIndexTracker.get(step.position) ?? 0;
+    positionIndexTracker.set(step.position, variantIdx + 1);
+
+    const variantLabel = count > 1
+      ? `${step.position}${VARIANT_LETTERS[variantIdx] ?? variantIdx}`
+      : `${step.position}`;
+    const uniqueId = `${step.type}-${step.position}-${variantIdx}`;
+
+    return { step, variantLabel, uniqueId, variantIdx };
+  });
+
+  function toggle(uniqueId: string) {
+    setExpandedStep((prev) => (prev === uniqueId ? null : uniqueId));
   }
 
   return (
@@ -318,12 +345,12 @@ export function SequenceFlowTimeline({ steps }: Props) {
           </span>
         </div>
 
-        {sorted.map((step, idx) => {
+        {stepsWithLabels.map(({ step, variantLabel, uniqueId }, idx) => {
           const isFirst = idx === 0;
-          const expanded = expandedStep === step.position;
+          const expanded = expandedStep === uniqueId;
 
           return (
-            <div key={`${step.type}-${step.position}`}>
+            <div key={uniqueId}>
               {/* Delay pill */}
               <DelayPill delayDays={step.delayDays} isFirst={isFirst} />
 
@@ -349,15 +376,17 @@ export function SequenceFlowTimeline({ steps }: Props) {
                 {step.type === "email" ? (
                   <EmailCard
                     step={step}
+                    variantLabel={variantLabel}
                     expanded={expanded}
-                    onToggle={() => toggle(step.position)}
+                    onToggle={() => toggle(uniqueId)}
                     showChannel={isMultiChannel}
                   />
                 ) : (
                   <LinkedInCard
                     step={step}
+                    variantLabel={variantLabel}
                     expanded={expanded}
-                    onToggle={() => toggle(step.position)}
+                    onToggle={() => toggle(uniqueId)}
                     showChannel={isMultiChannel}
                   />
                 )}
