@@ -348,11 +348,13 @@ export function SequenceFlowTimeline({ steps }: Props) {
         {stepsWithLabels.map(({ step, variantLabel, uniqueId }, idx) => {
           const isFirst = idx === 0;
           const expanded = expandedStep === uniqueId;
+          const prevPosition = idx > 0 ? stepsWithLabels[idx - 1].step.position : null;
+          const isNewPosition = prevPosition === null || step.position !== prevPosition;
 
           return (
             <div key={uniqueId}>
-              {/* Delay pill */}
-              <DelayPill delayDays={step.delayDays} isFirst={isFirst} />
+              {/* Delay pill — only show between different positions, not between A/B variants */}
+              {isNewPosition && <DelayPill delayDays={step.delayDays} isFirst={isFirst} />}
 
               {/* Step row */}
               <div className="relative flex items-start gap-3 py-1">
