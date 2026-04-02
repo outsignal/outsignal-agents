@@ -120,10 +120,14 @@ async function checkAdyntel(): Promise<ProviderBalance> {
 
   const { signal, clear } = makeController();
   try {
-    const url = `https://api.adyntel.com/credits_check?email=${encodeURIComponent(email)}&api_key=${encodeURIComponent(apiKey)}`;
-    const res = await fetch(url, { signal });
+    const res = await fetch("https://api.adyntel.com/credits_check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, api_key: apiKey }),
+      signal,
+    });
     const data = await res.json();
-    const remaining: number = data.credits ?? data.remaining_credits ?? data.balance ?? 0;
+    const remaining: number = data.current_credits ?? data.credits ?? 0;
     const thresholds = { warning: 500, critical: 100 };
     return {
       provider: "Adyntel",
