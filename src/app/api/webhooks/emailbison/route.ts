@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { notifyReply } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
 import { cancelActionsForPerson, enqueueAction } from "@/lib/linkedin/queue";
+import { scheduleProfileViewBeforeConnect } from "@/lib/linkedin/pre-warm";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { evaluateSequenceRules } from "@/lib/linkedin/sequencing";
 import { rateLimit } from "@/lib/rate-limit";
@@ -244,6 +245,8 @@ export async function POST(request: NextRequest) {
                 );
 
                 if (sender) {
+                  const actionScheduledFor = new Date(Date.now() + action.delayMinutes * 60 * 1000);
+
                   await enqueueAction({
                     senderId: sender.id,
                     personId: person.id,
@@ -251,10 +254,25 @@ export async function POST(request: NextRequest) {
                     actionType: action.actionType as "connect" | "message" | "profile_view",
                     messageBody: action.messageBody ?? undefined,
                     priority: 5,
-                    scheduledFor: new Date(Date.now() + action.delayMinutes * 60 * 1000),
+                    scheduledFor: actionScheduledFor,
                     campaignName: outsignalCampaign.name,
                     sequenceStepRef: action.sequenceStepRef,
                   });
+
+                  // Pre-warm: schedule a profile_view before connect actions
+                  if (action.actionType === "connect") {
+                    await scheduleProfileViewBeforeConnect({
+                      senderId: sender.id,
+                      personId: person.id,
+                      workspaceSlug: outsignalCampaign.workspaceSlug,
+                      linkedinUrl: person.linkedinUrl,
+                      connectScheduledFor: actionScheduledFor,
+                      campaignName: outsignalCampaign.name,
+                      priority: 5,
+                    }).catch((err) =>
+                      console.warn(`[webhook] Pre-warm profile_view failed for person ${person.id}:`, err),
+                    );
+                  }
                 }
               }
             }

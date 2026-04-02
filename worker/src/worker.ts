@@ -6,7 +6,7 @@
  *   2. Poll /api/linkedin/actions/next
  *   3. Load Voyager cookies from API (or env vars as fallback)
  *   4. Create VoyagerClient per sender and execute actions via HTTP
- *   5. Random delays between actions (30-90s)
+ *   5. Spread delays between actions (evenly across remaining business hours)
  *   6. Report results back via API
  */
 
@@ -18,6 +18,7 @@ import {
   isWithinBusinessHours,
   msUntilBusinessHours,
   getActionDelay,
+  getSpreadDelay,
   getPollDelay,
   sleep,
 } from "./scheduler.js";
@@ -32,6 +33,9 @@ interface SenderConfig {
   proxyUrl: string | null;
   status: string;
   healthStatus: string;
+  dailyConnectionLimit: number;
+  dailyMessageLimit: number;
+  dailyProfileViewLimit: number;
 }
 
 interface ActionItem {
@@ -574,7 +578,7 @@ export class Worker {
     // Get next batch of actions
     let actions: ActionItem[];
     try {
-      actions = await this.api.getNextActions(sender.id, 5);
+      actions = await this.api.getNextActions(sender.id, 2);
     } catch (error) {
       console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
       return;
@@ -664,6 +668,14 @@ export class Worker {
       }
     }
 
+    // Fetch daily usage for spread delay calculation
+    let usageData: Record<string, unknown> | null = null;
+    try {
+      usageData = await this.api.getUsage(sender.id);
+    } catch (err) {
+      console.warn(`[Worker] Failed to fetch usage for ${sender.name}, falling back to fixed delay:`, err);
+    }
+
     // Execute each action with delays between them
     for (let i = 0; i < actions.length; i++) {
       if (!this.running) break;
@@ -683,10 +695,18 @@ export class Worker {
         throw error;
       }
 
-      // Random delay between actions (not after the last one)
+      // Spread delay between actions (not after the last one)
       if (i < actions.length - 1 && this.running) {
-        const delay = getActionDelay();
-        console.log(`[Worker] Waiting ${Math.round(delay / 1000)}s before next action`);
+        const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
+        const delaySec = Math.round(delay / 1000);
+        const dailyLimit = this.getDailyLimitForAction(action.actionType, sender);
+        const usedToday = this.getUsedTodayForAction(action.actionType, usageData);
+        const remaining = Math.max(0, dailyLimit - usedToday - (i + 1));
+        const now = new Date();
+        const hoursLeft = Math.max(0, 18 - (now.getUTCHours() + now.getUTCMinutes() / 60));
+        console.log(
+          `[Worker] Waiting ${delaySec}s before next action (${remaining} actions remaining over ${hoursLeft.toFixed(1)}h)`,
+        );
         await sleep(delay);
       }
     }
@@ -806,6 +826,69 @@ export class Worker {
     const client = new VoyagerClient(cookies.liAt, cookies.jsessionId, sender.proxyUrl ?? undefined);
     this.activeClients.set(sender.id, client);
     return client;
+  }
+
+  /**
+   * Get the daily limit for a given action type from the sender config.
+   */
+  private getDailyLimitForAction(
+    actionType: string,
+    sender: SenderConfig,
+  ): number {
+    switch (actionType) {
+      case "connect":
+      case "connection_request":
+        return sender.dailyConnectionLimit;
+      case "message":
+        return sender.dailyMessageLimit;
+      case "profile_view":
+        return sender.dailyProfileViewLimit;
+      default:
+        return 20; // sensible fallback
+    }
+  }
+
+  /**
+   * Extract today's usage count for an action type from the usage API response.
+   */
+  private getUsedTodayForAction(
+    actionType: string,
+    usageData: Record<string, unknown> | null,
+  ): number {
+    if (!usageData) return 0;
+    switch (actionType) {
+      case "connect":
+      case "connection_request": {
+        const conn = usageData.connections as { sent?: number } | undefined;
+        return conn?.sent ?? 0;
+      }
+      case "message": {
+        const msg = usageData.messages as { sent?: number } | undefined;
+        return msg?.sent ?? 0;
+      }
+      case "profile_view": {
+        const pv = usageData.profileViews as { sent?: number } | undefined;
+        return pv?.sent ?? 0;
+      }
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Calculate spread delay for an action, falling back to getActionDelay() if usage data unavailable.
+   */
+  private calculateSpreadDelay(
+    actionType: string,
+    sender: SenderConfig,
+    usageData: Record<string, unknown> | null,
+  ): number {
+    if (!usageData) return getActionDelay();
+
+    const dailyLimit = this.getDailyLimitForAction(actionType, sender);
+    const usedToday = this.getUsedTodayForAction(actionType, usageData);
+
+    return getSpreadDelay(dailyLimit, usedToday);
   }
 
   /**

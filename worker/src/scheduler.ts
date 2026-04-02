@@ -137,10 +137,51 @@ export function msUntilBusinessHours(config: Partial<ScheduleConfig> = {}): numb
 }
 
 /**
- * Random delay between actions (30-90 seconds) for human-like behaviour.
+ * Calculate delay between actions to spread them evenly across remaining business hours.
+ *
+ * @param dailyLimit - total actions allowed today for this action type
+ * @param usedToday - actions already executed today
+ * @param businessStartHour - start of business hours (UTC), default 8
+ * @param businessEndHour - end of business hours (UTC), default 18
+ * @returns delay in milliseconds, with ±20% random jitter
+ */
+export function getSpreadDelay(
+  dailyLimit: number,
+  usedToday: number,
+  businessStartHour: number = 8,
+  businessEndHour: number = 18,
+): number {
+  const MIN_DELAY = 180_000;   // 3 minutes
+  const MAX_DELAY = 1_800_000; // 30 minutes
+  const FALLBACK_DELAY = 300_000; // 5 minutes
+
+  const remaining = dailyLimit - usedToday;
+  if (remaining <= 0) return FALLBACK_DELAY;
+
+  // Calculate remaining business hours today (UTC)
+  const now = new Date();
+  const currentHourUTC = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const remainingHours = Math.max(0, businessEndHour - currentHourUTC);
+
+  if (remainingHours <= 0) return FALLBACK_DELAY;
+
+  const remainingMs = remainingHours * 60 * 60 * 1000;
+  let interval = remainingMs / remaining;
+
+  // Add ±20% random jitter
+  const jitter = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+  interval = interval * jitter;
+
+  // Clamp to min/max
+  return Math.max(MIN_DELAY, Math.min(MAX_DELAY, interval));
+}
+
+/**
+ * Random delay between actions (3-5 minutes) for human-like behaviour.
+ * Fallback when spread delay data is unavailable.
  */
 export function getActionDelay(): number {
-  return 30_000 + Math.random() * 60_000;
+  return 180_000 + Math.random() * 120_000;
 }
 
 /**

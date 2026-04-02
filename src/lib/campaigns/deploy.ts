@@ -14,6 +14,7 @@
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { enqueueAction } from "@/lib/linkedin/queue";
+import { scheduleProfileViewBeforeConnect } from "@/lib/linkedin/pre-warm";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { getCampaign } from "@/lib/campaigns/operations";
@@ -287,6 +288,21 @@ async function deployLinkedInChannel(
           campaignName: campaign.name,
           sequenceStepRef: `linkedin_${firstStep.position}`,
         });
+
+        // Pre-warm: schedule a profile_view before connect actions
+        if (firstStep.type === "connect" || firstStep.type === "connection_request") {
+          await scheduleProfileViewBeforeConnect({
+            senderId: sender.id,
+            personId: person.id,
+            workspaceSlug,
+            linkedinUrl: person.linkedinUrl,
+            connectScheduledFor: scheduledFor,
+            campaignName: campaign.name,
+            priority: 5,
+          }).catch((err) =>
+            console.warn(`[deploy] Pre-warm profile_view failed for person ${person.id}:`, err),
+          );
+        }
 
         linkedinStepCount++;
       }

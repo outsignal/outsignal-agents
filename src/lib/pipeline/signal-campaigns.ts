@@ -28,6 +28,7 @@ import { scorePersonIcp } from "@/lib/icp/scorer";
 import { addPeopleToList } from "@/lib/leads/operations";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { enqueueAction } from "@/lib/linkedin/queue";
+import { scheduleProfileViewBeforeConnect } from "@/lib/linkedin/pre-warm";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { postMessage } from "@/lib/slack";
 import type { DiscoveryFilter } from "@/lib/discovery/types";
@@ -406,6 +407,8 @@ async function processSingleCampaign(
         if (!sender) continue;
 
         try {
+          const connectScheduledFor = new Date(Date.now() + leadsDeployed * 15 * 60 * 1000);
+
           await enqueueAction({
             senderId: sender.id,
             personId: person.id,
@@ -414,10 +417,25 @@ async function processSingleCampaign(
             messageBody: firstStep.body,
             priority: 3, // Higher priority — signal-triggered is time-sensitive
             // Stagger by 15 minutes per lead to avoid LinkedIn rate limits
-            scheduledFor: new Date(Date.now() + leadsDeployed * 15 * 60 * 1000),
+            scheduledFor: connectScheduledFor,
             campaignName: campaign.name,
             sequenceStepRef: `linkedin_${firstStep.position}`,
           });
+
+          // Pre-warm: schedule a profile_view before connect actions
+          if (firstStep.type === "connect" || firstStep.type === "connection_request") {
+            await scheduleProfileViewBeforeConnect({
+              senderId: sender.id,
+              personId: person.id,
+              workspaceSlug,
+              linkedinUrl: person.linkedinUrl,
+              connectScheduledFor,
+              campaignName: campaign.name,
+              priority: 3,
+            }).catch((err) =>
+              console.warn(`[Pipeline] Pre-warm profile_view failed for person ${person.id}:`, err),
+            );
+          }
         } catch (error) {
           console.error(
             `[Pipeline] Failed to enqueue LinkedIn action for person ${person.id}:`,
