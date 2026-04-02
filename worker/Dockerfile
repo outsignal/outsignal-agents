@@ -15,12 +15,12 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install Playwright Chromium + all OS-level dependencies (libglib, libnss, libatk, etc.)
-RUN npx playwright install chromium --with-deps
-
-# Copy production dependencies
+# Copy production dependencies first (so playwright install uses the correct version)
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
+
+# Install Playwright Chromium matching the version agent-browser depends on
+RUN npx playwright install chromium --with-deps
 
 # Copy compiled output from build stage
 COPY --from=build /app/dist ./dist
