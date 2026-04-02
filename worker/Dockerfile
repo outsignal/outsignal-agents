@@ -13,17 +13,23 @@ RUN npx tsc
 # ---------- production stage ----------
 FROM node:22-slim
 
+# OS deps for Playwright Chromium (must be before playwright install)
+RUN apt-get update && apt-get install -y \
+    fonts-liberation libglib2.0-0 libnss3 libnspr4 libdbus-1-3 \
+    libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
+    libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2 libx11-xcb1 \
+    procps --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Production dependencies first — playwright install must use the version
-# that agent-browser depends on (playwright-core 1.58.x)
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Install Chromium + headless shell + OS-level deps (libglib, libnss, libatk, etc.)
-# Must run AFTER npm ci so npx resolves the correct playwright version.
-# agent-browser uses headless:true which needs chromium-headless-shell (separate from chromium).
-RUN npx playwright install chromium chromium-headless-shell --with-deps \
+# Install Chromium headless shell (what agent-browser uses with headless:true)
+# Uses the playwright version from node_modules (installed by npm ci above)
+RUN npx playwright install chromium-headless-shell \
     && rm -rf /tmp/* /var/tmp/*
 
 # Copy compiled output from build stage
