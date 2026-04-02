@@ -76,22 +76,18 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   try {
     const body = (await req.json()) as {
-      subject?: string;
-      body?: string;
-      from_email?: string;
+      name?: string;
     };
 
-    if (!body.subject || !body.body || !body.from_email) {
+    if (!body.name) {
       return NextResponse.json(
-        { error: "subject, body, and from_email are required" },
+        { error: "name is required" },
         { status: 400 },
       );
     }
 
     const test = await emailguard.createInboxTest({
-      subject: body.subject,
-      body: body.body,
-      from_email: body.from_email,
+      name: body.name,
     });
 
     return NextResponse.json({ test });

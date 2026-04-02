@@ -23,11 +23,7 @@ import {
   computeOverallHealth,
 } from "@/lib/domain-health/dns";
 import type { DnsCheckResult } from "@/lib/domain-health/types";
-import type {
-  SpfResult as EgSpfResult,
-  DkimResult as EgDkimResult,
-  DmarcResult as EgDmarcResult,
-} from "@/lib/emailguard/types";
+// EmailGuard PATCH endpoints return opaque Record<string, unknown> results.
 import { checkBlacklists } from "@/lib/domain-health/blacklist";
 import {
   notifyBlacklistHit,
@@ -307,22 +303,25 @@ async function checkDomain(
         dnsResult = await checkAllDns(domain);
         dnsResult.source = "legacy";
       } else {
-        // Map EmailGuard responses to our internal format
+        // Map EmailGuard PATCH trigger responses to our internal format.
+        // PATCH endpoints return opaque objects — extract what we can,
+        // and fall back to legacy DNS for anything unrecoverable.
         const spf: DnsCheckResult["spf"] =
           egSpf.status === "fulfilled"
             ? {
-                status: (egSpf.value as EgSpfResult).valid ? "pass" : "fail",
-                record: (egSpf.value as EgSpfResult).record,
+                status: (egSpf.value as Record<string, unknown>).valid === true ? "pass" : "fail",
+                record: ((egSpf.value as Record<string, unknown>).record as string) ?? null,
               }
             : { status: "missing", record: null };
 
         let dkim: DnsCheckResult["dkim"];
         if (egDkim.status === "fulfilled") {
-          const egDkimVal = egDkim.value as EgDkimResult;
-          if (egDkimVal.valid) {
+          const egDkimVal = egDkim.value as Record<string, unknown>;
+          if (egDkimVal.valid === true) {
+            const selector = (egDkimVal.selector as string) ?? null;
             dkim = {
               status: "pass",
-              passedSelectors: egDkimVal.selector ? [egDkimVal.selector as string] : [],
+              passedSelectors: selector ? [selector] : [],
             };
           } else {
             // EmailGuard reported DKIM invalid — fallback to legacy DNS checker
@@ -339,15 +338,16 @@ async function checkDomain(
           dkim = { status: "missing", passedSelectors: [] };
         }
 
-        const egDmarcVal = egDmarc.status === "fulfilled" ? (egDmarc.value as EgDmarcResult) : null;
+        const egDmarcVal = egDmarc.status === "fulfilled" ? (egDmarc.value as Record<string, unknown>) : null;
+        const dmarcRecord = (egDmarcVal?.record as string) ?? null;
         const dmarc: DnsCheckResult["dmarc"] = egDmarcVal
           ? {
-              status: egDmarcVal.valid ? "pass" : "fail",
+              status: egDmarcVal.valid === true ? "pass" : "fail",
               policy: (egDmarcVal.policy as "none" | "quarantine" | "reject") ?? null,
-              record: egDmarcVal.record,
-              // EmailGuard doesn't return alignment directives — parse from record if available
-              aspf: egDmarcVal.record?.match(/\baspf=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
-              adkim: egDmarcVal.record?.match(/\badkim=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
+              record: dmarcRecord,
+              // Parse alignment directives from record if available
+              aspf: dmarcRecord?.match(/\baspf=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
+              adkim: dmarcRecord?.match(/\badkim=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
             }
           : { status: "missing", policy: null, record: null, aspf: null, adkim: null };
 
@@ -398,11 +398,18 @@ async function checkDomain(
 
         const egHits: string[] = [];
 
-        if (blResult.status === "fulfilled" && blResult.value.listed) {
-          egHits.push(...blResult.value.lists);
+        if (blResult.status === "fulfilled" && blResult.value.blacklists) {
+          // New API returns blacklists array with { name, listed } entries
+          for (const bl of blResult.value.blacklists) {
+            if (bl.listed) egHits.push(bl.name);
+          }
         }
-        if (surblResult.status === "fulfilled" && surblResult.value.listed) {
-          egHits.push("SURBL");
+        if (surblResult.status === "fulfilled") {
+          // SURBL check created — if it has immediate results, check them
+          const surblVal = surblResult.value as Record<string, unknown>;
+          if (surblVal.listed === true) {
+            egHits.push("SURBL");
+          }
         }
 
         // Log any individual failures but don't block

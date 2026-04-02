@@ -59,12 +59,18 @@ export async function POST(
     // Lazy import to avoid loading client when token is missing
     const { emailguard } = await import("@/lib/emailguard/client");
     const result = await emailguard.checkContentSpam(content);
+    const msg = result.message;
+
+    // Map new API shape to a stable response for the frontend
+    const verdict = msg.is_spam ? "spam" : msg.spam_score > 3 ? "suspicious" : "clean";
 
     return NextResponse.json({
       available: true,
-      score: result.score,
-      verdict: result.verdict,
-      details: result.details,
+      score: msg.spam_score,
+      verdict,
+      details: msg.spam_words,
+      is_spam: msg.is_spam,
+      number_of_spam_words: msg.number_of_spam_words,
     });
   } catch (err) {
     console.error("[POST /api/campaigns/[id]/spam-check] Error:", err);

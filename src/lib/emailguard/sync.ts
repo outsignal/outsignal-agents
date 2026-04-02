@@ -42,7 +42,7 @@ export async function syncDomainsToEmailGuard(): Promise<SyncResult> {
   // 2. Get already-registered domains from EmailGuard
   const existingDomains = await emailguard.listDomains();
   const existingByDomain = new Map(
-    existingDomains.map((d) => [d.domain, d.uuid])
+    existingDomains.map((d) => [d.name, d.uuid])
   );
   console.log(`[emailguard-sync] ${existingDomains.length} domains already registered in EmailGuard`);
 
