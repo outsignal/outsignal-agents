@@ -1,552 +1,452 @@
 # Architecture Research
 
-**Domain:** Agent Quality Overhaul — v8.0 Integration Architecture
-**Researched:** 2026-03-30
-**Confidence:** HIGH — based on direct code inspection of all relevant agent files, rules files, and CLI scripts
+**Domain:** Dev Orchestrator (Monty) — integration with existing Nova agent framework
+**Researched:** 2026-04-02
+**Confidence:** HIGH — based on direct inspection of all existing agent framework files
 
 ---
 
 ## Standard Architecture
 
-### System Overview (Current v7.0 State)
+### System Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        INVOCATION LAYER                              │
-│  Dashboard Chat /api/chat     Claude Code CLI (.claude/skills/)      │
-└───────────────────────────┬──────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│          ORCHESTRATOR — orchestrator.ts (Sonnet 4, 12 steps)         │
-│   delegateToWriter | delegateToLeads | delegateToCampaign | etc.     │
-│   cli-spawn.ts: routes to CLI skill (NOVA_CLI_ENABLED) or runAgent() │
-└────────┬──────────────────┬──────────────────────┬───────────────────┘
-         │                  │                       │
-         ▼                  ▼                       ▼
-  ┌─────────────┐   ┌─────────────┐        ┌──────────────┐
-  │ Writer      │   │ Leads       │        │ Campaign     │
-  │ writer.ts   │   │ leads.ts    │        │ campaign.ts  │
-  │ (API path)  │   │ (API path)  │        │ (API path)   │
-  └──────┬──────┘   └──────┬──────┘        └──────┬───────┘
-         │                 │                       │
-         ▼                 ▼                       ▼
-  ┌──────────────────────────────────────────────────┐
-  │           CLI WRAPPER SCRIPTS (55 scripts)        │
-  │    scripts/cli/   →  dist/cli/  (tsup build)      │
-  │  save-draft.ts  save-sequence.ts  search-*.ts     │
-  │  discovery-plan.ts  discovery-promote.ts  etc.    │
-  └──────────────────────────────────────────────────┘
-         │                 │                       │
-         ▼                 ▼                       ▼
-  ┌──────────────────────────────────────────────────┐
-  │              SHARED TOOL LAYER                    │
-  │  Prisma/PostgreSQL  |  EmailBison API             │
-  │  Discovery Adapters |  KB Store                   │
-  │  copy-quality.ts    |  .nova/memory/{slug}/       │
-  └──────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Entry Points (CLI)                               │
+│                                                                          │
+│   scripts/chat.ts (Nova)          scripts/monty.ts (Monty — new)        │
+│   npm run chat                    npm run monty                          │
+└─────────────────────┬──────────────────────────────────────┬────────────┘
+                      │                                      │
+┌─────────────────────▼──────────────┐  ┌───────────────────▼────────────┐
+│       Nova Orchestrator             │  │      Monty Orchestrator         │
+│   src/lib/agents/orchestrator.ts   │  │  src/lib/agents/dev/           │
+│                                    │  │  dev-orchestrator.ts            │
+│  DOMAIN: workspace slug present    │  │  DOMAIN: codebase changes       │
+│  TOOLS: workspace-scoped only      │  │  TOOLS: dev-scoped only         │
+│  MODEL: claude-opus-4-6            │  │  MODEL: claude-opus-4-6         │
+└─────────────────────┬──────────────┘  └───────────────────┬────────────┘
+                      │                                      │
+┌─────────────────────▼──────────────────────────────────────▼────────────┐
+│                      SHARED INFRASTRUCTURE (minimal changes)              │
+│                                                                           │
+│   src/lib/agents/runner.ts     — runAgent(), AgentRun audit, onComplete  │
+│   src/lib/agents/memory.ts     — loadMemoryContext(), appendToMemory()   │
+│   src/lib/agents/types.ts      — AgentConfig, AgentRunResult interfaces  │
+│   src/lib/agents/load-rules.ts — loadRules() from .claude/rules/         │
+└──────────────────────────────────────────────────────────────────────────┘
+                      │                                      │
+┌─────────────────────▼──────────────┐  ┌───────────────────▼────────────┐
+│       Nova Specialists (unchanged)  │  │      Monty Specialists (new)    │
+│   src/lib/agents/{specialist}.ts   │  │  src/lib/agents/dev/           │
+│                                    │  │  {specialist}.ts               │
+│  research.ts   writer.ts           │  │  backend.ts  frontend.ts       │
+│  leads.ts      campaign.ts         │  │  infra.ts    qa.ts             │
+│  deliverability.ts  intelligence.ts│  │  security.ts                   │
+│  onboarding.ts                     │  │                                 │
+└─────────────────────┬──────────────┘  └───────────────────┬────────────┘
+                      │                                      │
+┌─────────────────────▼──────────────────────────────────────▼────────────┐
+│                           Tool Namespaces (separated)                     │
+│                                                                           │
+│   Nova Tools (scripts/cli/*.ts)        Dev Tools (scripts/dev-cli/*.ts)  │
+│   — DB CRUD for campaign entities      — Git operations                  │
+│   — EmailBison API calls               — File read/write                 │
+│   — Discovery API adapters             — npm/build/test runners          │
+│   — Lead scoring, enrichment           — Vercel/Railway/Trigger.dev CLI  │
+│   — Workspace memory read/write        — Prisma schema introspection     │
+└──────────────────────────────────────────────────────────────────────────┘
+                      │                                      │
+┌─────────────────────▼──────────────────────────────────────▼────────────┐
+│                           Memory Namespaces (separated)                   │
+│                                                                           │
+│   .nova/memory/{slug}/           .monty/memory/                          │
+│     profile.md                     backlog.md                            │
+│     campaigns.md                   architecture.md                       │
+│     learnings.md                   decisions.md                          │
+│     feedback.md                    incidents.md                          │
+│   .nova/memory/global-insights.md  .monty/memory/global-insights.md     │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Current Quality Enforcement (v7.0 Gaps)
+### Component Responsibilities
 
-```
-Writer Agent generates copy
-    ↓
-saveDraft / saveCampaignSequence tool called
-    ↓
-checkCopyQuality() / checkSequenceQuality()  ← 13 banned patterns only
-    ↓ quality_violation? Agent is expected to rewrite (not enforced by runner)
-    ↓
-Draft saved to DB
-    ↓
-Client approves via portal /api/portal/.../approve-content
-    ↓
-checkSequenceQuality() again — WARN ONLY, approval proceeds regardless
-    ↓
-Campaign deployed
-```
-
-**Problems this architecture has:**
-1. No word count enforcement — agent must count manually, often fails
-2. No greeting enforcement — agent forgets on first-step emails
-3. No spintax grammar check — bad options pass through
-4. No campaign-holistic view — writer never sees all steps together before saving
-5. No LinkedIn spintax block — writer adds spintax despite rules saying no
-6. No validator between generation and save — quality_violation requires agent self-correction which is unreliable
-7. No platform expertise encoding — leads agent has no structured knowledge of optimal Prospeo/Apollo filters
-8. No pre-search validation — expensive API calls happen before input sanity checks
-9. No channel-aware list building — email leads and LinkedIn leads mixed
-
----
-
-## Target Architecture (v8.0)
-
-### Integration Philosophy
-
-The overhaul adds quality infrastructure *around* the existing agent loop, not inside it. The key principle: **enforce at the boundary, not in the prompt**. Prompts are probabilistic. Boundary functions are deterministic.
-
-Three integration zones:
-
-1. **Pre-generation** — Platform expertise data, campaign-holistic context load
-2. **Post-generation, pre-save** — Validator agent reviews output before it touches the DB
-3. **Pre-search** — Input validation gates before paid API calls fire
-
-### System Overview (Target v8.0)
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        INVOCATION LAYER (unchanged)                  │
-└───────────────────────────┬──────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│          ORCHESTRATOR (unchanged interface, minor additions)          │
-│   delegateToWriter (+ campaignHolisticLoad flag added)               │
-│   delegateToLeads  (+ channelMode param added)                       │
-└────────┬──────────────────┬──────────────────────────────────────────┘
-         │                  │
-         ▼                  ▼
-  ┌──────────────────┐  ┌────────────────────────────────────────────┐
-  │  WRITER AGENT    │  │  LEADS AGENT                               │
-  │  (modified)      │  │  (modified)                                │
-  │                  │  │                                            │
-  │ 1. Load campaign │  │ 1. Pre-search input validation gate        │
-  │    context FIRST │  │    (domain format, title sanity, ICP fit)  │
-  │    (all steps)   │  │                                            │
-  │ 2. Generate all  │  │ 2. Platform expertise context load         │
-  │    steps         │  │    (optimal filters per source)            │
-  │ 3. Self-review   │  │                                            │
-  │    gate (NEW)    │  │ 3. Source-specific execution               │
-  │ 4. Pass to       │  │                                            │
-  │    Validator     │  │ 4. Post-search quality gates               │
-  │    Agent (NEW)   │  │    (% verified, % LinkedIn, ICP threshold) │
-  │ 5. Save if pass  │  │                                            │
-  └──────────────────┘  └────────────────────────────────────────────┘
-         │
-         ▼
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  VALIDATOR AGENT (NEW — src/lib/agents/validator.ts)             │
-  │  Sonnet 4, 4 steps max, structured output                        │
-  │                                                                  │
-  │  Input: full campaign sequence (all steps as one unit)           │
-  │  Checks: word count, banned phrases, greetings, CTA format,      │
-  │          spintax validity, variable syntax, LinkedIn format,      │
-  │          UK English, campaign angle dedup, CTA dedup             │
-  │  Output: ValidationResult { pass: bool, violations: [], fixes: }  │
-  │                                                                  │
-  │  On fail: returns violations to Writer for targeted rewrite      │
-  │  On pass: writer calls saveCampaignSequence                      │
-  └──────────────────────────────────────────────────────────────────┘
-         │ (after validation pass)
-         ▼
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  EXISTING SAVE LAYER (checkCopyQuality still runs — last resort) │
-  │  saveDraft / saveCampaignSequence → DB                           │
-  └──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Component Boundaries
-
-### New Components
-
-| Component | File | Responsibility | Calls |
-|-----------|------|----------------|-------|
-| Validator Agent | `src/lib/agents/validator.ts` | Deterministic copy QA — reviews full sequence as a unit, returns typed violations | `copy-quality.ts`, new extended checks |
-| Extended copy-quality.ts | `src/lib/copy-quality.ts` | Add: word count check, greeting check, CTA format check, LinkedIn spintax check, spintax grammar check | Existing module, extended |
-| Platform expertise docs | `.claude/rules/platform-expertise.md` (or `leads-platform-expertise.md`) | Optimal filters, cost/lead, verified vs unverified handling per source (Prospeo, Apollo, AI Ark, Leads Finder, Google Maps, Ecommerce) | Read by leads agent at runtime via loadRules() |
-| Pre-search validator tool | New tool inside `leads.ts` | Input validation before any paid API call: domain format, ICP filter sanity, title format | Pure TypeScript, no API calls |
-| Post-search quality gate | New tool inside `leads.ts` | Quality metrics after discovery: % verified, % with LinkedIn, placeholder detection, ICP fit sample | Reads staged results from DB |
-| Campaign-holistic context loader | New tool inside `writer.ts` (`loadCampaignSequence`) | Load all existing sequence steps as a unit before generation begins | Extends existing `getCampaignContext` |
-| Channel-aware list validator | New tool inside `leads.ts` or `campaign.ts` | Checks that email campaigns use email-verified leads, LinkedIn campaigns use leads with LinkedIn URLs | DB query |
-
-### Modified Existing Components
-
-| Component | File | Changes |
-|-----------|------|---------|
-| `copy-quality.ts` | `src/lib/copy-quality.ts` | Add: `checkWordCount()`, `checkGreeting()`, `checkCTAFormat()`, `checkLinkedInSpintax()`, `checkSpintaxGrammar()` — extend existing `CopyQualityResult` type |
-| `writer.ts` | `src/lib/agents/writer.ts` | Add: `validateSequence` tool (calls Validator Agent), add `loadCampaignSequence` tool, update system prompt to mandate self-review + validator call before save |
-| `leads.ts` | `src/lib/agents/leads.ts` | Add: `validateDiscoveryInputs` tool, `checkPostSearchQuality` tool, update system prompt to load platform expertise |
-| `writer-rules.md` | `.claude/rules/writer-rules.md` | Add: campaign-holistic section, self-review checklist, validator call instruction |
-| `leads-rules.md` | `.claude/rules/leads-rules.md` | Add: platform expertise reference, pre-search validation steps, post-search quality thresholds |
-| `orchestrator.ts` | `src/lib/agents/orchestrator.ts` | Add `channelMode` param to `delegateToLeads`, add `campaignId` requirement enforcement for Writer delegation |
-| `save-sequence.ts` CLI | `scripts/cli/save-sequence.ts` | No change — quality enforcement happens before this is called |
-| Portal `approve-content` route | `src/app/api/portal/.../approve-content/route.ts` | Upgrade from warn-only to hard block if violations exist (last-resort gate) |
-
-### Unchanged Components
-
-- `runner.ts` — execution engine unchanged
-- `cli-spawn.ts` — subprocess routing unchanged
-- `orchestrator.ts` delegation tool interface (params extended, not replaced)
-- All 55 CLI wrapper scripts (no changes needed)
-- `.nova/memory/` namespace and files
-- Dashboard chat route
-
----
-
-## Data Flow
-
-### Writer Flow: Campaign-Holistic with Validator Gate
-
-```
-Orchestrator delegates to Writer (with campaignId)
-    ↓
-Writer: loadCampaignContext(campaignId)
-  → returns: existing steps, targetList info, channel, strategy
-    ↓
-Writer: loadCampaignSequence(campaignId)  [NEW — loads all existing steps as unit]
-  → returns: full existing sequence if any (for dedup / continuation)
-    ↓
-Writer: getWorkspaceIntelligence(slug)
-    ↓
-Writer: searchKnowledgeBase(×3 tiered calls)
-    ↓
-Writer: generate ALL steps (not one at a time)
-  → internal self-review checklist executed before returning
-    ↓
-Writer: validateSequence(fullSequence)  [NEW tool — calls Validator Agent]
-  Validator Agent receives: all steps as JSON, channel, strategy
-  Validator runs: word count, banned phrases, greeting, CTA, spintax, variables,
-                  LinkedIn format, UK English, angle dedup across steps
-  Validator returns: { pass: bool, violations: PerStepViolation[], suggestedFixes: string }
-    ↓
-  IF violations exist:
-    Writer receives violations → targeted rewrite of failing steps → re-validate (max 2 loops)
-    If still failing after 2 loops: save with violations logged, flag for admin review
-  IF pass:
-    Writer: saveCampaignSequence(campaignId, sequence)
-    ↓
-    checkSequenceQuality() fires again (13 patterns — existing last-resort gate)
-    ↓
-    Saved to Campaign.emailSequence / Campaign.linkedinSequence
-```
-
-### Leads Flow: Platform-Expert with Pre/Post Gates
-
-```
-Orchestrator delegates to Leads (with workspaceSlug, channelMode)
-    ↓
-Leads: buildDiscoveryPlan(sources, filters)  [existing — modified to include expertise hint]
-  → Platform expertise context loaded from leads-rules.md at agent startup
-  → Plan shows: optimal filters per source, estimated quality metrics
-    ↓
-Admin approves plan
-    ↓
-Leads: validateDiscoveryInputs(plan)  [NEW tool — runs before any API call]
-  Checks:
-  - Prospeo domain search: are domains formatted correctly? (no https://, no paths)
-  - Apollo/Prospeo/AIArk: are industry/title filters using known-good terms?
-  - Company name list: does domain resolution step exist?
-  - Estimated volume: sanity check (>10k from single source = suspicious)
-  Returns: { valid: bool, warnings: string[], blockers: string[] }
-  Blockers halt execution. Warnings shown to admin.
-    ↓
-Leads: execute searches (existing search-*.ts tools)
-    ↓
-Leads: runDeduplicateAndPromote(runIds)  [existing]
-    ↓
-Leads: checkPostSearchQuality(promotedIds, channelMode)  [NEW tool]
-  Checks:
-  - % with verified email (for email channel: require >60%)
-  - % with LinkedIn URL (for linkedin channel: require >50%)
-  - Placeholder detection: firstName contains "N/A", email contains "info@"
-  - ICP fit sample: spot-check 10 random leads vs workspace ICP
-  Returns: { qualityScore: number, issues: string[], passesThreshold: bool }
-    ↓
-  IF issues: report to admin with counts, recommend next step
-    (route unverified emails through BounceBan / LeadMagic)
-  IF passes: proceed to list building
-```
-
-### Validator Agent Internal Flow
-
-```
-Input: { steps: EmailStep[] | LinkedInStep[], channel, strategy, workspaceSlug }
-    ↓
-Validator calls: checkExtendedCopyQuality(steps)
-  [Extended function in copy-quality.ts — deterministic, no LLM]
-  Returns structural violations (word count, variables, spintax, banned phrases)
-    ↓
-Validator calls: checkCampaignCoherence(steps)
-  [LLM call — Haiku 4.5, ~500 tokens per campaign]
-  Checks: angle dedup across steps, CTA dedup, step-to-step narrative flow,
-          UK English flags, tone consistency
-  Returns: CoherenceResult { issues: string[], severity: "block" | "warn" }
-    ↓
-Validator assembles: ValidationResult {
-  pass: structuralViolations.length === 0 && !coherence.hasBlockers,
-  structuralViolations: PerStepViolation[],
-  coherenceIssues: string[],
-  warningsOnly: string[],  // non-blocking issues for reviewNotes
-  suggestedFixes: string   // plain text guidance for rewrite
-}
-    ↓
-Returns to Writer Agent
-```
-
-### Platform Expertise Data Flow
-
-```
-Agent startup (Writer or Leads)
-    ↓
-loadRules("writer-rules.md") or loadRules("leads-rules.md")
-  [existing loadRules() mechanism — reads .claude/rules/ at runtime]
-    ↓
-Rules file now contains platform expertise section:
-  - Per-source: optimal filters, cost-per-lead, quality expectations
-  - Prospeo: domain-based search is cheapest, verified email included
-  - Apollo: free but no emails, use for initial volume only
-  - AI Ark: paid peer to Prospeo, different record coverage
-  - Leads Finder: verified emails included, no pagination, use for speed
-  - Google Maps: local/SMB only, not B2B enterprise
-    ↓
-Agent has expertise baked into system prompt — no separate tool call needed
-```
+| Component | Responsibility | Shared or New |
+|-----------|----------------|---------------|
+| `runner.ts` | Core execution engine — AgentRun audit, generateText, onComplete hooks | **Shared unchanged.** Both Nova and Monty call `runAgent()` from this file. |
+| `memory.ts` | 3-layer context reads, appendToMemory, appendToGlobalMemory | **Shared with one change.** Gains optional `memoryRoot` param (default `.nova/memory`). Monty passes `.monty/memory`. |
+| `types.ts` | AgentConfig, AgentRunResult, specialist Input/Output interfaces | **Shared.** Monty-specific I/O types added as new exports in this file or in `dev/dev-types.ts`. |
+| `load-rules.ts` | Reads `.claude/rules/*.md` into system prompts | **Shared unchanged.** Monty adds its own `.claude/rules/dev-*.md` files read via the same function. |
+| `orchestrator.ts` (Nova) | Routes workspace work to 7 specialists, holds dashboard tools | **Unchanged.** No dev tools added here. |
+| `dev/dev-orchestrator.ts` | Triages bugs vs features, routes codebase work to 5 dev specialists, manages backlog | **New.** Mirrors structure of `orchestrator.ts` but dev-scoped. |
+| `dev/{specialist}.ts` | 5 dev specialists — each has config, tools, onComplete, `runXxxAgent()` export | **New.** Same file pattern as Nova specialists. |
+| `scripts/monty.ts` | Interactive CLI REPL for Monty — parallel to `scripts/chat.ts` | **New.** No workspace picker (dev work is project-wide, not workspace-scoped). |
+| `scripts/dev-cli/*.ts` | Dev tools invoked by Monty specialists (git, file ops, build, deploy) | **New.** Separate namespace from `scripts/cli/*.ts`. |
 
 ---
 
 ## Recommended Project Structure
 
-### New Files
-
 ```
 src/lib/agents/
-├── validator.ts              NEW — Validator Agent (Haiku 4.5, 4 steps)
-│
-src/lib/
-├── copy-quality.ts           MODIFIED — extend with word count, greeting,
-│                               CTA, LinkedIn spintax, spintax grammar checks
-│
+├── runner.ts               SHARED — one-line change (memoryRoot param)
+├── memory.ts               SHARED — minor extension (memoryRoot param)
+├── types.ts                SHARED — new DevXxxInput/Output types appended
+├── load-rules.ts           SHARED — unchanged
+├── orchestrator.ts         Nova orchestrator — unchanged
+├── {nova-specialists}.ts   Nova specialists — unchanged
+└── dev/
+    ├── dev-orchestrator.ts # Monty orchestrator config + delegateToXxx tools
+    ├── dev-types.ts        # Monty-specific I/O types (DevTaskInput, BugReport, etc.)
+    ├── backend.ts          # Backend specialist (API routes, Prisma, Trigger.dev)
+    ├── frontend.ts         # Frontend/UI specialist (components, pages, design system)
+    ├── infra.ts            # Infrastructure specialist (deploys, Railway, DNS)
+    ├── qa.ts               # QA specialist (testing, code review, validation)
+    └── security.ts         # Security specialist (auth, OWASP, credential handling)
+
+scripts/
+├── chat.ts                 Nova CLI entry point — unchanged
+├── monty.ts                Monty CLI entry point — new (no workspace picker)
+├── cli/                    Nova CLI tools — unchanged (55 scripts)
+│   └── *.ts
+└── dev-cli/                Monty CLI tools — new namespace
+    ├── git-status.ts       git status + diff summary
+    ├── git-log.ts          recent commits with context
+    ├── run-tests.ts        npx tsx test runner wrapper
+    ├── build-check.ts      TypeScript compile check
+    ├── backlog-get.ts      read .monty/memory/backlog.md
+    ├── backlog-add.ts      append to backlog
+    ├── file-read.ts        safe file read (respects .claudeignore)
+    ├── file-write.ts       writes code changes via temp file pattern
+    └── deploy-status.ts    Vercel/Trigger.dev/Railway deployment status
+
 .claude/rules/
-├── writer-rules.md           MODIFIED — add self-review checklist section,
-│                               validator call instruction, holistic awareness
-├── leads-rules.md            MODIFIED — add platform expertise section,
-│                               pre-search validation steps, post-search thresholds
-│
-src/lib/agents/
-├── writer.ts                 MODIFIED — add validateSequence tool,
-│                               loadCampaignSequence tool, update system prompt
-├── leads.ts                  MODIFIED — add validateDiscoveryInputs tool,
-│                               checkPostSearchQuality tool
-├── orchestrator.ts           MODIFIED — add channelMode to delegateToLeads,
-│                               minor param additions
-│
-src/app/api/portal/campaigns/[id]/approve-content/
-├── route.ts                  MODIFIED — upgrade from warn to hard block
+├── {existing nova rules}          unchanged (12 files)
+├── dev-orchestrator-rules.md      Monty PM behaviour: triage, routing, boundary enforcement
+├── dev-backend-rules.md           Backend agent: Prisma patterns, Next.js API conventions
+├── dev-frontend-rules.md          Frontend agent: design system, component patterns
+├── dev-infra-rules.md             Infra agent: deploy commands, Railway/Vercel/Trigger.dev
+├── dev-qa-rules.md                QA agent: test patterns, review checklists
+└── dev-security-rules.md          Security agent: OWASP, secret handling, auth patterns
+
+.monty/memory/
+├── backlog.md              Bug/feature backlog (Monty writes here after triage)
+├── architecture.md         Key architecture decisions Monty has made/enforced
+├── decisions.md            ADRs and rationale from dev sessions
+├── incidents.md            Incident log (bugs found, root cause, fix applied)
+└── global-insights.md      Cross-session platform engineering patterns
 ```
 
-### No New Files Needed For
+### Structure Rationale
 
-- CLI wrapper scripts — no new scripts required; validator runs inside agent layer
-- Memory files — platform expertise lives in rules files, not memory
-- Database schema — no new tables; ValidationResult logged in AgentRun.steps (existing)
-- Orchestrator tools — existing delegation interface extended, not replaced
+- **`src/lib/agents/dev/` subdirectory:** Keeps Monty agents namespaced away from Nova while sharing the same parent directory. Same import depth, no circular dependencies.
+- **`scripts/dev-cli/` namespace:** Monty's tools touch different surfaces than Nova's. Separate directory prevents tool pollution — Monty's toolset cannot accidentally include Nova's EmailBison tools and vice versa.
+- **`.monty/memory/` root:** Parallel to `.nova/memory/` but project-scoped rather than workspace-scoped. No `{slug}/` subdirectories needed — dev work is codebase-wide. Topic-based files (backlog, decisions, incidents) capture what matters without per-specialist siloing.
+- **`.claude/rules/dev-*.md` naming:** Consistent with the `loadRules()` pattern. `dev-` prefix prevents naming collision with Nova rules files.
+- **`scripts/monty.ts` separate entry point:** No workspace picker needed. Monty works on the project, not on a specific client. This also makes the two CLIs clearly different products for different audiences.
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Rules File as Platform Knowledge Base
+### Pattern 1: Same Runner, Different Memory Root
 
-**What:** Platform expertise (optimal Prospeo filters, Apollo limitations, cost-per-lead, quality expectations per source) lives in `.claude/rules/leads-rules.md`. Loaded at agent startup via existing `loadRules()` mechanism. No new infrastructure needed.
+**What:** Both Nova and Monty call `runAgent()` from `runner.ts` unchanged. The only infrastructure change is adding an optional `memoryRoot` parameter to `loadMemoryContext()` in `memory.ts`. Monty agents pass `".monty/memory"`. Nova agents continue to pass nothing (default is `".nova/memory"`).
 
-**When to use:** For knowledge that is semi-stable (changes when platforms update their APIs), needs to be shared between API agent and CLI skill, and should be human-editable without a code deploy.
+**When to use:** Always — this is the core integration approach. It preserves the single execution path and audit trail while giving Monty its own persistent context.
 
-**Trade-offs:** Rules files are text — no type safety, no structured validation. Acceptable because this is guidance content, not executable logic. When platform APIs change materially, a human updates the rules file.
+**Trade-offs:** One small change to shared infrastructure (`memory.ts`). Backwards-compatible — all existing Nova calls continue working with no code changes.
 
-**Do not:** Put this in the DB as a "platform knowledge document" — that adds query overhead for static content that changes rarely.
+**Implementation:**
+```typescript
+// memory.ts — extend signature, keep default
+export async function loadMemoryContext(
+  workspaceSlug?: string,
+  memoryRoot: string = ".nova/memory",
+): Promise<string> { ... }
 
-### Pattern 2: Validator as Thin Haiku Agent
+// runner.ts — thread the new option through
+const memoryContext = await loadMemoryContext(
+  options?.workspaceSlug,
+  options?.memoryRoot,     // new option key, undefined = Nova default
+);
 
-**What:** The Validator Agent is a minimal `AgentConfig` using Haiku 4.5 with a narrow, deterministic task: receive a sequence as JSON, run checks, return a typed `ValidationResult`. It does not write to DB, does not call external APIs, and never saves anything. It is a pure function wrapped in an agent call for coherence checking that requires LLM reasoning (angle dedup, UK English, tone consistency).
+// Monty specialist config
+const backendConfig: AgentConfig = {
+  name: "dev-backend",
+  model: NOVA_MODEL,
+  systemPrompt: ...,
+  tools: backendTools,
+};
 
-**When to use:** When deterministic regex checks (existing `copy-quality.ts`) are insufficient — specifically for semantic checks like "are all three steps using the same CTA angle?" that require understanding content.
-
-**Trade-offs:** A Haiku call adds ~2-3 seconds and ~$0.002 per campaign validation. Acceptable — validation happens once before save, not on every token. Running via API (not CLI skill) because it is a short, structured task that benefits from type-safe `generateObject()` with Zod schema.
-
-**Implementation note:** `validator.ts` uses `generateObject()` with a Zod output schema, not `generateText()`. This ensures structured output without JSON parsing fragility. The `runner.ts` execute path is bypassed — validator has no `AgentRun` audit record (it is a sub-call, not a top-level agent invocation).
-
-### Pattern 3: Self-Review Gate in System Prompt
-
-**What:** The writer system prompt adds an explicit mandatory self-review checklist that runs before the agent calls `validateSequence`. The checklist mirrors the `copy-quality.ts` checks in plain English. The agent reasons through each point.
-
-**When to use:** As a first-pass filter before the Validator Agent call. Catches obvious violations (em dashes, banned phrases, double-brace variables) without spending Haiku tokens.
-
-**Trade-offs:** Self-review is probabilistic — Claude may miss violations. This is why the Validator Agent runs after. The self-review reduces the number of violations the Validator sees, reducing the chance of a rewrite loop. It does not replace the Validator.
-
-**Updated writer-rules.md section:**
-
-```markdown
-## Mandatory Self-Review (runs before calling validateSequence)
-
-Before calling validateSequence, mentally run this checklist against ALL steps:
-
-1. Word count: count every word in each email body. Must be under 70. Count again.
-2. Banned phrases: re-read rule 1 banned list. Scan body + subject for each phrase.
-3. Variables: every {variable} must be UPPERCASE single braces. Search for {{ or {lower}.
-4. Greetings: email step 1 must start with "Hi {FIRSTNAME}," or "Hello {FIRSTNAME},".
-5. CTAs: every CTA must be a question. No "Let me know", "Are you free", "Can I send".
-6. LinkedIn: zero spintax {option|option} patterns in any LinkedIn step.
-7. Em dashes: zero —, zero –, zero " - " separators.
-
-If any check fails: fix it, then call validateSequence.
-If all checks pass: call validateSequence to confirm.
+// Monty call site (dev-orchestrator.ts)
+await runAgent(backendConfig, task, {
+  memoryRoot: ".monty/memory",
+  triggeredBy: "monty-cli",
+});
 ```
 
-### Pattern 4: Channel-Aware List Building as Orchestrator Param
+### Pattern 2: Boundary Enforcement via Tool Namespace Separation
 
-**What:** The orchestrator's `delegateToLeads` tool gains a `channelMode: "email" | "linkedin" | "hybrid"` param. This is passed into the Leads Agent's `buildDiscoveryPlan` and `checkPostSearchQuality` tools, which use it to set the right quality thresholds.
+**What:** Nova's orchestrator only has workspace-scoped tools (`delegateToResearch`, `delegateToLeads`, etc., plus dashboard tools querying workspace data). Monty's orchestrator only has dev-scoped tools (`delegateToBackend`, `delegateToFrontend`, etc., plus dev dashboard tools for git/build state). Neither orchestrator can call the other's tools — this is enforced at the TypeScript type level.
 
-**When to use:** Any time a campaign has a defined channel before lead discovery starts. The orchestrator reads the channel from the Campaign entity and passes it through.
+**When to use:** Always — this makes the Nova/Monty boundary structural rather than instructional. A prompt can be overridden. A missing function cannot.
 
-**Trade-offs:** Requires the campaign to exist before discovery runs (leads created for a campaign, not a generic workspace pool). This is already the intended workflow; this enforces it.
+**Implementation:**
+```typescript
+// dev-orchestrator.ts — Monty toolset has zero overlap with Nova
+export const montyTools = {
+  delegateToBackend,
+  delegateToFrontend,
+  delegateToInfra,
+  delegateToQA,
+  delegateToSecurity,
+  // Dev-specific dashboard tools only:
+  getGitStatus,
+  getBacklog,
+  getDeployStatus,
+  // NOT present: clientSweep, delegateToLeads, getCampaigns, etc.
+};
+```
 
-**Implementation note:** The `channelMode` param is optional for backward compatibility. When absent, quality checks run with relaxed thresholds (warning only, not blocking).
+### Pattern 3: PM Triage via System Prompt (Monty Orchestrator as PM)
+
+**What:** Monty's orchestrator system prompt gives it PM-level triage logic: classify incoming requests as Bug (regression, broken feature, error), Feature (new capability), Debt (cleanup, refactor), or Security (auth, credential handling). Route accordingly to the right specialist(s). Bugs go to QA first (reproduce), then Backend or Frontend (fix). Features route directly to the responsible specialist.
+
+**When to use:** Always — the orchestrator IS the PM for dev work. This is consistent with how Nova's `campaign-rules.md` defines orchestrator routing behaviour for campaign work.
+
+**Rules file excerpt for dev-orchestrator-rules.md:**
+```markdown
+## Triage Decision Tree
+
+STEP 1: Classify the request:
+- "broken", "error", "not working", "fails", "422", "500", "regression" → Bug
+- New page, new endpoint, new feature, "add", "build", "create" → Feature
+- "slow", "refactor", "cleanup", "tech debt", "unused" → Debt
+- "auth", "credential", "secret", "OWASP", "vulnerability", "exposure" → Security
+
+STEP 2: Route:
+- Bug → delegateToQA (reproduce + confirm) → then delegateToBackend or delegateToFrontend (fix)
+- Feature → delegateToFrontend (UI work) or delegateToBackend (API work) or both sequentially
+- Infrastructure ("deploy", "Railway", "Vercel", "Trigger.dev", "DNS") → delegateToInfra
+- Debt → delegateToBackend or delegateToFrontend depending on location
+- Security → delegateToSecurity always, regardless of other routing
+- After any fix: delegateToQA to validate
+
+STEP 3: Update backlog:
+- Write completed work to .monty/memory/incidents.md (bugs) or decisions.md (features/design)
+```
+
+### Pattern 4: Dev CLI Tools as Thin Shell Wrappers
+
+**What:** Monty's `scripts/dev-cli/*.ts` tools are thin TypeScript wrappers around shell commands (`git`, `npx tsx`, `tsc`, `vercel`, `railway`) — the same pattern as Nova's `scripts/cli/*.ts` wrapping `node dist/cli/...` invocations. The specialists call these via a dev equivalent of `cliSpawn`.
+
+**When to use:** Any time Monty needs to read codebase state (git log, file read, build check) or trigger operations (run tests, check deploy status).
+
+**Trade-offs:** Agents remain isolated from direct Node.js API calls. All operations are named and observable in the AgentRun audit trail. Safety: dev-cli tools are read-heavy by default; write operations (file edits, deploys) are explicit tools that specialists must call consciously.
+
+---
+
+## Data Flow
+
+### Bug Fix Request Flow
+
+```
+User: "The EmailBison webhook is returning 422"
+    ↓
+scripts/monty.ts (Monty CLI REPL)
+    ↓
+dev-orchestrator.ts
+  classifies: Bug (422 error)
+  routes: QA first
+    ↓
+delegateToQA
+  reads route handler file, identifies validation mismatch
+  returns: reproduction steps + root cause hypothesis
+    ↓
+delegateToBackend
+  reads route handler, proposes fix with updated TypeScript
+  writes fix summary to .monty/memory/incidents.md
+    ↓
+delegateToQA
+  validates: does fix handle the edge case? any test coverage gaps?
+    ↓
+Monty CLI: "Here's the fix. Review and commit when ready."
+User commits independently.
+```
+
+### Feature Request Flow
+
+```
+User: "Add a Monty radar health dashboard page"
+    ↓
+scripts/monty.ts
+    ↓
+dev-orchestrator.ts
+  classifies: Feature (new page)
+  routes: Frontend + Backend sequentially
+    ↓
+delegateToFrontend
+  reads design system conventions, existing page patterns
+  proposes TSX component + page structure
+    ↓
+delegateToBackend
+  proposes API route + Prisma query for radar health data
+    ↓
+delegateToQA
+  reviews both: are the types consistent? Any missing error states?
+    ↓
+Monty writes to .monty/memory/decisions.md: "Radar health page pattern used"
+User reviews output, commits.
+```
+
+### Nova/Monty Handoff at Domain Boundary
+
+```
+User in Nova chat: "Fix the webhook bug AND push the 1210 campaign"
+    ↓
+Nova Orchestrator:
+  Detects "fix the webhook bug" = codebase change request
+  Nova responds: "Codebase changes belong to Monty (npm run monty).
+  I'll handle the 1210 campaign push now."
+    ↓ (campaign work proceeds through Nova specialists as normal)
+User switches to Monty CLI for the bug fix.
+```
+
+**Enforcement:** Nova's rules file includes: "If the user asks to edit code, fix a bug, or modify any file in the codebase, respond: 'Codebase work belongs to Monty — run npm run monty.' Do not attempt code changes." Monty's rules file includes: "If the user asks about a workspace slug, client campaign, or live client data, respond: 'Campaign work belongs to Nova — run npm run chat.' Do not query workspace data."
+
+---
+
+## Component Boundaries: Shared vs Separate
+
+### Shared Infrastructure (zero or minimal changes)
+
+| Component | Change Required | Why |
+|-----------|----------------|-----|
+| `runner.ts` — `runAgent()` | No code change | Monty calls same function with new option key |
+| `memory.ts` — `loadMemoryContext()` | Add `memoryRoot` optional param (default `.nova/memory`) | One line change, fully backwards-compatible |
+| `memory.ts` — `appendToMemory()` | Add `memoryRoot` optional param | Same change, same approach |
+| `types.ts` — `AgentConfig` interface | No change | Monty specialist configs implement the same interface |
+| `types.ts` — `AgentRunResult` | No change | Same audit trail type — all Monty runs appear in `AgentRun` DB table |
+| `load-rules.ts` — `loadRules()` | No change | Loads `dev-*.md` files using the same resolver |
+| `prisma.agentRun` table | No schema change | `agent` field distinguishes Monty runs (`"dev-backend"`, `"dev-qa"`, etc.) |
+
+### Separate Additions (new, no impact on Nova)
+
+| Component | Why Separate |
+|-----------|-------------|
+| `dev/dev-orchestrator.ts` | Different tool namespace — dev tools only, zero workspace tools |
+| `dev/{backend,frontend,infra,qa,security}.ts` | Different specialisations, no functional overlap with Nova specialists |
+| `scripts/monty.ts` | No workspace picker — Monty is project-scoped |
+| `scripts/dev-cli/*.ts` | Different surfaces — git/build/filesystem vs EmailBison/discovery APIs |
+| `.monty/memory/` | Different namespace — project-scoped, topic-based (not workspace-slug-based) |
+| `.claude/rules/dev-*.md` | Dev-specific behaviour rules, separate from Nova campaign rules |
 
 ---
 
 ## Build Order (Dependency-Aware)
 
-Dependencies are strict: each phase must be complete before the next begins.
+Each phase is unblocked by the previous. Phases within a tier can be built in parallel.
 
-### Phase 1: Extend copy-quality.ts (no dependencies)
+| Phase | Tier | Components | Dependencies |
+|-------|------|------------|-------------|
+| 1 | Foundation | `memory.ts` extension — add `memoryRoot` param (one change, backwards-compatible) | None |
+| 2 | Foundation | `.monty/memory/` directory + seed files (backlog.md, architecture.md, decisions.md, incidents.md, global-insights.md) | None |
+| 3 | Foundation | `.claude/rules/dev-*.md` — 6 rules files (orchestrator, backend, frontend, infra, qa, security) | None |
+| 4 | Foundation | `scripts/dev-cli/*.ts` — 9 thin tool wrappers | Phases 2+3 (tools reference memory files and follow rules conventions) |
+| 5 | Specialists | `dev/dev-types.ts` — DevTaskInput, BugReport, FeatureRequest, DevOutput types | Phase 1 |
+| 6 | Specialists | `dev/backend.ts` specialist config + tools + onComplete | Phases 1+3+4+5 |
+| 7 | Specialists | `dev/frontend.ts` specialist | Phases 1+3+4+5 |
+| 8 | Specialists | `dev/infra.ts` specialist | Phases 1+3+4+5 |
+| 9 | Specialists | `dev/security.ts` specialist | Phases 1+3+4+5 |
+| 10 | Specialists | `dev/qa.ts` specialist — reviews output of 6+7+8+9 | Phases 6+7+8+9 (QA validates their work) |
+| 11 | Orchestrator | `dev/dev-orchestrator.ts` — imports all specialist `runXxxAgent()` exports | Phases 6-10 |
+| 12 | Entry Point | `scripts/monty.ts` CLI REPL | Phase 11 |
 
-Add new check functions to the existing module. All are pure TypeScript with zero external dependencies:
-
-1. `checkWordCount(body: string): { count: number, pass: boolean }` — split on whitespace, count
-2. `checkGreeting(body: string, stepPosition: number, channel: string): boolean` — regex for "Hi {FIRSTNAME}," at step 1
-3. `checkCTAFormat(body: string): { hasBannedCTA: boolean, found: string[] }` — regex for "Let me know", "Are you free", "Can I send"
-4. `checkLinkedInSpintax(body: string, channel: string): boolean` — detect {option|option} in LinkedIn messages
-5. `checkSpintaxGrammar(body: string): { valid: boolean, suspects: string[] }` — extract all {a|b|c} patterns, flag ones where options have different word counts (rough grammar proxy)
-6. Update `CopyQualityResult` type to include new check results
-7. Update `checkCopyQuality()` to call all new checks
-
-This phase has zero risk — adding to a pure utility module, no agent code touched.
-
-### Phase 2: Platform expertise in rules files (no dependencies)
-
-Update `.claude/rules/leads-rules.md` with a new "Platform Expertise" section documenting per-source optimal filters, cost-per-lead, and quality expectations. Update `.claude/rules/writer-rules.md` with the mandatory self-review checklist.
-
-This is a text edit. Zero code changes. Affects both the API agent (via `loadRules()`) and the CLI skill (via `!` file include in skill files).
-
-### Phase 3: Validator Agent (depends on Phase 1)
-
-Create `src/lib/agents/validator.ts`:
-
-- `AgentConfig` using `claude-haiku-4-5-20251001`, `maxSteps: 4`
-- Uses `generateObject()` with Zod schema (not `generateText()` + runner.ts)
-- Zod output schema: `ValidationResult { pass, structuralViolations, coherenceIssues, warningsOnly, suggestedFixes }`
-- System prompt: focused narrowly on QA review, imports extended `checkExtendedCopyQuality()` logic from Phase 1 for the structural checks
-- Export: `validateSequence(steps, channel, strategy, workspaceSlug): Promise<ValidationResult>`
-
-No changes to runner.ts, orchestrator.ts, or any other file in this phase.
-
-### Phase 4: Writer agent integration (depends on Phases 2 + 3)
-
-Modify `src/lib/agents/writer.ts`:
-
-1. Add `loadCampaignSequence` tool — loads all existing steps from a Campaign as a flat array (for dedup context). Extends existing `getCampaignContext` tool.
-2. Add `validateSequence` tool — calls `validateSequence()` from Phase 3. Returns `ValidationResult` to agent.
-3. Update `WRITER_SYSTEM_PROMPT`: add self-review checklist section from Phase 2, add instruction to call `validateSequence` before `saveCampaignSequence`, add campaign-holistic awareness instruction ("load all steps before generating any step").
-4. Add rewrite loop logic in system prompt: "If validateSequence returns violations, fix only the flagged steps and call validateSequence again. Maximum 2 validation loops. If still failing, save with violations recorded in reviewNotes."
-
-No changes to `runner.ts`, `types.ts`, or any CLI scripts.
-
-### Phase 5: Leads agent integration (depends on Phase 2)
-
-Modify `src/lib/agents/leads.ts`:
-
-1. Add `validateDiscoveryInputs` tool — pure TypeScript, no API calls. Validates: domain format, title sanity, ICP filter structure. Returns blockers vs warnings.
-2. Add `checkPostSearchQuality` tool — queries staged/promoted results from DB, computes quality metrics, applies channel-specific thresholds.
-3. Update leads system prompt to reference platform expertise from Phase 2, mandate validateDiscoveryInputs call before any search tool, mandate checkPostSearchQuality call after discovery-promote.
-
-### Phase 6: Campaign pipeline validation (depends on Phases 4 + 5)
-
-1. Add `channelMode` param to `delegateToLeads` in `orchestrator.ts`
-2. Add company name normalization gate — new check in `validateDiscoveryInputs` for {COMPANYNAME} usage patterns
-3. Update `approve-content` portal route to hard-block on violations (upgrade from warn-only)
-4. Add list overlap detection — new tool in `campaign.ts` or utility function that checks if a TargetList shares >10% of people with an active campaign for the same workspace
-
-### Phase 7: End-to-end validation (depends on all previous phases)
-
-1. Run a full pipeline on a test workspace: discovery → quality gate → list build → write copy → validate → save
-2. Verify AgentRun audit logs capture validation results
-3. Confirm portal hard-block works on a seeded campaign with violations
-4. Verify rewrite loop triggers and resolves on a campaign with deliberate violations
+**Why this order:** Rules files and memory structure are pure content — no code dependencies, build immediately. CLI tools are standalone scripts the specialists invoke — build before specialists. Specialists come before the orchestrator because the orchestrator imports them directly (same pattern as `orchestrator.ts` importing `runLeadsAgent`, `runWriterAgent`, etc.). QA comes after the other specialists because it reviews their output. The CLI entry point is last because it wraps the orchestrator.
 
 ---
 
-## Integration Points
+## Integration Points with Existing Framework
 
-### Validator Agent Integration Boundary
+### What the Existing `orchestrator.ts` Reveals About the Pattern
 
-The Validator Agent is called as a TypeScript function (`validateSequence()`), not via the runner.ts pattern. This is intentional:
+Reading `orchestrator.ts` directly shows the exact pattern Monty must follow:
 
-- It does not need an `AgentRun` audit record — it is a sub-call within the writer's run
-- It uses `generateObject()` for structured output, not `generateText()` + JSON parsing
-- It has no tools (no DB calls, no API calls) — it is stateless
-- Its output feeds directly back into the writer's tool result, which IS logged in the writer's `AgentRun.steps`
+1. Each `delegateToXxx` tool creates a typed input, calls `runXxxAgent()`, returns a typed summary
+2. The orchestrator has both delegation tools AND direct dashboard tools for simple queries
+3. CLI mode (`isCliMode()`) vs API mode routing is handled inside each delegation tool
+4. `orchestratorTools` is the combined export consumed by both `scripts/chat.ts` and the dashboard chat route
 
-```typescript
-// How validator.ts exports:
-export async function validateSequence(
-  steps: (EmailStep | LinkedInStep)[],
-  channel: "email" | "linkedin" | "email_linkedin",
-  strategy: string,
-  workspaceSlug: string
-): Promise<ValidationResult>
+Monty follows this same pattern: `montyTools` exported from `dev/dev-orchestrator.ts`, consumed by `scripts/monty.ts`.
 
-// How writer.ts calls it:
-const validateSequence = tool({
-  description: "Validate the complete sequence before saving...",
-  inputSchema: z.object({ steps: ..., channel: ..., strategy: ... }),
-  execute: async ({ steps, channel, strategy }) => {
-    return validateSequence(steps, channel, strategy, workspaceSlug);
-  }
-});
-```
+### What `runner.ts` Reveals
 
-### copy-quality.ts Extension Boundary
+`runner.ts` does five things: create AgentRun record, load memory context, call `generateText`, extract tool steps, fire `onComplete`. Monty reuses all five. The only change is that `loadMemoryContext(options?.workspaceSlug, options?.memoryRoot)` is called with the Monty memory root.
 
-The existing `BANNED_PATTERNS`, `checkCopyQuality()`, and `checkSequenceQuality()` are kept exactly as-is. New functions are additive exports:
+### What `scripts/chat.ts` Reveals About the CLI Pattern
 
-- Existing callers (`saveDraft`, `saveCampaignSequence`, portal `approve-content`) continue working unchanged
-- Validator Agent imports the new extended functions
-- `approve-content` route upgrade (Phase 6) imports the same extended functions
+`scripts/chat.ts` shows exactly what `scripts/monty.ts` needs:
+- Load `.env` files
+- Import orchestrator config and tools
+- REPL loop with readline
+- Session persistence to `AgentRun` on exit
+- Memory context injection into system prompt per turn
 
-### Rules File Boundary
+The key difference for `monty.ts`: no workspace picker. Monty receives `--workspace` as an optional flag if context is needed, but defaults to project-wide scope.
 
-Platform expertise lives in `.claude/rules/` files. This means:
+### How AgentRun Audit Trail Works for Monty
 
-- API agents load it via `loadRules("leads-rules.md")` at agent config construction time
-- CLI skills load it via `!` file include in the skill `.md` files (already how they work)
-- A single source of truth — no divergence between API path and CLI skill path
-- Human-editable without a code deploy — admin can update filter recommendations as platforms evolve
+All Monty runs appear in the same `AgentRun` Prisma table. They are distinguishable by:
+- `agent` field: `"dev-backend"`, `"dev-frontend"`, `"dev-qa"`, etc.
+- `workspaceSlug` field: `null` for most Monty runs (project-scoped), or a slug if debugging a workspace-specific bug
+- `triggeredBy` field: `"monty-cli"`
 
-### Platform Expertise vs KB Documents
+This means Monty runs appear in the existing admin dashboard's agent monitoring UI without any schema changes.
 
-Platform expertise belongs in **rules files**, not the knowledge base. The distinction:
+---
 
-- KB documents: campaign strategy, copy frameworks, industry insights — things agents search contextually
-- Rules files: behavioral constraints, tool usage instructions, platform configuration — things agents load unconditionally at startup
+## Anti-Patterns
 
-Putting Prospeo filter guidance in a KB document would require a search step that might miss it. Loading it from `leads-rules.md` guarantees it is always in context.
+### Anti-Pattern 1: Adding Dev Tools to Nova's Orchestrator
 
-### Portal Approval Hard-Block Boundary
+**What people do:** Add `git status` or file-edit tools to `orchestratorTools` in `orchestrator.ts` so Nova can "also fix bugs while doing campaign work."
 
-The `approve-content` route upgrade (Phase 6) changes behavior: if `checkSequenceQuality()` returns violations, the route returns `HTTP 422` instead of `HTTP 200 + warnings`. The frontend must handle this:
+**Why it's wrong:** Destroys the boundary. Nova receives a dev request, attempts a file edit, and corrupts workspace work. The AgentRun audit trail mixes campaign and dev work, making monitoring useless. More critically: Nova's memory context is workspace-scoped, so a dev task would write to the wrong memory namespace.
 
-- If the portal approval button currently ignores `copyQualityWarnings` in the response, the frontend needs a minor update to show an error state on 422
-- This is a deliberate product decision: clients should not be able to approve copy with banned patterns. The quality gate is not optional at approval time.
+**Do this instead:** Two separate CLIs, two separate orchestrators, two separate tool namespaces. If the user wants both, they use both CLIs sequentially. The boundary is a feature, not a limitation.
 
-### AgentRun Audit Trail
+### Anti-Pattern 2: Copying `runner.ts` into `dev/dev-runner.ts`
 
-Validation results are captured in the writer's existing `AgentRun` record:
+**What people do:** Fork `runner.ts` into `dev/dev-runner.ts` to avoid touching existing code, producing two maintenance surfaces.
 
-- `AgentRun.steps` JSON array will include the `validateSequence` tool call and its `ValidationResult`
-- No new DB table needed — existing audit infrastructure captures it
-- `reviewNotes` field in `WriterOutput` should include a summary of validation status
+**Why it's wrong:** The runner is pure infrastructure — it contains no Nova-specific logic. Memory loading, audit trail, onComplete hooks — all of these should be consistent across Nova and Monty. Drift between two runners causes silent bugs (e.g., Monty runs not appearing in the admin dashboard's AgentRun view).
+
+**Do this instead:** Parameterise the single `runner.ts`. One code path for all agents. The `memoryRoot` option is the only Monty-specific addition.
+
+### Anti-Pattern 3: Per-Specialist Memory Files Instead of Project-Scoped Files
+
+**What people do:** Create `.monty/memory/backend/`, `.monty/memory/frontend/`, etc., mirroring Nova's per-workspace structure.
+
+**Why it's wrong:** Dev agents do not have different persistent contexts per specialist. A backend agent's decision about API design is relevant context for the QA agent reviewing that API. Siloing by specialist creates artificial barriers to shared context.
+
+**Do this instead:** Flat `.monty/memory/` files by topic (backlog, decisions, incidents, architecture). All dev agents read and write to the same namespace — they coordinate through shared context, just like how Nova agents for different tasks all read the same `.nova/memory/{slug}/` files.
+
+### Anti-Pattern 4: Monty Reading Live Workspace Data
+
+**What people do:** Add a Prisma query tool to Monty's orchestrator so it can look up client workspace data when fixing workspace-related bugs (e.g., "fix the Rise webhook" — Monty queries the Rise workspace to understand the bug).
+
+**Why it's wrong:** Couples dev and campaign concerns. Monty should fix the code path, not the client data state. A Monty bug that corrupts a DB query could silently damage client data.
+
+**Do this instead:** Monty reads the codebase (schema files, route handlers, test fixtures) to understand the data model. If live data is needed for debugging, the PM (user) fetches it from Nova and pastes it into the Monty conversation as context.
+
+### Anti-Pattern 5: Monty Committing Code Without User Review
+
+**What people do:** Give Monty a `git commit` tool so it can automatically commit its fixes.
+
+**Why it's wrong:** Code changes need human review. Monty proposes the fix; the user decides whether to commit it. Automating commits removes the review gate that catches hallucinations or incorrect fixes.
+
+**Do this instead:** Monty writes file changes to temp locations or proposes diffs. User reviews and uses standard `git add + git commit` workflow. Monty can have a `git-status.ts` and `git-diff.ts` tool to read current state but no write tools for git history.
 
 ---
 
@@ -554,72 +454,25 @@ Validation results are captured in the writer's existing `AgentRun` record:
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| Current (10 workspaces, ~5 campaigns/week) | Single Validator Agent call per campaign write. Haiku cost ~$0.002/campaign. Negligible. |
-| 50 workspaces, 20 campaigns/week | Same architecture. Validator is stateless — scales horizontally. |
-| Signal campaigns at scale (100+ auto-generated) | Validator call per sequence. At $0.002 each, 100 = $0.20. Still negligible. May want to run structural checks only (no Haiku) for auto-generated signal copy to reduce latency. |
-
-### Scaling Priorities
-
-1. **Rewrite loop depth** — Max 2 validation loops prevents infinite recursion. If a workspace consistently generates violations after 2 loops, this is a rules file problem (too strict) or a writer prompt problem (not understanding the rules), not a scaling problem.
-
-2. **Validator latency** — Haiku 4.5 at ~500 input tokens + 200 output tokens takes ~1-2 seconds. Acceptable in a workflow where the writer already takes 20-60 seconds. If latency becomes a concern, the structural checks (deterministic) can be separated from the coherence check (LLM) and the coherence check made optional for fast iteration modes.
-
----
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Validator Inside save-sequence.ts
-
-**What people do:** Move the validator call into the CLI wrapper (`save-sequence.ts`) so it "always runs."
-
-**Why it's wrong:** CLI wrappers are thin data bridges — no agent logic, no LLM calls. Putting a Haiku call inside a CLI script violates the tool boundary and makes it impossible to test the writer agent independently of the validator. It also makes the rewrite loop impossible — the CLI script would just return an error with no way to loop back into the writer.
-
-**Do this instead:** Validator call lives in `writer.ts` as a tool. The writer controls the loop. CLI script saves the final approved output.
-
-### Anti-Pattern 2: Separate Knowledge Base Documents for Platform Expertise
-
-**What people do:** Create a KB document titled "Prospeo Best Practices" and have the leads agent search for it.
-
-**Why it's wrong:** KB search is probabilistic — the agent might not search for it, might search with a bad query, or might get other results back. Platform expertise is mandatory pre-search context, not optional reference material.
-
-**Do this instead:** Put it in `leads-rules.md`. It loads unconditionally every time the leads agent runs.
-
-### Anti-Pattern 3: Blocking the Validator Agent with Tool Calls
-
-**What people do:** Give the Validator Agent tools (KB search, workspace lookup) so it can "make smarter decisions."
-
-**Why it's wrong:** A validator that can call external APIs is a second writer. It introduces latency, unpredictability, and scope creep. The validator's job is narrow: check the copy it was given against known rules. It needs no external context beyond what the writer passes in.
-
-**Do this instead:** Pass any needed context from the writer (channel, strategy, workspace vertical) as input params. Validator is stateless and tool-free.
-
-### Anti-Pattern 4: Hard-Blocking Saves on All Violations
-
-**What people do:** Return `quality_violation` from `saveCampaignSequence` for every violation type — including warnings that are judgement calls (UK English, tone consistency).
-
-**Why it's wrong:** The writer gets stuck in a rewrite loop on subjective issues. Admin frustration increases. Copy quality improves on the clear violations (banned phrases, word count) but degrades on the subjective ones as the writer tries to satisfy an overly strict gate.
-
-**Do this instead:** Two tiers. Structural violations (banned phrases, word count, variable syntax, LinkedIn spintax) are blockers. Coherence issues (angle dedup, tone) are warnings that appear in `reviewNotes` but do not block the save.
-
-### Anti-Pattern 5: Duplicating Quality Rules in Three Places
-
-**What people do:** Copy-paste the banned phrases list into `writer-rules.md`, `validator.ts` system prompt, and `copy-quality.ts` BANNED_PATTERNS array.
-
-**Why it's wrong:** Lists diverge. The `.md` files get updated but `copy-quality.ts` does not. Violations pass the LLM checks but fail the TypeScript check, or vice versa.
-
-**Do this instead:** Single source of truth is `copy-quality.ts`. The `writer-rules.md` describes the rules in plain English for agent comprehension. The validator's system prompt says "run the extended check functions" rather than listing patterns. The TypeScript implementation is the canonical list.
+| Current (1 engineer, 10 clients) | Single Monty CLI, project-scoped memory. No scaling concerns. |
+| 2-3 engineers | Same Monty CLI. `.monty/memory/` files become shared context between engineers' sessions. |
+| Team growth (5+ engineers) | `.monty/memory/` files may need migration to a DB-backed store to handle concurrent writes. Backlog specifically should move to a structured format. |
 
 ---
 
 ## Sources
 
-- Direct code inspection: `src/lib/agents/writer.ts`, `leads.ts`, `orchestrator.ts`, `runner.ts`, `types.ts`, `cli-spawn.ts`
-- Direct code inspection: `src/lib/copy-quality.ts`
-- Direct code inspection: `scripts/cli/save-draft.ts`, `save-sequence.ts`
-- Direct code inspection: `src/app/api/portal/campaigns/[id]/approve-content/route.ts`
-- Direct inspection: `.claude/rules/writer-rules.md`, `leads-rules.md`, `campaign-rules.md`
-- Project context: `.planning/PROJECT.md` — v8.0 milestone Active requirements
-- Architecture decision record: existing `ARCHITECTURE.md` for v7.0 baseline
+- Direct inspection: `src/lib/agents/runner.ts` — shared execution engine
+- Direct inspection: `src/lib/agents/orchestrator.ts` — Nova orchestrator pattern (delegation tools, dashboard tools, combined export)
+- Direct inspection: `src/lib/agents/memory.ts` — 3-layer memory system, namespace conventions
+- Direct inspection: `src/lib/agents/types.ts` — AgentConfig interface
+- Direct inspection: `src/lib/agents/load-rules.ts` — rules file resolver
+- Direct inspection: `scripts/chat.ts` — established CLI REPL pattern
+- Direct inspection: `scripts/cli/` — 55 Nova CLI tools, namespace established
+- Direct inspection: `.claude/rules/` — 12 existing rules files, naming conventions
+- Direct inspection: `.nova/memory/` — workspace-scoped memory structure
+- Project context: `.planning/PROJECT.md` — v9.0 milestone requirements (Monty)
 
 ---
-*Architecture research for: v8.0 Agent Quality Overhaul — Outsignal agents*
-*Researched: 2026-03-30*
+*Architecture research for: v9.0 Monty Dev Orchestrator — integration with Nova agent framework*
+*Researched: 2026-04-02*
