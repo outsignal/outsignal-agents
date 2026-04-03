@@ -22,10 +22,6 @@ import type {
   DiscoveredPersonResult,
   DiscoveryResult,
 } from "../types";
-import { bulkEnrichPeople } from "../bulk-enrich";
-import { enrichViaAiArk } from "../aiark-email";
-import { enrichViaKitt } from "../kitt-email";
-import { verifyDiscoveredEmails } from "../verify-email";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { stripWwwAll, type RateLimits } from "../rate-limit";
 
@@ -328,63 +324,15 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     const hasMore = page < totalPages;
     const nextPageToken = hasMore ? String(page + 1) : undefined;
 
-    // Three-stage email enrichment waterfall + verification:
-    // 1. Prospeo bulk-enrich (uses person_id from search results)
-    // 2. AI Ark /export/single fallback (uses LinkedIn URLs — emails pre-verified)
-    // 3. Kitt find fallback (replaces LeadMagic)
-    // 4. Verify all non-AI-Ark emails via BounceBan
-    let enrichCost = 0;
-    if (people.length > 0) {
-      // Stage 1: Prospeo bulk-enrich with person_id
-      const prospeoResult = await bulkEnrichPeople(people, "prospeo");
-      enrichCost += prospeoResult.costUsd;
-
-      // Stage 2: AI Ark fallback for people still missing email (uses LinkedIn URLs)
-      // Track which indices get emails from AI Ark (pre-verified, skip re-verification)
-      const aiArkEmailIndices = new Set<number>();
-      const needsAiArk = people.filter((p) => !p.email);
-      if (needsAiArk.length > 0) {
-        console.log(
-          `[prospeo-search] ${prospeoResult.enrichedCount} emails from Prospeo, ${needsAiArk.length} remaining — falling back to AI Ark`,
-        );
-        const beforeAiArk = people.map((p) => p.email);
-        const aiArkResult = await enrichViaAiArk(people);
-        enrichCost += aiArkResult.costUsd;
-
-        for (let idx = 0; idx < people.length; idx++) {
-          if (!beforeAiArk[idx] && people[idx].email) {
-            aiArkEmailIndices.add(idx);
-          }
-        }
-      }
-
-      // Stage 3: Kitt fallback for people still missing email
-      const needsKitt = people.filter((p) => !p.email);
-      if (needsKitt.length > 0) {
-        console.log(
-          `[prospeo-search] ${needsKitt.length} still without email after Prospeo + AI Ark — falling back to Kitt`,
-        );
-        const kittResult = await enrichViaKitt(people);
-        enrichCost += kittResult.costUsd;
-      }
-
-      // Stage 4: Verify all non-AI-Ark emails via BounceBan
-      const emailsToVerify = people.filter((p, idx) => p.email && !aiArkEmailIndices.has(idx));
-      if (emailsToVerify.length > 0) {
-        console.log(
-          `[prospeo-search] Verifying ${emailsToVerify.length} non-AI-Ark emails via BounceBan`,
-        );
-        const verifyResult = await verifyDiscoveredEmails(people, aiArkEmailIndices);
-        enrichCost += verifyResult.costUsd;
-      }
-    }
+    // Enrichment is decoupled — discovery returns identity data only.
+    // Enrichment happens asynchronously via the EnrichmentJob queue after promotion.
 
     return {
       people,
       totalAvailable: totalCount,
       hasMore,
       nextPageToken,
-      costUsd: PROSPEO_SEARCH_CREDIT_COST + enrichCost,
+      costUsd: PROSPEO_SEARCH_CREDIT_COST,
       rawResponse: raw,
     };
   }

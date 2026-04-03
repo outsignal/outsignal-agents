@@ -11,10 +11,6 @@
  * `fetch_count`. Set hasMore: false always.
  */
 import { runApifyActor } from "../../apify/client";
-import { bulkEnrichPeople } from "../bulk-enrich";
-import { enrichViaAiArk } from "../aiark-email";
-import { enrichViaKitt } from "../kitt-email";
-import { verifyDiscoveredEmails } from "../verify-email";
 import { stripWwwAll, type RateLimits } from "../rate-limit";
 import type {
   DiscoveryAdapter,
@@ -225,53 +221,11 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
       };
     });
 
-    let costUsd = people.length * this.estimatedCostPerResult;
+    const costUsd = people.length * this.estimatedCostPerResult;
 
-    // ---------------------------------------------------------------------------
-    // Fallback enrichment waterfall for people without emails + verification
-    // ---------------------------------------------------------------------------
-
-    // Track AI Ark email indices for skipping re-verification
-    const aiArkEmailIndices = new Set<number>();
-
-    // Stage 1: Prospeo fallback for people without email
-    const needsEnrich = people.filter((p) => !p.email);
-    if (needsEnrich.length > 0) {
-      const prospeoResult = await bulkEnrichPeople(people, "leads-finder");
-      costUsd += prospeoResult.costUsd;
-
-      // Stage 2: AI Ark fallback
-      const stillNeedsEmail = people.filter((p) => !p.email);
-      if (stillNeedsEmail.length > 0) {
-        const beforeAiArk = people.map((p) => p.email);
-        const aiarkResult = await enrichViaAiArk(people);
-        costUsd += aiarkResult.costUsd;
-
-        for (let idx = 0; idx < people.length; idx++) {
-          if (!beforeAiArk[idx] && people[idx].email) {
-            aiArkEmailIndices.add(idx);
-          }
-        }
-
-        // Stage 3: Kitt fallback (replaces LeadMagic)
-        const finalCheck = people.filter((p) => !p.email);
-        if (finalCheck.length > 0) {
-          const kittResult = await enrichViaKitt(people);
-          costUsd += kittResult.costUsd;
-        }
-      }
-    }
-
-    // Stage 4: Verify all emails via BounceBan
-    // Leads Finder emails also need verification. AI Ark emails skip (pre-verified).
-    const emailsToVerify = people.filter((p, idx) => p.email && !aiArkEmailIndices.has(idx));
-    if (emailsToVerify.length > 0) {
-      console.log(
-        `[leads-finder] Verifying ${emailsToVerify.length} emails via BounceBan`,
-      );
-      const verifyResult = await verifyDiscoveredEmails(people, aiArkEmailIndices);
-      costUsd += verifyResult.costUsd;
-    }
+    // Leads Finder returns verified emails from the actor — keep those.
+    // No additional enrichment waterfall here. People without emails will be
+    // enriched asynchronously via the EnrichmentJob queue after promotion.
 
     return {
       people,

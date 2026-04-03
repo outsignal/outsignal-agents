@@ -7,9 +7,8 @@
  *   3. Name + company fuzzy match (Levenshtein at 0.85 threshold)
  *
  * Non-duplicates are promoted to the Person table with a PersonWorkspace junction record.
- * Leads without a verified email are DISCARDED (not promoted) — email verification
- * happens during discovery enrichment, so null email means all providers failed to
- * find a valid email for this person.
+ * Leads without emails are promoted if they have a LinkedIn URL (enrichment will find
+ * emails asynchronously). Leads with neither email nor LinkedIn URL are discarded.
  * Promoted leads are enqueued for full-waterfall enrichment via the EnrichmentJob queue.
  * Duplicate records are marked status='duplicate' with personId set (no promotedAt — duplicates are free for quota).
  */
@@ -199,35 +198,69 @@ function findExistingPersonFromMaps(dp: StagedRecord, maps: DedupMaps): string |
  * Promote a staged DiscoveredPerson to the Person table.
  * Creates (or finds) the Person record and ensures a PersonWorkspace junction exists.
  * Returns the Person's ID.
+ *
+ * Handles two cases:
+ * - Has email: upsert by email (standard path)
+ * - No email but has LinkedIn URL: upsert by linkedinUrl (discovery-first path)
  */
 async function promoteToPerson(
   dp: StagedRecord,
   workspaceSlug: string
 ): Promise<{ id: string }> {
-  // Use real email if available; otherwise leave null (schema allows nullable email).
-  // No more placeholder @discovery.internal emails.
   const email = dp.email ?? null;
 
-  // Upsert by email (handles race conditions).
-  // Null-email records are filtered out before reaching this function.
-  const person = await prisma.person.upsert({
-    where: { email: email! },
-    create: {
-      email: email!,
-      firstName: dp.firstName ?? null,
-      lastName: dp.lastName ?? null,
-      jobTitle: dp.jobTitle ?? null,
-      company: dp.company ?? null,
-      companyDomain: dp.companyDomain ?? null,
-      linkedinUrl: dp.linkedinUrl ?? null,
-      phone: dp.phone ?? null,
-      location: dp.location ?? null,
-      source: `discovery-${dp.discoverySource}`,
-      status: "new",
-    },
-    update: {},
-    select: { id: true },
-  });
+  let person: { id: string };
+
+  if (email) {
+    // Standard path: upsert by email
+    person = await prisma.person.upsert({
+      where: { email },
+      create: {
+        email,
+        firstName: dp.firstName ?? null,
+        lastName: dp.lastName ?? null,
+        jobTitle: dp.jobTitle ?? null,
+        company: dp.company ?? null,
+        companyDomain: dp.companyDomain ?? null,
+        linkedinUrl: dp.linkedinUrl ?? null,
+        phone: dp.phone ?? null,
+        location: dp.location ?? null,
+        source: `discovery-${dp.discoverySource}`,
+        status: "new",
+      },
+      update: {},
+      select: { id: true },
+    });
+  } else if (dp.linkedinUrl) {
+    // Discovery-first path: no email yet, find by LinkedIn URL or create.
+    // Enrichment will find email asynchronously via EnrichmentJob.
+    const existing = await prisma.person.findFirst({
+      where: { linkedinUrl: dp.linkedinUrl },
+      select: { id: true },
+    });
+    if (existing) {
+      person = existing;
+    } else {
+      person = await prisma.person.create({
+        data: {
+          firstName: dp.firstName ?? null,
+          lastName: dp.lastName ?? null,
+          jobTitle: dp.jobTitle ?? null,
+          company: dp.company ?? null,
+          companyDomain: dp.companyDomain ?? null,
+          linkedinUrl: dp.linkedinUrl,
+          phone: dp.phone ?? null,
+          location: dp.location ?? null,
+          source: `discovery-${dp.discoverySource}`,
+          status: "new",
+        },
+        select: { id: true },
+      });
+    }
+  } else {
+    // No email and no LinkedIn URL — should not reach here (filtered by caller)
+    throw new Error(`Cannot promote person ${dp.id}: no email and no LinkedIn URL`);
+  }
 
   // Upsert PersonWorkspace junction — idempotent
   await prisma.personWorkspace.upsert({
@@ -399,9 +432,10 @@ export async function deduplicateAndPromote(
     if (skipIndices.has(i)) continue; // already handled as intra-batch dupe
     const dp = staged[i];
 
-    // Discard people with no email — email verification happens during discovery
-    // enrichment, so null email means no provider found a valid email for this person.
-    if (!dp.email) {
+    // Discard people with neither email nor LinkedIn URL — they cannot be
+    // enriched or matched to any profile. People with LinkedIn URL but no
+    // email will be promoted and enriched asynchronously via EnrichmentJob.
+    if (!dp.email && !dp.linkedinUrl) {
       await prisma.discoveredPerson.update({
         where: { id: dp.id },
         data: { status: "discarded" },
