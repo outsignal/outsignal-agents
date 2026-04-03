@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 ## Current Position
 
 Phase: 62 of 67 (Architecture Foundation)
-Plan: Ready to plan
-Status: Roadmap complete, ready to plan Phase 62
-Last activity: 2026-04-02 — Roadmap created for v9.0 Monty (6 phases, 42 requirements mapped)
+Plan: 2 of 3 complete
+Status: Executing Phase 62 plans
+Last activity: 2026-04-03 — Completed 62-02 (Agent Rules & Dev-CLI Harness)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 11%
 
 ## Performance Metrics
 
@@ -45,6 +45,12 @@ Progress: [░░░░░░░░░░] 0%
 ## Accumulated Context
 
 ### Decisions
+
+Key v9.0 execution decisions:
+- [62-01]: Monty memory is topic-based (5 global files) vs Nova workspace-slug-based; write path stays Nova-only until Phase 67
+- [62-01]: DEFAULT_MEMORY_ROOT rename for clarity; MemoryOptions interface for read-path parameterization
+- [62-02]: Rules files mirror Nova pattern but cover platform engineering domain exclusively
+- [62-02]: Dev-cli harness is functionally identical to Nova's — namespace separation only
 
 Key v9.0 pre-milestone decisions:
 - [v9.0]: 4 agents not 5 — Dev Generalist merges Backend+Frontend+Infra; split only if coordination overhead justifies it
@@ -65,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-02
-Stopped at: Roadmap created for v9.0 Monty — 6 phases (62-67), 42 requirements mapped
+Last session: 2026-04-03
+Stopped at: Completed 62-02-PLAN.md (Agent Rules & Dev-CLI Harness)
 Resume file: None
