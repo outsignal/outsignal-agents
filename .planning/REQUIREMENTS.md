@@ -25,7 +25,7 @@
 - [ ] **ORCH-03**: Maintain backlog in `.monty/memory/backlog.json` — capture, prioritise, track status of future work
 - [ ] **ORCH-04**: Sequential quality pipeline enforcement — Dev Generalist output reviewed by QA before deploy, auth-touching changes reviewed by Security
 - [ ] **ORCH-05**: Pre-approval gate — state what's about to happen, estimate impact, wait for human approval before execution
-- [ ] **ORCH-06**: `scripts/monty.ts` CLI entry point (interactive chat, matching `scripts/chat.ts` pattern)
+- [x] **ORCH-06**: `scripts/monty.ts` CLI entry point (interactive chat, matching `scripts/chat.ts` pattern)
 - [ ] **ORCH-07**: AgentConfig with name, model, systemPrompt (from rules file), tools, maxSteps, onComplete hook
 - [ ] **ORCH-08**: onComplete writes session summary to `.monty/memory/decisions.md`
 
@@ -98,7 +98,7 @@
 | ORCH-03 | Phase 64 | Pending |
 | ORCH-04 | Phase 64 | Pending |
 | ORCH-05 | Phase 64 | Pending |
-| ORCH-06 | Phase 63 | Pending |
+| ORCH-06 | Phase 63 | Complete |
 | ORCH-07 | Phase 64 | Pending |
 | ORCH-08 | Phase 64 | Pending |
 | DEV-01 | Phase 64 | Pending |

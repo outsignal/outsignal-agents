@@ -154,7 +154,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 **Milestone Goal:** Build a Dev Orchestrator team (Monty) with specialist agents that handles all platform engineering work — clear boundary from Nova (campaign ops), with PM capability for triaging bugs vs features, managing backlog, and routing to the right specialist.
 
 - [x] **Phase 62: Architecture Foundation** - Memory namespace, rules files, boundary enforcement, tool scoping, triage classification (completed 2026-04-03)
-- [ ] **Phase 63: Dev CLI Tools + Entry Point** - Tool wrapper scripts for dev agents, Monty CLI REPL entry point
+- [x] **Phase 63: Dev CLI Tools + Entry Point** - Tool wrapper scripts for dev agents, Monty CLI REPL entry point (completed 2026-04-03)
 - [ ] **Phase 64: Orchestrator + Dev Generalist** - PM triage, delegation, backlog management, generalist dev agent (backend + frontend + infra)
 - [ ] **Phase 65: QA Agent** - Adversarial code review with mandatory findings, test validation, dead code detection
 - [ ] **Phase 66: Security Agent** - OWASP compliance, credential scanning, auth flow review, on-call gate
@@ -798,7 +798,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 62. Architecture Foundation | 3/3 | Complete    | 2026-04-03 | - |
-| 63. Dev CLI Tools + Entry Point | v9.0 | 0/TBD | Not started | - |
+| 63. Dev CLI Tools + Entry Point | 2/2 | Complete   | 2026-04-03 | - |
 | 64. Orchestrator + Dev Generalist | v9.0 | 0/TBD | Not started | - |
 | 65. QA Agent | v9.0 | 0/TBD | Not started | - |
 | 66. Security Agent | v9.0 | 0/TBD | Not started | - |
