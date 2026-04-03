@@ -4,14 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && npm run build:cli && next build",
+    "build": "prisma generate && npm run build:cli && npm run build:dev-cli && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
     "chat": "tsx scripts/chat.ts",
-    "build:cli": "tsup --config tsup.cli.config.ts"
+    "build:cli": "tsup --config tsup.cli.config.ts",
+    "build:dev-cli": "tsup --config tsup.dev-cli.config.ts",
+    "monty": "tsx scripts/monty.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.46",
