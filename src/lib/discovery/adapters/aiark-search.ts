@@ -35,12 +35,20 @@ import { stripWwwAll, type RateLimits } from "../rate-limit";
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
 
-/** AI Ark adapter rate limits */
+/**
+ * AI Ark adapter rate limits.
+ * Source: Documented — 5 req/s, 300 req/min.
+ * Export (email finding) is rate-limited separately — triggers 401 after
+ * ~10 rapid consecutive calls. Use 200ms minimum between export calls,
+ * with 5-10 min cooldown if 401 received.
+ * Results per page: 100 (0-based pagination).
+ */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 100,
-  delayBetweenCalls: 200,
+  delayBetweenCalls: 200,        // 5 req/s = 200ms between calls
   maxConcurrent: 1,
   dailyCap: null,
+  cooldownOnRateLimit: 300_000,  // 5 min cooldown on 401/429
 };
 
 /** Auth header name — confirmed working via live testing. */

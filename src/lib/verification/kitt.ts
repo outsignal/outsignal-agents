@@ -19,8 +19,23 @@ import { prisma } from "@/lib/db";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { incrementDailySpend } from "@/lib/enrichment/costs";
 import { recordEnrichment } from "@/lib/enrichment/log";
+import type { RateLimits } from "@/lib/discovery/rate-limit";
 
 import type { VerificationResult } from "./bounceban";
+
+/**
+ * Kitt rate limits.
+ * Source: Not publicly documented — 2 req/s is safe observed default.
+ * Email finding: /job/find_email — 1 request per lookup.
+ * Verification: /job/verify_email — 1 request per verification.
+ */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,               // Single email per request (find or verify)
+  delayBetweenCalls: 500,        // 2 req/s safe default
+  maxConcurrent: 1,
+  dailyCap: null,
+  cooldownOnRateLimit: 60_000,   // 60s wait after rate limit
+};
 
 const BASE_URL = "https://api.trykitt.ai";
 const FIND_EMAIL_ENDPOINT = `${BASE_URL}/job/find_email`;

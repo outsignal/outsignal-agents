@@ -17,6 +17,20 @@ import type {
   SendReplyResponse,
 } from "./types";
 import { EmailBisonError } from "./types";
+import type { RateLimits } from "@/lib/discovery/rate-limit";
+
+/**
+ * EmailBison rate limits.
+ * Source: Not publicly documented — 2 req/s is safe default.
+ * Pagination: 15 results per page (default) — MUST paginate all pages.
+ */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 15,              // 15 results per page (EB default)
+  delayBetweenCalls: 500,        // 2 req/s safe default
+  maxConcurrent: 1,
+  dailyCap: null,
+  cooldownOnRateLimit: 60_000,   // 60s wait after 429
+};
 
 export class EmailBisonApiError extends Error {
   public parsedBody: Record<string, unknown> | null;

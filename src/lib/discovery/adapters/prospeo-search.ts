@@ -28,12 +28,19 @@ import { stripWwwAll, type RateLimits } from "../rate-limit";
 const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
 
-/** Prospeo adapter rate limits */
+/**
+ * Prospeo adapter rate limits.
+ * Source: Not publicly documented — 1 req/s is observed safe default.
+ * Batch limit: 500 domains per search request (400 if exceeded).
+ * Results per page: 25 (fixed by Prospeo, cannot change).
+ * Bulk enrich: 50 people per request.
+ */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 500,
-  delayBetweenCalls: 200,
+  delayBetweenCalls: 1000,       // 1 req/s safe default
   maxConcurrent: 1,
   dailyCap: null,
+  cooldownOnRateLimit: 60_000,   // 60s wait after 429
 };
 
 /** Cost of 1 Prospeo credit in USD (1 credit per /search-person request) */

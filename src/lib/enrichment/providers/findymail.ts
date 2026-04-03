@@ -14,6 +14,20 @@ import { z } from "zod";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { EmailAdapter, EmailProviderResult } from "../types";
+import type { RateLimits } from "@/lib/discovery/rate-limit";
+
+/**
+ * FindyMail rate limits.
+ * Source: Not publicly documented — 2 req/s is safe observed default.
+ * Separate email finder and verifier credit pools.
+ */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,               // Single lookup per request
+  delayBetweenCalls: 500,        // 2 req/s safe default
+  maxConcurrent: 1,
+  dailyCap: null,
+  cooldownOnRateLimit: 60_000,   // 60s wait after 429
+};
 
 const FINDYMAIL_ENDPOINT = "https://app.findymail.com/api/search/linkedin";
 const TIMEOUT_MS = 10_000;

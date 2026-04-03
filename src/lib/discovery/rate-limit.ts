@@ -18,6 +18,8 @@ export interface RateLimits {
   maxConcurrent: number;
   /** Daily cap on calls (null = unlimited) */
   dailyCap: number | null;
+  /** Milliseconds to wait after a 429/401 rate limit response before retrying */
+  cooldownOnRateLimit?: number;
 }
 
 // ---------------------------------------------------------------------------
