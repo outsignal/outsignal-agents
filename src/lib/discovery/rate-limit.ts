@@ -16,6 +16,10 @@ export interface RateLimits {
   delayBetweenCalls: number;
   /** Maximum concurrent requests (1 = sequential) */
   maxConcurrent: number;
+  /** Per-minute cap on calls (null = unlimited) */
+  minuteCap?: number | null;
+  /** Per-hour cap on calls (null = unlimited) */
+  hourlyCap?: number | null;
   /** Daily cap on calls (null = unlimited) */
   dailyCap: number | null;
   /** Milliseconds to wait after a 429/401 rate limit response before retrying */
