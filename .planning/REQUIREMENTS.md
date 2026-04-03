@@ -38,7 +38,7 @@
 - [ ] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
 - [ ] **DEV-06**: Updates affected Nova agent rules files and tools when platform changes impact agent behaviour (e.g., new CLI script → add as agent tool, API change → update adapter)
 - [ ] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
-- [ ] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
+- [x] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
 - [ ] **DEV-08**: onComplete writes what was changed and why to `.monty/memory/decisions.md`
 
 ### QA Agent
@@ -107,7 +107,7 @@
 | DEV-04 | Phase 64 | Pending |
 | DEV-05 | Phase 64 | Pending |
 | DEV-06 | Phase 64 | Pending |
-| DEV-07 | Phase 63 | Pending |
+| DEV-07 | Phase 63 | Complete |
 | DEV-08 | Phase 64 | Pending |
 | DEV-09 | Phase 64 | Pending |
 | QA-01 | Phase 65 | Pending |
