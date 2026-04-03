@@ -20,6 +20,7 @@ export async function runAgent<TOutput = unknown>(
   options?: {
     triggeredBy?: string;
     workspaceSlug?: string;
+    input?: unknown;
   },
 ): Promise<AgentRunResult<TOutput>> {
   const startTime = Date.now();

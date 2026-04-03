@@ -18,7 +18,7 @@ export interface AgentConfig {
   outputSchema?: z.ZodType<unknown>; // Optional Zod schema for validating parsed output
   onComplete?: (
     result: AgentRunResult,
-    options?: { workspaceSlug?: string },
+    options?: { workspaceSlug?: string; input?: unknown },
   ) => Promise<void>;
 }
 

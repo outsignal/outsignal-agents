@@ -715,11 +715,76 @@ const writerConfig: AgentConfig = {
       ? `KB: ${output.references.join(", ")}`
       : "no KB refs";
 
-    await appendToMemory(
-      slug,
-      "campaigns.md",
-      `${output.campaignName}: ${channel} ${strategy} sequence generated. ${refs}`,
-    );
+    // --- Extract angles and proof points from steps ---
+    const angles: string[] = [];
+    const proofPoints: string[] = [];
+    let closingStyle = "";
+
+    const allSteps = [
+      ...(output.emailSteps ?? []),
+      ...(output.linkedinSteps ?? []),
+    ];
+
+    for (const step of allSteps) {
+      // Extract "Applied:" citations from notes as angle indicators
+      const appliedMatch = step.notes?.match(/Applied:\s*(.+?)(?:\s*from\s|$)/i);
+      if (appliedMatch?.[1]) {
+        const angle = appliedMatch[1].trim();
+        if (!angles.includes(angle)) angles.push(angle);
+      }
+
+      // Extract proof points (case study references, stats)
+      const proofMatch = step.body?.match(/\b\d+%|\b\d+x\b|case study|saved|reduced|increased/gi);
+      if (proofMatch) {
+        for (const p of proofMatch) {
+          if (!proofPoints.includes(p)) proofPoints.push(p);
+        }
+      }
+
+      // Capture closing style from the last line of the last step
+      if (step === allSteps[allSteps.length - 1] && step.body) {
+        const lines = step.body.trim().split("\n");
+        const lastLine = lines[lines.length - 1]?.trim();
+        if (lastLine && lastLine.endsWith("?")) {
+          closingStyle = lastLine.length > 60
+            ? lastLine.slice(0, 57) + "..."
+            : lastLine;
+        }
+      }
+    }
+
+    // Handle creative ideas variants
+    let variantSummary = "";
+    if (output.creativeIdeas?.length) {
+      const ideas = output.creativeIdeas;
+      variantSummary = `${ideas.length} variants: ${ideas.map((i) => i.title || i.groundedIn).join(", ")}`;
+      for (const idea of ideas) {
+        if (idea.groundedIn && !angles.includes(idea.groundedIn)) {
+          angles.push(idea.groundedIn);
+        }
+      }
+    }
+
+    // Build structured campaign summary
+    const stepCount = allSteps.length + (output.creativeIdeas?.length ?? 0);
+    const parts = [`${output.campaignName}: ${channel} ${strategy}, ${stepCount} steps.`];
+    if (angles.length) parts.push(`Angles: ${angles.slice(0, 5).join(", ")}.`);
+    if (proofPoints.length) parts.push(`Proof: ${proofPoints.slice(0, 3).join(", ")}.`);
+    if (closingStyle) parts.push(`Closing: "${closingStyle}".`);
+    if (variantSummary) parts.push(variantSummary + ".");
+    parts.push(refs);
+
+    await appendToMemory(slug, "campaigns.md", parts.join(" "));
+
+    // --- Record client feedback if present ---
+    const input = options?.input as WriterInput | undefined;
+    if (input?.feedback) {
+      await appendToMemory(
+        slug,
+        "feedback.md",
+        `Writer revision for ${output.campaignName}: "${input.feedback}". Result: ${strategy} ${channel} rewritten.`,
+      );
+    }
   },
 };
 
@@ -741,6 +806,7 @@ export async function runWriterAgent(
   const result = await runAgent<WriterOutput>(writerConfig, userMessage, {
     triggeredBy: "cli",
     workspaceSlug: input.workspaceSlug,
+    input,
   });
 
   return result.output;
