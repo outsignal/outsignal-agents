@@ -115,14 +115,18 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
 - Campaign builder UI — all campaign operations through Nova CLI agent teams (Cmd+J / CLI skills)
 
-## Current Milestone: v8.0 Agent Quality Overhaul
+## Current Milestone: v9.0 Monty — Platform Engineering Agent Team
 
-**Goal:** Make agent team produce campaign-ready output without manual QA — expert-level lead sourcing with verified data, copy that passes all rules first time, validated pipeline end-to-end.
+**Goal:** Build a Dev Orchestrator ("Monty") with 5 specialist agents that handles all platform engineering work — clear boundary from Nova (campaign ops), with PM capability for triaging bugs vs features, managing backlog, and routing to the right specialist.
 
 **Target features:**
-- Leads agent with deep platform expertise, optimal sourcing recommendations, quality gates, and channel-aware enrichment
-- Writer agent with mandatory self-review, campaign-holistic awareness, and automatic rewrite loops
-- Campaign pipeline with validation gates, channel-aware list building, and cost tracking
+- Dev Orchestrator (PM) — triages work (bug vs feature), routes to specialists, manages backlog, tracks progress
+- Backend Agent — API routes, Prisma, server logic, Trigger.dev tasks
+- Frontend/UI Agent — components, pages, design system (uses UI UX Pro Max skill)
+- Infrastructure Agent — deploys, Railway, Vercel, Trigger.dev config, DNS
+- QA Agent — testing, code review, validation
+- Security Agent — auth flows, credential handling, OWASP, vulnerability review
+- Two-team boundary enforcement: workspace slug → Nova, codebase → Monty
 
 ## Current State
 
