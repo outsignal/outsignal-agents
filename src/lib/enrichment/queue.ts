@@ -111,18 +111,21 @@ export async function processNextChunk(
           });
           processedInChunk++;
         } catch (err) {
-          // Credit exhaustion — notify admin and pause the job
+          // Credit exhaustion — notify admin and pause the job with 1-hour resume
           if (isCreditExhaustion(err)) {
             await notifyCreditExhaustion({
               provider: (err as any).provider,
               httpStatus: (err as any).httpStatus,
               context: `enrichment queue processing (job ${job.id})`,
             });
-            // Pause the job — same mechanism as DAILY_CAP_HIT but no resumeAt
+            // Pause the job — resume in 1 hour (credits may be replenished or
+            // a different provider in the waterfall may succeed)
+            const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
             await prisma.enrichmentJob.update({
               where: { id: job.id },
               data: {
                 status: "paused",
+                resumeAt: oneHourFromNow,
                 processedCount: chunkStart + processedInChunk,
               },
             });
