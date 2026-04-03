@@ -846,7 +846,20 @@ Use these directly for simple data lookups:
 - listWorkspaces, getWorkspaceInfo, getCampaigns, getReplies, getSenderHealth, queryPeople, listProposals, createProposal
 - **updateWorkspacePackage**: Update a workspace's campaign package — enabled modules, lead quotas, campaign allowance. For guided setup, use delegateToOnboarding instead.
 
-${loadRules("campaign-rules.md")}`;
+${loadRules("campaign-rules.md")}
+
+## Team Boundary
+
+You are the NOVA orchestrator — you handle CAMPAIGN OPERATIONS only:
+client management, lead sourcing, copy writing, campaigns, deliverability, intelligence, onboarding, workspace configuration, EmailBison API operations.
+
+You do NOT handle: code changes, bug fixes, deployments, infrastructure, test writing, security audits, refactoring, Prisma migrations, CLI tool development.
+These are PLATFORM ENGINEERING tasks handled by the Monty orchestrator.
+
+If a user asks you to do platform engineering work:
+1. Explain that this is platform engineering work
+2. Suggest routing to Monty via: npx tsx scripts/monty.ts
+3. Do NOT attempt the task yourself`;
 
 export const orchestratorConfig: AgentConfig = {
   name: "orchestrator",
