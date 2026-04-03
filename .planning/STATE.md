@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 
 ## Current Position
 
-Phase: 62 of 67 (Architecture Foundation)
-Plan: 2 of 3 complete
-Status: Executing Phase 62 plans
-Last activity: 2026-04-03 — Completed 62-02 (Agent Rules & Dev-CLI Harness)
+Phase: 62 of 67 (Architecture Foundation) -- COMPLETE
+Plan: 3 of 3 complete
+Status: Phase 62 complete, ready for Phase 63
+Last activity: 2026-04-03 — Completed 62-03 (Orchestrator Boundary Enforcement)
 
-Progress: [██░░░░░░░░] 11%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -51,6 +51,8 @@ Key v9.0 execution decisions:
 - [62-01]: DEFAULT_MEMORY_ROOT rename for clarity; MemoryOptions interface for read-path parameterization
 - [62-02]: Rules files mirror Nova pattern but cover platform engineering domain exclusively
 - [62-02]: Dev-cli harness is functionally identical to Nova's — namespace separation only
+- [62-03]: Monty tools use inputSchema (AI SDK v6) with z.record(z.string(), z.unknown()) for Zod v4 compat
+- [62-03]: Bidirectional boundary: Nova rejects platform eng (suggests monty.ts), Monty rejects campaign ops (suggests chat.ts)
 
 Key v9.0 pre-milestone decisions:
 - [v9.0]: 4 agents not 5 — Dev Generalist merges Backend+Frontend+Infra; split only if coordination overhead justifies it
@@ -72,5 +74,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-03
-Stopped at: Completed 62-02-PLAN.md (Agent Rules & Dev-CLI Harness)
+Stopped at: Completed 62-03-PLAN.md (Orchestrator Boundary Enforcement) — Phase 62 complete
 Resume file: None

@@ -153,7 +153,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 **Milestone Goal:** Build a Dev Orchestrator team (Monty) with specialist agents that handles all platform engineering work — clear boundary from Nova (campaign ops), with PM capability for triaging bugs vs features, managing backlog, and routing to the right specialist.
 
-- [ ] **Phase 62: Architecture Foundation** - Memory namespace, rules files, boundary enforcement, tool scoping, triage classification
+- [x] **Phase 62: Architecture Foundation** - Memory namespace, rules files, boundary enforcement, tool scoping, triage classification (completed 2026-04-03)
 - [ ] **Phase 63: Dev CLI Tools + Entry Point** - Tool wrapper scripts for dev agents, Monty CLI REPL entry point
 - [ ] **Phase 64: Orchestrator + Dev Generalist** - PM triage, delegation, backlog management, generalist dev agent (backend + frontend + infra)
 - [ ] **Phase 65: QA Agent** - Adversarial code review with mandatory findings, test validation, dead code detection
@@ -797,7 +797,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 62. Architecture Foundation | 2/3 | In Progress|  | - |
+| 62. Architecture Foundation | 3/3 | Complete   | 2026-04-03 | - |
 | 63. Dev CLI Tools + Entry Point | v9.0 | 0/TBD | Not started | - |
 | 64. Orchestrator + Dev Generalist | v9.0 | 0/TBD | Not started | - |
 | 65. QA Agent | v9.0 | 0/TBD | Not started | - |
