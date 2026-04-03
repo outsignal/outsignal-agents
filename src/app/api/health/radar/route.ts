@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { emailguard } from "@/lib/emailguard/client";
+import { checkAllProviderBalances } from "@/lib/credits/provider-balances";
 
 export const maxDuration = 30;
 
@@ -145,8 +146,9 @@ export async function GET(request: NextRequest) {
   todayEnd.setUTCHours(23, 59, 59, 999);
   const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  // Kick off EmailGuard blacklist check in parallel with workspace queries
+  // Kick off EmailGuard blacklist check and credit balance checks in parallel
   const blacklistCheckPromise = runEmailGuardBlacklistCheck();
+  const creditCheckPromise = checkAllProviderBalances();
 
   const workspaceResults = await Promise.all(
     workspaces.map(async (ws) => {
@@ -359,12 +361,22 @@ export async function GET(request: NextRequest) {
     }),
   );
 
-  // Await the blacklist check (started in parallel above)
-  const blacklistCheck = await blacklistCheckPromise;
+  // Await the blacklist check and credit balances (started in parallel above)
+  const [blacklistCheck, creditBalances] = await Promise.all([
+    blacklistCheckPromise,
+    creditCheckPromise,
+  ]);
+
+  const creditWarnings = creditBalances.filter((b) => b.status === "warning");
+  const creditCritical = creditBalances.filter((b) => b.status === "critical");
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     workspaces: workspaceResults,
     blacklistCheck,
+    credits: {
+      overallStatus: creditCritical.length > 0 ? "critical" : creditWarnings.length > 0 ? "warning" : "healthy",
+      providers: creditBalances,
+    },
   });
 }
