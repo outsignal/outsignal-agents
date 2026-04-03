@@ -1,102 +1,131 @@
-# Requirements: Outsignal Agent Quality Overhaul
+# Requirements: v9.0 Monty — Platform Engineering Agent Team
 
-**Defined:** 2026-03-30
-**Core Value:** Make agent team produce campaign-ready output without manual QA — expert lead sourcing, first-time-right copy, validated pipeline.
+**Defined:** 2026-04-03
+**Core Value:** Build a Dev Orchestrator team (Monty) that handles all platform engineering work with clear structural boundary from Nova (campaign ops), preventing PM bypass violations and ensuring quality gates on all code changes.
 
-## v8.0 Requirements
+## v9.0 Requirements
 
-Requirements for the agent quality overhaul. Each maps to roadmap phases.
+### Foundation
 
-### Leads Quality
+- [ ] **FOUND-01**: `.monty/memory/` namespace exists with seed files (backlog.json, decisions.md, incidents.md, architecture.md, security.md)
+- [ ] **FOUND-02**: Memory seed script (`scripts/monty-memory.ts`) creates initial memory structure
+- [ ] **FOUND-03**: `loadMemoryContext()` in memory.ts accepts optional `memoryRoot` parameter (defaults to `.nova/memory`, Monty passes `.monty/memory`)
+- [ ] **FOUND-04**: `scripts/dev-cli/*.ts` tool wrapper directory exists with shared harness pattern matching Nova's `scripts/cli/`
+- [ ] **FOUND-05**: Rules files created for each agent (`.claude/rules/monty-orchestrator-rules.md`, `monty-dev-rules.md`, `monty-qa-rules.md`, `monty-security-rules.md`)
+- [ ] **FOUND-06**: Boundary enforcement via tool scoping — Monty orchestratorTools contains NONE of Nova's delegation tools, Nova orchestratorTools contains NONE of Monty's
+- [ ] **FOUND-07**: Both Nova and Monty orchestrator system prompts include boundary check — reject misrouted tasks with explanation and route suggestion
+- [ ] **FOUND-08**: Boundary rejections written to memory (`.monty/memory/decisions.md` or `.nova/memory/global-insights.md`) so orchestrators learn what is/isn't their domain
+- [ ] **FOUND-09**: Cross-team notification system — Monty agents write platform changes to `.nova/memory/global-insights.md`, Nova agents write platform issues to `.monty/memory/incidents.md`
+- [ ] **FOUND-10**: Monty Radar polls cross-team memory files hourly for new entries — alerts user via ntfy/Slack with which orchestrator is being notified and a summary of the update (e.g., "Notifying Nova Orchestrator: enrichment decoupled from discovery — adapters no longer run inline enrichment"), AND triggers the receiving team's orchestrator to read and acknowledge the update
 
-- [ ] **LEAD-01**: Leads agent recommends optimal sourcing route per campaign (platforms, filters, reasoning) and waits for approval
-- [ ] **LEAD-02**: Two-path search routing — if company domains available, search by domain; if ICP filters only, build optimal filter combinations from ICP data. Agent knows which path and why.
-- [ ] **LEAD-03**: AI Ark keyword searches use two-step company-then-people workaround (enforced at CLI wrapper level)
-- [ ] **LEAD-04**: Post-search quality gate — reports % with real emails, % with LinkedIn URLs, ICP fit score; flags if below threshold before promotion
-- [ ] **LEAD-05**: Channel-aware enrichment — LinkedIn-only campaigns skip email enrichment entirely; email and hybrid campaigns get both email + LinkedIn URLs. Always get LinkedIn URLs.
-- [ ] **LEAD-06**: Unverified/CATCH_ALL emails routed through BounceBan/LeadMagic verification (not discarded)
-- [ ] **LEAD-07**: Pre-search input validation — sanity-check filters against workspace ICP before paid API calls
-- [ ] **LEAD-08**: Credit estimation before discovery execution (estimated cost shown in plan, actual cost reported after)
-- [ ] **LEAD-09**: Platform expertise encoded in leads-rules.md — optimal filters, cost models, rate limits, common mistakes, best practices per platform (Prospeo, AI Ark, Apollo, Leads Finder, Google Maps, Ecommerce Stores)
-- [ ] **LEAD-10**: Domain resolution step when working from company name lists (resolve domains first, then people search)
+### Dev Orchestrator (PM)
 
-### Copy Quality
+- [ ] **ORCH-01**: Triage incoming work as bug / feature / improvement with severity/priority classification
+- [ ] **ORCH-02**: Route to correct specialist via delegation tools (delegateToDevAgent, delegateToQA, delegateToSecurity)
+- [ ] **ORCH-03**: Maintain backlog in `.monty/memory/backlog.json` — capture, prioritise, track status of future work
+- [ ] **ORCH-04**: Sequential quality pipeline enforcement — Dev Generalist output reviewed by QA before deploy, auth-touching changes reviewed by Security
+- [ ] **ORCH-05**: Pre-approval gate — state what's about to happen, estimate impact, wait for human approval before execution
+- [ ] **ORCH-06**: `scripts/monty.ts` CLI entry point (interactive chat, matching `scripts/chat.ts` pattern)
+- [ ] **ORCH-07**: AgentConfig with name, model, systemPrompt (from rules file), tools, maxSteps, onComplete hook
+- [ ] **ORCH-08**: onComplete writes session summary to `.monty/memory/decisions.md`
 
-- [x] **COPY-01**: Extended copy-quality.ts — full rule set (word count tiered by strategy, all banned phrases, greeting check, CTA softness, variable format, subject line rules)
-- [ ] **COPY-02**: Mandatory self-review gate before save — writer calls validate-copy CLI, auto-rewrites if violations (max 2 retries, then save with review notes)
-- [ ] **COPY-03**: Campaign-holistic awareness — writer loads all existing steps (email + LinkedIn) before generating, maintains "taken angles" and "taken CTAs" list
-- [ ] **COPY-04**: Intent-based anti-pattern descriptions in rules (not just banned phrases — describe the pattern to avoid)
-- [ ] **COPY-05**: LinkedIn-specific validation (no spintax, no paragraph format, under 100 words, chat tone)
-- [ ] **COPY-06**: KB consultation must produce applied output (not just "searched KB" — cite specific principle used)
-- [ ] **COPY-07**: Validator agent (Opus 4.6 via Claude Code CLI) reviews copy after writer self-review — catches semantic issues (filler spintax, tonal mismatch, angle repetition)
+### Dev Generalist Agent
 
-### Campaign Pipeline
+- [ ] **DEV-01**: Backend work — API routes, Prisma schema/queries, server logic, Trigger.dev tasks
+- [ ] **DEV-02**: Frontend/UI work — React components, pages, design system, uses UI UX Pro Max skill
+- [ ] **DEV-03**: Infrastructure work — deploy config, Railway, Vercel, Trigger.dev configuration, DNS
+- [ ] **DEV-04**: Action tier model — read-only operations always allowed, reversible operations logged, destructive/gated operations require explicit approval
+- [ ] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
+- [ ] **DEV-06**: Updates affected Nova agent rules files and tools when platform changes impact agent behaviour (e.g., new CLI script → add as agent tool, API change → update adapter)
+- [ ] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
+- [ ] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
+- [ ] **DEV-08**: onComplete writes what was changed and why to `.monty/memory/decisions.md`
 
-- [ ] **PIPE-01**: Channel-aware list building — email campaigns get people with verified emails + LinkedIn URLs; LinkedIn-only campaigns get people with LinkedIn URLs only (skip email enrichment)
-- [ ] **PIPE-02**: List overlap detection — flag if any person appears in multiple active campaigns
-- [ ] **PIPE-03**: All lead data normalised before campaign usage — company name, location, job title, industry
-- [ ] **PIPE-04**: Data quality pre-check before campaign creation (list has usable data for the campaign's channel)
-- [ ] **PIPE-05**: Portal approval hard-blocks on copy quality violations (HTTP 422, not just warnings)
-- [ ] **PIPE-06**: Cost tracking per pipeline stage (discovery → enrichment → campaign — report total spend)
+### QA Agent
 
-### Cross-Cutting
+- [ ] **QA-01**: Code review — TypeScript compilation check, pattern consistency with existing codebase, banned pattern detection
+- [ ] **QA-02**: Adversarial review — minimum 3 findings per review, actively looks for problems (not just confirmation)
+- [ ] **QA-03**: Test validation — run existing tests (`vitest`), verify changes don't break existing functionality
+- [ ] **QA-04**: Review API integrations for pagination handling, error handling, and rate limit compliance
+- [ ] **QA-05**: Detect dead code paths — endpoints with no callers, functions with no imports, orphaned files
+- [ ] **QA-06**: AgentConfig with review tools
+- [ ] **QA-07**: onComplete writes review findings to `.monty/memory/incidents.md` if issues found
+- [ ] **QA-08**: Writes to `.nova/memory/global-insights.md` when QA findings affect Nova agent behaviour
 
-- [x] **CROSS-01**: All agents use Opus 4.6 (best available model) — no cost-optimised model downgrades since Max Plan covers all usage
+### Security Agent
 
-## v9.0 Requirements (Future)
+- [ ] **SEC-01**: OWASP Top 10:2025 compliance check on code changes touching auth, input handling, or data access
+- [ ] **SEC-02**: Credential exposure detection — scan for hardcoded secrets, API keys in source, `.env` values in logs
+- [ ] **SEC-03**: Auth flow review — authentication, session handling, API key management, token storage
+- [ ] **SEC-04**: On-call gate — changes touching auth/credentials/session management are blocked until Security Agent reviews
+- [ ] **SEC-05**: AgentConfig with security scanning tools (npm audit, eslint-plugin-security if ESLint v9 compatible)
+- [ ] **SEC-06**: onComplete writes security findings to `.monty/memory/security.md`
+- [ ] **SEC-07**: Writes to `.nova/memory/global-insights.md` when security findings affect Nova agent behaviour (e.g., API key rotation, auth flow changes)
 
-### Dev Agent Team
+## Future Requirements
 
-- **DEV-01**: Debugger agent — investigates issues using scientific method, manages debug sessions
-- **DEV-02**: Feature builder agent — implements features from briefs with code quality standards
-- **DEV-03**: Test runner agent — runs tests, validates changes, reports results
-- **DEV-04**: Code reviewer agent — reviews PRs and changes for quality, security, performance
+- **FUT-01**: Split Dev Generalist into Backend + Frontend/UI + Infrastructure specialists if generalist becomes a bottleneck
+- **FUT-02**: Automated regression test generation after QA reviews
+- **FUT-03**: Integration with GitHub Issues / Linear for external backlog sync
+- **FUT-04**: Cross-team orchestration — Monty Dev Agent automatically updates Nova rules when platform changes affect agents
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| New discovery adapters | Existing platforms sufficient — quality of usage is the problem |
-| PipelineRun DB model | Over-engineering for v8.0 — cost tracking via logging first |
-| BounceBan adapter integration | Deferred to v8.1 — verify workflow works manually first |
-| Writer retry UI queue | Failed drafts save with review notes — admin sees in existing approval flow |
-| Dev agent team | v9.0 milestone — finish campaign quality first, then build dev agents using same patterns |
-| Model cost optimisation | Max Plan covers all usage — always use best available model |
+| CI/CD pipeline automation | Overkill for current scale — manual deploy with human approval is safer |
+| Autonomous deploys | Non-negotiable — human approval required before every deploy (Vercel Pro credits) |
+| Replicate GSD planning | GSD already handles phased planning — Monty handles execution within phases |
+| Nova agent modification | Monty builds platform, Nova handles campaigns — structural boundary |
+| Database migration automation | Too risky for autonomous agents — manual Prisma migrations only |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LEAD-01 | Phase 56 | Pending |
-| LEAD-02 | Phase 53 | Pending |
-| LEAD-03 | Phase 53 | Pending |
-| LEAD-04 | Phase 56 | Pending |
-| LEAD-05 | Phase 56 | Pending |
-| LEAD-06 | Phase 56 | Pending |
-| LEAD-07 | Phase 53 | Pending |
-| LEAD-08 | Phase 56 | Pending |
-| LEAD-09 | Phase 53 | Pending |
-| LEAD-10 | Phase 56 | Pending |
-| COPY-01 | Phase 52 | Complete |
-| COPY-02 | Phase 54 | Pending |
-| COPY-03 | Phase 54 | Pending |
-| COPY-04 | Phase 54 | Pending |
-| COPY-05 | Phase 54 | Pending |
-| COPY-06 | Phase 54 | Pending |
-| COPY-07 | Phase 55 | Pending |
-| PIPE-01 | Phase 57 | Pending |
-| PIPE-02 | Phase 57 | Pending |
-| PIPE-03 | Phase 57 | Pending |
-| PIPE-04 | Phase 57 | Pending |
-| PIPE-05 | Phase 57 | Pending |
-| PIPE-06 | Phase 57 | Pending |
-| CROSS-01 | Phase 52 | Complete |
+| FOUND-01 | TBD | Pending |
+| FOUND-02 | TBD | Pending |
+| FOUND-03 | TBD | Pending |
+| FOUND-04 | TBD | Pending |
+| FOUND-05 | TBD | Pending |
+| FOUND-06 | TBD | Pending |
+| FOUND-07 | TBD | Pending |
+| FOUND-08 | TBD | Pending |
+| ORCH-01 | TBD | Pending |
+| ORCH-02 | TBD | Pending |
+| ORCH-03 | TBD | Pending |
+| ORCH-04 | TBD | Pending |
+| ORCH-05 | TBD | Pending |
+| ORCH-06 | TBD | Pending |
+| ORCH-07 | TBD | Pending |
+| ORCH-08 | TBD | Pending |
+| DEV-01 | TBD | Pending |
+| DEV-02 | TBD | Pending |
+| DEV-03 | TBD | Pending |
+| DEV-04 | TBD | Pending |
+| DEV-05 | TBD | Pending |
+| DEV-06 | TBD | Pending |
+| DEV-07 | TBD | Pending |
+| DEV-08 | TBD | Pending |
+| QA-01 | TBD | Pending |
+| QA-02 | TBD | Pending |
+| QA-03 | TBD | Pending |
+| QA-04 | TBD | Pending |
+| QA-05 | TBD | Pending |
+| QA-06 | TBD | Pending |
+| QA-07 | TBD | Pending |
+| SEC-01 | TBD | Pending |
+| SEC-02 | TBD | Pending |
+| SEC-03 | TBD | Pending |
+| SEC-04 | TBD | Pending |
+| SEC-05 | TBD | Pending |
+| SEC-06 | TBD | Pending |
 
 **Coverage:**
-- v8.0 requirements: 24 total
-- Mapped to phases: 24
-- Unmapped: 0
+- v9.0 requirements: 37 total
+- Mapped to phases: 0
+- Unmapped: 37
 
 ---
-*Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after v8.0 roadmap creation — all 24 requirements mapped*
+*Requirements defined: 2026-04-03*
+*Last updated: 2026-04-03 after initial definition*
