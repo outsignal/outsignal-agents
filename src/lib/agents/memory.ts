@@ -3,10 +3,14 @@ import { constants } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const MEMORY_ROOT = ".nova/memory";
+const DEFAULT_MEMORY_ROOT = ".nova/memory";
 const MAX_LINES = 200;
 
 type MemoryFile = "campaigns.md" | "feedback.md" | "learnings.md";
+
+interface MemoryOptions {
+  memoryRoot?: string; // defaults to ".nova/memory"
+}
 
 function isValidEntry(entry: string): boolean {
   if (!entry || entry.trim().length === 0) return false;
@@ -33,7 +37,7 @@ export async function appendToMemory(
 ): Promise<boolean> {
   try {
     const projectRoot = process.env.PROJECT_ROOT ?? process.cwd();
-    const filePath = join(projectRoot, MEMORY_ROOT, slug, file);
+    const filePath = join(projectRoot, DEFAULT_MEMORY_ROOT, slug, file);
 
     // File must exist (seeded by nova-memory.ts)
     try {
@@ -82,7 +86,7 @@ export async function appendToMemory(
 export async function appendToGlobalMemory(entry: string): Promise<boolean> {
   try {
     const projectRoot = process.env.PROJECT_ROOT ?? process.cwd();
-    const filePath = join(projectRoot, MEMORY_ROOT, "global-insights.md");
+    const filePath = join(projectRoot, DEFAULT_MEMORY_ROOT, "global-insights.md");
 
     // File must exist (seeded by nova-memory.ts)
     try {
@@ -181,9 +185,9 @@ async function loadSystemContext(): Promise<string | null> {
  * Load cross-client global insights file.
  * Returns null if file is missing or contains only seed content.
  */
-async function loadCrossClientContext(): Promise<string | null> {
+async function loadCrossClientContext(memoryRoot: string): Promise<string | null> {
   const projectRoot = process.env.PROJECT_ROOT ?? process.cwd();
-  const filePath = join(projectRoot, MEMORY_ROOT, "global-insights.md");
+  const filePath = join(projectRoot, memoryRoot, "global-insights.md");
   const content = await readMemoryFile(filePath);
   if (!content || !hasRealEntries(content)) return null;
   return content;
@@ -195,9 +199,10 @@ async function loadCrossClientContext(): Promise<string | null> {
  */
 async function loadWorkspaceMemory(
   slug: string,
+  memoryRoot: string,
 ): Promise<string | null> {
   const projectRoot = process.env.PROJECT_ROOT ?? process.cwd();
-  const dir = join(projectRoot, MEMORY_ROOT, slug);
+  const dir = join(projectRoot, memoryRoot, slug);
   const files = ["profile.md", "learnings.md", "campaigns.md", "feedback.md"];
 
   const sections: string[] = [];
@@ -267,12 +272,14 @@ function formatMemoryContext(
  */
 export async function loadMemoryContext(
   workspaceSlug?: string,
+  options?: MemoryOptions,
 ): Promise<string> {
   try {
+    const memoryRoot = options?.memoryRoot ?? DEFAULT_MEMORY_ROOT;
     const [systemCtx, crossClientCtx, workspaceCtx] = await Promise.all([
       loadSystemContext(),
-      loadCrossClientContext(),
-      workspaceSlug ? loadWorkspaceMemory(workspaceSlug) : Promise.resolve(null),
+      loadCrossClientContext(memoryRoot),
+      workspaceSlug ? loadWorkspaceMemory(workspaceSlug, memoryRoot) : Promise.resolve(null),
     ]);
 
     return formatMemoryContext(systemCtx, crossClientCtx, workspaceCtx);
