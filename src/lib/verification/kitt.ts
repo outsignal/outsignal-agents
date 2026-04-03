@@ -25,16 +25,22 @@ import type { VerificationResult } from "./bounceban";
 
 /**
  * Kitt rate limits.
- * Source: Not publicly documented — 2 req/s is safe observed default.
- * Email finding: /job/find_email — 1 request per lookup.
- * Verification: /job/verify_email — 1 request per verification.
+ * Source: Kitt API docs.
+ *
+ * Concurrency model (NOT requests/second):
+ *   - 15 concurrent requests per API key
+ *   - Non-realtime mode: unlimited submissions, processed in batches of 15
+ *   - Returns 402 (not 429) when rate limited
+ *
+ * We use maxConcurrent=15 to reflect the concurrency-based model.
+ * delayBetweenCalls is minimal since the constraint is concurrency, not rate.
  */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 1,               // Single email per request (find or verify)
-  delayBetweenCalls: 500,        // 2 req/s safe default
-  maxConcurrent: 1,
+  delayBetweenCalls: 0,          // No delay needed — concurrency-based, not rate-based
+  maxConcurrent: 15,             // 15 concurrent requests per API key — Source: Kitt API docs
   dailyCap: null,
-  cooldownOnRateLimit: 60_000,   // 60s wait after rate limit
+  cooldownOnRateLimit: 60_000,   // 60s wait after 402 rate limit
 };
 
 const BASE_URL = "https://api.trykitt.ai";

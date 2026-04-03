@@ -37,7 +37,14 @@ const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1
 
 /**
  * AI Ark adapter rate limits.
- * Source: Documented — 5 req/s, 300 req/min.
+ * Source: AI Ark API docs.
+ *
+ * All endpoints:
+ *   - 5 requests/second
+ *   - 300 requests/minute
+ *   - 18,000 requests/hour
+ * Returns 429 when exceeded. Rate limits reset every 60 seconds.
+ *
  * Export (email finding) is rate-limited separately — triggers 401 after
  * ~10 rapid consecutive calls. Use 200ms minimum between export calls,
  * with 5-10 min cooldown if 401 received.
@@ -45,9 +52,9 @@ const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1
  */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 100,
-  delayBetweenCalls: 200,        // 5 req/s = 200ms between calls
+  delayBetweenCalls: 200,        // 5 req/s — Source: AI Ark API docs
   maxConcurrent: 1,
-  dailyCap: null,
+  dailyCap: null,                // No daily cap; 18,000 req/hour limit
   cooldownOnRateLimit: 300_000,  // 5 min cooldown on 401/429
 };
 

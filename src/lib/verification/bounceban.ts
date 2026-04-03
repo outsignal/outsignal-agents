@@ -10,7 +10,7 @@
  * Cost: $0.005 per verification (1 credit), regardless of result.
  *
  * Waterfall endpoint benefits: longer timeout, free retries within 30 min.
- * Rate limit: 25 req/sec (documented), using 5 req/s conservative default.
+ * Rate limit: 100 req/sec on /verify/single (Source: BounceBan API docs).
  */
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -21,12 +21,19 @@ import type { RateLimits } from "@/lib/discovery/rate-limit";
 
 /**
  * BounceBan rate limits.
- * Source: API docs state 25 req/sec on Waterfall endpoint.
- * Using conservative 5 req/s default to avoid hitting undocumented burst limits.
+ * Source: BounceBan API docs.
+ *
+ * Per-endpoint limits:
+ *   - /verify/single: 100 requests/second
+ *   - /verify/bulk:   5 requests/second
+ *   - /check:         25 requests/second
+ *   - /account:       5 requests/second
+ *
+ * This adapter uses /verify/single exclusively (Waterfall endpoint).
  */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 1,               // Single email per verification request
-  delayBetweenCalls: 200,        // 5 req/s conservative default
+  delayBetweenCalls: 10,         // 100 req/s — Source: BounceBan API docs (/verify/single)
   maxConcurrent: 1,
   dailyCap: null,
   cooldownOnRateLimit: 60_000,   // 60s wait after 429

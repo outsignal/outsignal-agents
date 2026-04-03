@@ -16,12 +16,21 @@ import type { RateLimits } from "../rate-limit";
 
 const ACTOR_ID = "ecommerce_leads/store-leads-14m-e-commerce-leads";
 
-/** Ecommerce Stores adapter rate limits */
+/**
+ * Ecommerce Stores adapter rate limits.
+ * Source: Apify API docs.
+ *
+ * Apify platform limits:
+ *   - 60 requests/second (default endpoints)
+ *   - 400 requests/second (dataset push, request queue)
+ *   - Returns 429 with "rate-limit-exceeded"
+ *   - Not a bottleneck — constraint is compute credits, not rate limits
+ */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 100,
-  delayBetweenCalls: 0,
+  delayBetweenCalls: 0,          // 60 req/s platform limit — not a bottleneck
   maxConcurrent: 1,
-  dailyCap: null,
+  dailyCap: null,                // Credit-based, not rate-based
 };
 
 // ---------------------------------------------------------------------------

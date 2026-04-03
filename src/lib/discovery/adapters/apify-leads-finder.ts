@@ -21,12 +21,21 @@ import type {
 
 const ACTOR_ID = "code_crafter/leads-finder";
 
-/** Apify Leads Finder rate limits */
+/**
+ * Apify Leads Finder rate limits.
+ * Source: Apify API docs.
+ *
+ * Apify platform limits:
+ *   - 60 requests/second (default endpoints)
+ *   - 400 requests/second (dataset push, request queue)
+ *   - Returns 429 with "rate-limit-exceeded"
+ *   - Not a bottleneck — constraint is compute credits, not rate limits
+ */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 1,
-  delayBetweenCalls: 0,
+  delayBetweenCalls: 0,          // 60 req/s platform limit — not a bottleneck
   maxConcurrent: 3,
-  dailyCap: null,
+  dailyCap: null,                // Credit-based, not rate-based
 };
 
 // ---------------------------------------------------------------------------

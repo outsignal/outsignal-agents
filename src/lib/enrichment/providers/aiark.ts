@@ -11,6 +11,25 @@ import { z } from "zod";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { CompanyAdapter, CompanyProviderResult } from "../types";
+import type { RateLimits } from "@/lib/discovery/rate-limit";
+
+/**
+ * AI Ark company enrichment rate limits.
+ * Source: AI Ark API docs.
+ *
+ * All endpoints share the same limits:
+ *   - 5 requests/second
+ *   - 300 requests/minute
+ *   - 18,000 requests/hour
+ * Returns 429 when exceeded. Rate limits reset every 60 seconds.
+ */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,
+  delayBetweenCalls: 200,        // 5 req/s — Source: AI Ark API docs
+  maxConcurrent: 1,
+  dailyCap: null,                // No daily cap; 18,000 req/hour limit
+  cooldownOnRateLimit: 300_000,  // 5 min cooldown on 401/429
+};
 
 const AIARK_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
 

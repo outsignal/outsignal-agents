@@ -12,6 +12,26 @@ import { z } from "zod";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { EmailAdapter, EmailProviderResult } from "../types";
+import type { RateLimits } from "@/lib/discovery/rate-limit";
+
+/**
+ * Prospeo enrich endpoint rate limits.
+ * Source: Prospeo API docs.
+ *
+ * Enrich endpoints (/enrich-person):
+ *   - 5 requests/second
+ *   - 300 requests/minute
+ *   - 2,000 requests/day
+ * Returns 429 when exceeded.
+ * Response headers: x-daily-request-left, x-minute-request-left, x-second-rate-limit
+ */
+export const RATE_LIMITS: RateLimits = {
+  maxBatchSize: 1,
+  delayBetweenCalls: 200,        // 5 req/s — Source: Prospeo API docs
+  maxConcurrent: 1,
+  dailyCap: 2000,                // 2,000 requests/day — Source: Prospeo API docs
+  cooldownOnRateLimit: 60_000,   // 60s wait after 429
+};
 
 const PROSPEO_ENDPOINT = "https://api.prospeo.io/enrich-person";
 const TIMEOUT_MS = 10_000;

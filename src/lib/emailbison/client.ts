@@ -21,12 +21,16 @@ import type { RateLimits } from "@/lib/discovery/rate-limit";
 
 /**
  * EmailBison rate limits.
- * Source: Not publicly documented — 2 req/s is safe default.
+ * Source: EmailBison API docs.
+ *
+ *   - 3,000 requests/minute (50 req/s)
+ *   - Returns 429 when exceeded
+ *
  * Pagination: 15 results per page (default) — MUST paginate all pages.
  */
 export const RATE_LIMITS: RateLimits = {
-  maxBatchSize: 15,              // 15 results per page (EB default)
-  delayBetweenCalls: 500,        // 2 req/s safe default
+  maxBatchSize: 15,              // 15 results per page (EB default, pagination not rate limit)
+  delayBetweenCalls: 20,         // 50 req/s — Source: EmailBison API docs (3,000 req/min)
   maxConcurrent: 1,
   dailyCap: null,
   cooldownOnRateLimit: 60_000,   // 60s wait after 429

@@ -18,13 +18,20 @@ import type { RateLimits } from "@/lib/discovery/rate-limit";
 
 /**
  * FindyMail rate limits.
- * Source: Not publicly documented — 2 req/s is safe observed default.
+ * Source: FindyMail API docs.
+ *
+ * Concurrency model (NOT requests/second):
+ *   - 300 concurrent requests (all endpoints)
+ *   - Same concurrency model as Kitt but much more generous
+ *
+ * We use maxConcurrent=300 to reflect the concurrency-based model.
+ * delayBetweenCalls is minimal since the constraint is concurrency, not rate.
  * Separate email finder and verifier credit pools.
  */
 export const RATE_LIMITS: RateLimits = {
   maxBatchSize: 1,               // Single lookup per request
-  delayBetweenCalls: 500,        // 2 req/s safe default
-  maxConcurrent: 1,
+  delayBetweenCalls: 0,          // No delay needed — concurrency-based, not rate-based
+  maxConcurrent: 300,            // 300 concurrent requests — Source: FindyMail API docs
   dailyCap: null,
   cooldownOnRateLimit: 60_000,   // 60s wait after 429
 };
