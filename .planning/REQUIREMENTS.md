@@ -7,9 +7,9 @@
 
 ### Foundation
 
-- [ ] **FOUND-01**: `.monty/memory/` namespace exists with seed files (backlog.json, decisions.md, incidents.md, architecture.md, security.md)
-- [ ] **FOUND-02**: Memory seed script (`scripts/monty-memory.ts`) creates initial memory structure
-- [ ] **FOUND-03**: `loadMemoryContext()` in memory.ts accepts optional `memoryRoot` parameter (defaults to `.nova/memory`, Monty passes `.monty/memory`)
+- [x] **FOUND-01**: `.monty/memory/` namespace exists with seed files (backlog.json, decisions.md, incidents.md, architecture.md, security.md)
+- [x] **FOUND-02**: Memory seed script (`scripts/monty-memory.ts`) creates initial memory structure
+- [x] **FOUND-03**: `loadMemoryContext()` in memory.ts accepts optional `memoryRoot` parameter (defaults to `.nova/memory`, Monty passes `.monty/memory`)
 - [x] **FOUND-04**: `scripts/dev-cli/*.ts` tool wrapper directory exists with shared harness pattern matching Nova's `scripts/cli/`
 - [x] **FOUND-05**: Rules files created for each agent (`.claude/rules/monty-orchestrator-rules.md`, `monty-dev-rules.md`, `monty-qa-rules.md`, `monty-security-rules.md`)
 - [ ] **FOUND-06**: Boundary enforcement via tool scoping — Monty orchestratorTools contains NONE of Nova's delegation tools, Nova orchestratorTools contains NONE of Monty's
@@ -83,9 +83,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 62 | Pending |
-| FOUND-02 | Phase 62 | Pending |
-| FOUND-03 | Phase 62 | Pending |
+| FOUND-01 | Phase 62 | Complete |
+| FOUND-02 | Phase 62 | Complete |
+| FOUND-03 | Phase 62 | Complete |
 | FOUND-04 | Phase 62 | Complete |
 | FOUND-05 | Phase 62 | Complete |
 | FOUND-06 | Phase 62 | Pending |
