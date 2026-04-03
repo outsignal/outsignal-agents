@@ -11,7 +11,8 @@
 - ✅ **v6.0 Trigger.dev Migration — Background Jobs Infrastructure** — Phases 38-45 (shipped 2026-03-23)
 - ✅ **v7.0 Nova CLI Agent Teams — Client-Specific Intelligence** — Phases 46-51 (shipped 2026-03-24)
 - ✅ **v8.0 Agent Quality Overhaul** — Phases 52-58 (shipped 2026-03-30)
-- 🚧 **v9.0 Agent Memory & Intelligence** — Phase 59 (in progress)
+- ✅ **v8.1 Agent Memory & Intelligence** — Phases 59-61 (shipped 2026-04-01)
+- 🚧 **v9.0 Monty — Platform Engineering Agent Team** — Phases 62-67 (in progress)
 
 ## Phases
 
@@ -124,7 +125,8 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 
 </details>
 
-### 🚧 v8.0 Agent Quality Overhaul (In Progress)
+<details>
+<summary>✅ v8.0 Agent Quality Overhaul (Phases 52-58) — SHIPPED 2026-03-30</summary>
 
 **Milestone Goal:** Make agent team produce campaign-ready output without manual QA — expert-level lead sourcing with verified data, copy that passes all rules first time, validated pipeline end-to-end.
 
@@ -136,9 +138,27 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 57: Campaign Pipeline Validation** - Channel-aware list building, overlap detection, normalisation gate, portal hard-block (completed 2026-03-30)
 - [x] **Phase 58: End-to-End Validation** - Full pipeline integration test confirming all quality gates work as a unit (completed 2026-03-30)
 
-### v9.0 Agent Memory & Intelligence
+</details>
 
-- [x] **Phase 59: Agent Memory Read System** - Fix broken memory read: load 3-layer context (system-wide + cross-client + workspace) into every agent session. Agents must compound — learn from past campaigns, know current system state, improve over time. (completed 2026-04-01)
+<details>
+<summary>✅ v8.1 Agent Memory & Intelligence (Phases 59-61) — SHIPPED 2026-04-01</summary>
+
+- [x] Phase 59: Agent Memory Read System (2/2 plans) — completed 2026-04-01
+- [x] Phase 60: Intelligence Closed Loop (3/3 plans) — completed 2026-04-01
+- [x] Phase 61: Complete Agent Memory Coverage (2/2 plans) — completed 2026-04-01
+
+</details>
+
+### 🚧 v9.0 Monty — Platform Engineering Agent Team (In Progress)
+
+**Milestone Goal:** Build a Dev Orchestrator team (Monty) with specialist agents that handles all platform engineering work — clear boundary from Nova (campaign ops), with PM capability for triaging bugs vs features, managing backlog, and routing to the right specialist.
+
+- [ ] **Phase 62: Architecture Foundation** - Memory namespace, rules files, boundary enforcement, tool scoping, triage classification
+- [ ] **Phase 63: Dev CLI Tools + Entry Point** - Tool wrapper scripts for dev agents, Monty CLI REPL entry point
+- [ ] **Phase 64: Orchestrator + Dev Generalist** - PM triage, delegation, backlog management, generalist dev agent (backend + frontend + infra)
+- [ ] **Phase 65: QA Agent** - Adversarial code review with mandatory findings, test validation, dead code detection
+- [ ] **Phase 66: Security Agent** - OWASP compliance, credential scanning, auth flow review, on-call gate
+- [ ] **Phase 67: Cross-Team Integration** - Nova/Monty cross-team notifications, Monty Radar polling
 
 ## Phase Details
 
@@ -701,3 +721,85 @@ Plans:
 Plans:
 - [ ] 61-01-PLAN.md — Build 3 new specialist agents (deliverability, intelligence, onboarding) + types
 - [ ] 61-02-PLAN.md — Wire 3 agents into orchestrator + chat.ts memory write
+
+### Phase 62: Architecture Foundation
+**Goal**: Monty's structural guardrails are in place — memory namespace, rules files, boundary enforcement, and tool scoping — so that every downstream agent is built on a verified foundation
+**Depends on**: Phase 61 (shared memory infrastructure must exist)
+**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05, FOUND-06, FOUND-07, FOUND-08
+**Success Criteria** (what must be TRUE):
+  1. `.monty/memory/` directory exists with 5 seed files (backlog.json, decisions.md, incidents.md, architecture.md, security.md) and the seed script creates them idempotently
+  2. `loadMemoryContext()` called with `memoryRoot: ".monty/memory"` returns Monty's memory context, while the default call still returns Nova's — both work in the same process
+  3. Rules files exist for all 4 Monty agents (orchestrator, dev, qa, security) and encode the action tier model and triage classification logic
+  4. Monty orchestrator tool list contains zero Nova delegation tools, and Nova orchestrator tool list contains zero Monty delegation tools — verified by inspection
+  5. Both orchestrator system prompts reject misrouted tasks with an explanation and route suggestion, and boundary rejections are written to memory
+**Plans**: TBD
+
+### Phase 63: Dev CLI Tools + Entry Point
+**Goal**: Monty agents have a complete tool surface of read-heavy CLI wrappers and the interactive chat entry point exists — agents can observe the codebase and the user can talk to Monty
+**Depends on**: Phase 62 (tool directory structure and rules must exist)
+**Requirements**: DEV-07, ORCH-06
+**Success Criteria** (what must be TRUE):
+  1. `scripts/dev-cli/` contains compiled tool wrappers for git operations (status, diff, log), code inspection (read-file, list-files, search-code), test execution (run-tests, check-types), and deploy status — all following the same JSON envelope harness as Nova's CLI tools
+  2. `scripts/monty.ts` launches an interactive chat session with the Monty orchestrator — no workspace picker (dev work is project-scoped), matching the UX pattern of `scripts/chat.ts`
+  3. Running any dev-cli tool from the command line returns valid JSON output with the expected fields, and errors return a structured error envelope (not a stack trace)
+**Plans**: TBD
+
+### Phase 64: Orchestrator + Dev Generalist
+**Goal**: The PM orchestrator triages incoming work, manages the backlog, and delegates to a generalist dev agent that handles backend, frontend, and infrastructure tasks with memory-informed context and action tier controls
+**Depends on**: Phase 63 (CLI tools and entry point must exist for agents to use)
+**Requirements**: ORCH-01, ORCH-02, ORCH-03, ORCH-04, ORCH-05, ORCH-07, ORCH-08, DEV-01, DEV-02, DEV-03, DEV-04, DEV-05, DEV-06, DEV-08, DEV-09
+**Success Criteria** (what must be TRUE):
+  1. User describes work to Monty and the orchestrator classifies it as bug/feature/improvement with severity and priority, routes to the dev agent, and the AgentRun audit trail captures the full session
+  2. The orchestrator states what is about to happen and waits for human approval before any Tier 2+ operation executes — read-only operations proceed without approval
+  3. The dev agent reads past decisions and incidents from `.monty/memory/` before acting, and its onComplete hook writes what was changed and why to `decisions.md`
+  4. When the dev agent makes a platform change that affects Nova agents (e.g., new CLI script, API change), it updates the affected Nova rules/tools AND writes a notification to `.nova/memory/global-insights.md`
+  5. The orchestrator maintains backlog state in `.monty/memory/backlog.json` — items can be added, prioritised, and marked complete across sessions
+**Plans**: TBD
+
+### Phase 65: QA Agent
+**Goal**: An adversarial QA agent reviews dev agent output before changes are approved — finding real problems rather than rubber-stamping correctness
+**Depends on**: Phase 64 (dev agent must produce output that QA can review)
+**Requirements**: QA-01, QA-02, QA-03, QA-04, QA-05, QA-06, QA-07, QA-08
+**Success Criteria** (what must be TRUE):
+  1. QA agent runs TypeScript compilation check and pattern consistency analysis on changed files, and reports findings in a structured format with file paths and line numbers
+  2. Every QA review produces a minimum of 3 findings — if fewer genuine issues exist, the agent provides explicit justification for why the code is unusually clean
+  3. QA agent runs `vitest` on affected test files and reports pass/fail with specific failure details, not just a summary
+  4. QA agent detects dead code paths (endpoints with no callers, functions with no imports) and flags them as cleanup candidates
+  5. When QA findings affect Nova agent behaviour, the agent writes to `.nova/memory/global-insights.md` with the relevant finding
+**Plans**: TBD
+
+### Phase 66: Security Agent
+**Goal**: A security agent acts as an on-call gate for changes touching auth, credentials, or session management — blocking deployment until security review passes
+**Depends on**: Phase 64 (dev agent must exist for security to review its output)
+**Requirements**: SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-07
+**Success Criteria** (what must be TRUE):
+  1. Security agent checks code changes against OWASP Top 10:2025 categories and reports specific compliance issues with remediation steps
+  2. Security agent scans for hardcoded secrets, API keys in source files, and `.env` values in logs — reporting exact file paths and line numbers
+  3. Changes touching auth routes, credential handling, or session management are blocked by the orchestrator until the security agent completes review and approves
+  4. Security agent runs `npm audit` and reports vulnerabilities with severity levels, and findings are written to `.monty/memory/security.md`
+  5. When security findings affect Nova agent behaviour (e.g., API key rotation, auth flow changes), the agent writes to `.nova/memory/global-insights.md`
+**Plans**: TBD
+
+### Phase 67: Cross-Team Integration
+**Goal**: Nova and Monty communicate platform changes and incidents through structured cross-team memory files, and Monty Radar polls these files to alert the user and trigger acknowledgment
+**Depends on**: Phase 64, Phase 65, Phase 66 (all agents that write cross-team notifications must exist)
+**Requirements**: FOUND-09, FOUND-10
+**Success Criteria** (what must be TRUE):
+  1. When a Monty agent writes a platform change to `.nova/memory/global-insights.md`, the entry includes a structured prefix identifying the source agent and change type
+  2. When a Nova agent writes a platform issue to `.monty/memory/incidents.md`, the entry includes the workspace slug and issue description
+  3. Monty Radar polls cross-team memory files hourly and sends an ntfy/Slack alert when new entries appear — the alert includes which orchestrator is being notified and a summary of the update
+  4. After Monty Radar alerts on a cross-team update, it triggers the receiving team's orchestrator to read and acknowledge the update
+**Plans**: TBD
+
+## Progress
+
+**Execution Order:** Phases 62 through 67, sequential.
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 62. Architecture Foundation | v9.0 | 0/TBD | Not started | - |
+| 63. Dev CLI Tools + Entry Point | v9.0 | 0/TBD | Not started | - |
+| 64. Orchestrator + Dev Generalist | v9.0 | 0/TBD | Not started | - |
+| 65. QA Agent | v9.0 | 0/TBD | Not started | - |
+| 66. Security Agent | v9.0 | 0/TBD | Not started | - |
+| 67. Cross-Team Integration | v9.0 | 0/TBD | Not started | - |

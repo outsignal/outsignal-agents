@@ -83,49 +83,54 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | TBD | Pending |
-| FOUND-02 | TBD | Pending |
-| FOUND-03 | TBD | Pending |
-| FOUND-04 | TBD | Pending |
-| FOUND-05 | TBD | Pending |
-| FOUND-06 | TBD | Pending |
-| FOUND-07 | TBD | Pending |
-| FOUND-08 | TBD | Pending |
-| ORCH-01 | TBD | Pending |
-| ORCH-02 | TBD | Pending |
-| ORCH-03 | TBD | Pending |
-| ORCH-04 | TBD | Pending |
-| ORCH-05 | TBD | Pending |
-| ORCH-06 | TBD | Pending |
-| ORCH-07 | TBD | Pending |
-| ORCH-08 | TBD | Pending |
-| DEV-01 | TBD | Pending |
-| DEV-02 | TBD | Pending |
-| DEV-03 | TBD | Pending |
-| DEV-04 | TBD | Pending |
-| DEV-05 | TBD | Pending |
-| DEV-06 | TBD | Pending |
-| DEV-07 | TBD | Pending |
-| DEV-08 | TBD | Pending |
-| QA-01 | TBD | Pending |
-| QA-02 | TBD | Pending |
-| QA-03 | TBD | Pending |
-| QA-04 | TBD | Pending |
-| QA-05 | TBD | Pending |
-| QA-06 | TBD | Pending |
-| QA-07 | TBD | Pending |
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
-| SEC-03 | TBD | Pending |
-| SEC-04 | TBD | Pending |
-| SEC-05 | TBD | Pending |
-| SEC-06 | TBD | Pending |
+| FOUND-01 | Phase 62 | Pending |
+| FOUND-02 | Phase 62 | Pending |
+| FOUND-03 | Phase 62 | Pending |
+| FOUND-04 | Phase 62 | Pending |
+| FOUND-05 | Phase 62 | Pending |
+| FOUND-06 | Phase 62 | Pending |
+| FOUND-07 | Phase 62 | Pending |
+| FOUND-08 | Phase 62 | Pending |
+| FOUND-09 | Phase 67 | Pending |
+| FOUND-10 | Phase 67 | Pending |
+| ORCH-01 | Phase 64 | Pending |
+| ORCH-02 | Phase 64 | Pending |
+| ORCH-03 | Phase 64 | Pending |
+| ORCH-04 | Phase 64 | Pending |
+| ORCH-05 | Phase 64 | Pending |
+| ORCH-06 | Phase 63 | Pending |
+| ORCH-07 | Phase 64 | Pending |
+| ORCH-08 | Phase 64 | Pending |
+| DEV-01 | Phase 64 | Pending |
+| DEV-02 | Phase 64 | Pending |
+| DEV-03 | Phase 64 | Pending |
+| DEV-04 | Phase 64 | Pending |
+| DEV-05 | Phase 64 | Pending |
+| DEV-06 | Phase 64 | Pending |
+| DEV-07 | Phase 63 | Pending |
+| DEV-08 | Phase 64 | Pending |
+| DEV-09 | Phase 64 | Pending |
+| QA-01 | Phase 65 | Pending |
+| QA-02 | Phase 65 | Pending |
+| QA-03 | Phase 65 | Pending |
+| QA-04 | Phase 65 | Pending |
+| QA-05 | Phase 65 | Pending |
+| QA-06 | Phase 65 | Pending |
+| QA-07 | Phase 65 | Pending |
+| QA-08 | Phase 65 | Pending |
+| SEC-01 | Phase 66 | Pending |
+| SEC-02 | Phase 66 | Pending |
+| SEC-03 | Phase 66 | Pending |
+| SEC-04 | Phase 66 | Pending |
+| SEC-05 | Phase 66 | Pending |
+| SEC-06 | Phase 66 | Pending |
+| SEC-07 | Phase 66 | Pending |
 
 **Coverage:**
-- v9.0 requirements: 37 total
-- Mapped to phases: 0
-- Unmapped: 37
+- v9.0 requirements: 42 total
+- Mapped to phases: 42
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-03 after initial definition*
+*Last updated: 2026-04-02 after roadmap creation*
