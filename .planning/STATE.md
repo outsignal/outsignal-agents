@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 
 ## Current Position
 
-Phase: 66 of 67 (Security Agent)
-Plan: 2 of 2 complete
-Status: Phase 66 complete
-Last activity: 2026-04-04 — Completed 66-02 (Orchestrator Security Integration)
+Phase: 67 of 67 (Cross-Team Integration)
+Plan: 1 of 2 complete
+Status: Phase 67 in progress
+Last activity: 2026-04-04 — Completed 67-01 (Cross-Team Notification Format)
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Key v9.0 pre-milestone decisions:
 - [Phase 65]: [65-02]: delegateToQA wired to runMontyQAAgent with error envelope; system prompt updated to route dev output through QA; Security stub preserved for Phase 66
 - [Phase 66]: [66-01]: MontyMemoryFile already includes security.md; npmAudit handles non-zero exit via error.stdout; no minimum findings rule for security; severity excludes info level
 - [Phase 66]: [66-02]: delegateToSecurity wired to runMontySecurityAgent with error envelope; blockDeploy enforcement is prompt-level; all three specialist delegations use identical pattern
+- [Phase 67]: [67-01]: Cross-team prefix format: [CROSS-TEAM] [Source: X] [Type: Y] with optional [Workspace: Z]; Nova-to-Monty writes target incidents.md; parseCrossTeamEntries handles both separator formats
 
 ### Pending Todos
 
@@ -83,5 +84,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-04
-Stopped at: Completed 66-02-PLAN.md (Orchestrator Security Integration)
+Stopped at: Completed 67-01-PLAN.md (Cross-Team Notification Format)
 Resume file: None
