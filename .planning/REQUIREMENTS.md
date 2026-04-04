@@ -26,7 +26,7 @@
 - [ ] **ORCH-04**: Sequential quality pipeline enforcement — Dev Generalist output reviewed by QA before deploy, auth-touching changes reviewed by Security
 - [ ] **ORCH-05**: Pre-approval gate — state what's about to happen, estimate impact, wait for human approval before execution
 - [x] **ORCH-06**: `scripts/monty.ts` CLI entry point (interactive chat, matching `scripts/chat.ts` pattern)
-- [ ] **ORCH-07**: AgentConfig with name, model, systemPrompt (from rules file), tools, maxSteps, onComplete hook
+- [x] **ORCH-07**: AgentConfig with name, model, systemPrompt (from rules file), tools, maxSteps, onComplete hook
 - [ ] **ORCH-08**: onComplete writes session summary to `.monty/memory/decisions.md`
 
 ### Dev Generalist Agent
@@ -35,7 +35,7 @@
 - [ ] **DEV-02**: Frontend/UI work — React components, pages, design system, uses UI UX Pro Max skill
 - [ ] **DEV-03**: Infrastructure work — deploy config, Railway, Vercel, Trigger.dev configuration, DNS
 - [ ] **DEV-04**: Action tier model — read-only operations always allowed, reversible operations logged, destructive/gated operations require explicit approval
-- [ ] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
+- [x] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
 - [ ] **DEV-06**: Updates affected Nova agent rules files and tools when platform changes impact agent behaviour (e.g., new CLI script → add as agent tool, API change → update adapter)
 - [ ] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
 - [x] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
@@ -99,13 +99,13 @@
 | ORCH-04 | Phase 64 | Pending |
 | ORCH-05 | Phase 64 | Pending |
 | ORCH-06 | Phase 63 | Complete |
-| ORCH-07 | Phase 64 | Pending |
+| ORCH-07 | Phase 64 | Complete |
 | ORCH-08 | Phase 64 | Pending |
 | DEV-01 | Phase 64 | Pending |
 | DEV-02 | Phase 64 | Pending |
 | DEV-03 | Phase 64 | Pending |
 | DEV-04 | Phase 64 | Pending |
-| DEV-05 | Phase 64 | Pending |
+| DEV-05 | Phase 64 | Complete |
 | DEV-06 | Phase 64 | Pending |
 | DEV-07 | Phase 63 | Complete |
 | DEV-08 | Phase 64 | Pending |
