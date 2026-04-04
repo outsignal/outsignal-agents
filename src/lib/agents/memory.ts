@@ -123,6 +123,59 @@ export async function appendToGlobalMemory(entry: string): Promise<boolean> {
   }
 }
 
+// --- Monty Memory Namespace ---
+
+type MontyMemoryFile = "decisions.md" | "incidents.md" | "architecture.md" | "security.md";
+
+/**
+ * Append an entry to a Monty platform engineering memory file.
+ * Same contract as appendToMemory but targets .monty/memory/ namespace.
+ *
+ * @returns true if appended, false if skipped
+ */
+export async function appendToMontyMemory(
+  file: MontyMemoryFile,
+  entry: string,
+): Promise<boolean> {
+  try {
+    const projectRoot = process.env.PROJECT_ROOT ?? process.cwd();
+    const filePath = join(projectRoot, ".monty/memory", file);
+
+    // File must exist
+    try {
+      await access(filePath, constants.F_OK);
+    } catch {
+      console.warn(`[monty-memory] File not found, skipping: ${filePath}`);
+      return false;
+    }
+
+    // Enforce max line count
+    const content = await readFile(filePath, "utf8");
+    const lineCount = content.split("\n").length;
+    if (lineCount >= MAX_LINES) {
+      console.warn(
+        `[monty-memory] ${file} at max lines (${lineCount}), skipping`,
+      );
+      return false;
+    }
+
+    // Validate entry content
+    if (!isValidEntry(entry)) {
+      console.warn(`[monty-memory] Rejecting malformed entry for ${file}: "${entry.slice(0, 50)}"`);
+      return false;
+    }
+
+    // Append with ISO timestamp
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] — ${entry}\n`;
+    await appendFile(filePath, line, "utf8");
+    return true;
+  } catch (error) {
+    console.error(`[monty-memory] Failed to append to ${file}:`, error);
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Memory Read System
 // ---------------------------------------------------------------------------

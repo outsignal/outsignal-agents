@@ -16,6 +16,7 @@ export interface AgentConfig {
   tools: Record<string, Tool>;
   maxSteps?: number; // default 10
   outputSchema?: z.ZodType<unknown>; // Optional Zod schema for validating parsed output
+  memoryRoot?: string; // Memory namespace root (default: ".nova/memory", Monty uses ".monty/memory")
   onComplete?: (
     result: AgentRunResult,
     options?: { workspaceSlug?: string; input?: unknown },
@@ -201,6 +202,21 @@ export interface OnboardingOutput {
   data?: unknown;
 }
 
+// --- Monty Dev Agent ---
+
+export interface MontyDevInput {
+  task: string;
+  tier: "1" | "2" | "3"; // Action tier: 1=read-only, 2=reversible, 3=gated
+}
+
+export interface MontyDevOutput {
+  action: string;       // What was done (e.g. "Fixed type error in route.ts")
+  summary: string;      // Human-readable summary
+  filesChanged: string[]; // Absolute paths of files modified
+  affectsNova: boolean;  // Whether this change impacts Nova agents
+  novaNotification?: string; // Cross-team notification text if affectsNova=true
+}
+
 // --- Zod Output Schemas (for runtime validation in runner.ts) ---
 // Zod v4: objects are loose by default (extra keys pass through), no .passthrough() needed.
 
@@ -282,6 +298,14 @@ export const campaignOutputSchema = z.object({
   summary: z.string(),
   campaignId: z.string().optional(),
   data: z.unknown().optional(),
+});
+
+export const montyDevOutputSchema = z.object({
+  action: z.string(),
+  summary: z.string(),
+  filesChanged: z.array(z.string()),
+  affectsNova: z.boolean(),
+  novaNotification: z.string().optional(),
 });
 
 // --- Validator Agent Types (Phase 55) ---
