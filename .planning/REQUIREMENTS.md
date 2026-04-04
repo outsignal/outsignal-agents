@@ -16,7 +16,7 @@
 - [x] **FOUND-07**: Both Nova and Monty orchestrator system prompts include boundary check — reject misrouted tasks with explanation and route suggestion
 - [x] **FOUND-08**: Boundary rejections written to memory (`.monty/memory/decisions.md` or `.nova/memory/global-insights.md`) so orchestrators learn what is/isn't their domain
 - [x] **FOUND-09**: Cross-team notification system — Monty agents write platform changes to `.nova/memory/global-insights.md`, Nova agents write platform issues to `.monty/memory/incidents.md`
-- [ ] **FOUND-10**: Monty Radar polls cross-team memory files hourly for new entries — alerts user via ntfy/Slack with which orchestrator is being notified and a summary of the update (e.g., "Notifying Nova Orchestrator: enrichment decoupled from discovery — adapters no longer run inline enrichment"), AND triggers the receiving team's orchestrator to read and acknowledge the update
+- [x] **FOUND-10**: Monty Radar polls cross-team memory files hourly for new entries — alerts user via ntfy/Slack with which orchestrator is being notified and a summary of the update (e.g., "Notifying Nova Orchestrator: enrichment decoupled from discovery — adapters no longer run inline enrichment"), AND triggers the receiving team's orchestrator to read and acknowledge the update
 
 ### Dev Orchestrator (PM)
 
@@ -92,7 +92,7 @@
 | FOUND-07 | Phase 62 | Complete |
 | FOUND-08 | Phase 62 | Complete |
 | FOUND-09 | Phase 67 | Complete |
-| FOUND-10 | Phase 67 | Pending |
+| FOUND-10 | Phase 67 | Complete |
 | ORCH-01 | Phase 64 | Complete |
 | ORCH-02 | Phase 64 | Complete |
 | ORCH-03 | Phase 64 | Complete |

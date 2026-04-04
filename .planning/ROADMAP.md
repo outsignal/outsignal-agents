@@ -158,7 +158,7 @@ Full details: [milestones/v3.0-ROADMAP.md](milestones/v3.0-ROADMAP.md)
 - [x] **Phase 64: Orchestrator + Dev Generalist** - PM triage, delegation, backlog management, generalist dev agent (backend + frontend + infra) (completed 2026-04-04)
 - [x] **Phase 65: QA Agent** - Adversarial code review with mandatory findings, test validation, dead code detection (completed 2026-04-04)
 - [x] **Phase 66: Security Agent** - OWASP compliance, credential scanning, auth flow review, on-call gate (completed 2026-04-04)
-- [ ] **Phase 67: Cross-Team Integration** - Nova/Monty cross-team notifications, Monty Radar polling
+- [x] **Phase 67: Cross-Team Integration** - Nova/Monty cross-team notifications, Monty Radar polling (completed 2026-04-04)
 
 ## Phase Details
 
@@ -802,4 +802,4 @@ Plans:
 | 64. Orchestrator + Dev Generalist | 3/3 | Complete    | 2026-04-04 | - |
 | 65. QA Agent | 2/2 | Complete    | 2026-04-04 | - |
 | 66. Security Agent | 2/2 | Complete    | 2026-04-04 | - |
-| 67. Cross-Team Integration | 1/2 | In Progress|  | - |
+| 67. Cross-Team Integration | 2/2 | Complete   | 2026-04-04 | - |
