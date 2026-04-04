@@ -43,14 +43,14 @@
 
 ### QA Agent
 
-- [ ] **QA-01**: Code review — TypeScript compilation check, pattern consistency with existing codebase, banned pattern detection
-- [ ] **QA-02**: Adversarial review — minimum 3 findings per review, actively looks for problems (not just confirmation)
-- [ ] **QA-03**: Test validation — run existing tests (`vitest`), verify changes don't break existing functionality
-- [ ] **QA-04**: Review API integrations for pagination handling, error handling, and rate limit compliance
-- [ ] **QA-05**: Detect dead code paths — endpoints with no callers, functions with no imports, orphaned files
-- [ ] **QA-06**: AgentConfig with review tools
-- [ ] **QA-07**: onComplete writes review findings to `.monty/memory/incidents.md` if issues found
-- [ ] **QA-08**: Writes to `.nova/memory/global-insights.md` when QA findings affect Nova agent behaviour
+- [x] **QA-01**: Code review — TypeScript compilation check, pattern consistency with existing codebase, banned pattern detection
+- [x] **QA-02**: Adversarial review — minimum 3 findings per review, actively looks for problems (not just confirmation)
+- [x] **QA-03**: Test validation — run existing tests (`vitest`), verify changes don't break existing functionality
+- [x] **QA-04**: Review API integrations for pagination handling, error handling, and rate limit compliance
+- [x] **QA-05**: Detect dead code paths — endpoints with no callers, functions with no imports, orphaned files
+- [x] **QA-06**: AgentConfig with review tools
+- [x] **QA-07**: onComplete writes review findings to `.monty/memory/incidents.md` if issues found
+- [x] **QA-08**: Writes to `.nova/memory/global-insights.md` when QA findings affect Nova agent behaviour
 
 ### Security Agent
 
@@ -110,14 +110,14 @@
 | DEV-07 | Phase 63 | Complete |
 | DEV-08 | Phase 64 | Complete |
 | DEV-09 | Phase 64 | Complete |
-| QA-01 | Phase 65 | Pending |
-| QA-02 | Phase 65 | Pending |
-| QA-03 | Phase 65 | Pending |
-| QA-04 | Phase 65 | Pending |
-| QA-05 | Phase 65 | Pending |
-| QA-06 | Phase 65 | Pending |
-| QA-07 | Phase 65 | Pending |
-| QA-08 | Phase 65 | Pending |
+| QA-01 | Phase 65 | Complete |
+| QA-02 | Phase 65 | Complete |
+| QA-03 | Phase 65 | Complete |
+| QA-04 | Phase 65 | Complete |
+| QA-05 | Phase 65 | Complete |
+| QA-06 | Phase 65 | Complete |
+| QA-07 | Phase 65 | Complete |
+| QA-08 | Phase 65 | Complete |
 | SEC-01 | Phase 66 | Pending |
 | SEC-02 | Phase 66 | Pending |
 | SEC-03 | Phase 66 | Pending |

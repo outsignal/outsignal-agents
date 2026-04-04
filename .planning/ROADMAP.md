@@ -800,6 +800,6 @@ Plans:
 | 62. Architecture Foundation | 3/3 | Complete    | 2026-04-03 | - |
 | 63. Dev CLI Tools + Entry Point | 2/2 | Complete    | 2026-04-03 | - |
 | 64. Orchestrator + Dev Generalist | 3/3 | Complete    | 2026-04-04 | - |
-| 65. QA Agent | v9.0 | 0/TBD | Not started | - |
+| 65. QA Agent | 1/2 | In Progress|  | - |
 | 66. Security Agent | v9.0 | 0/TBD | Not started | - |
 | 67. Cross-Team Integration | v9.0 | 0/TBD | Not started | - |

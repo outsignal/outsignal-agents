@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 
 ## Current Position
 
-Phase: 64 of 67 (Orchestrator & Dev Generalist)
-Plan: 3 of 3 complete
-Status: Phase 64 complete
-Last activity: 2026-04-04 — Completed 64-03 (Orchestrator Agent)
+Phase: 65 of 67 (QA Agent)
+Plan: 1 of 2 complete
+Status: In progress
+Last activity: 2026-04-04 — Completed 65-01 (QA Agent Module)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Key v9.0 pre-milestone decisions:
 - [Phase 64]: [64-01]: appendToMontyMemory is workspace-agnostic (topic-based); MontyDevOutput includes affectsNova for cross-team notifications
 - [Phase 64]: [64-02]: All 9 dev tools are Tier 1 read-only; tier boundaries enforced in system prompt, not tool restrictions
 - [Phase 64]: [64-03]: delegateToDevAgent wraps runMontyDevAgent with error envelope; backlog helpers are module-private; Quality Pipeline logs intent to backlog until QA/Security built
+- [Phase 65]: [65-01]: QA agent gets 6 of 9 dev tools (no gitStatus/gitLog/deployStatus); minimum 3 findings enforced via prompt; onComplete writes critical/high to incidents.md
 
 ### Pending Todos
 
@@ -79,5 +80,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-04
-Stopped at: Completed 64-03-PLAN.md (Orchestrator Agent — Phase 64 complete)
+Stopped at: Completed 65-01-PLAN.md (QA Agent Module)
 Resume file: None
