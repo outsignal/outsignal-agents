@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 ## Current Position
 
 Phase: 65 of 67 (QA Agent)
-Plan: 1 of 2 complete
-Status: In progress
-Last activity: 2026-04-04 — Completed 65-01 (QA Agent Module)
+Plan: 2 of 2 complete
+Status: Phase 65 complete
+Last activity: 2026-04-04 — Completed 65-02 (Orchestrator QA Integration)
 
 Progress: [██████░░░░] 60%
 
@@ -67,6 +67,7 @@ Key v9.0 pre-milestone decisions:
 - [Phase 64]: [64-02]: All 9 dev tools are Tier 1 read-only; tier boundaries enforced in system prompt, not tool restrictions
 - [Phase 64]: [64-03]: delegateToDevAgent wraps runMontyDevAgent with error envelope; backlog helpers are module-private; Quality Pipeline logs intent to backlog until QA/Security built
 - [Phase 65]: [65-01]: QA agent gets 6 of 9 dev tools (no gitStatus/gitLog/deployStatus); minimum 3 findings enforced via prompt; onComplete writes critical/high to incidents.md
+- [Phase 65]: [65-02]: delegateToQA wired to runMontyQAAgent with error envelope; system prompt updated to route dev output through QA; Security stub preserved for Phase 66
 
 ### Pending Todos
 
@@ -80,5 +81,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-04
-Stopped at: Completed 65-01-PLAN.md (QA Agent Module)
+Stopped at: Completed 65-02-PLAN.md (Orchestrator QA Integration) — Phase 65 complete
 Resume file: None
