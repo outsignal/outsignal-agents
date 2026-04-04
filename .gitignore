@@ -23,6 +23,7 @@
 
 # CLI wrapper compiled bundles
 /dist/cli/
+/dist/dev-cli/
 
 # misc
 .DS_Store
