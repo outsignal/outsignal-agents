@@ -31,15 +31,15 @@
 
 ### Dev Generalist Agent
 
-- [ ] **DEV-01**: Backend work — API routes, Prisma schema/queries, server logic, Trigger.dev tasks
-- [ ] **DEV-02**: Frontend/UI work — React components, pages, design system, uses UI UX Pro Max skill
-- [ ] **DEV-03**: Infrastructure work — deploy config, Railway, Vercel, Trigger.dev configuration, DNS
-- [ ] **DEV-04**: Action tier model — read-only operations always allowed, reversible operations logged, destructive/gated operations require explicit approval
+- [x] **DEV-01**: Backend work — API routes, Prisma schema/queries, server logic, Trigger.dev tasks
+- [x] **DEV-02**: Frontend/UI work — React components, pages, design system, uses UI UX Pro Max skill
+- [x] **DEV-03**: Infrastructure work — deploy config, Railway, Vercel, Trigger.dev configuration, DNS
+- [x] **DEV-04**: Action tier model — read-only operations always allowed, reversible operations logged, destructive/gated operations require explicit approval
 - [x] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
-- [ ] **DEV-06**: Updates affected Nova agent rules files and tools when platform changes impact agent behaviour (e.g., new CLI script → add as agent tool, API change → update adapter)
-- [ ] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
+- [x] **DEV-06**: Updates affected Nova agent rules files and tools when platform changes impact agent behaviour (e.g., new CLI script → add as agent tool, API change → update adapter)
+- [x] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
 - [x] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
-- [ ] **DEV-08**: onComplete writes what was changed and why to `.monty/memory/decisions.md`
+- [x] **DEV-08**: onComplete writes what was changed and why to `.monty/memory/decisions.md`
 
 ### QA Agent
 
@@ -101,15 +101,15 @@
 | ORCH-06 | Phase 63 | Complete |
 | ORCH-07 | Phase 64 | Complete |
 | ORCH-08 | Phase 64 | Pending |
-| DEV-01 | Phase 64 | Pending |
-| DEV-02 | Phase 64 | Pending |
-| DEV-03 | Phase 64 | Pending |
-| DEV-04 | Phase 64 | Pending |
+| DEV-01 | Phase 64 | Complete |
+| DEV-02 | Phase 64 | Complete |
+| DEV-03 | Phase 64 | Complete |
+| DEV-04 | Phase 64 | Complete |
 | DEV-05 | Phase 64 | Complete |
-| DEV-06 | Phase 64 | Pending |
+| DEV-06 | Phase 64 | Complete |
 | DEV-07 | Phase 63 | Complete |
-| DEV-08 | Phase 64 | Pending |
-| DEV-09 | Phase 64 | Pending |
+| DEV-08 | Phase 64 | Complete |
+| DEV-09 | Phase 64 | Complete |
 | QA-01 | Phase 65 | Pending |
 | QA-02 | Phase 65 | Pending |
 | QA-03 | Phase 65 | Pending |

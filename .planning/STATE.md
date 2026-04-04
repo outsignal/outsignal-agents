@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 ## Current Position
 
 Phase: 64 of 67 (Orchestrator & Dev Generalist)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing Phase 64
-Last activity: 2026-04-04 — Completed 64-01 (Shared Infrastructure)
+Last activity: 2026-04-04 — Completed 64-02 (Dev Generalist Agent)
 
-Progress: [███░░░░░░░] 26%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Key v9.0 pre-milestone decisions:
 - [Phase 63]: [63-02]: Monty CLI entry point (scripts/monty.ts) uses .monty/memory namespace, no workspace state, sessions saved as agent=monty-orchestrator
 - [Phase 63]: [63-01]: 9 dev-cli scripts with runWithHarness envelope; no dotenv except deploy-status; maxBuffer 10MB; simple argv parsing
 - [Phase 64]: [64-01]: appendToMontyMemory is workspace-agnostic (topic-based); MontyDevOutput includes affectsNova for cross-team notifications
+- [Phase 64]: [64-02]: All 9 dev tools are Tier 1 read-only; tier boundaries enforced in system prompt, not tool restrictions
 
 ### Pending Todos
 
@@ -77,5 +78,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-04
-Stopped at: Completed 64-01-PLAN.md (Shared Infrastructure)
+Stopped at: Completed 64-02-PLAN.md (Dev Generalist Agent)
 Resume file: None
