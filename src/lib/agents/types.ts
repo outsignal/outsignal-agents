@@ -308,6 +308,66 @@ export const montyDevOutputSchema = z.object({
   novaNotification: z.string().optional(),
 });
 
+// --- Monty QA Agent ---
+
+export interface MontyQAInput {
+  task: string;
+  changedFiles?: string[]; // Optional file paths from orchestrator
+}
+
+export interface MontyQAFinding {
+  file: string; // Absolute file path
+  line?: number; // Line number
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  category:
+    | "type-error"
+    | "test-failure"
+    | "dead-code"
+    | "pattern-inconsistency"
+    | "missing-test"
+    | "performance"
+    | "api-integration";
+  description: string; // Specific problem
+  suggestion: string; // Concrete fix
+}
+
+export interface MontyQAOutput {
+  reviewSummary: string;
+  findings: MontyQAFinding[];
+  testsRun: boolean;
+  testsPassed?: boolean;
+  testDetails?: string;
+  affectsNova: boolean;
+  novaNotification?: string;
+}
+
+export const montyQAOutputSchema = z.object({
+  reviewSummary: z.string(),
+  findings: z.array(
+    z.object({
+      file: z.string(),
+      line: z.number().optional(),
+      severity: z.enum(["critical", "high", "medium", "low", "info"]),
+      category: z.enum([
+        "type-error",
+        "test-failure",
+        "dead-code",
+        "pattern-inconsistency",
+        "missing-test",
+        "performance",
+        "api-integration",
+      ]),
+      description: z.string(),
+      suggestion: z.string(),
+    }),
+  ),
+  testsRun: z.boolean(),
+  testsPassed: z.boolean().optional(),
+  testDetails: z.string().optional(),
+  affectsNova: z.boolean(),
+  novaNotification: z.string().optional(),
+});
+
 // --- Validator Agent Types (Phase 55) ---
 
 export const validationFindingSchema = z.object({
