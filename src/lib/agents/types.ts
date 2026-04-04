@@ -215,6 +215,7 @@ export interface MontyDevOutput {
   filesChanged: string[]; // Absolute paths of files modified
   affectsNova: boolean;  // Whether this change impacts Nova agents
   novaNotification?: string; // Cross-team notification text if affectsNova=true
+  changeType?: "schema-change" | "api-change" | "tool-change" | "config-change"; // Cross-team change classification
 }
 
 // --- Zod Output Schemas (for runtime validation in runner.ts) ---
@@ -306,6 +307,7 @@ export const montyDevOutputSchema = z.object({
   filesChanged: z.array(z.string()),
   affectsNova: z.boolean(),
   novaNotification: z.string().optional(),
+  changeType: z.string().optional(),
 });
 
 // --- Monty QA Agent ---
@@ -339,6 +341,7 @@ export interface MontyQAOutput {
   testDetails?: string;
   affectsNova: boolean;
   novaNotification?: string;
+  changeType?: "qa-finding"; // Cross-team change classification
 }
 
 export const montyQAOutputSchema = z.object({
@@ -366,6 +369,7 @@ export const montyQAOutputSchema = z.object({
   testDetails: z.string().optional(),
   affectsNova: z.boolean(),
   novaNotification: z.string().optional(),
+  changeType: z.string().optional(),
 });
 
 // --- Monty Security Agent ---
@@ -404,6 +408,7 @@ export interface MontySecurityOutput {
   npmAuditSummary?: string;
   affectsNova: boolean;
   novaNotification?: string;
+  changeType?: "security-advisory"; // Cross-team change classification
 }
 
 export const montySecurityOutputSchema = z.object({
@@ -436,7 +441,19 @@ export const montySecurityOutputSchema = z.object({
   npmAuditSummary: z.string().optional(),
   affectsNova: z.boolean(),
   novaNotification: z.string().optional(),
+  changeType: z.string().optional(),
 });
+
+// --- Cross-Team Fields for Nova Orchestrator ---
+
+/**
+ * Cross-team fields for Nova orchestrator onComplete hook.
+ * Used when Nova detects platform issues that Monty should know about.
+ */
+export interface NovaCrossTeamFields {
+  affectsMonty: boolean;
+  montyNotification?: string;
+}
 
 // --- Validator Agent Types (Phase 55) ---
 
