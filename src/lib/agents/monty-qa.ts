@@ -216,7 +216,8 @@ Return a JSON object:
   "testsPassed": true/false,
   "testDetails": "Optional: specific test results",
   "affectsNova": false,
-  "novaNotification": "Optional: what Nova agents need to know"
+  "novaNotification": "Optional: what Nova agents need to know",
+  "changeType": "qa-finding"
 }
 
 ${loadRules("monty-qa-rules.md")}`;
@@ -247,8 +248,9 @@ export const montyQAConfig: AgentConfig = {
 
     // Cross-team notification when QA findings affect Nova (QA-08)
     if (output?.affectsNova && output?.novaNotification) {
+      const changeType = output.changeType ?? "qa-finding";
       await appendToGlobalMemory(
-        `[Monty QA] ${output.novaNotification}`,
+        `[CROSS-TEAM] [Source: monty-qa] [Type: ${changeType}] ${output.novaNotification}`,
       );
     }
   },

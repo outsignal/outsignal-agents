@@ -277,7 +277,8 @@ Return a JSON object matching this schema:
   "npmAuditRun": true,
   "npmAuditSummary": "Optional: summary of npm audit results",
   "affectsNova": false,
-  "novaNotification": "Optional: what Nova agents need to know"
+  "novaNotification": "Optional: what Nova agents need to know",
+  "changeType": "security-advisory"
 }
 
 ## Cross-Team Awareness
@@ -316,8 +317,9 @@ export const montySecurityConfig: AgentConfig = {
 
     // Cross-team notification to global-insights.md (SEC-07)
     if (output?.affectsNova && output?.novaNotification) {
+      const changeType = output.changeType ?? "security-advisory";
       await appendToGlobalMemory(
-        `[Monty Security] ${output.novaNotification}`,
+        `[CROSS-TEAM] [Source: monty-security] [Type: ${changeType}] ${output.novaNotification}`,
       );
     }
   },

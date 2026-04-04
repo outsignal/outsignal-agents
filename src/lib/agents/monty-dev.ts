@@ -240,7 +240,8 @@ Return a JSON object with this structure:
   "summary": "Human-readable summary of the work",
   "filesChanged": ["absolute/path/to/file.ts"],
   "affectsNova": false,
-  "novaNotification": "Optional: what Nova agents need to know"
+  "novaNotification": "Optional: what Nova agents need to know",
+  "changeType": "schema-change | api-change | tool-change | config-change"
 }
 \`\`\`
 
@@ -269,8 +270,9 @@ export const montyDevConfig: AgentConfig = {
 
     // Cross-team notification when platform changes affect Nova (DEV-09)
     if (output?.affectsNova && output?.novaNotification) {
+      const changeType = output.changeType ?? "tool-change";
       await appendToGlobalMemory(
-        `[Monty Dev] ${output.novaNotification}`,
+        `[CROSS-TEAM] [Source: monty-dev] [Type: ${changeType}] ${output.novaNotification}`,
       );
     }
   },
