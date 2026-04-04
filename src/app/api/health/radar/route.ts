@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { readFile, writeFile, access, mkdir } from "node:fs/promises";
+import { constants } from "node:fs";
+import { join, dirname } from "node:path";
 import { prisma } from "@/lib/db";
 import { emailguard } from "@/lib/emailguard/client";
 import { checkAllProviderBalances } from "@/lib/credits/provider-balances";
+import {
+  parseCrossTeamEntries,
+  type CrossTeamEntry,
+} from "@/lib/agents/memory";
 
 export const maxDuration = 30;
 
@@ -100,6 +107,136 @@ async function runEmailGuardBlacklistCheck(): Promise<BlacklistCheckResult> {
       domainsChecked: 0,
       blacklistedDomains: [],
       error: `EmailGuard API error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-team memory polling (Monty <-> Nova notifications)
+// ---------------------------------------------------------------------------
+
+interface CrossTeamPollMarker {
+  globalInsightsLines: number;
+  incidentsLines: number;
+  lastPollTimestamp: string;
+}
+
+interface CrossTeamResponse {
+  montyToNova: CrossTeamEntry[];
+  novaToMonty: CrossTeamEntry[];
+  newEntries: CrossTeamEntry[];
+  lastPollTimestamp: string | null;
+  acknowledgmentInstructions: {
+    montyToNova: string;
+    novaToMonty: string;
+  };
+  error?: string;
+}
+
+async function getCrossTeamUpdates(): Promise<CrossTeamResponse> {
+  const projectRoot = process.cwd();
+  const globalInsightsPath = join(
+    projectRoot,
+    ".nova/memory/global-insights.md",
+  );
+  const incidentsPath = join(projectRoot, ".monty/memory/incidents.md");
+  const markerPath = join(
+    projectRoot,
+    ".monty/memory/.last-cross-team-poll.json",
+  );
+
+  const ackInstructions = {
+    montyToNova:
+      "Run: npx tsx scripts/chat.ts to let Nova process these updates",
+    novaToMonty:
+      "Run: npx tsx scripts/monty.ts to let Monty triage these issues",
+  };
+
+  try {
+    // 1. Read both memory files (gracefully handle missing)
+    let globalInsightsContent = "";
+    let incidentsContent = "";
+
+    try {
+      await access(globalInsightsPath, constants.F_OK);
+      globalInsightsContent = await readFile(globalInsightsPath, "utf8");
+    } catch {
+      // File doesn't exist — skip
+    }
+
+    try {
+      await access(incidentsPath, constants.F_OK);
+      incidentsContent = await readFile(incidentsPath, "utf8");
+    } catch {
+      // File doesn't exist — skip
+    }
+
+    // 2. Parse cross-team entries from both files
+    const montyToNova = parseCrossTeamEntries(globalInsightsContent);
+    const novaToMonty = parseCrossTeamEntries(incidentsContent);
+
+    // 3. Detect new entries since last poll via line-count tracking
+    let marker: CrossTeamPollMarker | null = null;
+    try {
+      await access(markerPath, constants.F_OK);
+      const markerRaw = await readFile(markerPath, "utf8");
+      marker = JSON.parse(markerRaw) as CrossTeamPollMarker;
+    } catch {
+      // No marker file — first poll, all entries are new
+    }
+
+    const globalInsightsLines = globalInsightsContent.split("\n").length;
+    const incidentsLines = incidentsContent.split("\n").length;
+
+    let newEntries: CrossTeamEntry[] = [];
+
+    if (marker === null) {
+      // First poll — all cross-team entries are new
+      newEntries = [...montyToNova, ...novaToMonty];
+    } else {
+      // Find entries from lines beyond the stored line count
+      if (globalInsightsLines > marker.globalInsightsLines) {
+        const newLines = globalInsightsContent
+          .split("\n")
+          .slice(marker.globalInsightsLines);
+        newEntries.push(...parseCrossTeamEntries(newLines.join("\n")));
+      }
+      if (incidentsLines > marker.incidentsLines) {
+        const newLines = incidentsContent
+          .split("\n")
+          .slice(marker.incidentsLines);
+        newEntries.push(...parseCrossTeamEntries(newLines.join("\n")));
+      }
+    }
+
+    // 4. Update marker file with current state
+    const newMarker: CrossTeamPollMarker = {
+      globalInsightsLines,
+      incidentsLines,
+      lastPollTimestamp: new Date().toISOString(),
+    };
+    try {
+      await mkdir(dirname(markerPath), { recursive: true });
+      await writeFile(markerPath, JSON.stringify(newMarker, null, 2), "utf8");
+    } catch {
+      // Best-effort — marker write failure is non-fatal
+    }
+
+    return {
+      montyToNova,
+      novaToMonty,
+      newEntries,
+      lastPollTimestamp: marker?.lastPollTimestamp ?? null,
+      acknowledgmentInstructions: ackInstructions,
+    };
+  } catch (err) {
+    return {
+      montyToNova: [],
+      novaToMonty: [],
+      newEntries: [],
+      lastPollTimestamp: null,
+      error: `Failed to read memory files: ${err instanceof Error ? err.message : String(err)}`,
+      acknowledgmentInstructions: ackInstructions,
     };
   }
 }
@@ -361,10 +498,11 @@ export async function GET(request: NextRequest) {
     }),
   );
 
-  // Await the blacklist check and credit balances (started in parallel above)
-  const [blacklistCheck, creditBalances] = await Promise.all([
+  // Await the blacklist check, credit balances, and cross-team updates (started in parallel above)
+  const [blacklistCheck, creditBalances, crossTeamUpdates] = await Promise.all([
     blacklistCheckPromise,
     creditCheckPromise,
+    getCrossTeamUpdates(),
   ]);
 
   const creditWarnings = creditBalances.filter((b) => b.status === "warning");
@@ -378,5 +516,6 @@ export async function GET(request: NextRequest) {
       overallStatus: creditCritical.length > 0 ? "critical" : creditWarnings.length > 0 ? "warning" : "healthy",
       providers: creditBalances,
     },
+    crossTeam: crossTeamUpdates,
   });
 }
