@@ -40,7 +40,9 @@ export async function runAgent<TOutput = unknown>(
     // Load persistent memory context (best-effort, never fails the run)
     let memoryContext = "";
     try {
-      memoryContext = await loadMemoryContext(options?.workspaceSlug);
+      memoryContext = await loadMemoryContext(options?.workspaceSlug, {
+        memoryRoot: config.memoryRoot,
+      });
     } catch (err) {
       console.warn("[runner] Memory context load failed, proceeding without:", err);
     }
