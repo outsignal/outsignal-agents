@@ -8,6 +8,7 @@ import type { AgentConfig } from "./types";
 import { loadRules } from "./load-rules";
 import { appendToMontyMemory } from "./memory";
 import { runMontyDevAgent } from "./monty-dev";
+import { runMontyQAAgent } from "./monty-qa";
 
 // --- Real Delegation: Dev Agent ---
 
@@ -39,22 +40,36 @@ const delegateToDevAgent = tool({
   },
 });
 
-// --- Stub Delegation: QA Agent (Phase 65) ---
+// --- Real Delegation: QA Agent ---
 
 const delegateToQA = tool({
   description:
-    "Delegate a code review or quality check to the QA Agent. Use for: reviewing changes, running tests, detecting dead code.",
+    "Delegate a code review or quality check to the QA Agent. Use for: reviewing dev agent output, running tests, detecting dead code, pattern consistency checks.",
   inputSchema: z.object({
     task: z.string().describe("What the QA Agent should review"),
     changedFiles: z
       .array(z.string())
       .optional()
-      .describe("File paths that changed"),
+      .describe("File paths that changed — helps QA target its review"),
   }),
-  execute: async (_args) => ({
-    status: "not_implemented" as const,
-    message: "QA Agent not yet built (Phase 65). Task logged for backlog.",
-  }),
+  execute: async ({ task, changedFiles }) => {
+    try {
+      const result = await runMontyQAAgent({ task, changedFiles });
+      return {
+        status: "complete" as const,
+        reviewSummary: result.reviewSummary,
+        findings: result.findings,
+        testsRun: result.testsRun,
+        testsPassed: result.testsPassed,
+        affectsNova: result.affectsNova,
+      };
+    } catch (error) {
+      return {
+        status: "failed" as const,
+        error: error instanceof Error ? error.message : "QA Agent failed",
+      };
+    }
+  },
 });
 
 // --- Stub Delegation: Security Agent (Phase 66) ---
@@ -236,7 +251,7 @@ After the Dev Agent completes a task:
 1. Route the output to the QA Agent for review (delegateToQA with the changed files)
 2. If QA finds critical issues, route back to Dev Agent for fixes
 3. If the task touches auth, credentials, or session management, also route to Security Agent
-Note: QA and Security agents are not yet built (Phases 65-66). Log the pipeline intent to the backlog.
+Note: QA Agent is operational — always route dev output through QA. Security Agent is not yet built (Phase 66) — log security review intent to the backlog.
 
 ## Pre-Approval Gate
 For Tier 2 operations: state what will happen before executing.
