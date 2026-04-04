@@ -9,6 +9,7 @@ import { loadRules } from "./load-rules";
 import { appendToMontyMemory } from "./memory";
 import { runMontyDevAgent } from "./monty-dev";
 import { runMontyQAAgent } from "./monty-qa";
+import { runMontySecurityAgent } from "./monty-security";
 
 // --- Real Delegation: Dev Agent ---
 
@@ -72,7 +73,7 @@ const delegateToQA = tool({
   },
 });
 
-// --- Stub Delegation: Security Agent (Phase 66) ---
+// --- Real Delegation: Security Agent ---
 
 const delegateToSecurity = tool({
   description:
@@ -84,11 +85,26 @@ const delegateToSecurity = tool({
       .optional()
       .describe("File paths that changed"),
   }),
-  execute: async (_args) => ({
-    status: "not_implemented" as const,
-    message:
-      "Security Agent not yet built (Phase 66). Task logged for backlog.",
-  }),
+  execute: async ({ task, changedFiles }) => {
+    try {
+      const result = await runMontySecurityAgent({ task, changedFiles });
+      return {
+        status: "complete" as const,
+        reviewSummary: result.reviewSummary,
+        findings: result.findings,
+        blockDeploy: result.blockDeploy,
+        gateReason: result.gateReason,
+        npmAuditRun: result.npmAuditRun,
+        affectsNova: result.affectsNova,
+      };
+    } catch (error) {
+      return {
+        status: "failed" as const,
+        error:
+          error instanceof Error ? error.message : "Security Agent failed",
+      };
+    }
+  },
 });
 
 // --- Backlog Helpers ---
@@ -251,7 +267,7 @@ After the Dev Agent completes a task:
 1. Route the output to the QA Agent for review (delegateToQA with the changed files)
 2. If QA finds critical issues, route back to Dev Agent for fixes
 3. If the task touches auth, credentials, or session management, also route to Security Agent
-Note: QA Agent is operational — always route dev output through QA. Security Agent is not yet built (Phase 66) — log security review intent to the backlog.
+Note: QA Agent and Security Agent are both operational. Always route dev output through QA. If the task touches auth, credentials, or session management, also route to Security Agent via delegateToSecurity. If Security Agent returns blockDeploy: true, STOP the pipeline — report the findings to the user and wait for explicit approval before proceeding.
 
 ## Pre-Approval Gate
 For Tier 2 operations: state what will happen before executing.
