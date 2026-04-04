@@ -54,13 +54,13 @@
 
 ### Security Agent
 
-- [ ] **SEC-01**: OWASP Top 10:2025 compliance check on code changes touching auth, input handling, or data access
-- [ ] **SEC-02**: Credential exposure detection — scan for hardcoded secrets, API keys in source, `.env` values in logs
-- [ ] **SEC-03**: Auth flow review — authentication, session handling, API key management, token storage
-- [ ] **SEC-04**: On-call gate — changes touching auth/credentials/session management are blocked until Security Agent reviews
-- [ ] **SEC-05**: AgentConfig with security scanning tools (npm audit, eslint-plugin-security if ESLint v9 compatible)
-- [ ] **SEC-06**: onComplete writes security findings to `.monty/memory/security.md`
-- [ ] **SEC-07**: Writes to `.nova/memory/global-insights.md` when security findings affect Nova agent behaviour (e.g., API key rotation, auth flow changes)
+- [x] **SEC-01**: OWASP Top 10:2025 compliance check on code changes touching auth, input handling, or data access
+- [x] **SEC-02**: Credential exposure detection — scan for hardcoded secrets, API keys in source, `.env` values in logs
+- [x] **SEC-03**: Auth flow review — authentication, session handling, API key management, token storage
+- [x] **SEC-04**: On-call gate — changes touching auth/credentials/session management are blocked until Security Agent reviews
+- [x] **SEC-05**: AgentConfig with security scanning tools (npm audit, eslint-plugin-security if ESLint v9 compatible)
+- [x] **SEC-06**: onComplete writes security findings to `.monty/memory/security.md`
+- [x] **SEC-07**: Writes to `.nova/memory/global-insights.md` when security findings affect Nova agent behaviour (e.g., API key rotation, auth flow changes)
 
 ## Future Requirements
 
@@ -118,13 +118,13 @@
 | QA-06 | Phase 65 | Complete |
 | QA-07 | Phase 65 | Complete |
 | QA-08 | Phase 65 | Complete |
-| SEC-01 | Phase 66 | Pending |
-| SEC-02 | Phase 66 | Pending |
-| SEC-03 | Phase 66 | Pending |
-| SEC-04 | Phase 66 | Pending |
-| SEC-05 | Phase 66 | Pending |
-| SEC-06 | Phase 66 | Pending |
-| SEC-07 | Phase 66 | Pending |
+| SEC-01 | Phase 66 | Complete |
+| SEC-02 | Phase 66 | Complete |
+| SEC-03 | Phase 66 | Complete |
+| SEC-04 | Phase 66 | Complete |
+| SEC-05 | Phase 66 | Complete |
+| SEC-06 | Phase 66 | Complete |
+| SEC-07 | Phase 66 | Complete |
 
 **Coverage:**
 - v9.0 requirements: 42 total
