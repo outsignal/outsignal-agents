@@ -368,6 +368,76 @@ export const montyQAOutputSchema = z.object({
   novaNotification: z.string().optional(),
 });
 
+// --- Monty Security Agent ---
+
+export interface MontySecurityInput {
+  task: string;
+  changedFiles?: string[];
+}
+
+export interface MontySecurityFinding {
+  file: string;
+  line?: number;
+  severity: "critical" | "high" | "medium" | "low";
+  category:
+    | "secrets-exposure"
+    | "auth-bypass"
+    | "input-validation"
+    | "injection"
+    | "xss"
+    | "csrf"
+    | "rate-limiting"
+    | "error-leakage"
+    | "dependency-vuln"
+    | "owasp-compliance";
+  owaspCategory?: string; // e.g. "A01:2025 Broken Access Control"
+  description: string;
+  remediation: string;
+}
+
+export interface MontySecurityOutput {
+  reviewSummary: string;
+  findings: MontySecurityFinding[];
+  blockDeploy: boolean;
+  gateReason?: string; // Required when blockDeploy is true
+  npmAuditRun: boolean;
+  npmAuditSummary?: string;
+  affectsNova: boolean;
+  novaNotification?: string;
+}
+
+export const montySecurityOutputSchema = z.object({
+  reviewSummary: z.string(),
+  findings: z.array(
+    z.object({
+      file: z.string(),
+      line: z.number().optional(),
+      severity: z.enum(["critical", "high", "medium", "low"]),
+      category: z.enum([
+        "secrets-exposure",
+        "auth-bypass",
+        "input-validation",
+        "injection",
+        "xss",
+        "csrf",
+        "rate-limiting",
+        "error-leakage",
+        "dependency-vuln",
+        "owasp-compliance",
+      ]),
+      owaspCategory: z.string().optional(),
+      description: z.string(),
+      remediation: z.string(),
+    }),
+  ),
+  blockDeploy: z.boolean(),
+  gateReason: z.string().optional(),
+  npmAuditRun: z.boolean(),
+  npmAuditSummary: z.string().optional(),
+  affectsNova: z.boolean(),
+  novaNotification: z.string().optional(),
+});
+
 // --- Validator Agent Types (Phase 55) ---
 
 export const validationFindingSchema = z.object({
