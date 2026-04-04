@@ -20,14 +20,14 @@
 
 ### Dev Orchestrator (PM)
 
-- [ ] **ORCH-01**: Triage incoming work as bug / feature / improvement with severity/priority classification
-- [ ] **ORCH-02**: Route to correct specialist via delegation tools (delegateToDevAgent, delegateToQA, delegateToSecurity)
-- [ ] **ORCH-03**: Maintain backlog in `.monty/memory/backlog.json` — capture, prioritise, track status of future work
-- [ ] **ORCH-04**: Sequential quality pipeline enforcement — Dev Generalist output reviewed by QA before deploy, auth-touching changes reviewed by Security
-- [ ] **ORCH-05**: Pre-approval gate — state what's about to happen, estimate impact, wait for human approval before execution
+- [x] **ORCH-01**: Triage incoming work as bug / feature / improvement with severity/priority classification
+- [x] **ORCH-02**: Route to correct specialist via delegation tools (delegateToDevAgent, delegateToQA, delegateToSecurity)
+- [x] **ORCH-03**: Maintain backlog in `.monty/memory/backlog.json` — capture, prioritise, track status of future work
+- [x] **ORCH-04**: Sequential quality pipeline enforcement — Dev Generalist output reviewed by QA before deploy, auth-touching changes reviewed by Security
+- [x] **ORCH-05**: Pre-approval gate — state what's about to happen, estimate impact, wait for human approval before execution
 - [x] **ORCH-06**: `scripts/monty.ts` CLI entry point (interactive chat, matching `scripts/chat.ts` pattern)
 - [x] **ORCH-07**: AgentConfig with name, model, systemPrompt (from rules file), tools, maxSteps, onComplete hook
-- [ ] **ORCH-08**: onComplete writes session summary to `.monty/memory/decisions.md`
+- [x] **ORCH-08**: onComplete writes session summary to `.monty/memory/decisions.md`
 
 ### Dev Generalist Agent
 
@@ -93,14 +93,14 @@
 | FOUND-08 | Phase 62 | Complete |
 | FOUND-09 | Phase 67 | Pending |
 | FOUND-10 | Phase 67 | Pending |
-| ORCH-01 | Phase 64 | Pending |
-| ORCH-02 | Phase 64 | Pending |
-| ORCH-03 | Phase 64 | Pending |
-| ORCH-04 | Phase 64 | Pending |
-| ORCH-05 | Phase 64 | Pending |
+| ORCH-01 | Phase 64 | Complete |
+| ORCH-02 | Phase 64 | Complete |
+| ORCH-03 | Phase 64 | Complete |
+| ORCH-04 | Phase 64 | Complete |
+| ORCH-05 | Phase 64 | Complete |
 | ORCH-06 | Phase 63 | Complete |
 | ORCH-07 | Phase 64 | Complete |
-| ORCH-08 | Phase 64 | Pending |
+| ORCH-08 | Phase 64 | Complete |
 | DEV-01 | Phase 64 | Complete |
 | DEV-02 | Phase 64 | Complete |
 | DEV-03 | Phase 64 | Complete |
