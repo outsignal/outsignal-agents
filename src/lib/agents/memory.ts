@@ -177,6 +177,51 @@ export async function appendToMontyMemory(
 }
 
 // ---------------------------------------------------------------------------
+// Cross-Team Entry Parser
+// ---------------------------------------------------------------------------
+
+export interface CrossTeamEntry {
+  timestamp: string;
+  source: string;
+  type: string;
+  workspace?: string;
+  message: string;
+  direction: "monty-to-nova" | "nova-to-monty";
+  raw: string; // Original line for dedup
+}
+
+/**
+ * Parse [CROSS-TEAM] entries from a memory file's content.
+ * Used by the radar health endpoint to detect new cross-team notifications.
+ *
+ * Expected format (from appendToGlobalMemory / appendToMontyMemory):
+ *   [2026-04-04T12:00:00Z] [CROSS-TEAM] [Source: monty-dev] [Type: tool-change] Some message
+ *   [2026-04-04T12:00:00Z] -- [CROSS-TEAM] [Source: nova-orchestrator] [Type: platform-issue] [Workspace: rise] Some message
+ */
+export function parseCrossTeamEntries(content: string): CrossTeamEntry[] {
+  const lines = content.split("\n");
+  const entries: CrossTeamEntry[] = [];
+
+  for (const line of lines) {
+    const match = line.match(
+      /^\[(.+?)\][\s\u2014-]*\[CROSS-TEAM\]\s+\[Source:\s*(.+?)\]\s+\[Type:\s*(.+?)\](?:\s+\[Workspace:\s*(.+?)\])?\s+(.+)$/,
+    );
+    if (match) {
+      entries.push({
+        timestamp: match[1],
+        source: match[2],
+        type: match[3],
+        workspace: match[4] ?? undefined,
+        message: match[5],
+        direction: match[2].startsWith("monty") ? "monty-to-nova" : "nova-to-monty",
+        raw: line,
+      });
+    }
+  }
+  return entries;
+}
+
+// ---------------------------------------------------------------------------
 // Memory Read System
 // ---------------------------------------------------------------------------
 

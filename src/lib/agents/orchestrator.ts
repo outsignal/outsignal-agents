@@ -21,10 +21,41 @@ import { DEFAULT_PRICING } from "@/lib/proposal-templates";
 import { searchKnowledgeBase } from "./shared-tools";
 import { getWorkspaceQuotaUsage, parseModules } from "@/lib/workspaces/quota";
 import { NOVA_MODEL } from "./types";
-import type { AgentConfig } from "./types";
+import type { AgentConfig, NovaCrossTeamFields } from "./types";
 import { USER_INPUT_GUARD, isCliMode } from "./utils";
 import { loadRules } from "./load-rules";
 import { cliSpawn } from "./cli-spawn";
+import { appendToMontyMemory } from "./memory";
+
+// --- Nova-to-Monty Cross-Team Notifications ---
+
+/**
+ * Write a cross-team notification from Nova to Monty.
+ * Called by the orchestrator when campaign operations encounter platform issues.
+ */
+export async function notifyMontyOfPlatformIssue(
+  workspaceSlug: string,
+  notification: string,
+): Promise<boolean> {
+  return appendToMontyMemory(
+    "incidents.md",
+    `[CROSS-TEAM] [Source: nova-orchestrator] [Type: platform-issue] [Workspace: ${workspaceSlug}] ${notification}`,
+  );
+}
+
+/**
+ * Write a cross-team notification from Nova to Monty for API errors.
+ * Called when specialist agents encounter API failures during campaign operations.
+ */
+export async function notifyMontyOfApiError(
+  workspaceSlug: string,
+  notification: string,
+): Promise<boolean> {
+  return appendToMontyMemory(
+    "incidents.md",
+    `[CROSS-TEAM] [Source: nova-orchestrator] [Type: api-error] [Workspace: ${workspaceSlug}] ${notification}`,
+  );
+}
 
 // --- Delegation Tools ---
 
