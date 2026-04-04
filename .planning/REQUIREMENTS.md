@@ -36,7 +36,7 @@
 - [x] **DEV-03**: Infrastructure work — deploy config, Railway, Vercel, Trigger.dev configuration, DNS
 - [x] **DEV-04**: Action tier model — read-only operations always allowed, reversible operations logged, destructive/gated operations require explicit approval
 - [x] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
-- [x] **DEV-06**: Notifies about Nova-affecting platform changes via `.nova/memory/global-insights.md` so Claudia (PM) can update affected rules/tools — direct file edits are Tier 3 and require human action
+- [x] **DEV-06**: Automatically notifies Nova about platform changes via `.nova/memory/global-insights.md` — Nova reads this on every session so cross-team awareness is automatic. Actual rules/tools edits remain a PM decision.
 - [x] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
 - [x] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
 - [x] **DEV-08**: onComplete writes what was changed and why to `.monty/memory/decisions.md`

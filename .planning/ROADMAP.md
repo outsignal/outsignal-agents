@@ -752,7 +752,7 @@ Plans:
   1. User describes work to Monty and the orchestrator classifies it as bug/feature/improvement with severity and priority, routes to the dev agent, and the AgentRun audit trail captures the full session
   2. The orchestrator states what is about to happen and waits for human approval before any Tier 2+ operation executes — read-only operations proceed without approval
   3. The dev agent reads past decisions and incidents from `.monty/memory/` before acting, and its onComplete hook writes what was changed and why to `decisions.md`
-  4. When the dev agent makes a platform change that affects Nova agents (e.g., new CLI script, API change), it writes a notification to `.nova/memory/global-insights.md` so Claudia (PM) can update affected rules/tools
+  4. When the dev agent makes a platform change that affects Nova agents (e.g., new CLI script, API change), it automatically writes a notification to `.nova/memory/global-insights.md` — Nova reads this on every session for cross-team awareness
   5. The orchestrator maintains backlog state in `.monty/memory/backlog.json` — items can be added, prioritised, and marked complete across sessions
 **Plans**: TBD
 
