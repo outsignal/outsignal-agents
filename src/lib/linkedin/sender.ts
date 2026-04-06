@@ -69,7 +69,11 @@ export async function getSendersForWorkspace(workspaceSlug: string) {
  */
 export async function getActiveSenders(workspaceSlug: string) {
   return prisma.sender.findMany({
-    where: { workspaceSlug, status: "active" },
+    where: {
+      workspaceSlug,
+      status: "active",
+      channel: { in: ["linkedin", "both"] },
+    },
     orderBy: { createdAt: "asc" },
   });
 }
