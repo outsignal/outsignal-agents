@@ -90,6 +90,42 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
     });
   }
 
+  // --- Step 3.5: Auto-recover session_expired senders whose session is actually active ---
+  for (const sender of senders) {
+    if (sender.healthStatus === "session_expired" && sender.sessionStatus === "active") {
+      await prisma.sender.update({
+        where: { id: sender.id },
+        data: {
+          healthStatus: "healthy",
+          healthFlaggedAt: null,
+        },
+      });
+
+      await prisma.senderHealthEvent.create({
+        data: {
+          senderId: sender.id,
+          status: "healthy",
+          reason: "auto_recovered",
+          detail: "Session is active but healthStatus was stuck on session_expired. Auto-recovered.",
+        },
+      });
+
+      results.push({
+        senderId: sender.id,
+        senderName: sender.name,
+        workspaceSlug: sender.workspaceSlug,
+        previousStatus: "session_expired",
+        newStatus: "healthy",
+        reason: "auto_recovered",
+        detail: "Session is active but healthStatus was stuck on session_expired. Auto-recovered.",
+        bouncePct: null,
+        severity: "warning",
+        reassignedCount: 0,
+        workspacePaused: false,
+      });
+    }
+  }
+
   // --- Step 4: Check auto-recovery for soft-flagged senders ---
   const COOLDOWN_MS = 48 * 60 * 60 * 1000; // 48 hours
 

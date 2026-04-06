@@ -27,6 +27,7 @@ interface SenderInfo {
   id: string;
   name: string;
   sessionStatus: string;
+  healthStatus: string;
   proxyUrl: string | null;
   lastActiveAt: string | null;
   lastKeepaliveAt: string | null;
@@ -134,6 +135,12 @@ export class KeepaliveManager {
       if (success) {
         console.log(`[Keepalive] ${sender.name}: ${endpoint} — OK`);
         await this.api.updateKeepalive(sender.id);
+
+        // Clear stale session_expired health flag on successful keepalive
+        if (sender.healthStatus === "session_expired") {
+          console.log(`[Keepalive] ${sender.name}: clearing stale session_expired flag`);
+          await this.api.updateSenderHealth(sender.id, "healthy");
+        }
       } else {
         console.warn(`[Keepalive] ${sender.name}: ${endpoint} — SESSION EXPIRED`);
         await this.api.updateSenderHealth(sender.id, "session_expired");
