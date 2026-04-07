@@ -235,8 +235,30 @@ async function deployLinkedInChannel(
         where: { id: deployId },
         data: { linkedinStatus: "complete", linkedinStepCount: 0 },
       });
+      // Still call createSequenceRulesForCampaign with empty array to clean up
+      // any stale rules from a previous deploy (idempotent redeploy support)
+      await createSequenceRulesForCampaign({
+        workspaceSlug,
+        campaignName: campaign.name,
+        linkedinSequence: [],
+      });
       return;
     }
+
+    // ── Connection gate split ────────────────────────────────────────────
+    // Split the sequence at the connect step. Pre-connect steps (profile_view,
+    // connect) are scheduled immediately via chainActions. Post-connect steps
+    // (follow-up messages) become CampaignSequenceRules triggered by
+    // connection_accepted — they are NOT pre-scheduled.
+    const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
+    const connectIndex = sorted.findLastIndex((step) => step.type === "connect");
+
+    const preConnectSteps = connectIndex >= 0
+      ? sorted.slice(0, connectIndex + 1)
+      : sorted; // No connect step — all steps are pre-connect
+    const postConnectSteps = connectIndex >= 0
+      ? sorted.slice(connectIndex + 1)
+      : []; // No connect step — no post-connect steps
 
     let linkedinStepCount = 0;
     const staggerMinutes = 15; // 15 minutes between leads to avoid burst
@@ -264,12 +286,12 @@ async function deployLinkedInChannel(
       // Stagger: lead i fires at i * 15 minutes from now
       const scheduledFor = new Date(Date.now() + i * staggerMinutes * 60 * 1000);
 
-      // Schedule ALL LinkedIn sequence steps in forward order
+      // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
       const actionIds = await chainActions({
         senderId: sender.id,
         personId: person.id,
         workspaceSlug,
-        sequence: linkedinSequence.map((step) => ({
+        sequence: preConnectSteps.map((step) => ({
           position: step.position,
           type: step.type,
           body: step.body,
@@ -280,26 +302,29 @@ async function deployLinkedInChannel(
         campaignName: campaign.name,
       });
 
-      console.log(`[deploy] Chained ${actionIds.length} LinkedIn actions for ${person.email}`);
+      console.log(
+        `[deploy] Split sequence: ${preConnectSteps.length} pre-connect, ${postConnectSteps.length} post-connect rules for ${person.email}`,
+      );
       linkedinStepCount++;
     }
 
-    // Seed CampaignSequenceRules for EVENT-triggered follow-ups
-    // (e.g. "send message after connection_accepted"). These are complementary
-    // to the time-based chaining handled by chainActions above.
-    const eventTriggeredSteps = linkedinSequence.filter(
-      (step) => step.triggerEvent && step.triggerEvent !== "delay_after_previous",
-    );
-    if (eventTriggeredSteps.length > 0) {
-      await createSequenceRulesForCampaign({
-        workspaceSlug,
-        campaignName: campaign.name,
-        linkedinSequence: eventTriggeredSteps.map((step) => ({
-          ...step,
-          triggerEvent: step.triggerEvent!,
-        })),
-      });
-    }
+    // Create CampaignSequenceRules for post-connect follow-up messages.
+    // These fire when connection_accepted is detected by the connection-poller.
+    // Always called (even if postConnectSteps is empty) to clean up stale rules
+    // from a previous deploy (idempotent redeploy support).
+    const postConnectRules = postConnectSteps.map((step, idx) => ({
+      position: step.position,
+      type: step.type,
+      body: step.body,
+      delayHours: (step.delayDays ?? (idx === 0 ? 1 : 2)) * 24,
+      triggerEvent: "connection_accepted" as const,
+    }));
+
+    await createSequenceRulesForCampaign({
+      workspaceSlug,
+      campaignName: campaign.name,
+      linkedinSequence: postConnectRules,
+    });
 
     await prisma.campaignDeploy.update({
       where: { id: deployId },
