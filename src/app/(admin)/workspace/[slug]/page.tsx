@@ -18,13 +18,23 @@ import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { Campaign, Reply } from "@/lib/emailbison/types";
 import { ApiTokenForm } from "@/components/settings/api-token-form";
+import { PeriodSelector } from "@/components/portal/period-selector";
+
+const VALID_PERIODS = [7, 14, 30, 90] as const;
 
 interface WorkspacePageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ period?: string }>;
 }
 
-export default async function WorkspacePage({ params }: WorkspacePageProps) {
+export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
   const { slug } = await params;
+  const { period: periodParam } = await searchParams;
+  const days = VALID_PERIODS.includes(Number(periodParam) as (typeof VALID_PERIODS)[number])
+    ? Number(periodParam)
+    : 14;
+  const sinceDate = new Date();
+  sinceDate.setDate(sinceDate.getDate() - days);
 
   // Try to get the active workspace config (with API token)
   const workspace = await getWorkspaceBySlug(slug);
@@ -56,22 +66,33 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
     error = err instanceof Error ? err.message : "Failed to fetch data";
   }
 
-  const totalSent = campaigns.reduce(
-    (sum, c) => sum + (c.emails_sent ?? 0),
-    0,
-  );
-  const totalOpens = campaigns.reduce(
-    (sum, c) => sum + (c.unique_opens ?? 0),
-    0,
-  );
-  const totalReplies = campaigns.reduce(
-    (sum, c) => sum + (c.replied ?? 0),
-    0,
-  );
-  const totalBounces = campaigns.reduce(
-    (sum, c) => sum + (c.bounced ?? 0),
-    0,
-  );
+  // Period-filtered metrics from canonical sources
+  let periodSent = 0;
+  try {
+    const startDate = sinceDate.toISOString().slice(0, 10);
+    const endDate = new Date().toISOString().slice(0, 10);
+    const stats = await client.getWorkspaceStats(startDate, endDate);
+    periodSent = parseInt(stats.emails_sent, 10) || 0;
+  } catch {
+    // Fallback: keep 0 if EB API fails
+  }
+
+  const periodReplies = await prisma.reply.count({
+    where: {
+      workspaceSlug: slug,
+      direction: "inbound",
+      receivedAt: { gte: sinceDate },
+    },
+  });
+
+  const periodBounces = await prisma.webhookEvent.count({
+    where: {
+      workspace: slug,
+      eventType: "EMAIL_BOUNCED",
+      receivedAt: { gte: sinceDate },
+      isAutomated: false,
+    },
+  });
 
   const statusVariant: Record<string, "success" | "warning" | "secondary" | "brand"> = {
     active: "success",
@@ -84,26 +105,31 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
     <div className="space-y-6">
       {error && <ErrorBanner message={error} />}
 
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-medium">Overview</h2>
+        <PeriodSelector />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard label="Total Sent" value={totalSent.toLocaleString()} />
+        <MetricCard label="Sent" value={periodSent.toLocaleString()} />
         <MetricCard
-          label="Open Rate"
-          value={`${totalSent > 0 ? ((totalOpens / totalSent) * 100).toFixed(1) : 0}%`}
+          label="Replies"
+          value={periodReplies.toLocaleString()}
         />
         <MetricCard
           label="Reply Rate"
-          value={`${totalSent > 0 ? ((totalReplies / totalSent) * 100).toFixed(1) : 0}%`}
+          value={`${periodSent > 0 ? ((periodReplies / periodSent) * 100).toFixed(1) : 0}%`}
           trend={
-            totalSent > 0 && (totalReplies / totalSent) * 100 > 3
+            periodSent > 0 && (periodReplies / periodSent) * 100 > 3
               ? "up"
               : "neutral"
           }
         />
         <MetricCard
           label="Bounce Rate"
-          value={`${totalSent > 0 ? ((totalBounces / totalSent) * 100).toFixed(1) : 0}%`}
+          value={`${periodSent > 0 ? ((periodBounces / periodSent) * 100).toFixed(1) : 0}%`}
           trend={
-            totalSent > 0 && (totalBounces / totalSent) * 100 > 5
+            periodSent > 0 && (periodBounces / periodSent) * 100 > 2
               ? "warning"
               : "neutral"
           }
