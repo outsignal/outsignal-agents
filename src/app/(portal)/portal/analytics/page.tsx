@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
+import { getWorkspaceBySlug } from "@/lib/workspaces";
+import { EmailBisonClient } from "@/lib/emailbison/client";
 import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -42,7 +44,20 @@ export default async function PortalAnalyticsPage() {
     },
   });
 
-  const replyRate = totalPeople > 0 ? ((totalReplies / totalPeople) * 100) : 0;
+  // Fetch all-time sent count from EmailBison (source of truth for reply rate denominator)
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
+  let totalSent = 0;
+  if (workspace?.apiToken) {
+    try {
+      const ebClient = new EmailBisonClient(workspace.apiToken);
+      const stats = await ebClient.getWorkspaceStats("2020-01-01", new Date().toISOString().slice(0, 10));
+      totalSent = parseInt(stats.emails_sent, 10) || 0;
+    } catch (err) {
+      console.warn("[portal-analytics] Failed to fetch EB stats:", err);
+    }
+  }
+
+  const replyRate = totalSent > 0 ? ((totalReplies / totalSent) * 100) : 0;
   const interestRate = totalReplies > 0 ? ((interestedReplies / totalReplies) * 100) : 0;
   const hasData = totalPeople > 0 || totalCampaigns > 0;
 

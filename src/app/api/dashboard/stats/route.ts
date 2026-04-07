@@ -142,34 +142,32 @@ export async function GET(request: NextRequest) {
       emailMap[key] = (emailMap[key] ?? 0) + ev._count.eventType;
     }
 
-    // 2. LinkedIn KPIs from LinkedInAction
-    const linkedInByType = await prisma.linkedInAction.groupBy({
-      by: ["actionType"],
-      where: {
-        ...wsFilterSlug,
-        createdAt: { gte: sinceDate },
-      },
-      _count: { actionType: true },
-    });
+    // 2. LinkedIn KPIs from LinkedInDailyUsage (canonical source)
+    const linkedInSenderIds = workspaceFilter !== "all"
+      ? (await prisma.sender.findMany({
+          where: { workspaceSlug: workspaceFilter, channel: { in: ["linkedin", "both"] } },
+          select: { id: true },
+        })).map((s) => s.id)
+      : (await prisma.sender.findMany({
+          where: { channel: { in: ["linkedin", "both"] } },
+          select: { id: true },
+        })).map((s) => s.id);
 
-    const linkedInByStatus = await prisma.linkedInAction.groupBy({
-      by: ["status"],
-      where: {
-        ...wsFilterSlug,
-        createdAt: { gte: sinceDate },
-      },
-      _count: { status: true },
-    });
+    const linkedInDailyUsage = linkedInSenderIds.length > 0
+      ? await prisma.linkedInDailyUsage.findMany({
+          where: {
+            senderId: { in: linkedInSenderIds },
+            date: { gte: sinceDate },
+          },
+          orderBy: { date: "asc" },
+        })
+      : [];
 
-    const linkedInTypeMap: Record<string, number> = {};
-    for (const item of linkedInByType) {
-      linkedInTypeMap[item.actionType] = item._count.actionType;
-    }
-
-    const linkedInStatusMap: Record<string, number> = {};
-    for (const item of linkedInByStatus) {
-      linkedInStatusMap[item.status] = item._count.status;
-    }
+    const linkedInTypeMap: Record<string, number> = {
+      connect: linkedInDailyUsage.reduce((sum, r) => sum + r.connectionsSent, 0),
+      message: linkedInDailyUsage.reduce((sum, r) => sum + r.messagesSent, 0),
+      profile_view: linkedInDailyUsage.reduce((sum, r) => sum + r.profileViews, 0),
+    };
 
     // 3. Pipeline KPIs from PersonWorkspace
     const pipelineFilter = workspaceFilter !== "all"
@@ -357,35 +355,16 @@ export async function GET(request: NextRequest) {
       timeSeries.push(timeSeriesMap[dateStr] ?? { date: dateStr, sent: 0, replies: 0, bounces: 0, opens: 0 });
     }
 
-    // 7b. LinkedIn time-series data from LinkedInAction grouped by date
-    const linkedInActions = await prisma.linkedInAction.findMany({
-      where: {
-        ...wsFilterSlug,
-        createdAt: { gte: sinceDate },
-      },
-      select: {
-        createdAt: true,
-        actionType: true,
-        status: true,
-      },
-      orderBy: { createdAt: "asc" },
-    });
-
+    // 7b. LinkedIn time-series data from LinkedInDailyUsage grouped by date
     const linkedInTsMap: Record<string, LinkedInTimeSeriesPoint> = {};
-    for (const action of linkedInActions) {
-      const dateStr = action.createdAt.toISOString().slice(0, 10);
+    for (const usage of linkedInDailyUsage) {
+      const dateStr = usage.date.toISOString().slice(0, 10);
       if (!linkedInTsMap[dateStr]) {
         linkedInTsMap[dateStr] = { date: dateStr, connections: 0, messages: 0, profileViews: 0, failed: 0 };
       }
-      if (action.status === "failed") {
-        linkedInTsMap[dateStr].failed++;
-      } else if (action.actionType === "connect") {
-        linkedInTsMap[dateStr].connections++;
-      } else if (action.actionType === "message") {
-        linkedInTsMap[dateStr].messages++;
-      } else if (action.actionType === "profile_view") {
-        linkedInTsMap[dateStr].profileViews++;
-      }
+      linkedInTsMap[dateStr].connections += usage.connectionsSent;
+      linkedInTsMap[dateStr].messages += usage.messagesSent;
+      linkedInTsMap[dateStr].profileViews += usage.profileViews;
     }
 
     // Fill in all days for LinkedIn
@@ -658,8 +637,8 @@ export async function GET(request: NextRequest) {
       linkedinConnect: linkedInTypeMap["connect"] ?? 0,
       linkedinMessage: linkedInTypeMap["message"] ?? 0,
       linkedinProfileView: linkedInTypeMap["profile_view"] ?? 0,
-      linkedinPending: linkedInStatusMap["pending"] ?? 0,
-      linkedinFailed: linkedInStatusMap["failed"] ?? 0,
+      linkedinPending: 0, // Not tracked in LinkedInDailyUsage
+      linkedinFailed: 0, // Not tracked in LinkedInDailyUsage
       pipelineContacted: pipelineMap["contacted"] ?? 0,
       pipelineReplied: pipelineMap["replied"] ?? 0,
       pipelineInterested: pipelineMap["interested"] ?? 0,
