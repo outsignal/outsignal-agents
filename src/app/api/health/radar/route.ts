@@ -291,7 +291,7 @@ export async function GET(request: NextRequest) {
     workspaces.map(async (ws) => {
       // --- LinkedIn senders ---
       const linkedinSenders = await prisma.sender.findMany({
-        where: { workspaceSlug: ws.slug, channel: "linkedin" },
+        where: { workspaceSlug: ws.slug, channel: { in: ["linkedin", "both"] } },
         select: {
           id: true,
           name: true,
