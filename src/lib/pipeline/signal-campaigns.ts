@@ -28,6 +28,7 @@ import { scorePersonIcp } from "@/lib/icp/scorer";
 import { addPeopleToList } from "@/lib/leads/operations";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { chainActions } from "@/lib/linkedin/chain";
+import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { postMessage } from "@/lib/slack";
 import type { DiscoveryFilter } from "@/lib/discovery/types";
@@ -393,6 +394,21 @@ async function processSingleCampaign(
     }>;
 
     if (linkedinSeq.length > 0) {
+      // ── Connection gate split ────────────────────────────────────────
+      // Split the sequence at the connect step. Pre-connect steps (profile_view,
+      // connect) are scheduled immediately via chainActions. Post-connect steps
+      // (follow-up messages) become CampaignSequenceRules triggered by
+      // connection_accepted — they are NOT pre-scheduled.
+      const sorted = [...linkedinSeq].sort((a, b) => a.position - b.position);
+      const connectIndex = sorted.findLastIndex((step) => step.type === "connect");
+
+      const preConnectSteps = connectIndex >= 0
+        ? sorted.slice(0, connectIndex + 1)
+        : sorted; // No connect step — all steps are pre-connect
+      const postConnectSteps = connectIndex >= 0
+        ? sorted.slice(connectIndex + 1)
+        : []; // No connect step — no post-connect steps
+
       for (const lead of passingLeads) {
         const person = await prisma.person.findUnique({
           where: { id: lead.personId },
@@ -408,12 +424,12 @@ async function processSingleCampaign(
           // Stagger by 15 minutes per lead to avoid LinkedIn rate limits
           const connectScheduledFor = new Date(Date.now() + leadsDeployed * 15 * 60 * 1000);
 
-          // Schedule ALL LinkedIn sequence steps in forward order
+          // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
           const actionIds = await chainActions({
             senderId: sender.id,
             personId: person.id,
             workspaceSlug,
-            sequence: linkedinSeq.map(step => ({
+            sequence: preConnectSteps.map(step => ({
               position: step.position,
               type: step.type,
               body: step.body,
@@ -424,7 +440,9 @@ async function processSingleCampaign(
             campaignName: campaign.name,
           });
 
-          console.log(`[Pipeline] Chained ${actionIds.length} LinkedIn actions for person ${person.id}`);
+          console.log(
+            `[Pipeline] Split sequence: ${preConnectSteps.length} pre-connect, ${postConnectSteps.length} post-connect rules for person ${person.id}`,
+          );
         } catch (error) {
           console.error(
             `[Pipeline] Failed to enqueue LinkedIn action for person ${person.id}:`,
@@ -432,6 +450,24 @@ async function processSingleCampaign(
           );
         }
       }
+
+      // Create CampaignSequenceRules for post-connect follow-up messages.
+      // These fire when connection_accepted is detected by the connection-poller.
+      // Always called (even if postConnectSteps is empty) to clean up stale rules
+      // from a previous run (idempotent support).
+      const postConnectRules = postConnectSteps.map((step, idx) => ({
+        position: step.position,
+        type: step.type,
+        body: step.body,
+        delayHours: (step.delayDays ?? (idx === 0 ? 1 : 2)) * 24,
+        triggerEvent: "connection_accepted" as const,
+      }));
+
+      await createSequenceRulesForCampaign({
+        workspaceSlug,
+        campaignName: campaign.name,
+        linkedinSequence: postConnectRules,
+      });
     }
   }
 
