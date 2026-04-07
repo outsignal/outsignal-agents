@@ -72,6 +72,16 @@
 - [x] **CONSIST-06**: "Connections Made" on portal dashboard uses `connectionsAccepted` from LinkedInDailyUsage, not `connectionsSent`
 - [x] **CONSIST-07**: Admin workspace overview shows period-filtered stats (7/14/30/90 days with selector) instead of all-time campaign totals
 
+## LinkedIn State Machine Requirements
+
+- [ ] **SEQ-01**: Campaign deploy creates only pre-connect actions (profile_view, connect) via chainActions — post-connect messages are NOT pre-scheduled as LinkedInAction records
+- [ ] **SEQ-02**: Post-connect message steps become CampaignSequenceRules with triggerEvent "connection_accepted" — the connection-poller evaluates these rules and creates follow-up actions when acceptance is detected
+- [ ] **SEQ-03**: Connection timeout logic works correctly — if not accepted within configurable days (default 14), prospect exits sequence (already implemented in pollConnectionAccepts, verify unchanged)
+- [ ] **SEQ-04**: Reply cancellation — when a prospect replies to a LinkedIn message, all pending automated actions for that person are cancelled via cancelActionsForPerson
+- [ ] **SEQ-05**: `connectionsAccepted` is incremented on `LinkedInDailyUsage` when a connection acceptance is detected by the connection-poller
+- [ ] **SEQ-06**: Activity page shows connection acceptances and message sends with correct timestamps (driven by LinkedInDailyUsage connectionsAccepted counter)
+- [ ] **SEQ-07**: Migration script exists to cancel existing pre-scheduled message actions for unconnected prospects and create CampaignSequenceRules for affected campaigns — idempotent, supports dry-run
+
 ## Future Requirements
 
 - **FUT-01**: Split Dev Generalist into Backend + Frontend/UI + Infrastructure specialists if generalist becomes a bottleneck
@@ -142,13 +152,21 @@
 | CONSIST-05 | Phase 69 | Planned |
 | CONSIST-06 | Phase 69 | Planned |
 | CONSIST-07 | Phase 69 | Planned |
+| SEQ-01 | Phase 70 | Planned |
+| SEQ-02 | Phase 70 | Planned |
+| SEQ-03 | Phase 70 | Planned |
+| SEQ-04 | Phase 70 | Planned |
+| SEQ-05 | Phase 70 | Planned |
+| SEQ-06 | Phase 70 | Planned |
+| SEQ-07 | Phase 70 | Planned |
 
 **Coverage:**
 - v9.0 requirements: 42 total (complete)
 - Data consistency requirements: 7 total (planned)
-- Mapped to phases: 49
+- LinkedIn state machine requirements: 7 total (planned)
+- Mapped to phases: 56
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-07 after Phase 69 planning*
+*Last updated: 2026-04-07 after Phase 70 planning*

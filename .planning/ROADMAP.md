@@ -845,4 +845,7 @@ Plans:
   5. `connectionsAccepted` is incremented on `LinkedInDailyUsage` when acceptance is detected
   6. The Activity page shows connection acceptances and message sends with correct timestamps
   7. Reply-triggered P1 connections (linkedin-fast-track.ts) remain untouched — they bypass the state machine entirely
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 70-01-PLAN.md — Connection gate split: chainActions + deploy.ts stop pre-scheduling post-connect messages
+  - [ ] 70-02-PLAN.md — connectionsAccepted counter, reply cancellation, timeout verification
+  - [ ] 70-03-PLAN.md — Migration script for existing pre-scheduled actions
