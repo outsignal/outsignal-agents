@@ -303,63 +303,54 @@ async function checkDomain(
         dnsResult = await checkAllDns(domain);
         dnsResult.source = "legacy";
       } else {
-        // Map EmailGuard PATCH trigger responses to our internal format.
-        // PATCH endpoints return opaque objects — extract what we can,
-        // and fall back to legacy DNS for anything unrecoverable.
-        const spf: DnsCheckResult["spf"] =
-          egSpf.status === "fulfilled"
-            ? {
-                status: (egSpf.value as Record<string, unknown>).valid === true ? "pass" : "fail",
-                record: ((egSpf.value as Record<string, unknown>).record as string) ?? null,
-              }
-            : { status: "missing", record: null };
+        // PATCH endpoints only trigger re-checks — they do NOT return validation results.
+        // Read back the stored results via GET /domains/{uuid}.
+        const domainData = await emailguard.getDomain(uuid);
+
+        // Map EmailGuard stored results to our internal format.
+        const spf: DnsCheckResult["spf"] = {
+          status: domainData.spf_valid === true ? "pass" : domainData.spf_valid === false ? "fail" : "missing",
+          record: domainData.spf_record ?? null,
+        };
 
         let dkim: DnsCheckResult["dkim"];
-        if (egDkim.status === "fulfilled") {
-          const egDkimVal = egDkim.value as Record<string, unknown>;
-          if (egDkimVal.valid === true) {
-            const selector = (egDkimVal.selector as string) ?? null;
-            dkim = {
-              status: "pass",
-              passedSelectors: selector ? [selector] : [],
-            };
+        if (domainData.dkim_valid === true) {
+          dkim = {
+            status: "pass",
+            passedSelectors: [],
+          };
+        } else if (domainData.dkim_valid === false) {
+          // EmailGuard reported DKIM invalid — fallback to legacy DNS checker
+          // which correctly follows CNAME chains (common with Microsoft 365)
+          const legacyDkim = await checkDkim(domain);
+          if (legacyDkim.status === "pass") {
+            console.log(`${LOG_PREFIX} EmailGuard DKIM=invalid for ${domain}, but legacy DNS found valid DKIM via selectors: ${legacyDkim.passedSelectors.join(", ")}`);
+            dkim = legacyDkim;
           } else {
-            // EmailGuard reported DKIM invalid — fallback to legacy DNS checker
-            // which correctly follows CNAME chains (common with Microsoft 365)
-            const legacyDkim = await checkDkim(domain);
-            if (legacyDkim.status === "pass") {
-              console.log(`${LOG_PREFIX} EmailGuard DKIM=invalid for ${domain}, but legacy DNS found valid DKIM via selectors: ${legacyDkim.passedSelectors.join(", ")}`);
-              dkim = legacyDkim;
-            } else {
-              dkim = { status: "fail", passedSelectors: [] };
-            }
+            dkim = { status: "fail", passedSelectors: [] };
           }
         } else {
           dkim = { status: "missing", passedSelectors: [] };
         }
 
-        const egDmarcVal = egDmarc.status === "fulfilled" ? (egDmarc.value as Record<string, unknown>) : null;
-        const dmarcRecord = (egDmarcVal?.record as string) ?? null;
-        const dmarc: DnsCheckResult["dmarc"] = egDmarcVal
-          ? {
-              status: egDmarcVal.valid === true ? "pass" : "fail",
-              policy: (egDmarcVal.policy as "none" | "quarantine" | "reject") ?? null,
-              record: dmarcRecord,
-              // Parse alignment directives from record if available
-              aspf: dmarcRecord?.match(/\baspf=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
-              adkim: dmarcRecord?.match(/\badkim=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
-            }
-          : { status: "missing", policy: null, record: null, aspf: null, adkim: null };
+        const dmarcRecord = domainData.dmarc_record ?? null;
+        const dmarc: DnsCheckResult["dmarc"] = {
+          status: domainData.dmarc_valid === true ? "pass" : domainData.dmarc_valid === false ? "fail" : "missing",
+          policy: dmarcRecord?.match(/\bp=(\w+)/i)?.[1]?.toLowerCase() as "none" | "quarantine" | "reject" | null ?? null,
+          record: dmarcRecord,
+          aspf: dmarcRecord?.match(/\baspf=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
+          adkim: dmarcRecord?.match(/\badkim=([rs])/i)?.[1]?.toLowerCase() as "r" | "s" | null ?? null,
+        };
 
-        // Log any individual EmailGuard failures (non-fatal — we got at least one result)
+        // Log any individual EmailGuard PATCH trigger failures (non-fatal — results read from GET)
         if (egSpf.status === "rejected") {
-          console.error(`${LOG_PREFIX} EmailGuard SPF check failed for ${domain}: ${egSpf.reason}`);
+          console.error(`${LOG_PREFIX} EmailGuard SPF trigger failed for ${domain}: ${egSpf.reason}`);
         }
         if (egDkim.status === "rejected") {
-          console.error(`${LOG_PREFIX} EmailGuard DKIM check failed for ${domain}: ${egDkim.reason}`);
+          console.error(`${LOG_PREFIX} EmailGuard DKIM trigger failed for ${domain}: ${egDkim.reason}`);
         }
         if (egDmarc.status === "rejected") {
-          console.error(`${LOG_PREFIX} EmailGuard DMARC check failed for ${domain}: ${egDmarc.reason}`);
+          console.error(`${LOG_PREFIX} EmailGuard DMARC trigger failed for ${domain}: ${egDmarc.reason}`);
         }
 
         // MX, MTA-STS, TLS-RPT, BIMI still use Node.js DNS checks

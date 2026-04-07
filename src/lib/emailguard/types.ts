@@ -20,6 +20,18 @@ export interface Domain {
   /** Domain name — API returns this as `name`, not `domain` */
   name: string;
   ip: string | null;
+  /** SPF validation result — populated after PATCH trigger + GET read-back */
+  spf_valid?: boolean;
+  /** DKIM validation result */
+  dkim_valid?: boolean;
+  /** DMARC validation result */
+  dmarc_valid?: boolean;
+  /** Raw SPF record string */
+  spf_record?: string | null;
+  /** Raw DMARC record string */
+  dmarc_record?: string | null;
+  /** DKIM records array */
+  dkim_records?: Array<Record<string, unknown>>;
 }
 
 // -- Email Authentication (DNS Lookups) ---------------------------------------
