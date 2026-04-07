@@ -828,4 +828,7 @@ Plans:
   5. Bounce rate warning threshold is consistently >2% across portal and admin (align to the stricter admin threshold)
   6. "Connections Made" on portal dashboard shows `connectionsAccepted` not `connectionsSent`
   7. Admin workspace overview shows period-filtered stats (matching portal) instead of all-time totals
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 69-01-PLAN.md — Admin dashboard API: LinkedIn, sent, reply canonical sources
+  - [ ] 69-02-PLAN.md — Portal fixes: reply rate formula, bounce thresholds, Connections Made
+  - [ ] 69-03-PLAN.md — Workspace overview period filtering

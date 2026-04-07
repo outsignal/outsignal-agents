@@ -62,6 +62,16 @@
 - [x] **SEC-06**: onComplete writes security findings to `.monty/memory/security.md`
 - [x] **SEC-07**: Writes to `.nova/memory/global-insights.md` when security findings affect Nova agent behaviour (e.g., API key rotation, auth flow changes)
 
+## Data Consistency Requirements
+
+- [ ] **CONSIST-01**: LinkedIn stats (KPIs + time-series) use `LinkedInDailyUsage` table in admin dashboard — replace `LinkedInAction` queries
+- [ ] **CONSIST-02**: Email "Sent" count uses EmailBison API `getWorkspaceStats()` as primary source with `WebhookEvent` fallback in admin dashboard
+- [ ] **CONSIST-03**: Reply count uses `Reply` table (direction=inbound) everywhere — admin dashboard stops counting WebhookEvents as replies
+- [x] **CONSIST-04**: Reply rate formula is `replies / sent * 100` in portal analytics — stops dividing by total people
+- [x] **CONSIST-05**: Bounce rate warning threshold aligned to >2% warning, >5% critical across portal and admin
+- [x] **CONSIST-06**: "Connections Made" on portal dashboard uses `connectionsAccepted` from LinkedInDailyUsage, not `connectionsSent`
+- [ ] **CONSIST-07**: Admin workspace overview shows period-filtered stats (7/14/30/90 days with selector) instead of all-time campaign totals
+
 ## Future Requirements
 
 - **FUT-01**: Split Dev Generalist into Backend + Frontend/UI + Infrastructure specialists if generalist becomes a bottleneck
@@ -125,12 +135,20 @@
 | SEC-05 | Phase 66 | Complete |
 | SEC-06 | Phase 66 | Complete |
 | SEC-07 | Phase 66 | Complete |
+| CONSIST-01 | Phase 69 | Planned |
+| CONSIST-02 | Phase 69 | Planned |
+| CONSIST-03 | Phase 69 | Planned |
+| CONSIST-04 | Phase 69 | Planned |
+| CONSIST-05 | Phase 69 | Planned |
+| CONSIST-06 | Phase 69 | Planned |
+| CONSIST-07 | Phase 69 | Planned |
 
 **Coverage:**
-- v9.0 requirements: 42 total
-- Mapped to phases: 42
+- v9.0 requirements: 42 total (complete)
+- Data consistency requirements: 7 total (planned)
+- Mapped to phases: 49
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-02 after roadmap creation*
+*Last updated: 2026-04-07 after Phase 69 planning*
