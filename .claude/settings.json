@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | grep -qE 'generateText|@ai-sdk/anthropic|anthropic\\(' && echo '{\"continue\":false,\"stopReason\":\"BLOCKED: This command uses the Anthropic API directly (generateText/anthropic SDK). This burns API credits outside your Claude Code subscription. Use the Agent tool instead for all Nova/orchestrator work.\"}' || echo '{\"continue\":true}'",
+            "timeout": 5,
+            "statusMessage": "Checking for API calls..."
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

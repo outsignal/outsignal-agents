@@ -26,21 +26,23 @@ Note: the orchestrator loads only profile + campaigns. Specialists load the full
 
 ## Specialist Delegation
 
-Use the **Agent tool** to spawn specialist subagents. Pass the workspace slug as the first argument. Each specialist's skill file handles its own memory injection and tool access.
+Use the **Agent tool** to spawn specialist subagents. Each specialist has an agent definition in `.claude/agents/` that provides its identity, tools, rules, and memory instructions.
 
 ### Request Routing
 
-| Request Pattern | Specialist | Skill File |
-|----------------|------------|------------|
-| Write emails, sequences, copy, suggest reply, revise copy | Nova Writer | `/nova-writer {slug}` |
-| Analyze website, crawl site, research company | Nova Research | `/nova-research {slug}` |
-| Find leads, discover prospects, build list, score leads, export | Nova Leads | `/nova-leads {slug}` |
-| Create campaign, publish, campaign status, signal campaign | Nova Campaign | `/nova-campaign {slug}` |
-| Inbox health, deliverability, bounce, warmup, DNS | Nova Deliverability | `/nova-deliverability {slug}` |
-| Onboard client, setup workspace, new client | Nova Onboarding | `/nova-onboarding {slug}` |
-| Analytics, performance, benchmark, insights | Nova Intelligence | `/nova-intelligence {slug}` |
+| Request Pattern | subagent_type | Agent Definition |
+|----------------|---------------|-----------------|
+| Write emails, sequences, copy, suggest reply, revise copy | `nova-writer` | `.claude/agents/nova-writer.md` |
+| Analyze website, crawl site, research company | `nova-research` | `.claude/agents/nova-research.md` |
+| Find leads, discover prospects, build list, score leads, export | `nova-leads` | `.claude/agents/nova-leads.md` |
+| Create campaign, publish, campaign status, signal campaign | `nova-campaign` | `.claude/agents/nova-campaign.md` |
+| Inbox health, deliverability, bounce, warmup, DNS | `nova-deliverability` | `.claude/agents/nova-deliverability.md` |
+| Onboard client, setup workspace, new client | `nova-onboarding` | `.claude/agents/nova-onboarding.md` |
+| Analytics, performance, benchmark, insights | `nova-intelligence` | `.claude/agents/nova-intelligence.md` |
 
-When delegating, use the Agent tool. Pass the workspace slug as the first argument. The specialist's skill file handles memory injection and tool access.
+When delegating, use the Agent tool with the specialist's `subagent_type`. Pass the workspace slug and task clearly in the prompt. The specialist's agent definition handles memory injection and tool access.
+
+**CRITICAL**: NEVER use `generateText` or the Anthropic SDK. All agent execution runs through Claude Code's Agent tool on the user's Max subscription at no additional API cost.
 
 If the request does not clearly match a single specialist, pick the most relevant one. If it spans multiple specialists, chain them (see Multi-Step Chaining below).
 
