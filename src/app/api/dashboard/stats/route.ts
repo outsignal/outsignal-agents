@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import { getWorkspaceBySlug } from "@/lib/workspaces";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +170,32 @@ export async function GET(request: NextRequest) {
       profile_view: linkedInDailyUsage.reduce((sum, r) => sum + r.profileViews, 0),
     };
 
+    // 2b. Sent count: EmailBison API (canonical) with WebhookEvent fallback
+    let ebSentCount = 0;
+    if (workspaceFilter !== "all") {
+      const ws = await getWorkspaceBySlug(workspaceFilter);
+      if (ws?.apiToken) {
+        try {
+          const ebClient = new EmailBisonClient(ws.apiToken);
+          const startDate = sinceDate.toISOString().slice(0, 10);
+          const endDate = new Date().toISOString().slice(0, 10);
+          const stats = await ebClient.getWorkspaceStats(startDate, endDate);
+          ebSentCount = parseInt(stats.emails_sent, 10) || 0;
+        } catch (err) {
+          console.warn("[dashboard-stats] Failed to fetch EB workspace stats:", err);
+        }
+      }
+    }
+
+    // 2c. Reply count from Reply table (canonical source)
+    const replyCount = await prisma.reply.count({
+      where: {
+        ...(workspaceFilter !== "all" ? { workspaceSlug: workspaceFilter } : {}),
+        direction: "inbound",
+        receivedAt: { gte: sinceDate },
+      },
+    });
+
     // 3. Pipeline KPIs from PersonWorkspace
     const pipelineFilter = workspaceFilter !== "all"
       ? { workspace: workspaceFilter }
@@ -315,20 +342,31 @@ export async function GET(request: NextRequest) {
       total: allSenders.length,
     };
 
-    // 7. Time-series data from WebhookEvent grouped by date
+    // 7. Time-series data: WebhookEvent for sent/opens/bounces, Reply table for replies
     const webhookEvents = await prisma.webhookEvent.findMany({
       where: {
         ...wsFilter,
         receivedAt: { gte: sinceDate },
         isAutomated: false,
         eventType: {
-          in: ["EMAIL_SENT", "EMAIL_OPENED", "LEAD_REPLIED", "LEAD_INTERESTED", "BOUNCE"],
+          in: ["EMAIL_SENT", "EMAIL_OPENED", "BOUNCE"],
         },
       },
       select: {
         receivedAt: true,
         eventType: true,
       },
+      orderBy: { receivedAt: "asc" },
+    });
+
+    // Reply time-series from Reply table (canonical source)
+    const replyTimeSeries = await prisma.reply.findMany({
+      where: {
+        ...(workspaceFilter !== "all" ? { workspaceSlug: workspaceFilter } : {}),
+        direction: "inbound",
+        receivedAt: { gte: sinceDate },
+      },
+      select: { receivedAt: true },
       orderBy: { receivedAt: "asc" },
     });
 
@@ -341,9 +379,16 @@ export async function GET(request: NextRequest) {
       }
       if (event.eventType === "EMAIL_SENT") timeSeriesMap[dateStr].sent++;
       else if (event.eventType === "EMAIL_OPENED") timeSeriesMap[dateStr].opens++;
-      else if (event.eventType === "LEAD_REPLIED") timeSeriesMap[dateStr].replies++;
-      else if (event.eventType === "LEAD_INTERESTED") timeSeriesMap[dateStr].replies++;
       else if (event.eventType === "BOUNCE") timeSeriesMap[dateStr].bounces++;
+    }
+
+    // Merge reply counts from Reply table
+    for (const reply of replyTimeSeries) {
+      const dateStr = reply.receivedAt.toISOString().slice(0, 10);
+      if (!timeSeriesMap[dateStr]) {
+        timeSeriesMap[dateStr] = { date: dateStr, sent: 0, replies: 0, bounces: 0, opens: 0 };
+      }
+      timeSeriesMap[dateStr].replies++;
     }
 
     // Fill in all days in range (including zeros)
@@ -477,16 +522,31 @@ export async function GET(request: NextRequest) {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Per-workspace email events (last 7d, non-automated)
+    // Per-workspace email events (last 7d, non-automated) — sent/bounces only
     const perWsEmailEvents = await prisma.webhookEvent.groupBy({
       by: ["workspace", "eventType"],
       where: {
         receivedAt: { gte: sevenDaysAgo },
         isAutomated: false,
-        eventType: { in: ["EMAIL_SENT", "LEAD_REPLIED", "LEAD_INTERESTED", "BOUNCE"] },
+        eventType: { in: ["EMAIL_SENT", "BOUNCE"] },
       },
       _count: { eventType: true },
     });
+
+    // Per-workspace reply counts from Reply table (canonical source)
+    const perWsReplies = await prisma.reply.groupBy({
+      by: ["workspaceSlug"],
+      where: {
+        direction: "inbound",
+        receivedAt: { gte: sevenDaysAgo },
+      },
+      _count: { id: true },
+    });
+
+    const wsReplyMap = new Map<string, number>();
+    for (const r of perWsReplies) {
+      wsReplyMap.set(r.workspaceSlug, r._count.id);
+    }
 
     // Per-workspace reply sentiment (last 7d)
     const perWsSentiment = await prisma.reply.groupBy({
@@ -559,7 +619,7 @@ export async function GET(request: NextRequest) {
       .map((w) => {
         const emailStats = wsEmailMap.get(w.slug) ?? {};
         const sends7d = emailStats["EMAIL_SENT"] ?? 0;
-        const replies7d = (emailStats["LEAD_REPLIED"] ?? 0) + (emailStats["LEAD_INTERESTED"] ?? 0);
+        const replies7d = wsReplyMap.get(w.slug) ?? 0;
         const bounces7d = emailStats["BOUNCE"] ?? 0;
         const replyRate = sends7d > 0 ? Math.round((replies7d / sends7d) * 1000) / 10 : 0;
         const bounceRateVal = sends7d > 0 ? Math.round((bounces7d / sends7d) * 1000) / 10 : 0;
@@ -628,9 +688,9 @@ export async function GET(request: NextRequest) {
 
     // Build KPIs
     const kpis: DashboardKPIs = {
-      emailSent: emailMap["EMAIL_SENT"] ?? 0,
+      emailSent: ebSentCount > 0 ? ebSentCount : (emailMap["EMAIL_SENT"] ?? 0),
       emailOpened: emailMap["EMAIL_OPENED"] ?? 0,
-      emailReplied: emailMap["LEAD_REPLIED"] ?? 0,
+      emailReplied: replyCount,
       emailAutoReplied: emailMap["LEAD_REPLIED_auto"] ?? 0,
       emailInterested: emailMap["LEAD_INTERESTED"] ?? 0,
       emailBounced: emailMap["BOUNCE"] ?? 0,
