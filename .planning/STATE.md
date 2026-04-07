@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Monty — Platform Engineering Agent Team
 status: unknown
-last_updated: "2026-04-07T12:55:47.680Z"
+last_updated: "2026-04-07T12:58:13.047Z"
 progress:
   total_phases: 67
   completed_phases: 64
   total_plans: 186
-  completed_plans: 185
+  completed_plans: 186
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 Phase: 69 of 69 (Data Consistency — Canonical Metric Sources)
 Plan: 2 of 3 complete
 Status: In Progress
-Last activity: 2026-04-07 — Completed 69-02 (Portal Metric Fixes)
+Last activity: 2026-04-07 — Completed 69-01 (Admin Dashboard Canonical Metric Sources) and 69-02 (Portal Metric Fixes)
 
 Progress: [██████░░░░] 67%
 
@@ -76,6 +76,8 @@ Key v9.0 pre-milestone decisions:
 - [Phase 68]: [68-02]: Event-triggered follow-ups (connection_accepted, email_sent) kept as CampaignSequenceRules complementary to time-based chainActions; pre-warm.ts deprecated not deleted for pending action safety
 - [Phase 68]: [68-03]: Migration script uses select-only queries to avoid parentActionId not yet in DB; 4-hour reschedule gap matches chainActions MIN_GAP_MS; all 1011 pending actions already correctly ordered
 - [Phase 69]: [69-02]: Used all-time date range for getWorkspaceStats to match all-time totalReplies; renamed linkedInTotals.connections to connectionsSent for clarity
+- [Phase 69]: LinkedInDailyUsage replaces LinkedInAction for admin dashboard LinkedIn stats; pending/failed KPIs set to 0
+- [Phase 69]: EmailBison API for sent count with WebhookEvent fallback; Reply table canonical for all reply counts
 
 ### Roadmap Evolution
 - Phase 68 added: LinkedIn Action Chaining Architecture — flip action ordering so first sequence action is primary, follow-ups chain from it with 0-2 day delay. Fixes pre-warm.ts backwards scheduling causing intermittent profile_view failures.

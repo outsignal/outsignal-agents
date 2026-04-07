@@ -64,9 +64,9 @@
 
 ## Data Consistency Requirements
 
-- [ ] **CONSIST-01**: LinkedIn stats (KPIs + time-series) use `LinkedInDailyUsage` table in admin dashboard — replace `LinkedInAction` queries
-- [ ] **CONSIST-02**: Email "Sent" count uses EmailBison API `getWorkspaceStats()` as primary source with `WebhookEvent` fallback in admin dashboard
-- [ ] **CONSIST-03**: Reply count uses `Reply` table (direction=inbound) everywhere — admin dashboard stops counting WebhookEvents as replies
+- [x] **CONSIST-01**: LinkedIn stats (KPIs + time-series) use `LinkedInDailyUsage` table in admin dashboard — replace `LinkedInAction` queries
+- [x] **CONSIST-02**: Email "Sent" count uses EmailBison API `getWorkspaceStats()` as primary source with `WebhookEvent` fallback in admin dashboard
+- [x] **CONSIST-03**: Reply count uses `Reply` table (direction=inbound) everywhere — admin dashboard stops counting WebhookEvents as replies
 - [x] **CONSIST-04**: Reply rate formula is `replies / sent * 100` in portal analytics — stops dividing by total people
 - [x] **CONSIST-05**: Bounce rate warning threshold aligned to >2% warning, >5% critical across portal and admin
 - [x] **CONSIST-06**: "Connections Made" on portal dashboard uses `connectionsAccepted` from LinkedInDailyUsage, not `connectionsSent`
