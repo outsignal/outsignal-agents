@@ -27,12 +27,11 @@ import { deduplicateAndPromote } from "@/lib/discovery/promotion";
 import { scorePersonIcp } from "@/lib/icp/scorer";
 import { addPeopleToList } from "@/lib/leads/operations";
 import { EmailBisonClient } from "@/lib/emailbison/client";
-import { enqueueAction } from "@/lib/linkedin/queue";
-import { scheduleProfileViewBeforeConnect } from "@/lib/linkedin/pre-warm";
+import { chainActions } from "@/lib/linkedin/chain";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { postMessage } from "@/lib/slack";
 import type { DiscoveryFilter } from "@/lib/discovery/types";
-import type { LinkedInActionType } from "@/lib/linkedin/types";
+
 import type { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -386,19 +385,18 @@ async function processSingleCampaign(
   }
 
   if (channels.includes("linkedin")) {
-    // Parse first LinkedIn sequence step to determine action type
     const linkedinSeq = JSON.parse(campaign.linkedinSequence ?? "[]") as Array<{
       position: number;
       type: string;
       body?: string;
+      delayDays?: number;
     }>;
-    const firstStep = linkedinSeq.find(s => s.position === 1) ?? linkedinSeq[0];
 
-    if (firstStep) {
+    if (linkedinSeq.length > 0) {
       for (const lead of passingLeads) {
         const person = await prisma.person.findUnique({
           where: { id: lead.personId },
-          select: { id: true, linkedinUrl: true },
+          select: { id: true, linkedinUrl: true, email: true },
         });
         if (!person?.linkedinUrl) continue;
 
@@ -407,35 +405,26 @@ async function processSingleCampaign(
         if (!sender) continue;
 
         try {
+          // Stagger by 15 minutes per lead to avoid LinkedIn rate limits
           const connectScheduledFor = new Date(Date.now() + leadsDeployed * 15 * 60 * 1000);
 
-          await enqueueAction({
+          // Schedule ALL LinkedIn sequence steps in forward order
+          const actionIds = await chainActions({
             senderId: sender.id,
             personId: person.id,
             workspaceSlug,
-            actionType: firstStep.type as LinkedInActionType,
-            messageBody: firstStep.body,
+            sequence: linkedinSeq.map(step => ({
+              position: step.position,
+              type: step.type,
+              body: step.body,
+              delayDays: step.delayDays,
+            })),
+            baseScheduledFor: connectScheduledFor,
             priority: 3, // Higher priority — signal-triggered is time-sensitive
-            // Stagger by 15 minutes per lead to avoid LinkedIn rate limits
-            scheduledFor: connectScheduledFor,
             campaignName: campaign.name,
-            sequenceStepRef: `linkedin_${firstStep.position}`,
           });
 
-          // Pre-warm: schedule a profile_view before connect actions
-          if (firstStep.type === "connect" || firstStep.type === "connection_request") {
-            await scheduleProfileViewBeforeConnect({
-              senderId: sender.id,
-              personId: person.id,
-              workspaceSlug,
-              linkedinUrl: person.linkedinUrl,
-              connectScheduledFor,
-              campaignName: campaign.name,
-              priority: 3,
-            }).catch((err) =>
-              console.warn(`[Pipeline] Pre-warm profile_view failed for person ${person.id}:`, err),
-            );
-          }
+          console.log(`[Pipeline] Chained ${actionIds.length} LinkedIn actions for person ${person.id}`);
         } catch (error) {
           console.error(
             `[Pipeline] Failed to enqueue LinkedIn action for person ${person.id}:`,

@@ -1,4 +1,12 @@
 /**
+ * @deprecated Phase 68: Forward chaining replaces backwards scheduling.
+ * Use `chainActions()` from `./chain.ts` instead.
+ * This file is kept temporarily for reference. Remove once no pending
+ * actions reference `pre_warm_view` sequenceStepRef.
+ * Deprecated: 2026-04-07
+ */
+
+/**
  * LinkedIn profile-view pre-warming — automatically schedules a profile_view
  * action 1-2 days before a connection_request to make outreach look organic.
  *
