@@ -152,25 +152,126 @@ async function main() {
     );
   }
 
-  // 6. Summary
+  // 6. Backfill CampaignSequenceRules for ALL active/approved LinkedIn campaigns
+  //    that have no rules yet. This covers campaigns that had no pending messages
+  //    to cancel (step 4-5 above) but still need rules for future connection accepts.
+  console.log("\n--- Backfilling rules for active LinkedIn campaigns ---");
+
+  const linkedinCampaigns = await prisma.campaign.findMany({
+    where: {
+      status: { in: ["active", "approved", "deployed"] },
+      channels: { contains: "linkedin" },
+      linkedinSequence: { not: null },
+    },
+    select: {
+      id: true,
+      name: true,
+      workspaceSlug: true,
+      linkedinSequence: true,
+    },
+  });
+
+  console.log(`Found ${linkedinCampaigns.length} active/approved/deployed LinkedIn campaign(s).`);
+
+  let backfilledCampaigns = 0;
+  let backfilledRules = 0;
+
+  for (const camp of linkedinCampaigns) {
+    // Skip campaigns that already have connection_accepted rules
+    const existingRules = await prisma.campaignSequenceRule.count({
+      where: {
+        workspaceSlug: camp.workspaceSlug,
+        campaignName: camp.name,
+        triggerEvent: "connection_accepted",
+      },
+    });
+
+    if (existingRules > 0) {
+      console.log(
+        `  Rules already exist for "${camp.name}" in ${camp.workspaceSlug} (${existingRules} rules) — skipping`
+      );
+      continue;
+    }
+
+    // Parse the linkedin sequence from the campaign
+    let sequence: Array<{
+      position: number;
+      type: string;
+      body?: string;
+      delayDays?: number;
+    }>;
+    try {
+      sequence = JSON.parse(camp.linkedinSequence!) as typeof sequence;
+    } catch {
+      console.log(`  Could not parse linkedinSequence for "${camp.name}" — skipping`);
+      continue;
+    }
+
+    if (sequence.length === 0) continue;
+
+    // Find the connection gate split point
+    const sorted = [...sequence].sort((a, b) => a.position - b.position);
+    const connectIndex = sorted.findLastIndex((step) => step.type === "connect");
+
+    // If no connect step, there are no post-connect steps to create rules for
+    if (connectIndex < 0) {
+      console.log(`  No connect step in "${camp.name}" — no post-connect rules needed`);
+      continue;
+    }
+
+    const postConnectSteps = sorted.slice(connectIndex + 1);
+    if (postConnectSteps.length === 0) {
+      console.log(`  No post-connect steps in "${camp.name}" — skipping`);
+      continue;
+    }
+
+    // Create CampaignSequenceRules for post-connect steps
+    if (!dryRun) {
+      for (let i = 0; i < postConnectSteps.length; i++) {
+        const step = postConnectSteps[i];
+        await prisma.campaignSequenceRule.create({
+          data: {
+            workspaceSlug: camp.workspaceSlug,
+            campaignName: camp.name,
+            triggerEvent: "connection_accepted",
+            actionType: step.type,
+            messageTemplate: step.body ?? null,
+            delayMinutes: (step.delayDays ?? (i === 0 ? 1 : 2)) * 24 * 60,
+            position: i + 1,
+          },
+        });
+      }
+    }
+
+    backfilledCampaigns++;
+    backfilledRules += postConnectSteps.length;
+    console.log(
+      `  ${dryRun ? "Would create" : "Created"} ${postConnectSteps.length} connection_accepted rule(s) for "${camp.name}" in ${camp.workspaceSlug}`
+    );
+  }
+
+  // 7. Summary
   console.log("\n=== Migration Summary ===");
   console.log(`Total pending P5 messages checked: ${pendingMessages.length}`);
   console.log(
     `Premature messages ${dryRun ? "to cancel" : "cancelled"}: ${actionsToCancel.length}`
   );
   console.log(
-    `Campaigns with ${dryRun ? "new" : "created"} rules: ${campaignsWithNewRules} (${totalRulesCreated} rules total)`
+    `Campaigns with ${dryRun ? "new" : "created"} rules (from cancelled actions): ${campaignsWithNewRules} (${totalRulesCreated} rules total)`
+  );
+  console.log(
+    `Campaigns backfilled with rules (active LinkedIn): ${backfilledCampaigns} (${backfilledRules} rules total)`
   );
   console.log(`Already-connected messages left alone: ${alreadyConnected}`);
   console.log(`Skipped (no personId): ${skippedNoPersonId}`);
 
-  if (dryRun && (actionsToCancel.length > 0 || campaignsWithNewRules > 0)) {
+  if (dryRun && (actionsToCancel.length > 0 || campaignsWithNewRules > 0 || backfilledCampaigns > 0)) {
     console.log(
       "\nRun without --dry-run to apply changes."
     );
   }
 
-  if (!dryRun && actionsToCancel.length === 0 && campaignsWithNewRules === 0) {
+  if (!dryRun && actionsToCancel.length === 0 && campaignsWithNewRules === 0 && backfilledCampaigns === 0) {
     console.log("\nNo changes needed. Migration is already complete.");
   }
 }
