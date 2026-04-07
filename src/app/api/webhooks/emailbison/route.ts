@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import { notifyReply } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
 import { cancelActionsForPerson, enqueueAction } from "@/lib/linkedin/queue";
-import { scheduleProfileViewBeforeConnect } from "@/lib/linkedin/pre-warm";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { evaluateSequenceRules } from "@/lib/linkedin/sequencing";
 import { rateLimit } from "@/lib/rate-limit";
@@ -259,18 +258,26 @@ export async function POST(request: NextRequest) {
                     sequenceStepRef: action.sequenceStepRef,
                   });
 
-                  // Pre-warm: schedule a profile_view before connect actions
-                  if (action.actionType === "connect") {
-                    await scheduleProfileViewBeforeConnect({
+                  // Forward-chain: schedule a profile_view before connect actions
+                  if (action.actionType === "connect" && person.linkedinUrl) {
+                    const viewScheduledFor = new Date(
+                      actionScheduledFor.getTime() - Math.max(4 * 60 * 60 * 1000, Math.random() * 2 * 24 * 60 * 60 * 1000),
+                    );
+                    const safeViewTime = viewScheduledFor.getTime() > Date.now()
+                      ? viewScheduledFor
+                      : new Date(Date.now() + 5 * 60 * 1000);
+
+                    await enqueueAction({
                       senderId: sender.id,
                       personId: person.id,
                       workspaceSlug: outsignalCampaign.workspaceSlug,
-                      linkedinUrl: person.linkedinUrl,
-                      connectScheduledFor: actionScheduledFor,
+                      actionType: "profile_view",
+                      priority: 7,
+                      scheduledFor: safeViewTime,
                       campaignName: outsignalCampaign.name,
-                      priority: 5,
+                      sequenceStepRef: "linkedin_0",
                     }).catch((err) =>
-                      console.warn(`[webhook] Pre-warm profile_view failed for person ${person.id}:`, err),
+                      console.warn(`[webhook] Profile view scheduling failed for person ${person.id}:`, err),
                     );
                   }
                 }
