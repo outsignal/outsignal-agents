@@ -274,6 +274,23 @@ export class ApiClient {
   }
 
   /**
+   * Check the database connection status for a person.
+   * Returns the LinkedInConnection status if a record exists, or null if none found.
+   * Used as a pre-send gate before executing message actions.
+   */
+  async getConnectionStatusForPerson(
+    personId: string,
+  ): Promise<{ status: string } | null> {
+    try {
+      return await this.request<{ status: string }>(
+        `/api/linkedin/connections/person/${personId}/status`,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Push LinkedIn conversations and messages to the main app for processing.
    * Called by the worker when new inbound messages are detected during the poll loop.
    */
