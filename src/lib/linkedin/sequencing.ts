@@ -242,7 +242,15 @@ export async function evaluateSequenceRules(
 export interface LinkedInSequenceStep {
   position: number;
   type: string;           // "connect" | "message" | "profile_view"
-  body?: string;          // Optional message template
+  /**
+   * Optional message template (Handlebars).
+   *
+   * For "message" actions: the message body sent to the prospect.
+   * For "connect" actions: serves as the **connection note** attached to the
+   * connection request. Leave blank (undefined/null) for a noteless connection
+   * request, which is the recommended default for cold outreach (higher accept rates).
+   */
+  body?: string;
   delayHours?: number;    // Delay before executing
   triggerEvent?: string;  // Override trigger event
   triggerStepRef?: string;

@@ -1,6 +1,26 @@
 import { enqueueAction } from "./queue";
 import type { LinkedInActionType } from "./types";
 
+/**
+ * Connection note convention:
+ *
+ * For "connect" action steps, the `body` field serves as the **connection note**
+ * (the short message attached to a LinkedIn connection request).
+ *
+ * - If `body` is undefined or empty, the connection request is sent with NO note.
+ *   This is the **recommended default** — blank connection requests have higher
+ *   accept rates in cold outreach.
+ * - If `body` is a non-empty string, it is sent as the connection note (max 300 chars
+ *   enforced by LinkedIn).
+ *
+ * This is a deliberate design choice: a separate `connectionNote` field is unnecessary
+ * because the `body`/`messageBody` field is contextually appropriate for both message
+ * and connect actions. The LinkedIn API treats both as text payloads.
+ */
+
+/** Type alias documenting that messageBody doubles as the connection note for connect actions. */
+export type ConnectionNote = string | undefined;
+
 export interface ChainActionsParams {
   senderId: string;
   personId: string;
@@ -8,7 +28,8 @@ export interface ChainActionsParams {
   sequence: Array<{
     position: number;
     type: string;
-    body?: string;
+    /** For "message" actions: the message text. For "connect" actions: the connection note (blank = no note, recommended). */
+    body?: ConnectionNote;
     delayDays?: number;
   }>;
   baseScheduledFor: Date;
