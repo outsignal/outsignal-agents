@@ -76,10 +76,10 @@
 
 - [x] **SEQ-01**: Campaign deploy creates only pre-connect actions (profile_view, connect) via chainActions — post-connect messages are NOT pre-scheduled as LinkedInAction records
 - [x] **SEQ-02**: Post-connect message steps become CampaignSequenceRules with triggerEvent "connection_accepted" — the connection-poller evaluates these rules and creates follow-up actions when acceptance is detected
-- [ ] **SEQ-03**: Connection timeout logic works correctly — if not accepted within configurable days (default 14), prospect exits sequence (already implemented in pollConnectionAccepts, verify unchanged)
-- [ ] **SEQ-04**: Reply cancellation — when a prospect replies to a LinkedIn message, all pending automated actions for that person are cancelled via cancelActionsForPerson
-- [ ] **SEQ-05**: `connectionsAccepted` is incremented on `LinkedInDailyUsage` when a connection acceptance is detected by the connection-poller
-- [ ] **SEQ-06**: Activity page shows connection acceptances and message sends with correct timestamps (driven by LinkedInDailyUsage connectionsAccepted counter)
+- [x] **SEQ-03**: Connection timeout logic works correctly — if not accepted within configurable days (default 14), prospect exits sequence (already implemented in pollConnectionAccepts, verify unchanged)
+- [x] **SEQ-04**: Reply cancellation — when a prospect replies to a LinkedIn message, all pending automated actions for that person are cancelled via cancelActionsForPerson
+- [x] **SEQ-05**: `connectionsAccepted` is incremented on `LinkedInDailyUsage` when a connection acceptance is detected by the connection-poller
+- [x] **SEQ-06**: Activity page shows connection acceptances and message sends with correct timestamps (driven by LinkedInDailyUsage connectionsAccepted counter)
 - [ ] **SEQ-07**: Migration script exists to cancel existing pre-scheduled message actions for unconnected prospects and create CampaignSequenceRules for affected campaigns — idempotent, supports dry-run
 
 ## Future Requirements
