@@ -19,11 +19,11 @@ cat .nova/memory/{slug}/profile.md .nova/memory/{slug}/campaigns.md .nova/memory
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Workspace create | `node dist/cli/workspace-create.js --file /tmp/{uuid}.json` | Create a new workspace (name, slug, vertical, package) |
-| Member invite | `node dist/cli/member-invite.js --slug {slug} --email {email} --role {role}` | Invite client to their workspace portal |
-| Workspace get | `node dist/cli/workspace-get.js --slug {slug}` | Verify workspace state and review current config |
-| Package update | `node dist/cli/workspace-package-update.js --slug {slug} --file /tmp/{uuid}.json` | Enable or disable channel modules (email, LinkedIn) |
-| Domain health | `node dist/cli/domain-health.js --slug {slug}` | Verify DNS records post-setup (SPF, DKIM, DMARC) |
+| Workspace create | `node dist/cli/workspace-create.js /tmp/{uuid}.json` | Create a new workspace (name, slug, vertical, package) |
+| Member invite | `node dist/cli/member-invite.js {slug} {email} {role}` | Invite client to their workspace portal |
+| Workspace get | `node dist/cli/workspace-get.js {slug}` | Verify workspace state and review current config |
+| Package update | `node dist/cli/workspace-package-update.js {slug} /tmp/{uuid}.json` | Enable or disable channel modules (email, LinkedIn) |
+| Domain health | `node dist/cli/domain-health.js {slug}` | Verify DNS records post-setup (SPF, DKIM, DMARC) |
 
 For workspace-create and package-update, write JSON to `/tmp/{uuid}.json` first, then pass the path.
 

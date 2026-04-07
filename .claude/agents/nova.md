@@ -65,14 +65,14 @@ For simple data lookups, run CLI tools directly instead of delegating:
 | Query | Command |
 |-------|---------|
 | List workspaces | `node dist/cli/workspace-list.js` |
-| Get workspace details | `node dist/cli/workspace-get.js --slug {slug}` |
-| Get campaigns | `node dist/cli/campaigns-get.js --slug {slug}` |
-| Get replies | `node dist/cli/replies-get.js --slug {slug}` |
-| Sender health | `node dist/cli/sender-health.js --slug {slug}` |
-| Query people | `node dist/cli/people-query.js --file /tmp/{uuid}.json` |
+| Get workspace details | `node dist/cli/workspace-get.js {slug}` |
+| Get campaigns | `node dist/cli/campaigns-get.js {slug}` |
+| Get replies | `node dist/cli/replies-get.js {slug}` |
+| Sender health | `node dist/cli/sender-health.js {slug}` |
+| Query people | `node dist/cli/people-query.js {slug}` |
 | List proposals | `node dist/cli/proposal-list.js` |
-| Create proposal | `node dist/cli/proposal-create.js --file /tmp/{uuid}.json` |
-| KB search | `node dist/cli/kb-search.js --query "{q}" --limit {n}` |
+| Create proposal | `node dist/cli/proposal-create.js /tmp/{uuid}.json` |
+| KB search | `node dist/cli/kb-search.js "{q}" "" {n}` |
 
 ## Multi-Step Chaining
 

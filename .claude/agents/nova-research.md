@@ -19,12 +19,12 @@ cat .nova/memory/{slug}/profile.md .nova/memory/{slug}/campaigns.md .nova/memory
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Website crawl | `node dist/cli/website-crawl.js --url {url}` | Crawl full website — homepage, about, services, case studies |
-| URL scrape | `node dist/cli/url-scrape.js --url {url}` | Scrape a single page URL |
-| Workspace get | `node dist/cli/workspace-get.js --slug {slug}` | Load existing workspace data to compare against findings |
-| Save analysis | `node dist/cli/website-analysis-save.js --file /tmp/{uuid}.json` | Save structured website analysis to DB |
-| Update ICP | `node dist/cli/workspace-icp-update.js --slug {slug} --file /tmp/{uuid}.json` | Fill ICP fields on workspace (never overwrites existing data) |
-| KB search | `node dist/cli/kb-search.js --query "{q}" --tags "{tags}" --limit {n}` | Look up cold outreach best practices |
+| Website crawl | `node dist/cli/website-crawl.js {url}` | Crawl full website — homepage, about, services, case studies |
+| URL scrape | `node dist/cli/url-scrape.js {url}` | Scrape a single page URL |
+| Workspace get | `node dist/cli/workspace-get.js {slug}` | Load existing workspace data to compare against findings |
+| Save analysis | `node dist/cli/website-analysis-save.js {slug} /tmp/{uuid}.json` | Save structured website analysis to DB |
+| Update ICP | `node dist/cli/workspace-icp-update.js {slug} /tmp/{uuid}.json` | Fill ICP fields on workspace (never overwrites existing data) |
+| KB search | `node dist/cli/kb-search.js "{q}" "{tags}" {n}` | Look up cold outreach best practices |
 
 For save-analysis and update-ICP, write JSON to `/tmp/{uuid}.json` first, then pass the path.
 

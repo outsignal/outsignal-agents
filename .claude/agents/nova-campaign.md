@@ -19,15 +19,15 @@ cat .nova/memory/{slug}/profile.md .nova/memory/{slug}/campaigns.md .nova/memory
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Campaign create | `node dist/cli/campaign-create.js --file /tmp/{uuid}.json` | Create a new campaign |
-| Campaign get | `node dist/cli/campaign-get.js --campaignId {id}` | Get campaign details |
-| Campaign list | `node dist/cli/campaign-list.js --slug {slug}` | List all campaigns for workspace |
-| Find target list | `node dist/cli/target-list-find.js --slug {slug} --name {name}` | Find target list by name |
-| Campaign status | `node dist/cli/campaign-status.js --campaignId {id} --status {status}` | Update campaign status |
-| Campaign publish | `node dist/cli/campaign-publish.js --campaignId {id}` | Publish campaign for client review |
-| Signal create | `node dist/cli/signal-campaign-create.js --file /tmp/{uuid}.json` | Create signal campaign |
-| Signal activate | `node dist/cli/signal-campaign-activate.js --campaignId {id}` | Activate signal campaign |
-| Signal pause | `node dist/cli/signal-campaign-pause.js --campaignId {id} --action {pause|resume}` | Pause or resume signal campaign |
+| Campaign create | `node dist/cli/campaign-create.js {slug} /tmp/{uuid}.json` | Create a new campaign |
+| Campaign get | `node dist/cli/campaign-get.js {campaignId}` | Get campaign details |
+| Campaign list | `node dist/cli/campaign-list.js {slug}` | List all campaigns for workspace |
+| Find target list | `node dist/cli/target-list-find.js {slug} {name}` | Find target list by name |
+| Campaign status | `node dist/cli/campaign-status.js {campaignId} {status}` | Update campaign status |
+| Campaign publish | `node dist/cli/campaign-publish.js {campaignId}` | Publish campaign for client review |
+| Signal create | `node dist/cli/signal-campaign-create.js {slug} /tmp/{uuid}.json` | Create signal campaign |
+| Signal activate | `node dist/cli/signal-campaign-activate.js {campaignId}` | Activate signal campaign |
+| Signal pause | `node dist/cli/signal-campaign-pause.js {campaignId} {pause|resume}` | Pause or resume signal campaign |
 
 For `campaign-create` and `signal-create`, write JSON to `/tmp/{uuid}.json` first, then pass the path.
 

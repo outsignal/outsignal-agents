@@ -19,15 +19,15 @@ cat .nova/memory/{slug}/profile.md .nova/memory/{slug}/campaigns.md .nova/memory
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Workspace intelligence | `node dist/cli/workspace-intelligence.js --slug {slug}` | ICP, value props, tone guidance, website analysis |
-| Campaign performance | `node dist/cli/campaign-performance.js --slug {slug}` | Reply/bounce rates for informed copy decisions |
-| Sequence steps | `node dist/cli/sequence-steps.js --campaignId {id}` | Existing sequence steps for a campaign |
-| Existing drafts | `node dist/cli/existing-drafts.js --slug {slug}` | Prior sequence draft versions |
-| Campaign context | `node dist/cli/campaign-context.js --campaignId {id}` | Campaign details and linked target list |
-| KB search | `node dist/cli/kb-search.js --query "{q}" --tags "{tags}" --limit {n}` | Knowledge base lookup for frameworks and examples |
-| Save sequence | `node dist/cli/save-sequence.js --file /tmp/{uuid}.json` | Save sequence to a campaign |
-| Save draft | `node dist/cli/save-draft.js --file /tmp/{uuid}.json` | Save standalone draft |
-| Validate sequence | `node dist/cli/validate-sequence.js --file /tmp/{uuid}.json` | Run validator gate on sequence |
+| Workspace intelligence | `node dist/cli/workspace-intelligence.js {slug}` | ICP, value props, tone guidance, website analysis |
+| Campaign performance | `node dist/cli/campaign-performance.js {slug}` | Reply/bounce rates for informed copy decisions |
+| Sequence steps | `node dist/cli/sequence-steps.js {slug} {campaignId}` | Existing sequence steps for a campaign |
+| Existing drafts | `node dist/cli/existing-drafts.js {slug}` | Prior sequence draft versions |
+| Campaign context | `node dist/cli/campaign-context.js {campaignId}` | Campaign details and linked target list |
+| KB search | `node dist/cli/kb-search.js "{q}" "{tags}" {n}` | Knowledge base lookup for frameworks and examples |
+| Save sequence | `node dist/cli/save-sequence.js {campaignId} /tmp/{uuid}.json` | Save sequence to a campaign |
+| Save draft | `node dist/cli/save-draft.js {slug} /tmp/{uuid}.json` | Save standalone draft |
+| Validate sequence | `node dist/cli/validate-sequence.js /tmp/{uuid}.json` | Run validator gate on sequence |
 
 For complex inputs (save-sequence, save-draft), write JSON to `/tmp/{uuid}.json` first, then pass the path.
 

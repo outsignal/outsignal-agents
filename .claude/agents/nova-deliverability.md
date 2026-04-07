@@ -19,10 +19,10 @@ cat .nova/memory/{slug}/profile.md .nova/memory/{slug}/campaigns.md .nova/memory
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Sender health | `node dist/cli/sender-health.js --slug {slug}` | Per-inbox stats: sent, bounced, spam, connected status, last activity |
-| Domain health | `node dist/cli/domain-health.js --slug {slug}` | Domain DNS records: SPF, DKIM, DMARC, MX, blacklist status, warmup state |
-| Bounce stats | `node dist/cli/bounce-stats.js --slug {slug}` | Bounce rate trends over time |
-| Inbox status | `node dist/cli/inbox-status.js --slug {slug}` | Inbox connection status — identifies disconnected or suspended inboxes |
+| Sender health | `node dist/cli/sender-health.js {slug}` | Per-inbox stats: sent, bounced, spam, connected status, last activity |
+| Domain health | `node dist/cli/domain-health.js {slug}` | Domain DNS records: SPF, DKIM, DMARC, MX, blacklist status, warmup state |
+| Bounce stats | `node dist/cli/bounce-stats.js {slug}` | Bounce rate trends over time |
+| Inbox status | `node dist/cli/inbox-status.js {slug}` | Inbox connection status — identifies disconnected or suspended inboxes |
 
 ## Rules
 
