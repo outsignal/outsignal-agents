@@ -15,6 +15,15 @@ When reporting any data that changes over time, you MUST query the live source. 
 - **Inbox/sender counts**: Always query the database
 - **Any numerical data that could have changed**
 
+## Prisma query rules
+
+Before writing ANY Prisma query, you MUST:
+1. Read the relevant model from `prisma/schema.prisma` first — never guess field names
+2. For channel filters on senders, use `channel: { in: ['linkedin', 'both'] }` — never just `channel: 'linkedin'` (misses dual-channel senders)
+3. Verify field names exist in the schema before using them in where/select clauses
+
+Previous violations: queried `{ connected: true }` (field doesn't exist), `{ spfValid: false }` (field doesn't exist), `{ channel: 'linkedin' }` (missed `channel: 'both'` senders showing as LinkedIn in portal).
+
 ## How to handle it
 
 1. If you CAN query the live source (DB, API): do it before reporting
