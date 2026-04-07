@@ -20,6 +20,47 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) console.log("[DRY RUN] No changes will be made.\n");
 
+  // ── Live data validation ──────────────────────────────────────────────
+  // Query actual values BEFORE processing so mismatches are visible immediately.
+  console.log("=== Live Data Validation ===\n");
+
+  const actionTypeDistribution = await prisma.linkedInAction.groupBy({
+    by: ["actionType"],
+    _count: true,
+  });
+  console.log("LinkedInAction actionType distribution:");
+  for (const row of actionTypeDistribution) {
+    console.log(`  ${row.actionType}: ${row._count}`);
+  }
+
+  const linkedinCampaignsForValidation = await prisma.campaign.findMany({
+    where: { channels: { contains: "linkedin" }, linkedinSequence: { not: null } },
+    select: { linkedinSequence: true },
+  });
+  const stepTypesInDb = new Set<string>();
+  for (const c of linkedinCampaignsForValidation) {
+    try {
+      const seq = JSON.parse(c.linkedinSequence!) as Array<{ type: string }>;
+      for (const s of seq) stepTypesInDb.add(s.type);
+    } catch {}
+  }
+  console.log(`\nDistinct step types in LinkedIn campaign sequences: ${[...stepTypesInDb].join(", ")}`);
+  console.log(`Total LinkedIn campaigns with sequences: ${linkedinCampaignsForValidation.length}`);
+
+  const expectedMatchValues = ["connect", "connection_request"];
+  const matchedValues = expectedMatchValues.filter((v) => stepTypesInDb.has(v));
+  const unmatchedValues = expectedMatchValues.filter((v) => !stepTypesInDb.has(v));
+  if (matchedValues.length === 0) {
+    console.log("\n⚠ WARNING: Neither 'connect' nor 'connection_request' found in campaign sequences!");
+    console.log("  The gate split will not find any connect steps. Investigate before proceeding.");
+  } else {
+    console.log(`\nGate split will match on: ${matchedValues.join(", ")}`);
+    if (unmatchedValues.length > 0) {
+      console.log(`  Not found in data (OK): ${unmatchedValues.join(", ")}`);
+    }
+  }
+  console.log("\n" + "=".repeat(60) + "\n");
+
   // 1. Find all pending message actions (regular priority only, not P1 fast-track)
   const pendingMessages = await prisma.linkedInAction.findMany({
     where: {
@@ -211,7 +252,7 @@ async function main() {
 
     // Find the connection gate split point
     const sorted = [...sequence].sort((a, b) => a.position - b.position);
-    const connectIndex = sorted.findLastIndex((step) => step.type === "connect");
+    const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
 
     // If no connect step, there are no post-connect steps to create rules for
     if (connectIndex < 0) {

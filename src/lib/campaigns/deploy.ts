@@ -251,7 +251,7 @@ async function deployLinkedInChannel(
     // (follow-up messages) become CampaignSequenceRules triggered by
     // connection_accepted — they are NOT pre-scheduled.
     const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
-    const connectIndex = sorted.findLastIndex((step) => step.type === "connect");
+    const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
 
     const preConnectSteps = connectIndex >= 0
       ? sorted.slice(0, connectIndex + 1)
