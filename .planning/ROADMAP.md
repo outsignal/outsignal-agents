@@ -832,3 +832,17 @@ Plans:
   - [ ] 69-01-PLAN.md — Admin dashboard API: LinkedIn, sent, reply canonical sources
   - [ ] 69-02-PLAN.md — Portal fixes: reply rate formula, bounce thresholds, Connections Made
   - [ ] 69-03-PLAN.md — Workspace overview period filtering
+
+### Phase 70: LinkedIn State Machine Sequencing
+**Goal**: LinkedIn campaigns use a state machine model where each prospect progresses individually — connection acceptance is the gate before follow-up messages fire, timeouts exit prospects from the sequence, and replies at any point stop all automated actions
+**Depends on**: Phase 68 (action chaining foundation)
+**Requirements**: SEQ-01, SEQ-02, SEQ-03, SEQ-04, SEQ-05, SEQ-06, SEQ-07
+**Success Criteria** (what must be TRUE):
+  1. Campaign deploy creates only the first sequence action (profile_view or connect) — follow-up messages are NOT pre-scheduled
+  2. When the worker detects a connection is accepted (via polling), it triggers follow-up message actions with time delays relative to the acceptance date
+  3. If a connection is not accepted within a configurable timeout (default 14 days), the prospect exits the sequence — no further actions fire
+  4. If a prospect replies to a message at any point, all subsequent automated actions for that person are cancelled
+  5. `connectionsAccepted` is incremented on `LinkedInDailyUsage` when acceptance is detected
+  6. The Activity page shows connection acceptances and message sends with correct timestamps
+  7. Reply-triggered P1 connections (linkedin-fast-track.ts) remain untouched — they bypass the state machine entirely
+**Plans**: TBD
