@@ -14,6 +14,7 @@
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { chainActions } from "@/lib/linkedin/chain";
+import { applyTimingJitter } from "@/lib/linkedin/jitter";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { getCampaign } from "@/lib/campaigns/operations";
@@ -251,6 +252,12 @@ async function deployLinkedInChannel(
     // (follow-up messages) become CampaignSequenceRules triggered by
     // connection_accepted — they are NOT pre-scheduled.
     const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
+
+    // Ensure profile_view is the first step (industry standard warm-up)
+    if (sorted.length > 0 && sorted[0].type !== "profile_view") {
+      sorted.unshift({ position: 0, type: "profile_view", delayDays: 0 });
+    }
+
     const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
 
     const preConnectSteps = connectIndex >= 0
@@ -261,7 +268,7 @@ async function deployLinkedInChannel(
       : []; // No connect step — no post-connect steps
 
     let linkedinStepCount = 0;
-    const staggerMinutes = 15; // 15 minutes between leads to avoid burst
+    const STAGGER_BASE_MS = 15 * 60 * 1000; // 15 minutes between leads (jittered +-20%)
 
     for (let i = 0; i < leads.length; i++) {
       const person = leads[i].person;
@@ -283,8 +290,8 @@ async function deployLinkedInChannel(
         continue;
       }
 
-      // Stagger: lead i fires at i * 15 minutes from now
-      const scheduledFor = new Date(Date.now() + i * staggerMinutes * 60 * 1000);
+      // Stagger: lead i fires at i * ~15 minutes (jittered 12-18 min) from now
+      const scheduledFor = new Date(Date.now() + i * applyTimingJitter(STAGGER_BASE_MS));
 
       // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
       const actionIds = await chainActions({

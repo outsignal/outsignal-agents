@@ -1,4 +1,5 @@
 import { enqueueAction } from "./queue";
+import { applyTimingJitter } from "./jitter";
 import type { LinkedInActionType } from "./types";
 
 /**
@@ -65,9 +66,10 @@ export async function chainActions(params: ChainActionsParams): Promise<string[]
 
   for (const step of sorted) {
     if (step.position > sorted[0].position) {
-      // Random delay between steps: 4 hours to 2 days (or step.delayDays if specified)
-      const delayDays = step.delayDays ?? Math.random() * MAX_DELAY_DAYS;
-      const delayMs = delayDays * 24 * 60 * 60 * 1000;
+      // Delay between steps: use step.delayDays if specified (jittered +-20%),
+      // otherwise default to 1 day (jittered). Minimum gap enforced below.
+      const baseDays = step.delayDays ?? 1;
+      const delayMs = applyTimingJitter(baseDays * 24 * 60 * 60 * 1000);
       cumulativeMs += Math.max(delayMs, MIN_GAP_MS);
     }
 

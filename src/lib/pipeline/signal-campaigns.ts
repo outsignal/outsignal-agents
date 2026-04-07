@@ -28,6 +28,7 @@ import { scorePersonIcp } from "@/lib/icp/scorer";
 import { addPeopleToList } from "@/lib/leads/operations";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { chainActions } from "@/lib/linkedin/chain";
+import { applyTimingJitter } from "@/lib/linkedin/jitter";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { postMessage } from "@/lib/slack";
@@ -400,6 +401,12 @@ async function processSingleCampaign(
       // (follow-up messages) become CampaignSequenceRules triggered by
       // connection_accepted — they are NOT pre-scheduled.
       const sorted = [...linkedinSeq].sort((a, b) => a.position - b.position);
+
+      // Ensure profile_view is the first step (industry standard warm-up)
+      if (sorted.length > 0 && sorted[0].type !== "profile_view") {
+        sorted.unshift({ position: 0, type: "profile_view", delayDays: 0 });
+      }
+
       const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
 
       const preConnectSteps = connectIndex >= 0
@@ -421,8 +428,8 @@ async function processSingleCampaign(
         if (!sender) continue;
 
         try {
-          // Stagger by 15 minutes per lead to avoid LinkedIn rate limits
-          const connectScheduledFor = new Date(Date.now() + leadsDeployed * 15 * 60 * 1000);
+          // Stagger by ~15 minutes per lead (jittered 12-18 min) to avoid LinkedIn rate limits
+          const connectScheduledFor = new Date(Date.now() + leadsDeployed * applyTimingJitter(15 * 60 * 1000));
 
           // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
           const actionIds = await chainActions({
