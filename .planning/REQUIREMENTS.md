@@ -70,7 +70,7 @@
 - [x] **CONSIST-04**: Reply rate formula is `replies / sent * 100` in portal analytics — stops dividing by total people
 - [x] **CONSIST-05**: Bounce rate warning threshold aligned to >2% warning, >5% critical across portal and admin
 - [x] **CONSIST-06**: "Connections Made" on portal dashboard uses `connectionsAccepted` from LinkedInDailyUsage, not `connectionsSent`
-- [ ] **CONSIST-07**: Admin workspace overview shows period-filtered stats (7/14/30/90 days with selector) instead of all-time campaign totals
+- [x] **CONSIST-07**: Admin workspace overview shows period-filtered stats (7/14/30/90 days with selector) instead of all-time campaign totals
 
 ## Future Requirements
 
