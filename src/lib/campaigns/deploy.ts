@@ -13,13 +13,12 @@
 
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
-import { enqueueAction } from "@/lib/linkedin/queue";
-import { scheduleProfileViewBeforeConnect } from "@/lib/linkedin/pre-warm";
+import { chainActions } from "@/lib/linkedin/chain";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { notifyDeploy, notifyCampaignLive } from "@/lib/notifications";
-import type { LinkedInActionType } from "@/lib/linkedin/types";
+
 
 // ---------------------------------------------------------------------------
 // Types
@@ -231,24 +230,13 @@ async function deployLinkedInChannel(
       include: { person: true },
     });
 
-    // Only enqueue first step for fresh deploys.
-    // For email+linkedin: only enqueue steps with triggerEvent !== 'email_sent'
-    // (email-triggered steps are handled by the webhook in Plan 03).
-    // For linkedin-only: enqueue the first step for each lead.
-    const firstStep = linkedinSequence.find((s) => s.position === 1) ?? linkedinSequence[0];
-    if (!firstStep) {
+    if (linkedinSequence.length === 0) {
       await prisma.campaignDeploy.update({
         where: { id: deployId },
         data: { linkedinStatus: "complete", linkedinStepCount: 0 },
       });
       return;
     }
-
-    // For email+linkedin campaigns, skip if the first step is email_sent triggered
-    // (the webhook will handle it). Only enqueue delay_after_previous steps.
-    const triggerEvent = firstStep.triggerEvent ?? "delay_after_previous";
-    const shouldEnqueueFirst =
-      !hasEmailChannel || triggerEvent === "delay_after_previous";
 
     let linkedinStepCount = 0;
     const staggerMinutes = 15; // 15 minutes between leads to avoid burst
@@ -273,52 +261,43 @@ async function deployLinkedInChannel(
         continue;
       }
 
-      if (shouldEnqueueFirst) {
-        // Stagger: lead i fires at i * 15 minutes from now
-        const scheduledFor = new Date(Date.now() + i * staggerMinutes * 60 * 1000);
+      // Stagger: lead i fires at i * 15 minutes from now
+      const scheduledFor = new Date(Date.now() + i * staggerMinutes * 60 * 1000);
 
-        await enqueueAction({
-          senderId: sender.id,
-          personId: person.id,
-          workspaceSlug,
-          actionType: firstStep.type as LinkedInActionType,
-          messageBody: firstStep.body,
-          priority: 5,
-          scheduledFor,
-          campaignName: campaign.name,
-          sequenceStepRef: `linkedin_${firstStep.position}`,
-        });
+      // Schedule ALL LinkedIn sequence steps in forward order
+      const actionIds = await chainActions({
+        senderId: sender.id,
+        personId: person.id,
+        workspaceSlug,
+        sequence: linkedinSequence.map((step) => ({
+          position: step.position,
+          type: step.type,
+          body: step.body,
+          delayDays: step.delayDays,
+        })),
+        baseScheduledFor: scheduledFor,
+        priority: 5,
+        campaignName: campaign.name,
+      });
 
-        // Pre-warm: schedule a profile_view before connect actions
-        if (firstStep.type === "connect" || firstStep.type === "connection_request") {
-          await scheduleProfileViewBeforeConnect({
-            senderId: sender.id,
-            personId: person.id,
-            workspaceSlug,
-            linkedinUrl: person.linkedinUrl,
-            connectScheduledFor: scheduledFor,
-            campaignName: campaign.name,
-            priority: 5,
-          }).catch((err) =>
-            console.warn(`[deploy] Pre-warm profile_view failed for person ${person.id}:`, err),
-          );
-        }
-
-        linkedinStepCount++;
-      }
+      console.log(`[deploy] Chained ${actionIds.length} LinkedIn actions for ${person.email}`);
+      linkedinStepCount++;
     }
 
-    // Seed CampaignSequenceRules for follow-up messages
-    if (linkedinSequence.length > 1) {
-      const followUpSteps = linkedinSequence.slice(1).map((step) => ({
-        ...step,
-        // LinkedIn-only: follow-ups fire on connection_accepted, not email_sent
-        triggerEvent: step.triggerEvent ?? (hasEmailChannel ? "email_sent" : "connection_accepted"),
-      }));
+    // Seed CampaignSequenceRules for EVENT-triggered follow-ups
+    // (e.g. "send message after connection_accepted"). These are complementary
+    // to the time-based chaining handled by chainActions above.
+    const eventTriggeredSteps = linkedinSequence.filter(
+      (step) => step.triggerEvent && step.triggerEvent !== "delay_after_previous",
+    );
+    if (eventTriggeredSteps.length > 0) {
       await createSequenceRulesForCampaign({
         workspaceSlug,
         campaignName: campaign.name,
-        linkedinSequence: followUpSteps,
+        linkedinSequence: eventTriggeredSteps.map((step) => ({
+          ...step,
+          triggerEvent: step.triggerEvent!,
+        })),
       });
     }
 
