@@ -82,6 +82,10 @@ export class Worker {
   /** Timestamp of last expired-session recovery attempt. */
   private lastRecoveryAttempt = 0;
   private static readonly RECOVERY_INTERVAL_MS = 10 * 60 * 1000;
+  /** Timestamp of last connection polling run per workspace. */
+  private lastConnectionPoll: Map<string, number> = new Map();
+  /** Next connection poll interval per workspace (jittered). */
+  private nextConnectionPollInterval: Map<string, number> = new Map();
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -125,6 +129,8 @@ export class Worker {
     this.lastSessionCheck.clear();
     this.conversationCache.clear();
     this.conversationBackoff.clear();
+    this.lastConnectionPoll.clear();
+    this.nextConnectionPollInterval.clear();
   }
 
   /**
@@ -316,8 +322,8 @@ export class Worker {
       await this.processSender(sender);
     }
 
-    // After processing action queues, poll pending connections
-    await this.pollConnections(workspaceSlug, activeSenders);
+    // After processing action queues, poll pending connections (throttled with jitter)
+    await this.maybePollConnections(workspaceSlug, activeSenders);
   }
 
   /**
@@ -476,6 +482,41 @@ export class Worker {
         }
       }
     }
+  }
+
+  /**
+   * Generate a jittered connection poll interval: 2h ± 30min (1.5h to 2.5h).
+   * Randomised each cycle to avoid detection patterns.
+   */
+  private static getJitteredConnectionPollInterval(): number {
+    return 7_200_000 + (Math.random() - 0.5) * 3_600_000;
+  }
+
+  /**
+   * Throttle wrapper for pollConnections — only runs every ~2h with ±30min jitter
+   * per workspace. Skips if not enough time has elapsed since last poll.
+   */
+  private async maybePollConnections(
+    workspaceSlug: string,
+    activeSenders: SenderConfig[],
+  ): Promise<void> {
+    const now = Date.now();
+    const lastPoll = this.lastConnectionPoll.get(workspaceSlug) ?? 0;
+    const interval = this.nextConnectionPollInterval.get(workspaceSlug)
+      ?? Worker.getJitteredConnectionPollInterval();
+
+    if (lastPoll > 0 && now - lastPoll < interval) {
+      return; // Not yet time to poll
+    }
+
+    await this.pollConnections(workspaceSlug, activeSenders);
+
+    this.lastConnectionPoll.set(workspaceSlug, now);
+    // Generate a fresh jittered interval for the next cycle
+    this.nextConnectionPollInterval.set(
+      workspaceSlug,
+      Worker.getJitteredConnectionPollInterval(),
+    );
   }
 
   /**
@@ -911,6 +952,31 @@ export class Worker {
     }
 
     const profileUrl = action.linkedinUrl;
+
+    // Pre-send connection gate: verify the prospect is still connected before sending messages.
+    // Only applies to message actions — connect and profile_view do not require an existing connection.
+    if (action.actionType === "message" && action.personId) {
+      try {
+        const connStatus = await this.api.getConnectionStatusForPerson(action.personId);
+        if (!connStatus || connStatus.status !== "connected") {
+          const reason = connStatus
+            ? `connection status is '${connStatus.status}'`
+            : "no connection record found";
+          console.warn(
+            `[Worker] Skipping message action ${action.id} — ${reason} for person ${action.personId}`,
+          );
+          await this.safeMarkFailed(action.id, `not_connected: ${reason}`);
+          return;
+        }
+      } catch (err) {
+        // If the API call fails, log a warning but proceed with the action.
+        // A transient network error should not block message delivery.
+        console.warn(
+          `[Worker] Connection status check failed for person ${action.personId}, proceeding with message:`,
+          err,
+        );
+      }
+    }
 
     try {
       switch (action.actionType) {
