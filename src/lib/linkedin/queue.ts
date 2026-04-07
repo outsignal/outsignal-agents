@@ -24,6 +24,7 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
     campaignName,
     emailBisonLeadId,
     sequenceStepRef,
+    parentActionId,
     linkedInConversationId,
   } = params;
 
@@ -67,6 +68,7 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
       campaignName: campaignName ?? null,
       emailBisonLeadId: emailBisonLeadId ?? null,
       sequenceStepRef: sequenceStepRef ?? null,
+      parentActionId: parentActionId ?? null,
       linkedInConversationId: linkedInConversationId ?? null,
     },
   });

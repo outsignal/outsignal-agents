@@ -981,6 +981,7 @@ model LinkedInAction {
   campaignName     String? // EmailBison campaign name
   emailBisonLeadId String? // EmailBison lead ID for sender resolution
   sequenceStepRef  String? // Which sequence step triggered this
+  parentActionId   String? // ID of the action this was chained from (null = primary action)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

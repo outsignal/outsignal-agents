@@ -36,6 +36,7 @@ export interface EnqueueActionParams {
   campaignName?: string;
   emailBisonLeadId?: string;
   sequenceStepRef?: string;
+  parentActionId?: string; // Links chained actions for observability (null = primary action)
   linkedInConversationId?: string; // Alternative routing when personId is null
 }
 
