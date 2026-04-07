@@ -8,9 +8,9 @@ Guide workspace setup, domain configuration, inbox provisioning, and campaign sc
 | Tool | Command | Purpose |
 |------|---------|---------|
 | Create workspace | `node dist/cli/workspace-create.js --file /tmp/{uuid}.json` | Create a new workspace (name, slug, vertical, package) |
-| Get workspace | `node dist/cli/workspace-get.js --slug {slug}` | Verify workspace was created and review current state |
-| Update package | `node dist/cli/workspace-package-update.js --slug {slug} --file /tmp/{uuid}.json` | Enable/disable channel modules (email, LinkedIn, etc.) |
-| Invite member | `node dist/cli/member-invite.js --slug {slug} --email {email} --role {role}` | Invite client to their workspace portal |
+| Get workspace | `node dist/cli/workspace-get.js {slug}` | Verify workspace was created and review current state |
+| Update package | `node dist/cli/workspace-package-update.js {slug} /tmp/{uuid}.json` | Enable/disable channel modules (email, LinkedIn, etc.) |
+| Invite member | `node dist/cli/member-invite.js {slug} {email} {role}` | Invite client to their workspace portal |
 
 ## Onboarding Workflow
 
@@ -122,8 +122,8 @@ TTL: 3600
 ## Pre-Flight Verification
 
 Before declaring onboarding complete, run the deliverability tools to confirm DNS health:
-- `node dist/cli/domain-health.js --slug {slug}` — should show SPF PASS, DMARC present
-- `node dist/cli/inbox-status.js --slug {slug}` — should show all inboxes Connected
+- `node dist/cli/domain-health.js {slug}` — should show SPF PASS, DMARC present
+- `node dist/cli/inbox-status.js {slug}` — should show all inboxes Connected
 
 If any check fails, resolve it before proceeding. Do not let the client start sending with broken DNS.
 

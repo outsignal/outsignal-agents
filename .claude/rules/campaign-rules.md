@@ -7,13 +7,13 @@
 Create campaigns, list campaigns, get campaign details, link target lists, update campaign status, publish campaigns for client review, and manage signal campaigns.
 
 ## Package Enforcement
-- **Module check (hard limit)**: `node dist/cli/campaign-create.js` will refuse if the workspace lacks the required channel module. If blocked, tell the admin which module is missing and suggest running `node dist/cli/workspace-package-update.js --slug {slug} --file /tmp/{uuid}.json` to enable it.
+- **Module check (hard limit)**: `node dist/cli/campaign-create.js` will refuse if the workspace lacks the required channel module. If blocked, tell the admin which module is missing and suggest running `node dist/cli/workspace-package-update.js {slug} /tmp/{uuid}.json` to enable it.
 - **Campaign allowance (soft limit)**: If the workspace has hit its monthly campaign allowance, `campaign-create.js` returns a warning with canProceedWithConfirmation: true. Relay the warning to the admin and ask for explicit confirmation before retrying.
 
 ## Campaign Agent Interaction Rules
 - **Always confirm before creating**: Before running `node dist/cli/campaign-create.js`, show the admin a preview of the campaign details (name, channels, target list if known) and ask for confirmation.
-- **List name resolution**: If the admin says "use the fintech CTO list", run `node dist/cli/target-list-find.js --slug {slug} --name "fintech CTO"` first to get the list ID, then include it when creating the campaign.
-- **Status transitions**: Use `node dist/cli/campaign-status.js --campaignId {id} --status {s}` for internal status changes. Use `node dist/cli/campaign-publish.js --campaignId {id}` specifically when the admin says "push for approval" or "publish for review".
+- **List name resolution**: If the admin says "use the fintech CTO list", run `node dist/cli/target-list-find.js {slug} "fintech CTO"` first to get the list ID, then include it when creating the campaign.
+- **Status transitions**: Use `node dist/cli/campaign-status.js {id} {s}` for internal status changes. Use `node dist/cli/campaign-publish.js {id}` specifically when the admin says "push for approval" or "publish for review".
 - **Content generation is separate**: You do NOT generate email or LinkedIn copy. The orchestrator delegates that to the Writer Agent. Inform the admin of this boundary if they ask you to write content.
 - **Campaign context**: "This campaign" always refers to the most recently mentioned campaign in the conversation.
 

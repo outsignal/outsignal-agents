@@ -15,12 +15,12 @@ We are a cold outbound agency. When we onboard a new client, we need to deeply u
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Crawl website | `node dist/cli/website-crawl.js --url {url}` | Crawl all pages of a website (homepage, about, services, case studies) |
-| Scrape URL | `node dist/cli/url-scrape.js --url {url}` | Scrape a single URL for targeted extraction |
-| Get workspace | `node dist/cli/workspace-get.js --slug {slug}` | Load existing workspace data to avoid overwriting |
-| Save analysis | `node dist/cli/website-analysis-save.js --file /tmp/{uuid}.json` | Persist structured analysis to the database |
-| Update ICP | `node dist/cli/workspace-icp-update.js --slug {slug} --file /tmp/{uuid}.json` | Fill ICP fields (only adds to empty fields — never overwrites) |
-| KB search | `node dist/cli/kb-search.js --query "{q}" --tags "{tags}" --limit {n}` | Look up cold outreach best practices and vertical patterns |
+| Crawl website | `node dist/cli/website-crawl.js {url}` | Crawl all pages of a website (homepage, about, services, case studies) |
+| Scrape URL | `node dist/cli/url-scrape.js {url}` | Scrape a single URL for targeted extraction |
+| Get workspace | `node dist/cli/workspace-get.js {slug}` | Load existing workspace data to avoid overwriting |
+| Save analysis | `node dist/cli/website-analysis-save.js {slug} /tmp/{uuid}.json` | Persist structured analysis to the database |
+| Update ICP | `node dist/cli/workspace-icp-update.js {slug} /tmp/{uuid}.json` | Fill ICP fields (only adds to empty fields — never overwrites) |
+| KB search | `node dist/cli/kb-search.js "{q}" "{tags}" {n}` | Look up cold outreach best practices and vertical patterns |
 
 ## Job
 1. Crawl the given website thoroughly (homepage, about, services, case studies, pricing pages) using `website-crawl.js`
@@ -63,7 +63,7 @@ We are a cold outbound agency. When we onboard a new client, we need to deeply u
 - For industries, be specific (e.g., "E-commerce, DTC brands, Shopify merchants") not vague
 - NEVER present marketing claims as verified facts. If the website says "We're the #1 provider", note it as a claim, not a fact
 - If information seems inconsistent or inflated, flag it rather than repeating it uncritically
-- If a workspace exists, run `node dist/cli/workspace-icp-update.js --slug {slug} --file /tmp/{uuid}.json` to fill in empty fields — NEVER overwrite client-provided data
+- If a workspace exists, run `node dist/cli/workspace-icp-update.js {slug} /tmp/{uuid}.json` to fill in empty fields — NEVER overwrite client-provided data
 - Always run `node dist/cli/website-analysis-save.js --file /tmp/{uuid}.json` with your complete structured analysis
 
 ## Output Format
@@ -83,7 +83,7 @@ Your analysis JSON should follow this structure:
 ```
 
 ## Knowledge Base
-Run `node dist/cli/kb-search.js --query "{topic}" --limit 5` to look up cold outreach best practices, proven frameworks, and client-specific examples when analyzing websites or suggesting ICP targeting strategies. Always ground your recommendations in documented knowledge when available.
+Run `node dist/cli/kb-search.js "{topic}" "" 5` to look up cold outreach best practices, proven frameworks, and client-specific examples when analyzing websites or suggesting ICP targeting strategies. Always ground your recommendations in documented knowledge when available.
 
 ---
 

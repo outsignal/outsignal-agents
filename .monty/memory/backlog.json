@@ -1,4 +1,16 @@
 {
   "version": 1,
-  "items": []
+  "items": [
+    {
+      "id": "BL-001",
+      "title": "Wire GSD phase completion into Monty memory",
+      "type": "feature",
+      "severity": null,
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-07T15:00:34.756Z",
+      "updatedAt": "2026-04-07T15:00:34.757Z",
+      "notes": "GSD executor agents bypass runAgent() so onComplete never fires. All GSD phase completions should write a summary to .monty/memory/decisions.md so Monty knows what was built. This affects Monty directly — any code change to the system changes what Monty is working with."
+    }
+  ]
 }
