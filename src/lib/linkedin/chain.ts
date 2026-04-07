@@ -18,7 +18,13 @@ export interface ChainActionsParams {
 }
 
 /**
- * Schedule ALL actions in a LinkedIn sequence with forward time offsets.
+ * Schedule actions in a LinkedIn sequence with forward time offsets.
+ *
+ * IMPORTANT: This function should only receive steps UP TO and including
+ * the connection request. Post-connection follow-up messages must be
+ * handled via CampaignSequenceRules (triggerEvent: "connection_accepted")
+ * and NOT pre-scheduled here. The deploy engine (deploy.ts) enforces
+ * this split at the connection gate.
  *
  * The first action fires at baseScheduledFor (T).
  * Each subsequent action fires at the previous action's time + a random 0-2 day delay.

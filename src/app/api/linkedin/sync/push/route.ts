@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyWorkerAuth } from "@/lib/linkedin/auth";
 import { prisma } from "@/lib/db";
 import { notifyLinkedInMessage } from "@/lib/notifications";
+import { cancelActionsForPerson } from "@/lib/linkedin/queue";
 
 export const maxDuration = 30;
 
@@ -338,6 +339,19 @@ export async function POST(request: NextRequest) {
           messageBody: latestInboundBody,
           conversationId: internalConvId,
         });
+
+        // Cancel pending automated actions when prospect replies
+        try {
+          const resolvedPid = internalConv.personId ?? personId;
+          if (resolvedPid) {
+            const cancelled = await cancelActionsForPerson(resolvedPid, workspaceSlug);
+            if (cancelled > 0) {
+              console.log(`[linkedin-sync-push] Cancelled ${cancelled} pending actions for person ${resolvedPid} after inbound reply`);
+            }
+          }
+        } catch (err) {
+          console.error(`[linkedin-sync-push] Failed to cancel actions for person:`, err);
+        }
       }
     }
 
