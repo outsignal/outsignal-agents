@@ -190,6 +190,24 @@ export async function processConnectionCheckResult(
       data: { status: "connected", connectedAt: new Date() },
     });
 
+    // Increment connectionsAccepted counter for today
+    const today = new Date();
+    const todayDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+    await prisma.linkedInDailyUsage.upsert({
+      where: { senderId_date: { senderId: conn.senderId, date: todayDate } },
+      create: {
+        senderId: conn.senderId,
+        date: todayDate,
+        connectionsAccepted: 1,
+      },
+      update: {
+        connectionsAccepted: { increment: 1 },
+      },
+    });
+
+    console.log(`[connection-poller] Connection accepted for person ${conn.personId} — connectionsAccepted incremented for sender ${conn.senderId}`);
+
     // Find the campaign context via the person's existing LinkedIn actions
     const campaignAction = await prisma.linkedInAction.findFirst({
       where: {
