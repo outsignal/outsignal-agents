@@ -78,6 +78,7 @@ Key v9.0 pre-milestone decisions:
 
 ### Roadmap Evolution
 - Phase 68 added: LinkedIn Action Chaining Architecture — flip action ordering so first sequence action is primary, follow-ups chain from it with 0-2 day delay. Fixes pre-warm.ts backwards scheduling causing intermittent profile_view failures.
+- Phase 69 added: Data Consistency — Canonical Metric Sources. 11 inconsistencies found where admin/portal/workspace views query different tables for the same metric. Standardise on canonical sources: LinkedInDailyUsage for LinkedIn, EmailBison API for sent, Reply table for replies, consistent thresholds.
 
 ### Pending Todos
 

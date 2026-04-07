@@ -815,3 +815,17 @@ Plans:
   4. Profile views reliably fire before connections in campaign flows where that's the sequence order
   5. Existing pending actions are migrated to the new chaining model without data loss
 **Plans**: TBD
+
+### Phase 69: Data Consistency — Canonical Metric Sources
+**Goal**: Every metric (sent, replies, reply rate, LinkedIn stats, bounce thresholds) uses ONE canonical data source across all views — admin dashboard, portal dashboard, workspace overview, and analytics pages show identical numbers for the same metric and time period
+**Depends on**: Phase 68
+**Requirements**: CONSIST-01, CONSIST-02, CONSIST-03, CONSIST-04, CONSIST-05, CONSIST-06, CONSIST-07
+**Success Criteria** (what must be TRUE):
+  1. LinkedIn stats use `LinkedInDailyUsage` everywhere — admin dashboard, portal dashboard, workspace views all show the same numbers
+  2. Email "Sent" count uses one canonical source (EmailBison API with Reply table fallback) everywhere — admin and portal show identical sent counts for the same period
+  3. Reply count uses the Reply table everywhere — admin dashboard stops counting WebhookEvents as replies
+  4. Reply rate formula is `replies / sent * 100` everywhere — portal analytics stops dividing by total people
+  5. Bounce rate warning threshold is consistently >2% across portal and admin (align to the stricter admin threshold)
+  6. "Connections Made" on portal dashboard shows `connectionsAccepted` not `connectionsSent`
+  7. Admin workspace overview shows period-filtered stats (matching portal) instead of all-time totals
+**Plans**: TBD
