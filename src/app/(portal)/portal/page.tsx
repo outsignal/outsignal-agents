@@ -48,26 +48,32 @@ export default async function PortalDashboardPage({
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - timeSeriesDays);
 
-  // LinkedIn actions — only query if workspace package includes LinkedIn
+  // LinkedIn stats — only query if workspace package includes LinkedIn
   const hasLinkedIn = workspace.package === "linkedin" || workspace.package === "email_linkedin";
-  const linkedInActions = hasLinkedIn
-    ? await prisma.linkedInAction.findMany({
+
+  // Get LinkedIn senders for this workspace
+  const linkedInSenderIds = hasLinkedIn
+    ? (await prisma.sender.findMany({
+        where: { workspaceSlug, channel: { in: ["linkedin", "both"] } },
+        select: { id: true },
+      })).map((s) => s.id)
+    : [];
+
+  // Query LinkedInDailyUsage (aggregated daily stats) instead of LinkedInAction
+  const linkedInDailyUsage = hasLinkedIn && linkedInSenderIds.length > 0
+    ? await prisma.linkedInDailyUsage.findMany({
         where: {
-          workspaceSlug,
-          createdAt: { gte: sinceDate },
-          status: "complete",
+          senderId: { in: linkedInSenderIds },
+          date: { gte: sinceDate },
         },
-        select: {
-          createdAt: true,
-          actionType: true,
-        },
+        orderBy: { date: "asc" },
       })
     : [];
 
   const linkedInTotals = {
-    connections: linkedInActions.filter((a) => a.actionType === "connect").length,
-    messages: linkedInActions.filter((a) => a.actionType === "message").length,
-    profileViews: linkedInActions.filter((a) => a.actionType === "profile_view").length,
+    connections: linkedInDailyUsage.reduce((sum, r) => sum + r.connectionsSent, 0),
+    messages: linkedInDailyUsage.reduce((sum, r) => sum + r.messagesSent, 0),
+    profileViews: linkedInDailyUsage.reduce((sum, r) => sum + r.profileViews, 0),
   };
 
   // Fetch sent count from EmailBison workspace stats API (source of truth).
@@ -179,28 +185,25 @@ export default async function PortalDashboardPage({
 
   const now = new Date();
 
-  // LinkedIn connects sparkline: daily connect counts over the same period
-  const linkedInConnectsSparkline: number[] = [];
-  for (let i = timeSeriesDays - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const count = linkedInActions.filter(
-      (a) => a.actionType === "connect" && a.createdAt.toISOString().slice(0, 10) === dateStr
-    ).length;
-    linkedInConnectsSparkline.push(count);
+  // LinkedIn sparklines: aggregate daily usage by date across all senders
+  const linkedInDateMap = new Map<string, { connections: number; messages: number }>();
+  for (const row of linkedInDailyUsage) {
+    const key = row.date.toISOString().slice(0, 10);
+    const existing = linkedInDateMap.get(key) ?? { connections: 0, messages: 0 };
+    existing.connections += row.connectionsSent;
+    existing.messages += row.messagesSent;
+    linkedInDateMap.set(key, existing);
   }
 
-  // LinkedIn messages sparkline: daily message counts over the same period
+  const linkedInConnectsSparkline: number[] = [];
   const linkedInMessagesSparkline: number[] = [];
   for (let i = timeSeriesDays - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
-    const count = linkedInActions.filter(
-      (a) => a.actionType === "message" && a.createdAt.toISOString().slice(0, 10) === dateStr
-    ).length;
-    linkedInMessagesSparkline.push(count);
+    const dayData = linkedInDateMap.get(dateStr);
+    linkedInConnectsSparkline.push(dayData?.connections ?? 0);
+    linkedInMessagesSparkline.push(dayData?.messages ?? 0);
   }
 
   // LinkedIn worker online status — only query if package includes LinkedIn
