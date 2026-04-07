@@ -68,7 +68,7 @@ function computeEmailHealth(sender: SenderEmail): EmailSenderRow {
   let healthStatus: "healthy" | "warning" | "critical" = "healthy";
   if (sender.status === "Not connected") healthStatus = "critical";
   else if (bounceRate > 5) healthStatus = "critical";
-  else if (bounceRate > 3) healthStatus = "warning";
+  else if (bounceRate > 2) healthStatus = "warning";
 
   return {
     email: sender.email,

@@ -71,7 +71,8 @@ export default async function PortalDashboardPage({
     : [];
 
   const linkedInTotals = {
-    connections: linkedInDailyUsage.reduce((sum, r) => sum + r.connectionsSent, 0),
+    connectionsSent: linkedInDailyUsage.reduce((sum, r) => sum + r.connectionsSent, 0),
+    connectionsAccepted: linkedInDailyUsage.reduce((sum, r) => sum + r.connectionsAccepted, 0),
     messages: linkedInDailyUsage.reduce((sum, r) => sum + r.messagesSent, 0),
     profileViews: linkedInDailyUsage.reduce((sum, r) => sum + r.profileViews, 0),
   };
@@ -288,8 +289,8 @@ export default async function PortalDashboardPage({
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">LinkedIn</p>
             <div className="grid grid-cols-3 gap-4">
-              <MetricCard label="Requests Sent" value={linkedInTotals.connections.toLocaleString()} sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
-              <MetricCard label="Connections Made" value={linkedInTotals.connections.toLocaleString()} detail="Accepted connections" sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
+              <MetricCard label="Requests Sent" value={linkedInTotals.connectionsSent.toLocaleString()} sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
+              <MetricCard label="Connections Made" value={linkedInTotals.connectionsAccepted.toLocaleString()} detail="Accepted connections" sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
               <MetricCard label="Messages Sent" value={linkedInTotals.messages.toLocaleString()} sparklineData={linkedInMessagesSparkline} sparklineColor="#635BFF" density="compact" icon="MessageSquare" />
             </div>
           </div>
