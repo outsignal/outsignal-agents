@@ -74,7 +74,7 @@ describe("recordEnrichment", () => {
     await recordEnrichment({
       entityId: "person-2",
       entityType: "person",
-      provider: "leadmagic",
+      provider: "prospeo",
       status: "error",
       errorMessage: "API returned 429",
     });

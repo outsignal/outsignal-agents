@@ -7,8 +7,6 @@
 export type Provider =
   | "prospeo"
   | "aiark"
-  | "leadmagic"
-  | "leadmagic-verify"
   | "findymail"
   | "firecrawl"
   | "clay" // historical — Clay cancelled 2026-03-18

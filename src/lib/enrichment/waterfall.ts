@@ -9,6 +9,9 @@
  *   Only verified-valid emails are accepted and saved.
  * enrichCompany: Tries AI Ark → Firecrawl in order, stopping at first success with data.
  *
+ * Waterfall order: AI Ark (person data) → FindyMail → Prospeo → Kitt.
+ * Verification: BounceBan (primary) → Kitt (fallback for unknowns).
+ *
  * Both functions apply:
  * - Circuit breaker: skips a provider after 5 consecutive failures within a batch
  * - Dedup gate: skips providers that have already successfully enriched this entity
@@ -145,7 +148,7 @@ interface EmailProvider {
 const EMAIL_PROVIDERS: EmailProvider[] = [
   { adapter: findymailAdapter, name: "findymail" },  // $0.001 — cheapest first
   { adapter: prospeoAdapter, name: "prospeo" },      // $0.002
-  { adapter: kittAdapter, name: "kitt-find" },       // $0.005 — replaces LeadMagic (cancelled)
+  { adapter: kittAdapter, name: "kitt-find" },       // $0.005
 ];
 
 /**
@@ -171,7 +174,7 @@ export async function enrichEmail(
   // ---------------------------------------------------------------------------
   // Runs BEFORE email providers because it enriches person fields that can
   // improve downstream email-finding accuracy. This satisfies the ENRICH-02
-  // waterfall order: Prospeo -> AI Ark -> LeadMagic -> FindyMail by making
+  // waterfall order: FindyMail -> Prospeo -> Kitt (cheapest-first) by making
   // AI Ark a separate person-data step before the email-finding loop.
   // If AI Ark also returns an email, we treat it as an email-finding success
   // and stop early (same as any email provider).

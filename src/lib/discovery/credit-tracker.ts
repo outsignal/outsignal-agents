@@ -43,8 +43,6 @@ const PLATFORM_MONTHLY_BUDGETS: Record<string, number> = {
   "serper-maps": 10,
   firecrawl: 10,
   "firecrawl-extract": 10,
-  leadmagic: 30,
-  "leadmagic-verify": 30,
   findymail: 10,
   "apify-leads-finder": 29,
   "google-maps": 10,
