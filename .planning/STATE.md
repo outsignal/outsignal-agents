@@ -73,6 +73,9 @@ Key v9.0 pre-milestone decisions:
 - [Phase 67]: [67-01]: Cross-team prefix format: [CROSS-TEAM] [Source: X] [Type: Y] with optional [Workspace: Z]; Nova-to-Monty writes target incidents.md; parseCrossTeamEntries handles both separator formats
 - [Phase 67]: [67-02]: Line-count comparison (not timestamp) for new entry detection; marker file at .monty/memory/.last-cross-team-poll.json; getCrossTeamUpdates never throws
 
+### Roadmap Evolution
+- Phase 68 added: LinkedIn Action Chaining Architecture — flip action ordering so first sequence action is primary, follow-ups chain from it with 0-2 day delay. Fixes pre-warm.ts backwards scheduling causing intermittent profile_view failures.
+
 ### Pending Todos
 
 None.

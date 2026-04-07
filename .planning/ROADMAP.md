@@ -803,3 +803,15 @@ Plans:
 | 65. QA Agent | 2/2 | Complete    | 2026-04-04 | - |
 | 66. Security Agent | 2/2 | Complete    | 2026-04-04 | - |
 | 67. Cross-Team Integration | 2/2 | Complete    | 2026-04-04 | - |
+
+### Phase 68: LinkedIn Action Chaining Architecture
+**Goal**: LinkedIn campaign actions are scheduled in sequence order — the first action (e.g. profile_view) is the primary scheduled action, and subsequent actions (e.g. connection_request) chain from it with a configurable 0-2 day randomised delay. Reply-triggered P1 connections remain untouched.
+**Depends on**: Phase 67
+**Requirements**: CHAIN-01, CHAIN-02, CHAIN-03, CHAIN-04, CHAIN-05
+**Success Criteria** (what must be TRUE):
+  1. Campaign deploy schedules the FIRST action in the sequence as the primary action — follow-up actions are chained from it with a 0-2 day randomised delay
+  2. The campaign sequence definition dictates what the first action is (profile_view, connect, message) — not hardcoded
+  3. Reply-triggered P1 connections (linkedin-fast-track.ts) are completely untouched — no pre-warming, immediate execution
+  4. Profile views reliably fire before connections in campaign flows where that's the sequence order
+  5. Existing pending actions are migrated to the new chaining model without data loss
+**Plans**: TBD
