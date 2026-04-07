@@ -80,7 +80,7 @@
 - [x] **SEQ-04**: Reply cancellation — when a prospect replies to a LinkedIn message, all pending automated actions for that person are cancelled via cancelActionsForPerson
 - [x] **SEQ-05**: `connectionsAccepted` is incremented on `LinkedInDailyUsage` when a connection acceptance is detected by the connection-poller
 - [x] **SEQ-06**: Activity page shows connection acceptances and message sends with correct timestamps (driven by LinkedInDailyUsage connectionsAccepted counter)
-- [ ] **SEQ-07**: Migration script exists to cancel existing pre-scheduled message actions for unconnected prospects and create CampaignSequenceRules for affected campaigns — idempotent, supports dry-run
+- [x] **SEQ-07**: Migration script exists to cancel existing pre-scheduled message actions for unconnected prospects and create CampaignSequenceRules for affected campaigns — idempotent, supports dry-run
 
 ## Future Requirements
 

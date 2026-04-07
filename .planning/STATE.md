@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 ## Current Position
 
 Phase: 70 of 70 (LinkedIn State Machine Sequencing)
-Plan: 2 of 3 complete
-Status: In Progress
-Last activity: 2026-04-07 — Completed 70-02 (Counters, Cancellation, Timeout Verification)
+Plan: 3 of 3 complete
+Status: Complete
+Last activity: 2026-04-07 — Completed 70-03 (LinkedIn State Machine Migration Script)
 
-Progress: [██████░░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Key v9.0 pre-milestone decisions:
 - [Phase 69]: [69-03]: PeriodSelector reused from portal (route-agnostic); workspace overview uses same canonical sources and period filtering as portal dashboard
 - [Phase 70]: [70-01]: Connection gate split — deploy engine uses findLastIndex for connect step, pre-connect to chainActions, post-connect to CampaignSequenceRules with connection_accepted; createSequenceRulesForCampaign always called for idempotent redeploy
 - [Phase 70]: [70-02]: connectionsAccepted uses midnight-UTC upsert pattern; reply cancellation is non-blocking (try/catch); timeout logic verified unchanged
+- [Phase 70]: [70-03]: Migration script uses P5 priority filter to exclude fast-track actions; dry-run default; delay schedule 24h first rule, position*48h subsequent
 
 ### Roadmap Evolution
 - Phase 68 added: LinkedIn Action Chaining Architecture — flip action ordering so first sequence action is primary, follow-ups chain from it with 0-2 day delay. Fixes pre-warm.ts backwards scheduling causing intermittent profile_view failures.
@@ -99,5 +100,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-07
-Stopped at: Completed 70-02-PLAN.md (Counters, Cancellation, Timeout Verification)
+Stopped at: Completed 70-03-PLAN.md (LinkedIn State Machine Migration Script) — Phase 70 complete
 Resume file: None
