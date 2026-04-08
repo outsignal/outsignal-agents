@@ -901,7 +901,10 @@ Plans:
   2. Campaign pause and resume use `adapter.pause()` and `adapter.resume()` for both channels
   3. `CampaignChannelRef` is used across the codebase instead of direct `emailBisonCampaignId` lookups — grep for raw EB campaign ID references finds zero hits outside the email adapter itself
   4. Existing deploy behaviour is preserved exactly — same error handling, same retry logic, same CampaignDeploy status updates
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 73-01-PLAN.md — Deploy logic migration into adapter classes (CAMP-01, CAMP-03)
+- [ ] 73-02-PLAN.md — Pause/resume orchestration wired to status route (CAMP-02)
 
 ### Phase 74: Portal Unification
 **Goal**: Portal pages show correct data for email-only, LinkedIn-only, and dual-channel campaigns — all through the adapter interface, no direct channel queries
