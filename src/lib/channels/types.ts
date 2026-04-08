@@ -25,7 +25,7 @@ export interface DeployParams {
   campaignId: string;
   campaignName: string;
   workspaceSlug: string;
-  sequence: UnifiedStep[];
+  channels: string[];  // All channels being deployed — adapters use for cross-channel awareness
 }
 
 /** Result returned from an adapter's deploy method. */
@@ -107,7 +107,7 @@ export interface UnifiedStep {
 export interface ChannelAdapter {
   readonly channel: ChannelType;
 
-  deploy(params: DeployParams): Promise<DeployResult>;
+  deploy(params: DeployParams): Promise<DeployResult | void>;
   pause(ref: CampaignChannelRef): Promise<void>;
   resume(ref: CampaignChannelRef): Promise<void>;
   getMetrics(ref: CampaignChannelRef): Promise<UnifiedMetrics>;

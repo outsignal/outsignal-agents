@@ -112,9 +112,9 @@ function runAdapterContractTests(
           campaignId: "c1",
           campaignName: "Test",
           workspaceSlug: "test",
-          sequence: [],
+          channels: [],
         }),
-      ).rejects.toThrow("Phase 73");
+      ).rejects.toThrow();
     });
 
     it("getMetrics() returns UnifiedMetrics with required fields", async () => {

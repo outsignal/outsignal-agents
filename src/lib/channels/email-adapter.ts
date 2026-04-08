@@ -8,6 +8,8 @@
 
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import { getCampaign } from "@/lib/campaigns/operations";
+import { withRetry } from "@/lib/utils/retry";
 import { CHANNEL_TYPES } from "./constants";
 import type {
   ChannelAdapter,
@@ -19,6 +21,20 @@ import type {
   UnifiedAction,
   UnifiedStep,
 } from "./types";
+
+// ---------------------------------------------------------------------------
+// Local types for email deploy
+// ---------------------------------------------------------------------------
+
+interface EmailSequenceStep {
+  position: number;
+  subjectLine?: string;
+  subjectVariantB?: string;
+  body?: string;
+  bodyText?: string;
+  delayDays?: number;
+  notes?: string;
+}
 
 export class EmailAdapter implements ChannelAdapter {
   readonly channel = CHANNEL_TYPES.EMAIL;
@@ -38,13 +54,132 @@ export class EmailAdapter implements ChannelAdapter {
   }
 
   // ---------------------------------------------------------------------------
-  // deploy — stub until Phase 73 wiring
+  // deploy — full email channel deploy (moved from deploy.ts in Phase 73)
   // ---------------------------------------------------------------------------
 
-  async deploy(_params: DeployParams): Promise<DeployResult> {
-    throw new Error(
-      "Email deploy wiring is Phase 73 — use deployEmailChannel() directly until then",
-    );
+  async deploy(params: DeployParams): Promise<void> {
+    const { deployId, campaignId, campaignName, workspaceSlug } = params;
+
+    // Mark email channel as running
+    await prisma.campaignDeploy.update({
+      where: { id: deployId },
+      data: { emailStatus: "running" },
+    });
+
+    const ebClient = await this.getClient(workspaceSlug);
+
+    try {
+      // 1. Create EmailBison campaign
+      const ebCampaign = await withRetry(() =>
+        ebClient.createCampaign({ name: campaignName }),
+      );
+      const ebCampaignId = ebCampaign.id;
+
+      // 2. Store emailBisonCampaignId on both CampaignDeploy and Campaign records
+      await Promise.all([
+        prisma.campaignDeploy.update({
+          where: { id: deployId },
+          data: { emailBisonCampaignId: ebCampaignId },
+        }),
+        prisma.campaign.update({
+          where: { id: campaignId },
+          data: { emailBisonCampaignId: ebCampaignId },
+        }),
+      ]);
+
+      // 3. Load campaign to get sequence and targetListId
+      const campaign = await getCampaign(campaignId);
+      if (!campaign?.targetListId) {
+        throw new Error("Campaign has no target list");
+      }
+
+      const emailSequence = (campaign.emailSequence ?? []) as EmailSequenceStep[];
+
+      // 4. Create sequence steps
+      let emailStepCount = 0;
+      for (const step of emailSequence) {
+        await withRetry(() =>
+          ebClient.createSequenceStep(ebCampaignId, {
+            position: step.position,
+            subject: step.subjectLine,
+            body: step.body ?? step.bodyText ?? "",
+            delay_days: step.delayDays ?? 1,
+          }),
+        );
+        emailStepCount++;
+      }
+
+      // 5. Load leads from TargetList — dedup via WebhookEvent check
+      const leads = await prisma.targetListPerson.findMany({
+        where: { listId: campaign.targetListId },
+        include: {
+          person: {
+            include: {
+              workspaces: { where: { workspace: workspaceSlug } },
+            },
+          },
+        },
+      });
+
+      // 6. Push leads (serial with 100ms delay between, dedup check)
+      let leadCount = 0;
+      for (const entry of leads) {
+        const person = entry.person;
+
+        // Outsignal-side dedup: skip if already has EMAIL_SENT event for this workspace
+        const alreadyDeployed = await prisma.webhookEvent.findFirst({
+          where: {
+            workspace: workspaceSlug,
+            eventType: "EMAIL_SENT",
+            leadEmail: person.email,
+          },
+          select: { id: true },
+        });
+
+        if (alreadyDeployed) {
+          continue;
+        }
+
+        // Skip leads without a real email — cannot deploy to EmailBison
+        if (!person.email) continue;
+
+        await withRetry(() =>
+          ebClient.createLead({
+            email: person.email!,
+            firstName: person.firstName ?? undefined,
+            lastName: person.lastName ?? undefined,
+            jobTitle: person.jobTitle ?? undefined,
+            company: person.company ?? undefined,
+          }),
+        );
+
+        leadCount++;
+
+        // Throttle — 100ms between leads
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // 7. Update deploy record with completion
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data: {
+          emailStatus: "complete",
+          emailStepCount,
+          leadCount,
+          emailError: null,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data: {
+          emailStatus: "failed",
+          emailError: message,
+        },
+      });
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------

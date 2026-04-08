@@ -7,6 +7,11 @@
  */
 
 import { prisma } from "@/lib/db";
+import { chainActions } from "@/lib/linkedin/chain";
+import { applyTimingJitter } from "@/lib/linkedin/jitter";
+import { assignSenderForPerson } from "@/lib/linkedin/sender";
+import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
+import { getCampaign } from "@/lib/campaigns/operations";
 import {
   CHANNEL_TYPES,
   LINKEDIN_ACTION_TYPES,
@@ -24,17 +29,169 @@ import type {
   UnifiedStep,
 } from "./types";
 
+// ---------------------------------------------------------------------------
+// Local types for LinkedIn deploy
+// ---------------------------------------------------------------------------
+
+interface LinkedInSequenceStep {
+  position: number;
+  type: string; // "connect" | "message" | "profile_view"
+  body?: string;
+  delayDays?: number;
+  triggerEvent?: string; // "delay_after_previous" | "email_sent" | "connection_accepted"
+  notes?: string;
+}
+
 export class LinkedInAdapter implements ChannelAdapter {
   readonly channel = CHANNEL_TYPES.LINKEDIN;
 
   // ---------------------------------------------------------------------------
-  // deploy — stub until Phase 73 wiring
+  // deploy — full LinkedIn channel deploy (moved from deploy.ts in Phase 73)
   // ---------------------------------------------------------------------------
 
-  async deploy(_params: DeployParams): Promise<DeployResult> {
-    throw new Error(
-      "LinkedIn deploy wiring is Phase 73 — use deployLinkedInChannel() directly until then",
-    );
+  async deploy(params: DeployParams): Promise<void> {
+    const { deployId, campaignId, workspaceSlug, channels } = params;
+
+    // Mark linkedin channel as running
+    await prisma.campaignDeploy.update({
+      where: { id: deployId },
+      data: { linkedinStatus: "running" },
+    });
+
+    try {
+      const campaign = await getCampaign(campaignId);
+      if (!campaign?.targetListId) {
+        throw new Error("Campaign has no target list");
+      }
+
+      const leads = await prisma.targetListPerson.findMany({
+        where: { listId: campaign.targetListId },
+        include: { person: true },
+      });
+
+      const linkedinSequence = (campaign.linkedinSequence ?? []) as LinkedInSequenceStep[];
+
+      if (linkedinSequence.length === 0) {
+        await prisma.campaignDeploy.update({
+          where: { id: deployId },
+          data: { linkedinStatus: "complete", linkedinStepCount: 0 },
+        });
+        // Still call createSequenceRulesForCampaign with empty array to clean up
+        // any stale rules from a previous deploy (idempotent redeploy support)
+        await createSequenceRulesForCampaign({
+          workspaceSlug,
+          campaignName: campaign.name,
+          linkedinSequence: [],
+        });
+        return;
+      }
+
+      // ── Connection gate split ────────────────────────────────────────────
+      // Split the sequence at the connect step. Pre-connect steps (profile_view,
+      // connect) are scheduled immediately via chainActions. Post-connect steps
+      // (follow-up messages) become CampaignSequenceRules triggered by
+      // connection_accepted — they are NOT pre-scheduled.
+      const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
+
+      // Ensure profile_view is the first step (industry standard warm-up)
+      if (sorted.length > 0 && sorted[0].type !== "profile_view") {
+        sorted.unshift({ position: 0, type: "profile_view", delayDays: 0 });
+      }
+
+      const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
+
+      const preConnectSteps = connectIndex >= 0
+        ? sorted.slice(0, connectIndex + 1)
+        : sorted; // No connect step — all steps are pre-connect
+      const postConnectSteps = connectIndex >= 0
+        ? sorted.slice(connectIndex + 1)
+        : []; // No connect step — no post-connect steps
+
+      let linkedinStepCount = 0;
+      const STAGGER_BASE_MS = 15 * 60 * 1000; // 15 minutes between leads (jittered +-20%)
+
+      for (let i = 0; i < leads.length; i++) {
+        const person = leads[i].person;
+
+        if (!person.linkedinUrl) {
+          // No LinkedIn URL — skip silently
+          continue;
+        }
+
+        // Assign sender — mode depends on whether email channel is also being deployed
+        const sender = await assignSenderForPerson(workspaceSlug, {
+          mode: channels.includes("email") ? "email_linkedin" : "linkedin_only",
+        });
+
+        if (!sender) {
+          console.warn(
+            `[deploy] No active sender available for workspace ${workspaceSlug} — skipping lead ${person.email}`,
+          );
+          continue;
+        }
+
+        // Stagger: lead i fires at i * ~15 minutes (jittered 12-18 min) from now
+        const scheduledFor = new Date(Date.now() + i * applyTimingJitter(STAGGER_BASE_MS));
+
+        // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
+        const actionIds = await chainActions({
+          senderId: sender.id,
+          personId: person.id,
+          workspaceSlug,
+          sequence: preConnectSteps.map((step) => ({
+            position: step.position,
+            type: step.type,
+            body: step.body,
+            delayDays: step.delayDays,
+          })),
+          baseScheduledFor: scheduledFor,
+          priority: 5,
+          campaignName: campaign.name,
+        });
+
+        console.log(
+          `[deploy] Split sequence: ${preConnectSteps.length} pre-connect, ${postConnectSteps.length} post-connect rules for ${person.email}`,
+        );
+        linkedinStepCount++;
+      }
+
+      // Create CampaignSequenceRules for post-connect follow-up messages.
+      // These fire when connection_accepted is detected by the connection-poller.
+      // Always called (even if postConnectSteps is empty) to clean up stale rules
+      // from a previous deploy (idempotent redeploy support).
+      const postConnectRules = postConnectSteps.map((step, idx) => ({
+        position: step.position,
+        type: step.type,
+        body: step.body,
+        delayHours: (step.delayDays ?? (idx === 0 ? 1 : 2)) * 24,
+        triggerEvent: "connection_accepted" as const,
+      }));
+
+      await createSequenceRulesForCampaign({
+        workspaceSlug,
+        campaignName: campaign.name,
+        linkedinSequence: postConnectRules,
+      });
+
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data: {
+          linkedinStatus: "complete",
+          linkedinStepCount,
+          linkedinError: null,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data: {
+          linkedinStatus: "failed",
+          linkedinError: message,
+        },
+      });
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------
