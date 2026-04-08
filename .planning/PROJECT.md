@@ -115,18 +115,20 @@ Own the lead data pipeline end-to-end so we never pay for the same lead twice an
 - StoreLeads — $75-950/mo, Serper.dev covers ecommerce discovery via Google queries
 - Campaign builder UI — all campaign operations through Nova CLI agent teams (Cmd+J / CLI skills)
 
-## Current Milestone: v9.0 Monty — Platform Engineering Agent Team
+## Current Milestone: v10.0 Unified Outbound Architecture
 
-**Goal:** Build a Dev Orchestrator ("Monty") with 5 specialist agents that handles all platform engineering work — clear boundary from Nova (campaign ops), with PM capability for triaging bugs vs features, managing backlog, and routing to the right specialist.
+**Goal:** Refactor from EmailBison-centric to channel-agnostic multi-channel outbound platform using the adapter pattern. Per-workspace channel configuration. Clean separation of email inboxes vs LinkedIn accounts.
 
 **Target features:**
-- Dev Orchestrator (PM) — triages work (bug vs feature), routes to specialists, manages backlog, tracks progress
-- Backend Agent — API routes, Prisma, server logic, Trigger.dev tasks
-- Frontend/UI Agent — components, pages, design system (uses UI UX Pro Max skill)
-- Infrastructure Agent — deploys, Railway, Vercel, Trigger.dev config, DNS
-- QA Agent — testing, code review, validation
-- Security Agent — auth flows, credential handling, OWASP, vulnerability review
-- Two-team boundary enforcement: workspace slug → Nova, codebase → Monty
+- Channel adapter interface — common contract (getLeads, getActions, getMetrics, deploy, pause, resume, getSequenceSteps)
+- Email adapter — wraps existing EmailBison client
+- LinkedIn adapter — wraps existing LinkedInAction/DB queries
+- Workspace channel configuration — each client opts into channels (email, LinkedIn, future: paid ads, cold calls)
+- Campaign model refactor — channel-agnostic, campaigns reference channels not EmailBison IDs
+- Sender model cleanup — email inboxes and LinkedIn accounts through adapter interfaces, no more channel filter scatter
+- Portal unified through adapters — stats, leads, activity, sequence all channel-agnostic
+- Analytics unified through adapters — one metrics pipeline for all channels
+- Notifications channel-aware — adapts to workspace's enabled channels
 
 ## Current State
 
