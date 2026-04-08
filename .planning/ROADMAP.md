@@ -928,7 +928,11 @@ Plans:
   1. The metrics snapshot Trigger.dev task calls `adapter.getMetrics()` per enabled channel — CachedMetrics stores channel-prefixed data while maintaining backwards compatibility with existing keys
   2. A cross-channel performance comparison view exists showing side-by-side email vs LinkedIn metrics per workspace (reply rate, sent volume, connection/open rate)
   3. Notifications adapt to the workspace's enabled channels — deploy notifications mention the correct channel(s), health alerts only fire for enabled channels, digests include metrics for all active channels
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 75-01-PLAN.md — Snapshot adapter migration (per-channel CachedMetrics via getMetrics())
+- [ ] 75-02-PLAN.md — Channel-aware notifications (notifyDeploy, notifySenderHealth, digests)
+- [ ] 75-03-PLAN.md — Cross-channel analytics page (/workspace/[slug]/analytics)
 
 ## Progress — v10.0
 
@@ -940,4 +944,4 @@ Plans:
 | 72. Adapter Implementations | 3/3 | Complete    | 2026-04-08 |
 | 73. Campaign Deploy Refactor | 2/2 | Complete    | 2026-04-08 |
 | 74. Portal Unification | 3/3 | Complete   | 2026-04-08 |
-| 75. Analytics & Notifications | 0/TBD | Not started | - |
+| 75. Analytics & Notifications | 0/3 | Planned | - |
