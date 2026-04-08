@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
+import { initAdapters, getAdapter } from "@/lib/channels";
+import type { ChannelType } from "@/lib/channels";
+import { buildRef } from "@/lib/channels/helpers";
 
 interface ActivityItem {
   id: string;
@@ -80,94 +83,73 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Bootstrap adapters before getAdapter() calls
+  initAdapters();
+
   try {
     const items: ActivityItem[] = [];
 
-    // Fetch LinkedIn actions, email replies, LinkedIn messages, and connections in parallel
-    const [linkedInActions, replies, linkedinMessages, linkedinConnections] = await Promise.all([
-      // LinkedIn actions — exclude profile_view and failed
-      channel === "email"
-        ? Promise.resolve([])
-        : prisma.linkedInAction.findMany({
-            where: {
-              workspaceSlug,
-              actionType: { notIn: ["check_connection"] },
-              status: { notIn: ["failed", "cancelled", "expired"] },
-              OR: [
-                { scheduledFor: { gte: from, lte: to } },
-                { completedAt: { gte: from, lte: to } },
-              ],
-            },
-            orderBy: { scheduledFor: "desc" },
-          }),
+    // -------------------------------------------------------------------------
+    // Campaign-scoped activity — fetched via channel adapters.
+    // Replaces direct LinkedInAction and Reply/webhookEvent Prisma queries.
+    // Per Phase 74 research: adapter.getActions() covers campaign-scoped data.
+    // -------------------------------------------------------------------------
 
-      // Email replies
-      channel === "linkedin"
-        ? Promise.resolve([])
-        : prisma.reply.findMany({
-            where: {
-              workspaceSlug,
-              receivedAt: { gte: from, lte: to },
-              deletedAt: null,
-            },
-            include: {
-              person: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                  company: true,
-                  linkedinUrl: true,
-                },
-              },
-            },
-            orderBy: { receivedAt: "desc" },
-          }),
+    // Load active campaigns for the workspace
+    const campaigns = await prisma.campaign.findMany({
+      where: { workspaceSlug, status: { not: "archived" } },
+      select: {
+        id: true,
+        name: true,
+        channels: true,
+        emailBisonCampaignId: true,
+      },
+    });
 
-      // LinkedIn inbound messages (replies received)
-      channel === "email"
-        ? Promise.resolve([])
-        : prisma.linkedInMessage.findMany({
-            where: {
-              isOutbound: false,
-              deliveredAt: { gte: from, lte: to },
-              conversation: { workspaceSlug },
-            },
-            include: {
-              conversation: {
-                select: {
-                  workspaceSlug: true,
-                  personId: true,
-                  participantName: true,
-                  participantProfileUrl: true,
-                },
-              },
-            },
-            orderBy: { deliveredAt: "desc" },
-          }),
+    // Fetch campaign-scoped actions via adapters (one call per campaign × channel)
+    const campaignActionsNested = await Promise.all(
+      campaigns.flatMap((campaign) => {
+        let channelList: string[] = [];
+        try {
+          channelList = JSON.parse(campaign.channels) as string[];
+        } catch {
+          channelList = ["email"];
+        }
+        // Apply channel filter from query params
+        if (channel !== "all") {
+          channelList = channelList.filter((ch) => ch === channel);
+        }
+        return channelList.map(async (ch) => {
+          const ref = buildRef(campaign, workspaceSlug);
+          const adapter = getAdapter(ch as ChannelType);
+          return adapter.getActions(ref);
+        });
+      })
+    );
+    const campaignActions = campaignActionsNested.flat();
 
-      // LinkedIn connections accepted
-      channel === "email"
-        ? Promise.resolve([])
-        : prisma.linkedInConnection.findMany({
-            where: {
-              status: "connected",
-              connectedAt: { not: null, gte: from, lte: to },
-              sender: { workspaceSlug },
-            },
-            include: {
-              sender: { select: { workspaceSlug: true } },
-            },
-          }),
-    ]);
-
-    // Collect unique personIds from LinkedIn actions for batch lookup
-    if (linkedInActions.length > 0) {
-      const personIds = [
-        ...new Set(linkedInActions.map((a) => a.personId).filter((id): id is string => id !== null)),
-      ];
+    // Collect personIds from LinkedIn campaign actions for batch person lookup
+    const liPersonIds = [
+      ...new Set(
+        campaignActions
+          .filter((a) => a.channel === "linkedin" && a.personId)
+          .map((a) => a.personId!)
+      ),
+    ];
+    const liPersonMap = new Map<
+      string,
+      {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        company: string | null;
+        linkedinUrl: string | null;
+        email: string | null;
+      }
+    >();
+    if (liPersonIds.length > 0) {
       const persons = await prisma.person.findMany({
-        where: { id: { in: personIds } },
+        where: { id: { in: liPersonIds } },
         select: {
           id: true,
           firstName: true,
@@ -177,13 +159,23 @@ export async function GET(request: NextRequest) {
           email: true,
         },
       });
-      const personMap = new Map(persons.map((p) => [p.id, p]));
+      for (const p of persons) liPersonMap.set(p.id, p);
+    }
 
-      for (const action of linkedInActions) {
-        const mappedStatus = STATUS_MAP[action.status];
-        if (mappedStatus === null) continue; // skip cancelled/expired/failed
+    // Map campaign adapter actions to ActivityItem shape
+    for (const action of campaignActions) {
+      const mappedStatus =
+        action.channel === "linkedin"
+          ? STATUS_MAP[action.status] ?? null
+          : ("complete" as const);
+      if (mappedStatus === null) continue; // skip cancelled/expired/failed
 
-        const person = action.personId ? personMap.get(action.personId) : undefined;
+      // Apply date range filter (adapters return all — we filter here)
+      const ts = action.performedAt;
+      if (ts < from || ts > to) continue;
+
+      if (action.channel === "linkedin") {
+        const person = action.personId ? liPersonMap.get(action.personId) : undefined;
         items.push({
           id: action.id,
           channel: "linkedin",
@@ -191,131 +183,159 @@ export async function GET(request: NextRequest) {
           status: mappedStatus,
           personName: person
             ? personFullName(person.firstName, person.lastName)
-            : null,
+            : action.personName ?? null,
           personCompany: person?.company ?? null,
           personLinkedinUrl: person?.linkedinUrl ?? null,
-          personEmail: person?.email ?? null,
+          personEmail: person?.email ?? action.personEmail ?? null,
           campaignName: action.campaignName ?? null,
-          preview: truncate(action.messageBody, 100),
-          timestamp: (
-            action.completedAt ?? action.scheduledFor
-          ).toISOString(),
+          preview: truncate(action.detail, 100),
+          timestamp: ts.toISOString(),
+        });
+      } else {
+        // Email adapter actions
+        items.push({
+          id: action.id,
+          channel: "email",
+          actionType: action.actionType as ActivityItem["actionType"],
+          status: mappedStatus,
+          personName: action.personName ?? null,
+          personCompany: null,
+          personLinkedinUrl: null,
+          personEmail: action.personEmail ?? null,
+          campaignName: action.campaignName ?? null,
+          preview: truncate(action.detail, 100),
+          timestamp: ts.toISOString(),
         });
       }
     }
 
-    // Map replies to activity items
-    for (const reply of replies) {
-      const isOutbound = reply.direction === "outbound";
-      // For outbound sends, show the recipient (lead) info, not the sender account
-      const displayName = isOutbound
-        ? (reply.person
-            ? personFullName(reply.person.firstName, reply.person.lastName)
-            : null) ?? reply.leadEmail
-        : reply.senderName ?? null;
-      const displayEmail = isOutbound
-        ? reply.leadEmail ?? reply.person?.email ?? null
-        : reply.senderEmail;
-      items.push({
-        id: reply.id,
-        channel: "email",
-        actionType: isOutbound ? "send" : "reply",
-        status: "complete",
-        personName: displayName,
-        personCompany: reply.person?.company ?? null,
-        personLinkedinUrl: reply.person?.linkedinUrl ?? null,
-        personEmail: displayEmail,
-        campaignName: reply.campaignName ?? null,
-        preview: truncate(reply.bodyText, 100),
-        timestamp: reply.receivedAt.toISOString(),
-      });
-    }
+    // -------------------------------------------------------------------------
+    // Non-campaign LinkedIn activity — outside adapter scope, kept as direct queries.
+    // Per Phase 74 research: adapter.getActions() covers campaign-scoped data only.
+    // LinkedIn messages (LinkedInMessage) and connection accepts (LinkedInConnection)
+    // are workspace-level events with no campaign affiliation.
+    // -------------------------------------------------------------------------
 
-    // Map LinkedIn inbound messages to activity items
-    if (linkedinMessages.length > 0) {
-      // Batch-fetch Person records for messages that have a personId
-      const msgPersonIds = [
-        ...new Set(
-          linkedinMessages
-            .map((m) => m.conversation.personId)
-            .filter(Boolean) as string[]
-        ),
-      ];
-      const msgPersons =
-        msgPersonIds.length > 0
-          ? await prisma.person.findMany({
-              where: { id: { in: msgPersonIds } },
+    if (channel !== "email") {
+      const [linkedinMessages, linkedinConnections] = await Promise.all([
+        // LinkedIn inbound messages (replies received)
+        prisma.linkedInMessage.findMany({
+          where: {
+            isOutbound: false,
+            deliveredAt: { gte: from, lte: to },
+            conversation: { workspaceSlug },
+          },
+          include: {
+            conversation: {
               select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                company: true,
-                linkedinUrl: true,
-                email: true,
+                workspaceSlug: true,
+                personId: true,
+                participantName: true,
+                participantProfileUrl: true,
               },
-            })
-          : [];
-      const msgPersonMap = new Map(msgPersons.map((p) => [p.id, p]));
+            },
+          },
+          orderBy: { deliveredAt: "desc" },
+        }),
 
-      for (const msg of linkedinMessages) {
-        const person = msg.conversation.personId
-          ? msgPersonMap.get(msg.conversation.personId)
-          : undefined;
-        items.push({
-          id: msg.id,
-          channel: "linkedin",
-          actionType: "reply",
-          status: "complete",
-          personName:
-            msg.conversation.participantName ?? msg.senderName ?? null,
-          personCompany: person?.company ?? null,
-          personLinkedinUrl:
-            msg.conversation.participantProfileUrl ??
-            person?.linkedinUrl ??
-            null,
-          personEmail: null,
-          campaignName: null,
-          preview: truncate(msg.body, 100),
-          timestamp: msg.deliveredAt.toISOString(),
-        });
+        // LinkedIn connections accepted
+        prisma.linkedInConnection.findMany({
+          where: {
+            status: "connected",
+            connectedAt: { not: null, gte: from, lte: to },
+            sender: { workspaceSlug },
+          },
+          include: {
+            sender: { select: { workspaceSlug: true } },
+          },
+        }),
+      ]);
+
+      // Map LinkedIn inbound messages to activity items
+      if (linkedinMessages.length > 0) {
+        const msgPersonIds = [
+          ...new Set(
+            linkedinMessages
+              .map((m) => m.conversation.personId)
+              .filter(Boolean) as string[]
+          ),
+        ];
+        const msgPersons =
+          msgPersonIds.length > 0
+            ? await prisma.person.findMany({
+                where: { id: { in: msgPersonIds } },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  company: true,
+                  linkedinUrl: true,
+                  email: true,
+                },
+              })
+            : [];
+        const msgPersonMap = new Map(msgPersons.map((p) => [p.id, p]));
+
+        for (const msg of linkedinMessages) {
+          const person = msg.conversation.personId
+            ? msgPersonMap.get(msg.conversation.personId)
+            : undefined;
+          items.push({
+            id: msg.id,
+            channel: "linkedin",
+            actionType: "reply",
+            status: "complete",
+            personName:
+              msg.conversation.participantName ?? msg.senderName ?? null,
+            personCompany: person?.company ?? null,
+            personLinkedinUrl:
+              msg.conversation.participantProfileUrl ??
+              person?.linkedinUrl ??
+              null,
+            personEmail: null,
+            campaignName: null,
+            preview: truncate(msg.body, 100),
+            timestamp: msg.deliveredAt.toISOString(),
+          });
+        }
       }
-    }
 
-    // Map LinkedIn accepted connections to activity items
-    if (linkedinConnections.length > 0) {
-      const connPersonIds = [
-        ...new Set(linkedinConnections.map((c) => c.personId)),
-      ];
-      const connPersons = await prisma.person.findMany({
-        where: { id: { in: connPersonIds } },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          company: true,
-          linkedinUrl: true,
-          email: true,
-        },
-      });
-      const connPersonMap = new Map(connPersons.map((p) => [p.id, p]));
-
-      for (const conn of linkedinConnections) {
-        const person = connPersonMap.get(conn.personId);
-        items.push({
-          id: conn.id,
-          channel: "linkedin",
-          actionType: "connected",
-          status: "complete",
-          personName: person
-            ? personFullName(person.firstName, person.lastName)
-            : null,
-          personCompany: person?.company ?? null,
-          personLinkedinUrl: person?.linkedinUrl ?? null,
-          personEmail: person?.email ?? null,
-          campaignName: null,
-          preview: null,
-          timestamp: conn.connectedAt!.toISOString(),
+      // Map LinkedIn accepted connections to activity items
+      if (linkedinConnections.length > 0) {
+        const connPersonIds = [
+          ...new Set(linkedinConnections.map((c) => c.personId)),
+        ];
+        const connPersons = await prisma.person.findMany({
+          where: { id: { in: connPersonIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            company: true,
+            linkedinUrl: true,
+            email: true,
+          },
         });
+        const connPersonMap = new Map(connPersons.map((p) => [p.id, p]));
+
+        for (const conn of linkedinConnections) {
+          const person = connPersonMap.get(conn.personId);
+          items.push({
+            id: conn.id,
+            channel: "linkedin",
+            actionType: "connected",
+            status: "complete",
+            personName: person
+              ? personFullName(person.firstName, person.lastName)
+              : null,
+            personCompany: person?.company ?? null,
+            personLinkedinUrl: person?.linkedinUrl ?? null,
+            personEmail: person?.email ?? null,
+            campaignName: null,
+            preview: null,
+            timestamp: conn.connectedAt!.toISOString(),
+          });
+        }
       }
     }
 
