@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Channel-agnostic outbound platform where EmailBison is just one provider behind an adapter, not the foundation everything depends on.
-**Current focus:** v10.0 Phase 71 — Foundation (Constants, Interface & Registry)
+**Current focus:** v10.0 Phase 72 — Adapter Implementations
 
 ## Current Position
 
 Phase: 72 of 75 (Adapter Implementations)
-Plan: 2 of 3
-Status: Executing Phase 72 — completed 72-02 (sender helpers, workspace channels)
-Last activity: 2026-04-08 — Completed 72-02 (sender helpers, workspace channels)
+Plan: 3 of 3
+Status: Executing Phase 72 — completed 72-01 (LinkedIn + Email adapters)
+Last activity: 2026-04-08 — Completed 72-01 (adapter implementations)
 
-Progress: [███░░░░░░░] 30%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Progress: [███░░░░░░░] 30%
 |-------|------|----------|-------|-------|
 | 71 | 01 | 3min | 3 | 6 |
 | 72 | 02 | 3min | 3 | 2 |
+| 72 | 01 | 3min | 3 | 3 |
 
 ## Accumulated Context
 
@@ -56,6 +57,9 @@ Key v10.0 decisions:
 - [71-01]: Used Array.from() for Map iteration to avoid downlevelIteration requirement
 - [72-02]: Used SENDER_STATUSES.ACTIVE constant instead of raw 'active' string for sender queries
 - [72-02]: workspace-channels.ts already existed from 72-01 — verified identical, no duplicate commit
+- [72-01]: EmailAdapter uses stateless pattern (fresh apiToken per call) to avoid stale credential bugs
+- [72-01]: Missing emailBisonCampaignId returns empty results instead of throwing — graceful degradation
+- [72-01]: Preserved fragile result contains '"accepted"' pattern from snapshot.ts — flagged for future fix
 
 ### Research Flags
 
@@ -73,5 +77,5 @@ None blocking v10.0.
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Completed 72-02-PLAN.md — sender helpers and workspace channels
+Stopped at: Completed 72-01-PLAN.md — LinkedIn + Email adapter implementations
 Resume file: None

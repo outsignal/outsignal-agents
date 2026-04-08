@@ -888,7 +888,7 @@ Plans:
   5. Each workspace has a channel configuration that defines which channels are enabled, and `getEnabledChannels(workspace)` returns the correct set
 **Plans**: 3 plans
 Plans:
-- [ ] 72-01-PLAN.md — LinkedIn and email adapter implementations (ChannelAdapter interface)
+- [x] 72-01-PLAN.md — LinkedIn and email adapter implementations (ChannelAdapter interface)
 - [ ] 72-02-PLAN.md — Sender query helpers and workspace channel configuration
 - [ ] 72-03-PLAN.md — Shared adapter contract test suite and helper tests
 
