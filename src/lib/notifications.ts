@@ -3,6 +3,7 @@ import { postMessage } from "./slack";
 import { sendNotificationEmail } from "./resend";
 import { verifyEmailRecipients, verifySlackChannel } from "@/lib/notification-guard";
 import { audited, auditSkipped } from "@/lib/notification-audit";
+import { getEnabledChannels } from "@/lib/channels/workspace-channels";
 import {
   emailLayout,
   emailButton,
@@ -513,9 +514,11 @@ export async function notifyDeploy(params: {
     process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
   const campaignUrl = `${adminBaseUrl}/workspace/${params.workspaceSlug}/campaigns/${params.campaignId}`;
 
-  // Only show lead count when email channel is active — for LinkedIn-only campaigns
-  // the count is always 0 (no email leads pushed) which reads as a failure.
-  const hasEmailChannel = params.channels === undefined || params.channels.includes("email");
+  // Derive channel flags from workspace package + optional per-call channels override.
+  // getEnabledChannels returns which channels this workspace has enabled.
+  const enabledChannels = getEnabledChannels(workspace.package ?? 'email');
+  const hasEmail = enabledChannels.includes('email') || (params.channels?.includes('email') ?? true);
+  const hasLinkedIn = enabledChannels.includes('linkedin') || (params.channels?.includes('linkedin') ?? false);
 
   const statusLabel =
     params.status === "complete"
@@ -556,7 +559,7 @@ export async function notifyDeploy(params: {
               text: `*Status:* ${statusEmoji} ${statusLabel}`,
             },
           },
-          ...(hasEmailChannel
+          ...(hasEmail
             ? [
                 {
                   type: "section" as const,
@@ -564,7 +567,7 @@ export async function notifyDeploy(params: {
                 },
               ]
             : []),
-          ...(params.emailStatus && params.emailStatus !== "skipped"
+          ...(hasEmail && params.emailStatus && params.emailStatus !== "skipped"
             ? [
                 {
                   type: "section" as const,
@@ -575,7 +578,7 @@ export async function notifyDeploy(params: {
                 },
               ]
             : []),
-          ...(params.linkedinStatus && params.linkedinStatus !== "skipped"
+          ...(hasLinkedIn && params.linkedinStatus && params.linkedinStatus !== "skipped"
             ? [
                 {
                   type: "section" as const,
@@ -643,13 +646,13 @@ export async function notifyDeploy(params: {
               : "#fef2f2";
 
         const detailRows: Array<{ label: string; value: string; mono?: boolean }> = [];
-        if (hasEmailChannel) {
+        if (hasEmail) {
           detailRows.push({ label: "Leads", value: `${params.leadCount} pushed` });
         }
-        if (params.emailStatus && params.emailStatus !== "skipped") {
+        if (hasEmail && params.emailStatus && params.emailStatus !== "skipped") {
           detailRows.push({ label: "Email", value: `${params.emailStepCount} steps \u2014 ${params.emailStatus}` });
         }
-        if (params.linkedinStatus && params.linkedinStatus !== "skipped") {
+        if (hasLinkedIn && params.linkedinStatus && params.linkedinStatus !== "skipped") {
           detailRows.push({ label: "LinkedIn", value: `${params.linkedinStepCount} steps \u2014 ${params.linkedinStatus}` });
         }
 
@@ -958,6 +961,7 @@ export async function notifySenderHealth(params: {
   severity: "warning" | "critical";
   reassignedCount: number;
   workspacePaused: boolean;
+  channel?: 'email' | 'linkedin';  // optional: appends channel label to alert header
 }): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { slug: params.workspaceSlug },
@@ -972,6 +976,9 @@ export async function notifySenderHealth(params: {
     params.severity === "critical"
       ? `[${workspace.name}] Sender Health Alert`
       : `[${workspace.name}] Sender Health Warning`;
+
+  const channelLabel = params.channel ? ` (${params.channel === 'email' ? 'Email' : 'LinkedIn'})` : '';
+  const headerTextWithChannel = headerText + channelLabel;
 
   const reasonLabel: Record<string, string> = {
     bounce_rate: "High bounce rate",
@@ -992,7 +999,7 @@ export async function notifySenderHealth(params: {
         const blocks: KnownBlock[] = [
           {
             type: "header",
-            text: { type: "plain_text", text: headerText },
+            text: { type: "plain_text", text: headerTextWithChannel },
           },
           {
             type: "section",
@@ -1042,7 +1049,7 @@ export async function notifySenderHealth(params: {
 
         await audited(
           { notificationType: "sender_health", channel: "slack", recipient: alertsChannelId, workspaceSlug: params.workspaceSlug },
-          () => postMessage(alertsChannelId, headerText, blocks),
+          () => postMessage(alertsChannelId, headerTextWithChannel, blocks),
         );
       } catch (err) {
         console.error("Slack sender health notification failed:", err);
@@ -1060,7 +1067,7 @@ export async function notifySenderHealth(params: {
         const subject = `[${workspace.name}] Sender Flagged: ${params.senderName}`;
 
         const bodyParts: string[] = [
-          emailHeading(headerText, workspace.name, { titleColor: "#dc2626" }),
+          emailHeading(headerTextWithChannel, workspace.name, { titleColor: "#dc2626" }),
           emailDetailCard([
             { label: "Sender", value: params.senderName },
             { label: "Reason", value: reasonText },
@@ -1232,6 +1239,16 @@ export async function notifyDeliverabilityDigest(): Promise<void> {
     console.log(
       `[notifyDeliverabilityDigest] Digest already sent this week (${recentDigest.createdAt.toISOString()}) — skipping`,
     );
+    return;
+  }
+
+  // Only send deliverability digest if at least one email workspace exists
+  const emailWorkspaces = await prisma.workspace.findMany({
+    where: { package: { in: ['email', 'email_linkedin'] } },
+    select: { slug: true },
+  });
+  if (emailWorkspaces.length === 0) {
+    console.log('[notifyDeliverabilityDigest] No email workspaces — skipping');
     return;
   }
 

@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/db";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import { initAdapters, getAdapter, getEnabledChannels } from "@/lib/channels";
+import type { ChannelType } from "@/lib/channels/constants";
+import type { CampaignChannelRef } from "@/lib/channels/types";
 import type { Campaign as EBCampaign } from "@/lib/emailbison/types";
+
+// Bootstrap adapters once at module scope — safe to call multiple times (idempotent)
+initAdapters();
 
 /** Shape stored in CachedMetrics.data JSON for metricType="campaign_snapshot" */
 export interface CampaignSnapshot {
@@ -57,6 +63,10 @@ function todayUTC(): string {
 /**
  * Snapshot all campaign metrics for a workspace and upsert into CachedMetrics.
  * Called daily by the snapshot-metrics cron endpoint.
+ *
+ * Writes two sets of CachedMetrics rows per campaign:
+ * 1. Per-channel rows: metricKey = `${channel}:${campaignId}` — via channel adapter
+ * 2. Combined row: metricKey = `${campaignId}` — backwards-compatible aggregate
  */
 export async function snapshotWorkspaceCampaigns(
   workspaceSlug: string,
@@ -64,10 +74,18 @@ export async function snapshotWorkspaceCampaigns(
   const errors: string[] = [];
   let campaignsProcessed = 0;
 
-  // 1. Look up workspace to get apiToken
+  // 1. Look up workspace to get apiToken + package
   const wsConfig = await getWorkspaceBySlug(workspaceSlug);
 
-  // 2. Fetch EB campaigns if workspace has API token
+  // 2. Resolve enabled channels — query package directly so LinkedIn-only workspaces
+  //    (which have no apiToken and thus no wsConfig) still get their channels resolved
+  const wsRaw = await prisma.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    select: { package: true },
+  });
+  const enabledChannels = wsRaw ? getEnabledChannels(wsRaw.package) : [];
+
+  // 3. Fetch EB campaigns if workspace has API token
   let ebCampaigns: EBCampaign[] = [];
   if (wsConfig) {
     try {
@@ -80,7 +98,7 @@ export async function snapshotWorkspaceCampaigns(
     }
   }
 
-  // 3. Load all local Campaign records for this workspace
+  // 4. Load all local Campaign records for this workspace
   const localCampaigns = await prisma.campaign.findMany({
     where: { workspaceSlug },
     select: {
@@ -107,13 +125,91 @@ export async function snapshotWorkspaceCampaigns(
         ? ebMap.get(campaign.emailBisonCampaignId)
         : undefined;
 
-      // Parse channels
-      let channels: string[] = ["email"];
+      // Parse channels for this campaign
+      let campaignChannels: string[] = ["email"];
       try {
-        channels = JSON.parse(campaign.channels) as string[];
+        campaignChannels = JSON.parse(campaign.channels) as string[];
       } catch {
         // default to email
       }
+
+      // Build the CampaignChannelRef for adapter calls
+      const ref: CampaignChannelRef = {
+        campaignId: campaign.id,
+        workspaceSlug,
+        campaignName: campaign.name,
+        emailBisonCampaignId: campaign.emailBisonCampaignId ?? undefined,
+      };
+
+      // -----------------------------------------------------------------------
+      // Per-channel adapter metrics — stored as separate CachedMetrics rows
+      // -----------------------------------------------------------------------
+      for (const channel of campaignChannels) {
+        if (!enabledChannels.includes(channel as ChannelType)) continue;
+        try {
+          const adapter = getAdapter(channel as ChannelType);
+          const metrics = await adapter.getMetrics(ref);
+
+          const channelKey = `${channel}:${campaign.id}`;
+          const channelSnapshot = {
+            channel,
+            sent: metrics.sent,
+            replied: metrics.replied,
+            replyRate: metrics.replyRate,
+            // email-specific
+            ...(metrics.opened !== undefined && {
+              opened: metrics.opened,
+              openRate: metrics.openRate,
+            }),
+            ...(metrics.bounced !== undefined && {
+              bounced: metrics.bounced,
+              bounceRate: metrics.bounceRate,
+            }),
+            // linkedin-specific
+            ...(metrics.connectionsSent !== undefined && {
+              connectionsSent: metrics.connectionsSent,
+              connectionsAccepted: metrics.connectionsAccepted,
+              acceptRate: metrics.acceptRate,
+              messagesSent: metrics.messagesSent,
+            }),
+            campaignName: campaign.name,
+            channels: campaignChannels,
+            copyStrategy: campaign.copyStrategy,
+            status: campaign.status,
+          };
+
+          await prisma.cachedMetrics.upsert({
+            where: {
+              workspace_metricType_metricKey_date: {
+                workspace: workspaceSlug,
+                metricType: "campaign_snapshot",
+                metricKey: channelKey,
+                date,
+              },
+            },
+            create: {
+              workspace: workspaceSlug,
+              metricType: "campaign_snapshot",
+              metricKey: channelKey,
+              date,
+              data: JSON.stringify(channelSnapshot),
+            },
+            update: {
+              data: JSON.stringify(channelSnapshot),
+              computedAt: new Date(),
+            },
+          });
+        } catch (err) {
+          errors.push(
+            `${channel} metrics failed for ${campaign.name}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Combined backwards-compatible snapshot (existing metricKey = campaignId)
+      // Uses direct queries to preserve existing aggregation shape
+      // -----------------------------------------------------------------------
 
       // -- Email metrics from EB --
       const emailsSent = eb?.emails_sent ?? 0;
@@ -268,12 +364,12 @@ export async function snapshotWorkspaceCampaigns(
         bounceRate: Math.round(bounceRate * 100) / 100,
         interestedRate: Math.round(interestedRate * 100) / 100,
         campaignName: campaign.name,
-        channels,
+        channels: campaignChannels,
         copyStrategy: campaign.copyStrategy,
         status: campaign.status,
       };
 
-      // -- Upsert into CachedMetrics --
+      // -- Upsert combined snapshot into CachedMetrics (backwards-compatible key) --
       await prisma.cachedMetrics.upsert({
         where: {
           workspace_metricType_metricKey_date: {
