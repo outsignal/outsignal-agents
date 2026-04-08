@@ -14,7 +14,7 @@ import type { LinkedInSequenceStep } from "@/components/portal/sequence-steps-di
 import { CampaignLeadsTable } from "@/components/portal/campaign-leads-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, Users, ListOrdered, MessageSquare, Linkedin } from "lucide-react";
+import { BarChart3, Users, ListOrdered, MessageSquare, Linkedin, Activity } from "lucide-react";
 import type { Campaign as EBCampaign, SequenceStep } from "@/lib/emailbison/types";
 import Link from "next/link";
 
@@ -74,22 +74,28 @@ interface CampaignDetailTabsProps {
 }
 
 // ---------------------------------------------------------------------------
-// LinkedIn Leads Table — fetches from the LinkedIn actions API endpoint
+// LinkedIn Leads Table — shows all people assigned to the campaign (target list)
 // ---------------------------------------------------------------------------
 
 interface LinkedInLeadRow {
   id: string;
-  actionType: string;
-  status: string;
-  completedAt: string | null;
-  person: {
-    firstName: string | null;
-    lastName: string | null;
-    email: string | null;
-    jobTitle: string | null;
-    company: string | null;
-  } | null;
+  personId: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  jobTitle: string | null;
+  company: string | null;
+  linkedinUrl: string | null;
+  status: "pending" | "contacted" | "connected" | "replied";
+  addedAt: string;
 }
+
+const LEAD_STATUS_STYLES: Record<string, string> = {
+  pending: "bg-muted text-muted-foreground",
+  contacted: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  connected: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  replied: "bg-brand/10 text-brand",
+};
 
 function LinkedInLeadsTable({ campaignId }: { campaignId: string }) {
   const [rows, setRows] = useState<LinkedInLeadRow[]>([]);
@@ -125,6 +131,234 @@ function LinkedInLeadsTable({ campaignId }: { campaignId: string }) {
   if (rows.length === 0) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        No leads assigned to this campaign yet.
+      </div>
+    );
+  }
+
+  // Status summary counts
+  const counts = { pending: 0, contacted: 0, connected: 0, replied: 0 };
+  for (const row of rows) counts[row.status] = (counts[row.status] ?? 0) + 1;
+
+  return (
+    <div className="space-y-4">
+      {/* Status summary */}
+      <div className="flex flex-wrap gap-3 text-sm">
+        {(["pending", "contacted", "connected", "replied"] as const).map((s) => (
+          <span key={s} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${LEAD_STATUS_STYLES[s]}`}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}: {counts[s]}
+          </span>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Title / Company</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const name =
+                [row.firstName, row.lastName].filter(Boolean).join(" ") || row.email || "Unknown";
+              const titleCompany = [row.jobTitle, row.company].filter(Boolean).join(" · ");
+              return (
+                <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-3 font-medium text-foreground">{name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{titleCompany || "—"}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${LEAD_STATUS_STYLES[row.status]}`}>
+                      {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LinkedIn Activity Table — shows executed actions (profile views, connection requests, messages)
+// ---------------------------------------------------------------------------
+
+interface LinkedInActivityRow {
+  id: string;
+  actionType: string;
+  status: string;
+  completedAt: string | null;
+  scheduledFor: string;
+  createdAt: string;
+  person: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    jobTitle: string | null;
+    company: string | null;
+  } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Email Activity Table — shows email events from WebhookEvent table
+// ---------------------------------------------------------------------------
+
+interface EmailActivityRow {
+  id: string;
+  eventType: string;
+  leadEmail: string | null;
+  receivedAt: string;
+  person: {
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    jobTitle: string | null;
+    company: string | null;
+  } | null;
+}
+
+const EMAIL_EVENT_STYLES: Record<string, string> = {
+  EMAIL_SENT: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  EMAIL_OPENED: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  LEAD_REPLIED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  LEAD_INTERESTED: "bg-brand/10 text-brand",
+  EMAIL_BOUNCED: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  LEAD_UNSUBSCRIBED: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+};
+
+const EMAIL_EVENT_LABELS: Record<string, string> = {
+  EMAIL_SENT: "Sent",
+  EMAIL_OPENED: "Opened",
+  LEAD_REPLIED: "Replied",
+  LEAD_INTERESTED: "Interested",
+  EMAIL_BOUNCED: "Bounced",
+  LEAD_UNSUBSCRIBED: "Unsubscribed",
+};
+
+function EmailActivityTable({ campaignId }: { campaignId: string }) {
+  const [rows, setRows] = useState<EmailActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/portal/campaigns/${campaignId}/activity`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) setRows(json.data);
+        else setError("Failed to load activity");
+      })
+      .catch(() => setError("Failed to load activity"))
+      .finally(() => setLoading(false));
+  }, [campaignId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        Loading activity...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        No email events recorded yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/40">
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Person</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Title / Company</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Event</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const name = row.person
+              ? [row.person.firstName, row.person.lastName].filter(Boolean).join(" ") || row.leadEmail || "Unknown"
+              : row.leadEmail || "Unknown";
+            const titleCompany = row.person
+              ? [row.person.jobTitle, row.person.company].filter(Boolean).join(" · ")
+              : null;
+            const date = new Date(row.receivedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+            const eventLabel = EMAIL_EVENT_LABELS[row.eventType] ?? row.eventType;
+            const eventStyle = EMAIL_EVENT_STYLES[row.eventType] ?? "bg-muted text-muted-foreground";
+            return (
+              <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                <td className="px-4 py-3 font-medium text-foreground">{name}</td>
+                <td className="px-4 py-3 text-muted-foreground">{titleCompany || "—"}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${eventStyle}`}>
+                    {eventLabel}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{date}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LinkedInActivityTable({ campaignId }: { campaignId: string }) {
+  const [rows, setRows] = useState<LinkedInActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/portal/campaigns/${campaignId}/activity`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) setRows(json.data);
+        else setError("Failed to load activity");
+      })
+      .catch(() => setError("Failed to load activity"))
+      .finally(() => setLoading(false));
+  }, [campaignId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        Loading activity...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
         No LinkedIn actions recorded yet.
       </div>
     );
@@ -135,7 +369,7 @@ function LinkedInLeadsTable({ campaignId }: { campaignId: string }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/40">
-            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Name</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Person</th>
             <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Title / Company</th>
             <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Action</th>
             <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
@@ -144,15 +378,16 @@ function LinkedInLeadsTable({ campaignId }: { campaignId: string }) {
         </thead>
         <tbody>
           {rows.map((row) => {
-            const name =
-              row.person
-                ? [row.person.firstName, row.person.lastName].filter(Boolean).join(" ") || row.person.email || "Unknown"
-                : "Unknown";
+            const name = row.person
+              ? [row.person.firstName, row.person.lastName].filter(Boolean).join(" ") || row.person.email || "Unknown"
+              : "Unknown";
             const titleCompany = row.person
               ? [row.person.jobTitle, row.person.company].filter(Boolean).join(" · ")
               : null;
             const date = row.completedAt
               ? new Date(row.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : row.status === "pending" || row.status === "running"
+              ? `Scheduled ${new Date(row.scheduledFor).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
               : "—";
             return (
               <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
@@ -182,7 +417,7 @@ function LinkedInLeadsTable({ campaignId }: { campaignId: string }) {
   );
 }
 
-const VALID_TABS = ["stats", "leads", "sequence", "replies"] as const;
+const VALID_TABS = ["stats", "leads", "sequence", "replies", "activity"] as const;
 type TabValue = (typeof VALID_TABS)[number];
 
 function pct(numerator: number, denominator: number) {
@@ -235,6 +470,10 @@ export function CampaignDetailTabs({
         <TabsTrigger value="replies">
           <MessageSquare className="h-4 w-4" />
           Replies
+        </TabsTrigger>
+        <TabsTrigger value="activity">
+          <Activity className="h-4 w-4" />
+          Activity
         </TabsTrigger>
       </TabsList>
 
@@ -486,6 +725,15 @@ export function CampaignDetailTabs({
           <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
             No replies yet for this campaign.
           </div>
+        )}
+      </TabsContent>
+
+      {/* Activity Tab — LinkedIn: executed actions, Email: webhook events */}
+      <TabsContent value="activity" className="pt-6">
+        {isLinkedInOnly ? (
+          <LinkedInActivityTable campaignId={campaignId} />
+        ) : (
+          <EmailActivityTable campaignId={campaignId} />
         )}
       </TabsContent>
     </Tabs>

@@ -26,58 +26,116 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // LinkedIn-only path: no EmailBison campaign — query LinkedInAction instead
+  // LinkedIn-only path: return people from the target list with derived status
   const isLinkedInOnly =
     campaign.channels.includes("linkedin") && !campaign.channels.includes("email");
   if (!campaign.emailBisonCampaignId && isLinkedInOnly) {
+    if (!campaign.targetListId) {
+      return NextResponse.json({ data: [], meta: { total: 0 } });
+    }
     try {
+      const entries = await prisma.targetListPerson.findMany({
+        where: { listId: campaign.targetListId },
+        include: {
+          person: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              jobTitle: true,
+              company: true,
+              linkedinUrl: true,
+            },
+          },
+        },
+        orderBy: { addedAt: "asc" },
+      });
+
+      if (entries.length === 0) {
+        return NextResponse.json({ data: [], meta: { total: 0 } });
+      }
+
+      // Get all personIds from the target list
+      const personIds = entries.map((e) => e.personId);
+
+      // Find which people have LinkedIn actions for this campaign
       const actions = await prisma.linkedInAction.findMany({
         where: {
           campaignName: campaign.name,
           workspaceSlug: campaign.workspaceSlug,
+          personId: { in: personIds },
         },
         select: {
-          id: true,
+          personId: true,
           actionType: true,
           status: true,
-          completedAt: true,
-          personId: true,
         },
-        orderBy: { createdAt: "desc" },
-        take: 100,
       });
 
-      // Resolve person details for actions that have a personId
-      const personIds = [...new Set(actions.map((a) => a.personId).filter(Boolean))] as string[];
-      const persons =
-        personIds.length > 0
-          ? await prisma.person.findMany({
-              where: { id: { in: personIds } },
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-                jobTitle: true,
-                company: true,
-              },
-            })
-          : [];
-      const personMap = new Map(persons.map((p) => [p.id, p]));
+      // Build a map: personId -> set of completed action types
+      const actionMap = new Map<string, { hasContact: boolean; hasConnect: boolean }>();
+      for (const action of actions) {
+        if (!action.personId) continue;
+        const existing = actionMap.get(action.personId) ?? { hasContact: false, hasConnect: false };
+        if (action.status === "complete") {
+          if (action.actionType === "connection_request") existing.hasConnect = true;
+          if (action.actionType === "message") existing.hasContact = true;
+          if (action.actionType === "profile_view") existing.hasContact = true;
+        } else if (action.status === "pending" || action.status === "running") {
+          // Any pending/running action means they have been contacted (action queued)
+          existing.hasContact = true;
+        }
+        actionMap.set(action.personId, existing);
+      }
 
-      const data = actions.map((action) => ({
-        id: action.id,
-        actionType: action.actionType,
-        status: action.status,
-        completedAt: action.completedAt?.toISOString() ?? null,
-        person: action.personId ? (personMap.get(action.personId) ?? null) : null,
-      }));
+      // Check replies for these people
+      const replies = await prisma.reply.findMany({
+        where: {
+          campaignId: campaign.id,
+          workspaceSlug: campaign.workspaceSlug,
+        },
+        select: { senderEmail: true },
+      });
+
+      // Build a set of emails with replies (LinkedIn replies come via email notification)
+      const replierEmails = new Set(replies.map((r) => r.senderEmail.toLowerCase()));
+
+      const data = entries.map((entry) => {
+        const person = entry.person;
+        const actInfo = actionMap.get(entry.personId);
+        const hasReplied = person.email ? replierEmails.has(person.email.toLowerCase()) : false;
+
+        let leadStatus: "pending" | "contacted" | "connected" | "replied";
+        if (hasReplied) {
+          leadStatus = "replied";
+        } else if (actInfo?.hasConnect) {
+          leadStatus = "connected";
+        } else if (actInfo?.hasContact) {
+          leadStatus = "contacted";
+        } else {
+          leadStatus = "pending";
+        }
+
+        return {
+          id: entry.id,
+          personId: person.id,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          email: person.email,
+          jobTitle: person.jobTitle,
+          company: person.company,
+          linkedinUrl: person.linkedinUrl,
+          status: leadStatus,
+          addedAt: entry.addedAt.toISOString(),
+        };
+      });
 
       return NextResponse.json({ data, meta: { total: data.length } });
     } catch (err) {
-      console.error("[portal/campaigns/leads] LinkedIn actions query error:", err);
+      console.error("[portal/campaigns/leads] LinkedIn target list query error:", err);
       return NextResponse.json(
-        { error: "Failed to fetch LinkedIn actions" },
+        { error: "Failed to fetch campaign leads" },
         { status: 500 },
       );
     }
