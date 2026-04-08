@@ -856,7 +856,7 @@ Plans:
 **Milestone Goal:** Refactor from EmailBison-centric to channel-agnostic multi-channel outbound platform using the adapter pattern. Per-workspace channel configuration. Clean separation of email inboxes vs LinkedIn accounts.
 
 - [x] **Phase 71: Foundation — Constants, Interface & Registry** - Extract string constants, define ChannelAdapter interface, build adapter registry and unified types (completed 2026-04-08)
-- [ ] **Phase 72: Adapter Implementations** - LinkedIn and email adapters implementing the full interface, with sender query helpers and workspace channel config
+- [x] **Phase 72: Adapter Implementations** - LinkedIn and email adapters implementing the full interface, with sender query helpers and workspace channel config (completed 2026-04-08)
 - [ ] **Phase 73: Campaign Deploy Refactor** - Deploy, pause, and resume go through adapters; CampaignChannelRef replaces direct EmailBison ID lookups
 - [ ] **Phase 74: Portal Unification** - Portal campaign detail, dashboard, and activity feed consume adapters instead of direct channel queries
 - [ ] **Phase 75: Analytics & Notifications** - Metrics snapshot via adapters, cross-channel comparison view, channel-aware notifications
@@ -930,7 +930,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 71. Foundation — Constants, Interface & Registry | 1/1 | Complete    | 2026-04-08 |
-| 72. Adapter Implementations | 2/3 | In Progress|  |
+| 72. Adapter Implementations | 3/3 | Complete   | 2026-04-08 |
 | 73. Campaign Deploy Refactor | 0/TBD | Not started | - |
 | 74. Portal Unification | 0/TBD | Not started | - |
 | 75. Analytics & Notifications | 0/TBD | Not started | - |

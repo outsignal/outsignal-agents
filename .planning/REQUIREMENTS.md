@@ -16,7 +16,7 @@
 
 - [x] **ADAPT-01**: LinkedIn adapter implementing full `ChannelAdapter` interface (wraps existing DB queries + Railway worker calls)
 - [x] **ADAPT-02**: Email adapter implementing full `ChannelAdapter` interface (wraps existing EmailBison client)
-- [ ] **ADAPT-03**: Adapter unit tests with mock implementations validating interface contract
+- [x] **ADAPT-03**: Adapter unit tests with mock implementations validating interface contract
 
 ### Campaign
 
@@ -75,7 +75,7 @@
 | FOUND-04 | Phase 71 | Complete |
 | ADAPT-01 | Phase 72 | Complete |
 | ADAPT-02 | Phase 72 | Complete |
-| ADAPT-03 | Phase 72 | Pending |
+| ADAPT-03 | Phase 72 | Complete |
 | SEND-01 | Phase 72 | Complete |
 | SEND-02 | Phase 72 | Complete |
 | CAMP-01 | Phase 73 | Pending |
