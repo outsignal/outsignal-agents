@@ -13,6 +13,7 @@
 - ✅ **v8.0 Agent Quality Overhaul** — Phases 52-58 (shipped 2026-03-30)
 - ✅ **v8.1 Agent Memory & Intelligence** — Phases 59-61 (shipped 2026-04-01)
 - 🚧 **v9.0 Monty — Platform Engineering Agent Team** — Phases 62-67 (in progress)
+- 📋 **v10.0 Unified Outbound Architecture** — Phases 71-75 (planned)
 
 ## Phases
 
@@ -849,3 +850,81 @@ Plans:
   - [ ] 70-01-PLAN.md — Connection gate split: chainActions + deploy.ts stop pre-scheduling post-connect messages
   - [ ] 70-02-PLAN.md — connectionsAccepted counter, reply cancellation, timeout verification
   - [ ] 70-03-PLAN.md — Migration script for existing pre-scheduled actions
+
+### v10.0 Unified Outbound Architecture (Phases 71-75)
+
+**Milestone Goal:** Refactor from EmailBison-centric to channel-agnostic multi-channel outbound platform using the adapter pattern. Per-workspace channel configuration. Clean separation of email inboxes vs LinkedIn accounts.
+
+- [ ] **Phase 71: Foundation — Constants, Interface & Registry** - Extract string constants, define ChannelAdapter interface, build adapter registry and unified types
+- [ ] **Phase 72: Adapter Implementations** - LinkedIn and email adapters implementing the full interface, with sender query helpers and workspace channel config
+- [ ] **Phase 73: Campaign Deploy Refactor** - Deploy, pause, and resume go through adapters; CampaignChannelRef replaces direct EmailBison ID lookups
+- [ ] **Phase 74: Portal Unification** - Portal campaign detail, dashboard, and activity feed consume adapters instead of direct channel queries
+- [ ] **Phase 75: Analytics & Notifications** - Metrics snapshot via adapters, cross-channel comparison view, channel-aware notifications
+
+## Phase Details — v10.0
+
+### Phase 71: Foundation — Constants, Interface & Registry
+**Goal**: Every raw channel/action/status string in the codebase has a typed constant, and the ChannelAdapter interface is defined and validated as channel-agnostic (not email-shaped)
+**Depends on**: Phase 70
+**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04
+**Success Criteria** (what must be TRUE):
+  1. A single `constants.ts` file exports all channel types, action types, sender types, and status strings — grep finds zero raw string comparisons for these values in business logic
+  2. The `ChannelAdapter` interface compiles and has methods for `getLeads`, `getActions`, `getMetrics`, `deploy`, `pause`, `resume`, and `getSequenceSteps`
+  3. `getAdapter(channel)` resolves the correct adapter from the registry, and throws a clear error for unknown channels
+  4. `UnifiedLead`, `UnifiedAction`, `UnifiedMetrics`, `UnifiedStep`, and `CampaignChannelRef` types exist and are importable from `src/lib/channels/types.ts`
+**Plans**: TBD
+
+### Phase 72: Adapter Implementations
+**Goal**: Both email and LinkedIn channels have working adapter implementations that encapsulate all channel-specific query logic, and workspace channel configuration determines which adapters are available
+**Depends on**: Phase 71
+**Requirements**: ADAPT-01, ADAPT-02, ADAPT-03, SEND-01, SEND-02
+**Success Criteria** (what must be TRUE):
+  1. The LinkedIn adapter implements all `ChannelAdapter` methods by wrapping existing Prisma queries and Railway worker calls — no new LinkedIn business logic is introduced
+  2. The email adapter implements all `ChannelAdapter` methods by wrapping the existing EmailBisonClient — existing email behaviour is preserved exactly
+  3. Adapter unit tests exist with mock implementations that validate the interface contract (both adapters conform to the same test suite)
+  4. Sender queries use channel-aware helpers that encapsulate the `channel: { in: ['linkedin', 'both'] }` pattern — no more scattered channel filter logic in consuming code
+  5. Each workspace has a channel configuration that defines which channels are enabled, and `getEnabledChannels(workspace)` returns the correct set
+**Plans**: TBD
+
+### Phase 73: Campaign Deploy Refactor
+**Goal**: Campaign deployment, pause, and resume operations go through the adapter interface — no code path calls EmailBison or LinkedIn directly for these operations
+**Depends on**: Phase 72
+**Requirements**: CAMP-01, CAMP-02, CAMP-03
+**Success Criteria** (what must be TRUE):
+  1. `executeDeploy` resolves the adapter per channel and calls `adapter.deploy()` — the function never imports or calls EmailBisonClient or LinkedIn deploy functions directly
+  2. Campaign pause and resume use `adapter.pause()` and `adapter.resume()` for both channels
+  3. `CampaignChannelRef` is used across the codebase instead of direct `emailBisonCampaignId` lookups — grep for raw EB campaign ID references finds zero hits outside the email adapter itself
+  4. Existing deploy behaviour is preserved exactly — same error handling, same retry logic, same CampaignDeploy status updates
+**Plans**: TBD
+
+### Phase 74: Portal Unification
+**Goal**: Portal pages show correct data for email-only, LinkedIn-only, and dual-channel campaigns — all through the adapter interface, no direct channel queries
+**Depends on**: Phase 72
+**Requirements**: PORT-01, PORT-02, PORT-03
+**Success Criteria** (what must be TRUE):
+  1. Portal campaign detail page shows stats, leads, activity, and sequence steps by calling adapter methods — LinkedIn campaigns no longer show blank
+  2. Portal dashboard shows cross-channel overview metrics aggregated from adapters — a workspace with both email and LinkedIn sees combined totals
+  3. Portal activity feed merges email and LinkedIn activity through adapters — no direct EmailBison or LinkedInAction table queries in portal code
+**Plans**: TBD
+
+### Phase 75: Analytics & Notifications
+**Goal**: Background operations (metrics snapshots, notifications, digests) are channel-aware and use adapters — analytics cover all channels a workspace has enabled
+**Depends on**: Phase 72, Phase 73
+**Requirements**: ANAL-01, ANAL-02, ANAL-03
+**Success Criteria** (what must be TRUE):
+  1. The metrics snapshot Trigger.dev task calls `adapter.getMetrics()` per enabled channel — CachedMetrics stores channel-prefixed data while maintaining backwards compatibility with existing keys
+  2. A cross-channel performance comparison view exists showing side-by-side email vs LinkedIn metrics per workspace (reply rate, sent volume, connection/open rate)
+  3. Notifications adapt to the workspace's enabled channels — deploy notifications mention the correct channel(s), health alerts only fire for enabled channels, digests include metrics for all active channels
+**Plans**: TBD
+
+## Progress — v10.0
+
+**Execution Order:** Phases 71 through 75, sequential (74 and 75 can run in parallel after 72).
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 71. Foundation — Constants, Interface & Registry | 0/TBD | Not started | - |
+| 72. Adapter Implementations | 0/TBD | Not started | - |
+| 73. Campaign Deploy Refactor | 0/TBD | Not started | - |
+| 74. Portal Unification | 0/TBD | Not started | - |
+| 75. Analytics & Notifications | 0/TBD | Not started | - |

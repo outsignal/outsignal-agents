@@ -69,30 +69,30 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | — | Pending |
-| FOUND-02 | — | Pending |
-| FOUND-03 | — | Pending |
-| FOUND-04 | — | Pending |
-| ADAPT-01 | — | Pending |
-| ADAPT-02 | — | Pending |
-| ADAPT-03 | — | Pending |
-| CAMP-01 | — | Pending |
-| CAMP-02 | — | Pending |
-| CAMP-03 | — | Pending |
-| SEND-01 | — | Pending |
-| SEND-02 | — | Pending |
-| PORT-01 | — | Pending |
-| PORT-02 | — | Pending |
-| PORT-03 | — | Pending |
-| ANAL-01 | — | Pending |
-| ANAL-02 | — | Pending |
-| ANAL-03 | — | Pending |
+| FOUND-01 | Phase 71 | Pending |
+| FOUND-02 | Phase 71 | Pending |
+| FOUND-03 | Phase 71 | Pending |
+| FOUND-04 | Phase 71 | Pending |
+| ADAPT-01 | Phase 72 | Pending |
+| ADAPT-02 | Phase 72 | Pending |
+| ADAPT-03 | Phase 72 | Pending |
+| SEND-01 | Phase 72 | Pending |
+| SEND-02 | Phase 72 | Pending |
+| CAMP-01 | Phase 73 | Pending |
+| CAMP-02 | Phase 73 | Pending |
+| CAMP-03 | Phase 73 | Pending |
+| PORT-01 | Phase 74 | Pending |
+| PORT-02 | Phase 74 | Pending |
+| PORT-03 | Phase 74 | Pending |
+| ANAL-01 | Phase 75 | Pending |
+| ANAL-02 | Phase 75 | Pending |
+| ANAL-03 | Phase 75 | Pending |
 
 **Coverage:**
 - v10.0 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after initial definition*
+*Last updated: 2026-04-08 after roadmap creation*
