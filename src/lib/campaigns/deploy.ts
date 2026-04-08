@@ -1,6 +1,6 @@
 /**
- * Campaign deploy operations — orchestrates pushing campaign content and leads
- * to EmailBison (email channel) and the LinkedIn action queue (linkedin channel).
+ * Campaign deploy operations — orchestrates channel deploys via the adapter
+ * registry. Individual channel logic lives in EmailAdapter and LinkedInAdapter.
  *
  * Entry point: executeDeploy(campaignId, deployId) — fire-and-forget, called
  * after the API route has already returned 202.
@@ -12,347 +12,13 @@
  */
 
 import { prisma } from "@/lib/db";
-import { EmailBisonClient } from "@/lib/emailbison/client";
-import { chainActions } from "@/lib/linkedin/chain";
-import { applyTimingJitter } from "@/lib/linkedin/jitter";
-import { assignSenderForPerson } from "@/lib/linkedin/sender";
-import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
+import { initAdapters, getAdapter } from "@/lib/channels";
+import type { ChannelType } from "@/lib/channels";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { notifyDeploy, notifyCampaignLive } from "@/lib/notifications";
 
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface EmailSequenceStep {
-  position: number;
-  subjectLine?: string;
-  subjectVariantB?: string;
-  body?: string;
-  bodyText?: string;
-  delayDays?: number;
-  notes?: string;
-}
-
-interface LinkedInSequenceStep {
-  position: number;
-  type: string; // "connect" | "message" | "profile_view"
-  body?: string;
-  delayDays?: number;
-  triggerEvent?: string; // "delay_after_previous" | "email_sent" | "connection_accepted"
-  notes?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Retry helper
-// ---------------------------------------------------------------------------
-
-/**
- * Simple retry wrapper with exponential backoff.
- * Default: 3 attempts, delays of 1s, 5s, 15s.
- */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  delays = [1000, 5000, 15000],
-): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (attempt < maxRetries - 1) {
-        const delay = delays[Math.min(attempt, delays.length - 1)];
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-  throw lastError;
-}
-
-// ---------------------------------------------------------------------------
-// Email channel deploy
-// ---------------------------------------------------------------------------
-
-async function deployEmailChannel(
-  deployId: string,
-  campaignId: string,
-  campaignName: string,
-  workspaceSlug: string,
-  emailSequence: EmailSequenceStep[],
-  apiToken: string,
-): Promise<void> {
-  // Mark email channel as running
-  await prisma.campaignDeploy.update({
-    where: { id: deployId },
-    data: { emailStatus: "running" },
-  });
-
-  const ebClient = new EmailBisonClient(apiToken);
-
-  try {
-    // 1. Create EmailBison campaign
-    const ebCampaign = await withRetry(() =>
-      ebClient.createCampaign({ name: campaignName }),
-    );
-    const ebCampaignId = ebCampaign.id;
-
-    // 2. Store emailBisonCampaignId on both CampaignDeploy and Campaign records
-    await Promise.all([
-      prisma.campaignDeploy.update({
-        where: { id: deployId },
-        data: { emailBisonCampaignId: ebCampaignId },
-      }),
-      prisma.campaign.update({
-        where: { id: campaignId },
-        data: { emailBisonCampaignId: ebCampaignId },
-      }),
-    ]);
-
-    // 3. Create sequence steps
-    let emailStepCount = 0;
-    for (const step of emailSequence) {
-      await withRetry(() =>
-        ebClient.createSequenceStep(ebCampaignId, {
-          position: step.position,
-          subject: step.subjectLine,
-          body: step.body ?? step.bodyText ?? "",
-          delay_days: step.delayDays ?? 1,
-        }),
-      );
-      emailStepCount++;
-    }
-
-    // 4. Load leads from TargetList — dedup via WebhookEvent check
-    const campaign = await getCampaign(campaignId);
-    if (!campaign?.targetListId) {
-      throw new Error("Campaign has no target list");
-    }
-
-    const leads = await prisma.targetListPerson.findMany({
-      where: { listId: campaign.targetListId },
-      include: {
-        person: {
-          include: {
-            workspaces: { where: { workspace: workspaceSlug } },
-          },
-        },
-      },
-    });
-
-    // 5. Push leads (serial with 100ms delay between, dedup check)
-    let leadCount = 0;
-    for (const entry of leads) {
-      const person = entry.person;
-
-      // Outsignal-side dedup: skip if already has EMAIL_SENT event for this workspace
-      const alreadyDeployed = await prisma.webhookEvent.findFirst({
-        where: {
-          workspace: workspaceSlug,
-          eventType: "EMAIL_SENT",
-          leadEmail: person.email,
-        },
-        select: { id: true },
-      });
-
-      if (alreadyDeployed) {
-        continue;
-      }
-
-      // Skip leads without a real email — cannot deploy to EmailBison
-      if (!person.email) continue;
-
-      await withRetry(() =>
-        ebClient.createLead({
-          email: person.email!,
-          firstName: person.firstName ?? undefined,
-          lastName: person.lastName ?? undefined,
-          jobTitle: person.jobTitle ?? undefined,
-          company: person.company ?? undefined,
-        }),
-      );
-
-      leadCount++;
-
-      // Throttle — 100ms between leads
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    // 6. Update deploy record with completion
-    await prisma.campaignDeploy.update({
-      where: { id: deployId },
-      data: {
-        emailStatus: "complete",
-        emailStepCount,
-        leadCount,
-        emailError: null,
-      },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await prisma.campaignDeploy.update({
-      where: { id: deployId },
-      data: {
-        emailStatus: "failed",
-        emailError: message,
-      },
-    });
-    throw err;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// LinkedIn channel deploy
-// ---------------------------------------------------------------------------
-
-async function deployLinkedInChannel(
-  deployId: string,
-  campaignId: string,
-  workspaceSlug: string,
-  linkedinSequence: LinkedInSequenceStep[],
-  hasEmailChannel: boolean,
-): Promise<void> {
-  // Mark linkedin channel as running
-  await prisma.campaignDeploy.update({
-    where: { id: deployId },
-    data: { linkedinStatus: "running" },
-  });
-
-  try {
-    const campaign = await getCampaign(campaignId);
-    if (!campaign?.targetListId) {
-      throw new Error("Campaign has no target list");
-    }
-
-    const leads = await prisma.targetListPerson.findMany({
-      where: { listId: campaign.targetListId },
-      include: { person: true },
-    });
-
-    if (linkedinSequence.length === 0) {
-      await prisma.campaignDeploy.update({
-        where: { id: deployId },
-        data: { linkedinStatus: "complete", linkedinStepCount: 0 },
-      });
-      // Still call createSequenceRulesForCampaign with empty array to clean up
-      // any stale rules from a previous deploy (idempotent redeploy support)
-      await createSequenceRulesForCampaign({
-        workspaceSlug,
-        campaignName: campaign.name,
-        linkedinSequence: [],
-      });
-      return;
-    }
-
-    // ── Connection gate split ────────────────────────────────────────────
-    // Split the sequence at the connect step. Pre-connect steps (profile_view,
-    // connect) are scheduled immediately via chainActions. Post-connect steps
-    // (follow-up messages) become CampaignSequenceRules triggered by
-    // connection_accepted — they are NOT pre-scheduled.
-    const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
-
-    // Ensure profile_view is the first step (industry standard warm-up)
-    if (sorted.length > 0 && sorted[0].type !== "profile_view") {
-      sorted.unshift({ position: 0, type: "profile_view", delayDays: 0 });
-    }
-
-    const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
-
-    const preConnectSteps = connectIndex >= 0
-      ? sorted.slice(0, connectIndex + 1)
-      : sorted; // No connect step — all steps are pre-connect
-    const postConnectSteps = connectIndex >= 0
-      ? sorted.slice(connectIndex + 1)
-      : []; // No connect step — no post-connect steps
-
-    let linkedinStepCount = 0;
-    const STAGGER_BASE_MS = 15 * 60 * 1000; // 15 minutes between leads (jittered +-20%)
-
-    for (let i = 0; i < leads.length; i++) {
-      const person = leads[i].person;
-
-      if (!person.linkedinUrl) {
-        // No LinkedIn URL — skip silently
-        continue;
-      }
-
-      // Assign sender
-      const sender = await assignSenderForPerson(workspaceSlug, {
-        mode: hasEmailChannel ? "email_linkedin" : "linkedin_only",
-      });
-
-      if (!sender) {
-        console.warn(
-          `[deploy] No active sender available for workspace ${workspaceSlug} — skipping lead ${person.email}`,
-        );
-        continue;
-      }
-
-      // Stagger: lead i fires at i * ~15 minutes (jittered 12-18 min) from now
-      const scheduledFor = new Date(Date.now() + i * applyTimingJitter(STAGGER_BASE_MS));
-
-      // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
-      const actionIds = await chainActions({
-        senderId: sender.id,
-        personId: person.id,
-        workspaceSlug,
-        sequence: preConnectSteps.map((step) => ({
-          position: step.position,
-          type: step.type,
-          body: step.body,
-          delayDays: step.delayDays,
-        })),
-        baseScheduledFor: scheduledFor,
-        priority: 5,
-        campaignName: campaign.name,
-      });
-
-      console.log(
-        `[deploy] Split sequence: ${preConnectSteps.length} pre-connect, ${postConnectSteps.length} post-connect rules for ${person.email}`,
-      );
-      linkedinStepCount++;
-    }
-
-    // Create CampaignSequenceRules for post-connect follow-up messages.
-    // These fire when connection_accepted is detected by the connection-poller.
-    // Always called (even if postConnectSteps is empty) to clean up stale rules
-    // from a previous deploy (idempotent redeploy support).
-    const postConnectRules = postConnectSteps.map((step, idx) => ({
-      position: step.position,
-      type: step.type,
-      body: step.body,
-      delayHours: (step.delayDays ?? (idx === 0 ? 1 : 2)) * 24,
-      triggerEvent: "connection_accepted" as const,
-    }));
-
-    await createSequenceRulesForCampaign({
-      workspaceSlug,
-      campaignName: campaign.name,
-      linkedinSequence: postConnectRules,
-    });
-
-    await prisma.campaignDeploy.update({
-      where: { id: deployId },
-      data: {
-        linkedinStatus: "complete",
-        linkedinStepCount,
-        linkedinError: null,
-      },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await prisma.campaignDeploy.update({
-      where: { id: deployId },
-      data: {
-        linkedinStatus: "failed",
-        linkedinError: message,
-      },
-    });
-    throw err;
-  }
-}
+// CAMP-03 audit (Phase 73): emailBisonCampaignId writes moved to EmailAdapter.deploy().
+// Remaining raw EB ID references in portal/analytics files are Phase 74/75 scope.
 
 // ---------------------------------------------------------------------------
 // Finalize — compute overall status from per-channel outcomes
@@ -405,13 +71,15 @@ async function finalizeDeployStatus(
  * Execute a full campaign deploy. Fire-and-forget — call this after the API
  * route has returned 202.
  *
- * Pushes email content + leads to EmailBison and/or enqueues LinkedIn actions,
- * depending on campaign.channels. Tracks progress on the CampaignDeploy record.
+ * Dispatches to channel adapters via the registry. Tracks progress on the
+ * CampaignDeploy record.
  */
 export async function executeDeploy(
   campaignId: string,
   deployId: string,
 ): Promise<void> {
+  initAdapters();
+
   // 1. Mark deploy as running
   await prisma.campaignDeploy.update({
     where: { id: deployId },
@@ -431,62 +99,51 @@ export async function executeDeploy(
       );
     }
 
-    // 3. Load workspace for API token
-    const workspace = await prisma.workspace.findUniqueOrThrow({
-      where: { slug: campaign.workspaceSlug },
-      select: { apiToken: true },
-    });
-
-    if (!workspace.apiToken) {
-      throw new Error(
-        `Workspace '${campaign.workspaceSlug}' has no API token configured.`,
-      );
-    }
-
-    // 4. Parse channels from campaign
+    // 3. Parse channels from campaign
     const channels = campaign.channels; // already parsed array from formatCampaignDetail
-    const hasEmail = channels.includes("email");
-    const hasLinkedIn = channels.includes("linkedin");
 
-    // 5. Run channels (email first if both present)
-    if (hasEmail) {
-      const emailSequence = (campaign.emailSequence ?? []) as EmailSequenceStep[];
-      await deployEmailChannel(
-        deployId,
-        campaignId,
-        campaign.name,
-        campaign.workspaceSlug,
-        emailSequence,
-        workspace.apiToken,
-      );
-    } else {
-      // Mark email as skipped
-      await prisma.campaignDeploy.update({
-        where: { id: deployId },
-        data: { emailStatus: "skipped" },
-      });
+    // 4. Run channels via adapter dispatch (email first if both present)
+    for (const channel of ["email", "linkedin"] as const) {
+      if (channels.includes(channel)) {
+        const adapter = getAdapter(channel);
+        await adapter.deploy({
+          deployId,
+          campaignId,
+          campaignName: campaign.name,
+          workspaceSlug: campaign.workspaceSlug,
+          channels,
+        });
+      } else {
+        const statusField = channel === "email" ? "emailStatus" : "linkedinStatus";
+        await prisma.campaignDeploy.update({
+          where: { id: deployId },
+          data: { [statusField]: "skipped" },
+        });
+      }
     }
 
-    if (hasLinkedIn) {
-      const linkedinSequence = (campaign.linkedinSequence ?? []) as LinkedInSequenceStep[];
-      await deployLinkedInChannel(
-        deployId,
-        campaignId,
-        campaign.workspaceSlug,
-        linkedinSequence,
-        hasEmail,
-      );
-    } else {
-      await prisma.campaignDeploy.update({
-        where: { id: deployId },
-        data: { linkedinStatus: "skipped" },
-      });
-    }
-
-    // 6. Finalize
+    // 5. Finalize
     await finalizeDeployStatus(deployId, channels);
 
-    // 7. Send deploy completion notification (non-blocking)
+    // 5b. Auto-transition campaign from "deployed" to "active" on successful deploy
+    const finalizedDeploy = await prisma.campaignDeploy.findUniqueOrThrow({
+      where: { id: deployId },
+      select: { status: true },
+    });
+    if (finalizedDeploy.status === "complete") {
+      // Only transition if still in "deployed" — don't re-activate paused/archived campaigns
+      const activated = await prisma.campaign.updateMany({
+        where: { id: campaignId, status: "deployed" },
+        data: { status: "active" },
+      });
+      if (activated.count > 0) {
+        console.log(
+          `[deploy] Auto-transitioned campaign ${campaignId} from 'deployed' to 'active'`,
+        );
+      }
+    }
+
+    // 6. Send deploy completion notification (non-blocking)
     const finalDeploy = await prisma.campaignDeploy.findUnique({ where: { id: deployId } });
     if (finalDeploy) {
       await notifyDeploy({
@@ -548,6 +205,8 @@ export async function retryDeployChannel(
   deployId: string,
   channel: "email" | "linkedin",
 ): Promise<void> {
+  initAdapters();
+
   const deploy = await prisma.campaignDeploy.findUniqueOrThrow({
     where: { id: deployId },
     select: {
@@ -559,7 +218,6 @@ export async function retryDeployChannel(
   });
 
   const channels = JSON.parse(deploy.channels) as string[];
-  const hasEmail = channels.includes("email");
 
   // Reset the target channel
   if (channel === "email") {
@@ -578,43 +236,19 @@ export async function retryDeployChannel(
     });
   }
 
-  // Load workspace API token
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: deploy.workspaceSlug },
-    select: { apiToken: true },
-  });
-
-  if (!workspace.apiToken) {
-    throw new Error(
-      `Workspace '${deploy.workspaceSlug}' has no API token configured.`,
-    );
-  }
-
   const campaign = await getCampaign(deploy.campaignId);
   if (!campaign) {
     throw new Error(`Campaign not found: ${deploy.campaignId}`);
   }
 
-  if (channel === "email") {
-    const emailSequence = (campaign.emailSequence ?? []) as EmailSequenceStep[];
-    await deployEmailChannel(
-      deployId,
-      deploy.campaignId,
-      deploy.campaignName,
-      deploy.workspaceSlug,
-      emailSequence,
-      workspace.apiToken,
-    );
-  } else {
-    const linkedinSequence = (campaign.linkedinSequence ?? []) as LinkedInSequenceStep[];
-    await deployLinkedInChannel(
-      deployId,
-      deploy.campaignId,
-      deploy.workspaceSlug,
-      linkedinSequence,
-      hasEmail,
-    );
-  }
+  const adapter = getAdapter(channel as ChannelType);
+  await adapter.deploy({
+    deployId,
+    campaignId: deploy.campaignId,
+    campaignName: deploy.campaignName,
+    workspaceSlug: deploy.workspaceSlug,
+    channels,
+  });
 
   // Recompute overall status
   await finalizeDeployStatus(deployId, channels);
