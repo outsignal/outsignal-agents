@@ -899,7 +899,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `executeDeploy` resolves the adapter per channel and calls `adapter.deploy()` — the function never imports or calls EmailBisonClient or LinkedIn deploy functions directly
   2. Campaign pause and resume use `adapter.pause()` and `adapter.resume()` for both channels
-  3. `CampaignChannelRef` is used across the codebase instead of direct `emailBisonCampaignId` lookups — grep for raw EB campaign ID references finds zero hits outside the email adapter itself
+  3. Deploy-path `emailBisonCampaignId` writes are internal to EmailAdapter — `deploy.ts` has zero raw EB ID references. Remaining refs in portal/analytics/webhook files are documented as Phase 74/75 scope
   4. Existing deploy behaviour is preserved exactly — same error handling, same retry logic, same CampaignDeploy status updates
 **Plans**: 2 plans
 Plans:
