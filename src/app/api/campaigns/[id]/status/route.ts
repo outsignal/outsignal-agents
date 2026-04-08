@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { prisma } from "@/lib/db";
 import { updateCampaignStatus } from "@/lib/campaigns/operations";
+import { pauseCampaignChannels, resumeCampaignChannels } from "@/lib/campaigns/lifecycle";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 
 export async function POST(
@@ -27,21 +28,23 @@ export async function POST(
 
     const campaign = await updateCampaignStatus(id, status);
 
-    // When a LinkedIn (or email_linkedin) campaign is activated for the first
-    // time (deployed -> active), automatically trigger the deploy step so
-    // LinkedInAction records are enqueued for the worker. Skip if a
-    // CampaignDeploy already exists (prevents duplicates) and skip on resume
-    // from pause (paused -> active).
+    // Handle channel-level side effects after the status transition.
     if (status === "active") {
-      const hasLinkedIn = campaign.channels.includes("linkedin");
+      const existingDeploy = await prisma.campaignDeploy.findFirst({
+        where: { campaignId: id },
+        select: { id: true },
+      });
 
-      if (hasLinkedIn) {
-        const existingDeploy = await prisma.campaignDeploy.findFirst({
-          where: { campaignId: id },
-          select: { id: true },
-        });
+      if (existingDeploy) {
+        // Resuming from paused — restart channel sending via adapters
+        resumeCampaignChannels(id).catch((err) =>
+          console.error(`[campaign-status] Resume channels failed for ${id}:`, err),
+        );
+      } else {
+        // First activation — auto-trigger deploy for LinkedIn campaigns
+        const hasLinkedIn = campaign.channels.includes("linkedin");
 
-        if (!existingDeploy) {
+        if (hasLinkedIn) {
           const channels: string[] = campaign.channels;
 
           const deploy = await prisma.campaignDeploy.create({
@@ -72,6 +75,12 @@ export async function POST(
           );
         }
       }
+    }
+
+    if (status === "paused") {
+      pauseCampaignChannels(id).catch((err) =>
+        console.error(`[campaign-status] Pause channels failed for ${id}:`, err),
+      );
     }
 
     return NextResponse.json(campaign);
