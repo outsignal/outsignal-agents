@@ -12,3 +12,9 @@ export {
   getAllAdapters,
   clearAdapters,
 } from "./registry";
+export {
+  senderChannelFilter,
+  getActiveSendersForChannel,
+  countActiveSenders,
+} from "./sender-helpers";
+export { getEnabledChannels } from "./workspace-channels";
