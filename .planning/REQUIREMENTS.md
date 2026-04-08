@@ -7,10 +7,10 @@
 
 ### Foundation
 
-- [ ] **FOUND-01**: All channel types, action types, and sender types extracted into typed constants (no raw strings in business logic)
-- [ ] **FOUND-02**: `ChannelAdapter` interface defined with methods: `getLeads`, `getActions`, `getMetrics`, `deploy`, `pause`, `resume`, `getSequenceSteps`
-- [ ] **FOUND-03**: Adapter registry (`Map<ChannelType, ChannelAdapter>`) with `getAdapter(channel)` resolver
-- [ ] **FOUND-04**: Unified type definitions: `UnifiedLead`, `UnifiedAction`, `UnifiedMetrics`, `UnifiedStep`, `CampaignChannelRef`
+- [x] **FOUND-01**: All channel types, action types, and sender types extracted into typed constants (no raw strings in business logic)
+- [x] **FOUND-02**: `ChannelAdapter` interface defined with methods: `getLeads`, `getActions`, `getMetrics`, `deploy`, `pause`, `resume`, `getSequenceSteps`
+- [x] **FOUND-03**: Adapter registry (`Map<ChannelType, ChannelAdapter>`) with `getAdapter(channel)` resolver
+- [x] **FOUND-04**: Unified type definitions: `UnifiedLead`, `UnifiedAction`, `UnifiedMetrics`, `UnifiedStep`, `CampaignChannelRef`
 
 ### Adapters
 
@@ -69,10 +69,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 71 | Pending |
-| FOUND-02 | Phase 71 | Pending |
-| FOUND-03 | Phase 71 | Pending |
-| FOUND-04 | Phase 71 | Pending |
+| FOUND-01 | Phase 71 | Complete |
+| FOUND-02 | Phase 71 | Complete |
+| FOUND-03 | Phase 71 | Complete |
+| FOUND-04 | Phase 71 | Complete |
 | ADAPT-01 | Phase 72 | Pending |
 | ADAPT-02 | Phase 72 | Pending |
 | ADAPT-03 | Phase 72 | Pending |
