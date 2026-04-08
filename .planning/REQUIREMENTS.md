@@ -32,7 +32,7 @@
 ### Portal
 
 - [ ] **PORT-01**: Portal campaign detail page consumes adapters for stats, leads, activity, sequence (replaces dual code paths)
-- [ ] **PORT-02**: Portal dashboard consumes adapters for cross-channel overview metrics
+- [x] **PORT-02**: Portal dashboard consumes adapters for cross-channel overview metrics
 - [ ] **PORT-03**: Portal activity feed consumes adapters (no direct table queries)
 
 ### Analytics & Notifications
@@ -82,7 +82,7 @@
 | CAMP-02 | Phase 73 | Complete |
 | CAMP-03 | Phase 73 | Complete |
 | PORT-01 | Phase 74 | Pending |
-| PORT-02 | Phase 74 | Pending |
+| PORT-02 | Phase 74 | Complete |
 | PORT-03 | Phase 74 | Pending |
 | ANAL-01 | Phase 75 | Pending |
 | ANAL-02 | Phase 75 | Pending |

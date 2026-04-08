@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Monty — Platform Engineering Agent Team
 status: unknown
-last_updated: "2026-04-08T14:52:27.999Z"
+last_updated: "2026-04-08T19:49:47.607Z"
 progress:
-  total_phases: 71
+  total_phases: 72
   completed_phases: 69
-  total_plans: 195
-  completed_plans: 196
+  total_plans: 198
+  completed_plans: 198
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** Channel-agnostic outbound platform where EmailBison is just one provider behind an adapter, not the foundation everything depends on.
-**Current focus:** v10.0 Phase 73 — Campaign Deploy Refactor
+**Current focus:** v10.0 Phase 74 — Portal Unification
 
 ## Current Position
 
-Phase: 73 of 75 (Campaign Deploy Refactor)
+Phase: 74 of 75 (Portal Unification)
 Plan: 2 of 2
-Status: Phase 73 complete — all campaign deploy refactor done
-Last activity: 2026-04-08 — Completed 73-02 (pause/resume lifecycle wiring)
+Status: Plan 74-02 complete — portal dashboard channel-aware refactor done
+Last activity: 2026-04-08 — Completed 74-02 (portal dashboard getEnabledChannels refactor)
 
 Progress: [██████████] 100%
 
@@ -44,6 +44,8 @@ Progress: [██████████] 100%
 | 72 | 03 | 2min | 2 | 3 |
 | 73 | 01 | 5min | 3 | 6 |
 | 73 | 02 | 2min | 2 | 2 |
+| 74 | 02 | 1min | 1 | 1 |
+| Phase 74-portal-unification P03 | 12 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -70,6 +72,9 @@ Key v10.0 decisions:
 - [Phase 73]: [73-01]: Adapters resolve credentials internally via getClient() — orchestrator is credential-free
 - [Phase 73]: [73-02]: Pause/resume are fire-and-forget from status route — status committed first, channel ops best-effort
 - [Phase 73]: [73-02]: Resume detection uses existingDeploy check to distinguish resume from first activation
+- [Phase 74]: [74-02]: EmailBisonClient loaded via dynamic import() in helper — removes from top-level dashboard imports while keeping workspace-level API (no N+1)
+- [Phase 74]: [74-02]: getEnabledChannels() takes pkg string not workspace object — plan interface description was inaccurate, actual signature is simpler
+- [Phase 74]: [74-02]: hasEmail gate added — LinkedIn-only workspaces no longer make unused EB API calls
 
 ### Research Flags
 
@@ -87,5 +92,5 @@ None blocking v10.0.
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Completed 73-02-PLAN.md — Phase 73 complete (campaign deploy refactor)
+Stopped at: Completed 74-02-PLAN.md — Phase 74 Plan 2 complete (portal dashboard channel-aware refactor)
 Resume file: None
