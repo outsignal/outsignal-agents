@@ -21,7 +21,7 @@
 ### Campaign
 
 - [x] **CAMP-01**: Campaign deployment uses adapters (`executeDeploy` resolves adapter per channel, no direct EmailBison/LinkedIn calls)
-- [ ] **CAMP-02**: Campaign pause/resume uses adapters
+- [x] **CAMP-02**: Campaign pause/resume uses adapters
 - [x] **CAMP-03**: `CampaignChannelRef` replaces direct `emailBisonCampaignId` lookups across the codebase
 
 ### Sender
@@ -79,7 +79,7 @@
 | SEND-01 | Phase 72 | Complete |
 | SEND-02 | Phase 72 | Complete |
 | CAMP-01 | Phase 73 | Complete |
-| CAMP-02 | Phase 73 | Pending |
+| CAMP-02 | Phase 73 | Complete |
 | CAMP-03 | Phase 73 | Complete |
 | PORT-01 | Phase 74 | Pending |
 | PORT-02 | Phase 74 | Pending |

@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 ## Current Position
 
 Phase: 73 of 75 (Campaign Deploy Refactor)
-Plan: 1 of 2
-Status: Plan 73-01 complete — deploy adapter wiring done
-Last activity: 2026-04-08 — Completed 73-01 (deploy adapter wiring)
+Plan: 2 of 2
+Status: Phase 73 complete — all campaign deploy refactor done
+Last activity: 2026-04-08 — Completed 73-02 (pause/resume lifecycle wiring)
 
 Progress: [██████████] 100%
 
@@ -43,6 +43,7 @@ Progress: [██████████] 100%
 | 72 | 01 | 3min | 3 | 3 |
 | 72 | 03 | 2min | 2 | 3 |
 | 73 | 01 | 5min | 3 | 6 |
+| 73 | 02 | 2min | 2 | 2 |
 
 ## Accumulated Context
 
@@ -67,6 +68,8 @@ Key v10.0 decisions:
 - [Phase 73]: [73-01]: DeployParams.channels replaces sequence for cross-channel awareness
 - [Phase 73]: [73-01]: Adapters throw on failure to preserve orchestrator catch block behavior
 - [Phase 73]: [73-01]: Adapters resolve credentials internally via getClient() — orchestrator is credential-free
+- [Phase 73]: [73-02]: Pause/resume are fire-and-forget from status route — status committed first, channel ops best-effort
+- [Phase 73]: [73-02]: Resume detection uses existingDeploy check to distinguish resume from first activation
 
 ### Research Flags
 
@@ -84,5 +87,5 @@ None blocking v10.0.
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Completed 73-01-PLAN.md — deploy adapter wiring done
+Stopped at: Completed 73-02-PLAN.md — Phase 73 complete (campaign deploy refactor)
 Resume file: None
