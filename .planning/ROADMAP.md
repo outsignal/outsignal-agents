@@ -886,7 +886,11 @@ Plans:
   3. Adapter unit tests exist with mock implementations that validate the interface contract (both adapters conform to the same test suite)
   4. Sender queries use channel-aware helpers that encapsulate the `channel: { in: ['linkedin', 'both'] }` pattern — no more scattered channel filter logic in consuming code
   5. Each workspace has a channel configuration that defines which channels are enabled, and `getEnabledChannels(workspace)` returns the correct set
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 72-01-PLAN.md — LinkedIn and email adapter implementations (ChannelAdapter interface)
+- [ ] 72-02-PLAN.md — Sender query helpers and workspace channel configuration
+- [ ] 72-03-PLAN.md — Shared adapter contract test suite and helper tests
 
 ### Phase 73: Campaign Deploy Refactor
 **Goal**: Campaign deployment, pause, and resume operations go through the adapter interface — no code path calls EmailBison or LinkedIn directly for these operations
