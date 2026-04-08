@@ -20,6 +20,7 @@ export {
 export { getEnabledChannels } from "./workspace-channels";
 export { LinkedInAdapter } from "./linkedin-adapter";
 export { EmailAdapter } from "./email-adapter";
+export { buildRef } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Bootstrap — call once before using getAdapter()

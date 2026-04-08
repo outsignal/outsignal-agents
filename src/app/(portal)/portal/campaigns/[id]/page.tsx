@@ -1,9 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign } from "@/lib/campaigns/operations";
-import { getWorkspaceBySlug } from "@/lib/workspaces";
-import { EmailBisonClient } from "@/lib/emailbison/client";
-import type { Campaign as EBCampaign, SequenceStep } from "@/lib/emailbison/types";
 import { CampaignDetailTabs } from "@/components/portal/campaign-detail-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { EmailActivityPoint } from "@/components/charts/email-activity-chart";
@@ -14,6 +11,10 @@ import { getCampaignLeadSample } from "@/lib/campaigns/operations";
 import { CampaignApprovalLeads } from "@/components/portal/campaign-approval-leads";
 import { CampaignApprovalContent } from "@/components/portal/campaign-approval-content";
 import { Card, CardContent } from "@/components/ui/card";
+import { initAdapters, getAdapter } from "@/lib/channels";
+import { buildRef } from "@/lib/channels/helpers";
+import type { ChannelType } from "@/lib/channels/constants";
+import type { UnifiedMetrics, UnifiedStep } from "@/lib/channels/types";
 
 
 export default async function PortalCampaignDetailPage({
@@ -38,6 +39,9 @@ export default async function PortalCampaignDetailPage({
     notFound();
   }
 
+  // Bootstrap adapters
+  initAdapters();
+  const ref = buildRef(campaign, workspaceSlug);
 
   // Fetch lead sample for approval view
   let leadSample: { leads: Array<{ personId: string; firstName: string | null; lastName: string | null; jobTitle: string | null; company: string | null; location: string | null; linkedinUrl: string | null; icpScore: number | null }>; totalCount: number } | null = null;
@@ -45,99 +49,48 @@ export default async function PortalCampaignDetailPage({
     leadSample = await getCampaignLeadSample(campaign.targetListId, session.workspaceSlug, 500);
   }
 
-  // Fetch EmailBison campaign stats + sequence steps if campaign has been deployed
-  let ebCampaign: EBCampaign | null = null;
-  let sequenceSteps: SequenceStep[] = [];
   const hasPerformanceData = ["active", "paused", "completed"].includes(campaign.status);
   const needsSequenceSteps = hasPerformanceData || campaign.status === "pending_approval";
-  const isLinkedInOnly =
-    campaign.channels.includes("linkedin") && !campaign.channels.includes("email");
-  if (needsSequenceSteps && campaign.emailBisonCampaignId) {
-    try {
-      const workspace = await getWorkspaceBySlug(workspaceSlug);
-      if (workspace?.apiToken) {
-        const client = new EmailBisonClient(workspace.apiToken);
-        ebCampaign = await client.getCampaignById(campaign.emailBisonCampaignId);
 
-        if (ebCampaign) {
-          try {
-            sequenceSteps = await client.getSequenceSteps(ebCampaign.id);
-          } catch {
-            // ignore -- steps might not be available
-          }
-        }
-      }
-    } catch {
-      // Silently fail -- stats are non-critical
-    }
-  }
+  // Fetch metrics and sequence steps via adapters for all campaign channels
+  let metrics: UnifiedMetrics[] = [];
+  let sequenceSteps: UnifiedStep[] = [];
 
-  // Fetch LinkedIn stats when emailBisonCampaignId is null but campaign is LinkedIn
-  interface LinkedInStats {
-    totalActions: number;
-    connectionsSent: number;
-    messagesCompleted: number;
-    profileViews: number;
-    pendingActions: number;
-  }
-  let linkedInStats: LinkedInStats | null = null;
-  if (hasPerformanceData && !campaign.emailBisonCampaignId && campaign.channels.includes("linkedin")) {
+  if (hasPerformanceData) {
     try {
-      const [
-        totalActions,
-        connectionsSent,
-        messagesCompleted,
-        profileViews,
-        pendingActions,
-      ] = await Promise.all([
-        prisma.linkedInAction.count({
-          where: { campaignName: campaign.name, workspaceSlug },
-        }),
-        prisma.linkedInAction.count({
-          where: {
-            campaignName: campaign.name,
-            workspaceSlug,
-            actionType: "connect",
-            status: "complete",
-          },
-        }),
-        prisma.linkedInAction.count({
-          where: {
-            campaignName: campaign.name,
-            workspaceSlug,
-            actionType: "message",
-            status: "complete",
-          },
-        }),
-        prisma.linkedInAction.count({
-          where: {
-            campaignName: campaign.name,
-            workspaceSlug,
-            actionType: "profile_view",
-            status: "complete",
-          },
-        }),
-        prisma.linkedInAction.count({
-          where: {
-            campaignName: campaign.name,
-            workspaceSlug,
-            status: { in: ["pending", "running"] },
-          },
-        }),
+      const [metricsResults, stepsResults] = await Promise.all([
+        Promise.all(
+          campaign.channels.map(async (ch: string) => {
+            const adapter = getAdapter(ch as ChannelType);
+            return adapter.getMetrics(ref);
+          })
+        ),
+        Promise.all(
+          campaign.channels.map(async (ch: string) =>
+            getAdapter(ch as ChannelType).getSequenceSteps(ref)
+          )
+        ),
       ]);
-      linkedInStats = {
-        totalActions,
-        connectionsSent,
-        messagesCompleted,
-        profileViews,
-        pendingActions,
-      };
+      metrics = metricsResults;
+      sequenceSteps = stepsResults.flat();
     } catch {
-      // Silently fail -- stats are non-critical
+      // Silently fail — stats are non-critical
+    }
+  } else if (needsSequenceSteps) {
+    // Pending approval: only fetch sequence steps (not metrics)
+    try {
+      const stepsResults = await Promise.all(
+        campaign.channels.map(async (ch: string) =>
+          getAdapter(ch as ChannelType).getSequenceSteps(ref)
+        )
+      );
+      sequenceSteps = stepsResults.flat();
+    } catch {
+      // Silently fail
     }
   }
 
-  // Fetch replies for this campaign
+  // Fetch replies for this campaign (channel-agnostic — stays as direct query)
   const replies = await prisma.reply.findMany({
     where: { campaignId: campaign.id, workspaceSlug },
     orderBy: { receivedAt: "desc" },
@@ -156,97 +109,87 @@ export default async function PortalCampaignDetailPage({
     },
   });
 
-  // Fetch chart data from WebhookEvent table (last 30 days, filtered by campaign)
+  // Fetch chart data — email channel: bucket WebhookEvents by date
+  // LinkedIn channel: bucket completed LinkedInActions by date
+  // Keep chart bucketing server-side; adapters provide flat action lists
   let chartData: EmailActivityPoint[] = [];
-  if (hasPerformanceData && campaign.emailBisonCampaignId) {
+  if (hasPerformanceData) {
     try {
       const sinceDate = new Date();
       sinceDate.setDate(sinceDate.getDate() - 30);
 
-      const chartEvents = await prisma.webhookEvent.findMany({
-        where: {
-          workspace: workspaceSlug,
-          campaignId: String(campaign.emailBisonCampaignId),
-          receivedAt: { gte: sinceDate },
-          eventType: {
-            in: [
-              "EMAIL_SENT",
-              "LEAD_REPLIED",
-              "LEAD_INTERESTED",
-              "EMAIL_BOUNCED",
-              "LEAD_UNSUBSCRIBED",
-            ],
+      if (campaign.channels.includes("email") && campaign.emailBisonCampaignId) {
+        // Email channel chart data from WebhookEvent table
+        const chartEvents = await prisma.webhookEvent.findMany({
+          where: {
+            workspace: workspaceSlug,
+            campaignId: String(campaign.emailBisonCampaignId),
+            receivedAt: { gte: sinceDate },
+            eventType: {
+              in: [
+                "EMAIL_SENT",
+                "LEAD_REPLIED",
+                "LEAD_INTERESTED",
+                "EMAIL_BOUNCED",
+                "LEAD_UNSUBSCRIBED",
+              ],
+            },
+            isAutomated: false,
           },
-          isAutomated: false,
-        },
-        select: { receivedAt: true, eventType: true },
-        orderBy: { receivedAt: "asc" },
-      });
+          select: { receivedAt: true, eventType: true },
+          orderBy: { receivedAt: "asc" },
+        });
 
-      const buckets = new Map<string, EmailActivityPoint>();
-      for (const evt of chartEvents) {
-        const dateKey = evt.receivedAt.toISOString().slice(0, 10);
-        if (!buckets.has(dateKey)) {
-          buckets.set(dateKey, { date: dateKey, sent: 0, replied: 0, bounced: 0, interested: 0, unsubscribed: 0 });
+        const buckets = new Map<string, EmailActivityPoint>();
+        for (const evt of chartEvents) {
+          const dateKey = evt.receivedAt.toISOString().slice(0, 10);
+          if (!buckets.has(dateKey)) {
+            buckets.set(dateKey, { date: dateKey, sent: 0, replied: 0, bounced: 0, interested: 0, unsubscribed: 0 });
+          }
+          const bucket = buckets.get(dateKey)!;
+          switch (evt.eventType) {
+            case "EMAIL_SENT":
+              bucket.sent = (bucket.sent ?? 0) + 1;
+              break;
+            case "LEAD_REPLIED":
+              bucket.replied = (bucket.replied ?? 0) + 1;
+              break;
+            case "EMAIL_BOUNCED":
+              bucket.bounced = (bucket.bounced ?? 0) + 1;
+              break;
+            case "LEAD_INTERESTED":
+              bucket.interested = (bucket.interested ?? 0) + 1;
+              break;
+            case "LEAD_UNSUBSCRIBED":
+              bucket.unsubscribed = (bucket.unsubscribed ?? 0) + 1;
+              break;
+          }
         }
-        const bucket = buckets.get(dateKey)!;
-        switch (evt.eventType) {
-          case "EMAIL_SENT":
+        chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
+      } else if (campaign.channels.includes("linkedin") && !campaign.channels.includes("email")) {
+        // LinkedIn-only chart data: use adapter.getActions() and bucket by date
+        const liActions = await getAdapter("linkedin" as ChannelType).getActions(ref);
+        const cutoff = sinceDate.getTime();
+
+        const buckets = new Map<string, EmailActivityPoint>();
+        for (const action of liActions) {
+          if (action.performedAt.getTime() < cutoff) continue;
+          const dateKey = action.performedAt.toISOString().slice(0, 10);
+          if (!buckets.has(dateKey)) {
+            buckets.set(dateKey, { date: dateKey, sent: 0, replied: 0 });
+          }
+          const bucket = buckets.get(dateKey)!;
+          // Map connect actions -> "sent" slot, messages -> "replied" slot for chart reuse
+          if (action.actionType === "connect" || action.actionType === "connection_request") {
             bucket.sent = (bucket.sent ?? 0) + 1;
-            break;
-          case "LEAD_REPLIED":
+          } else if (action.actionType === "message") {
             bucket.replied = (bucket.replied ?? 0) + 1;
-            break;
-          case "EMAIL_BOUNCED":
-            bucket.bounced = (bucket.bounced ?? 0) + 1;
-            break;
-          case "LEAD_INTERESTED":
-            bucket.interested = (bucket.interested ?? 0) + 1;
-            break;
-          case "LEAD_UNSUBSCRIBED":
-            bucket.unsubscribed = (bucket.unsubscribed ?? 0) + 1;
-            break;
+          }
         }
+        chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
       }
-      chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
     } catch {
-      // Silently fail -- chart is non-critical
-    }
-  } else if (hasPerformanceData && !campaign.emailBisonCampaignId && campaign.channels.includes("linkedin")) {
-    // LinkedIn chart data: group completed actions by date
-    try {
-      const sinceDate = new Date();
-      sinceDate.setDate(sinceDate.getDate() - 30);
-
-      const liActions = await prisma.linkedInAction.findMany({
-        where: {
-          campaignName: campaign.name,
-          workspaceSlug,
-          status: "complete",
-          completedAt: { gte: sinceDate },
-        },
-        select: { completedAt: true, actionType: true },
-        orderBy: { completedAt: "asc" },
-      });
-
-      const buckets = new Map<string, EmailActivityPoint>();
-      for (const action of liActions) {
-        if (!action.completedAt) continue;
-        const dateKey = action.completedAt.toISOString().slice(0, 10);
-        if (!buckets.has(dateKey)) {
-          buckets.set(dateKey, { date: dateKey, sent: 0, replied: 0 });
-        }
-        const bucket = buckets.get(dateKey)!;
-        // Map connect actions -> "sent" slot, messages -> "replied" slot for chart reuse
-        if (action.actionType === "connect") {
-          bucket.sent = (bucket.sent ?? 0) + 1;
-        } else if (action.actionType === "message") {
-          bucket.replied = (bucket.replied ?? 0) + 1;
-        }
-      }
-      chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
-    } catch {
-      // Silently fail -- chart is non-critical
+      // Silently fail — chart is non-critical
     }
   }
 
@@ -270,6 +213,20 @@ export default async function PortalCampaignDetailPage({
       ? stepParam
       : campaign.leadsApproved ? "content" : "leads"
     : null;
+
+  // Build EB sequence steps shape for CampaignApprovalContent (still needs raw EB format)
+  // We use the UnifiedStep array derived from the adapter but re-shape it to the EB type
+  // Note: CampaignApprovalContent uses ebSequenceSteps for display only — this is the approval flow
+  const ebSequenceStepsForApproval = sequenceSteps
+    .filter((s) => s.channel === "email")
+    .map((s) => ({
+      id: s.stepNumber,
+      campaign_id: campaign.emailBisonCampaignId ?? 0,
+      position: s.stepNumber,
+      subject: s.subjectLine ?? undefined,
+      body: s.bodyHtml ?? undefined,
+      delay_days: s.delayDays,
+    }));
 
   return (
     <div className={isPendingApproval ? "p-4 space-y-4" : "p-6 space-y-6"}>
@@ -438,7 +395,7 @@ export default async function PortalCampaignDetailPage({
               contentApproved={campaign.contentApproved}
               contentFeedback={campaign.contentFeedback}
               isPending={campaign.status === "pending_approval"}
-              ebSequenceSteps={sequenceSteps}
+              ebSequenceSteps={ebSequenceStepsForApproval}
             />
           )}
         </div>
@@ -477,20 +434,15 @@ export default async function PortalCampaignDetailPage({
 
       {hasPerformanceData && (
         <CampaignDetailTabs
-          ebCampaign={ebCampaign}
-          chartData={chartData}
-          openTracking={ebCampaign?.open_tracking ?? false}
-          campaignId={campaign.id}
-          ebCampaignId={campaign.emailBisonCampaignId}
+          metrics={metrics}
           sequenceSteps={sequenceSteps}
-          hasPerformanceData={hasPerformanceData}
+          chartData={chartData}
+          campaignId={campaign.id}
+          campaignChannels={campaign.channels}
           replies={replies.map((r) => ({
             ...r,
             receivedAt: r.receivedAt.toISOString(),
           }))}
-          linkedInStats={linkedInStats}
-          linkedinSequence={campaign.linkedinSequence as unknown[] | null}
-          isLinkedInOnly={isLinkedInOnly}
         />
       )}
 
