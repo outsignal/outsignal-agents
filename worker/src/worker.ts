@@ -587,13 +587,28 @@ export class Worker {
             `[Worker] Connection ${conn.connectionId} (person ${conn.personId}): ${rawStatus}`,
           );
 
-          // Only report actionable statuses — skip "unknown" and "not_connectable"
+          // Report actionable statuses. "unknown" means the Voyager API couldn't
+          // determine the status (e.g. profile private, transient error) — treat
+          // it as "pending" so the record stays eligible for next-cycle checks
+          // rather than silently disappearing from the live-check queue.
+          if (rawStatus === "unknown" || rawStatus === "not_connectable") {
+            console.warn(
+              `[Worker] Connection ${conn.connectionId} returned status "${rawStatus}" — treating as pending (will retry next cycle)`,
+            );
+          }
+
           if (
             rawStatus === "connected" ||
             rawStatus === "pending" ||
-            rawStatus === "not_connected"
+            rawStatus === "not_connected" ||
+            rawStatus === "unknown"
           ) {
-            await this.api.reportConnectionResult(conn.connectionId, rawStatus);
+            const reportedStatus =
+              rawStatus === "unknown" ? "pending" : rawStatus;
+            await this.api.reportConnectionResult(
+              conn.connectionId,
+              reportedStatus,
+            );
           }
         } catch (error) {
           console.error(

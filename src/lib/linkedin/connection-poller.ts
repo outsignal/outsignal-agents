@@ -22,6 +22,14 @@ const DEFAULT_CONNECTION_TIMEOUT_DAYS = 14;
 /** Hours to wait after a timeout before retrying the connection request */
 const WITHDRAWAL_COOLDOWN_HOURS = 48;
 
+/**
+ * Hard cutoff for live-checking pending connections.
+ * All pending connections within this window are eligible for live API checks.
+ * This is intentionally much longer than DEFAULT_CONNECTION_TIMEOUT_DAYS so
+ * late acceptances (e.g. someone accepting after 20+ days) are still detected.
+ */
+const LIVE_CHECK_CUTOFF_DAYS = 90;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -321,17 +329,18 @@ export async function getConnectionsToCheck(
   workspaceSlug: string,
 ): Promise<ConnectionToCheck[]> {
   const now = new Date();
-  // Use default timeout as the cutoff — connections older than this are handled
-  // by pollConnectionAccepts (which applies per-campaign timeout per connection).
-  const timeoutCutoff = new Date(
-    now.getTime() - DEFAULT_CONNECTION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000,
+  // Use a long 90-day cutoff so all pending connections — including those
+  // past the per-campaign timeout — are still live-checked. This allows us to
+  // detect late acceptances that would otherwise be missed. Connections that
+  // have been pending for over 90 days are considered stale and excluded.
+  const liveCheckCutoff = new Date(
+    now.getTime() - LIVE_CHECK_CUTOFF_DAYS * 24 * 60 * 60 * 1000,
   );
 
   const connections = await prisma.linkedInConnection.findMany({
     where: {
       status: "pending",
-      // Only check non-timed-out connections (timed-out ones handled by pollConnectionAccepts)
-      requestSentAt: { gte: timeoutCutoff },
+      requestSentAt: { gte: liveCheckCutoff },
       sender: {
         workspaceSlug,
         status: "active",
