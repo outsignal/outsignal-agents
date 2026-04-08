@@ -914,7 +914,11 @@ Plans:
   1. Portal campaign detail page shows stats, leads, activity, and sequence steps by calling adapter methods — LinkedIn campaigns no longer show blank
   2. Portal dashboard shows cross-channel overview metrics aggregated from adapters — a workspace with both email and LinkedIn sees combined totals
   3. Portal activity feed merges email and LinkedIn activity through adapters — no direct EmailBison or LinkedInAction table queries in portal code
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 74-01-PLAN.md — Campaign detail page, tabs, leads API, activity API (PORT-01)
+- [ ] 74-02-PLAN.md — Portal dashboard channel-aware metrics (PORT-02)
+- [ ] 74-03-PLAN.md — Global activity feed via adapters (PORT-03)
 
 ### Phase 75: Analytics & Notifications
 **Goal**: Background operations (metrics snapshots, notifications, digests) are channel-aware and use adapters — analytics cover all channels a workspace has enabled
