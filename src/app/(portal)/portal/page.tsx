@@ -187,16 +187,18 @@ export default async function PortalDashboardPage({
   const now = new Date();
 
   // LinkedIn sparklines: aggregate daily usage by date across all senders
-  const linkedInDateMap = new Map<string, { connections: number; messages: number }>();
+  const linkedInDateMap = new Map<string, { connections: number; accepted: number; messages: number }>();
   for (const row of linkedInDailyUsage) {
     const key = row.date.toISOString().slice(0, 10);
-    const existing = linkedInDateMap.get(key) ?? { connections: 0, messages: 0 };
+    const existing = linkedInDateMap.get(key) ?? { connections: 0, accepted: 0, messages: 0 };
     existing.connections += row.connectionsSent;
+    existing.accepted += row.connectionsAccepted;
     existing.messages += row.messagesSent;
     linkedInDateMap.set(key, existing);
   }
 
   const linkedInConnectsSparkline: number[] = [];
+  const linkedInAcceptedSparkline: number[] = [];
   const linkedInMessagesSparkline: number[] = [];
   for (let i = timeSeriesDays - 1; i >= 0; i--) {
     const d = new Date();
@@ -204,6 +206,7 @@ export default async function PortalDashboardPage({
     const dateStr = d.toISOString().slice(0, 10);
     const dayData = linkedInDateMap.get(dateStr);
     linkedInConnectsSparkline.push(dayData?.connections ?? 0);
+    linkedInAcceptedSparkline.push(dayData?.accepted ?? 0);
     linkedInMessagesSparkline.push(dayData?.messages ?? 0);
   }
 
@@ -290,7 +293,7 @@ export default async function PortalDashboardPage({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">LinkedIn</p>
             <div className="grid grid-cols-3 gap-4">
               <MetricCard label="Requests Sent" value={linkedInTotals.connectionsSent.toLocaleString()} sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="Send" />
-              <MetricCard label="Connections Made" value={linkedInTotals.connectionsAccepted.toLocaleString()} detail="Accepted connections" sparklineData={linkedInConnectsSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
+              <MetricCard label="Connections Made" value={linkedInTotals.connectionsAccepted.toLocaleString()} detail="Accepted connections" sparklineData={linkedInAcceptedSparkline} sparklineColor="#635BFF" density="compact" icon="CheckCircle" />
               <MetricCard label="Messages Sent" value={linkedInTotals.messages.toLocaleString()} sparklineData={linkedInMessagesSparkline} sparklineColor="#635BFF" density="compact" icon="MessageSquare" />
             </div>
           </div>
