@@ -250,7 +250,7 @@ export async function bumpPriority(personId: string, workspaceSlug: string): Pro
       personId,
       workspaceSlug,
       status: "pending",
-      actionType: "connect",
+      actionType: { in: ["connect", "connection_request"] },
     },
     data: {
       priority: 1,
@@ -271,7 +271,7 @@ export async function expireStaleActions(maxAgeDays: number = 14): Promise<numbe
   const result = await prisma.linkedInAction.updateMany({
     where: {
       status: "pending",
-      actionType: "connect",
+      actionType: { in: ["connect", "connection_request"] },
       scheduledFor: { lt: cutoff },
     },
     data: { status: "expired" },

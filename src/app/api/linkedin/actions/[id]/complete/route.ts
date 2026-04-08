@@ -31,7 +31,7 @@ export async function POST(
     await consumeBudget(action.senderId, action.actionType as LinkedInActionType);
 
     // If this was a connection request, create/update the LinkedInConnection
-    if (action.actionType === "connect" && action.personId) {
+    if ((action.actionType === "connect" || action.actionType === "connection_request") && action.personId) {
       await prisma.linkedInConnection.upsert({
         where: {
           senderId_personId: {

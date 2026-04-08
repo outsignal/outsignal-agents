@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
               // Enqueue each action returned by the rules
               for (const action of actions) {
                 // Dedup: skip connect if already pending or connected in this workspace
-                if (action.actionType === "connect") {
+                if (action.actionType === "connect" || action.actionType === "connection_request") {
                   const existingConn = await prisma.linkedInConnection.findFirst({
                     where: {
                       personId: person.id,
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
                   });
 
                   // Forward-chain: schedule a profile_view before connect actions
-                  if (action.actionType === "connect" && person.linkedinUrl) {
+                  if ((action.actionType === "connect" || action.actionType === "connection_request") && person.linkedinUrl) {
                     const viewScheduledFor = new Date(
                       actionScheduledFor.getTime() - Math.max(4 * 60 * 60 * 1000, Math.random() * 2 * 24 * 60 * 60 * 1000),
                     );

@@ -501,6 +501,7 @@ export async function notifyDeploy(params: {
   emailStatus: string | null;
   linkedinStatus: string | null;
   error: string | null;
+  channels?: string[];
 }): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { slug: params.workspaceSlug },
@@ -511,6 +512,10 @@ export async function notifyDeploy(params: {
   const adminBaseUrl =
     process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
   const campaignUrl = `${adminBaseUrl}/workspace/${params.workspaceSlug}/campaigns/${params.campaignId}`;
+
+  // Only show lead count when email channel is active — for LinkedIn-only campaigns
+  // the count is always 0 (no email leads pushed) which reads as a failure.
+  const hasEmailChannel = params.channels === undefined || params.channels.includes("email");
 
   const statusLabel =
     params.status === "complete"
@@ -551,10 +556,14 @@ export async function notifyDeploy(params: {
               text: `*Status:* ${statusEmoji} ${statusLabel}`,
             },
           },
-          {
-            type: "section",
-            text: { type: "mrkdwn", text: `*Leads:* ${params.leadCount} pushed` },
-          },
+          ...(hasEmailChannel
+            ? [
+                {
+                  type: "section" as const,
+                  text: { type: "mrkdwn" as const, text: `*Leads:* ${params.leadCount} pushed` },
+                },
+              ]
+            : []),
           ...(params.emailStatus && params.emailStatus !== "skipped"
             ? [
                 {
@@ -633,9 +642,10 @@ export async function notifyDeploy(params: {
               ? "#fffbeb"
               : "#fef2f2";
 
-        const detailRows: Array<{ label: string; value: string; mono?: boolean }> = [
-          { label: "Leads", value: `${params.leadCount} pushed` },
-        ];
+        const detailRows: Array<{ label: string; value: string; mono?: boolean }> = [];
+        if (hasEmailChannel) {
+          detailRows.push({ label: "Leads", value: `${params.leadCount} pushed` });
+        }
         if (params.emailStatus && params.emailStatus !== "skipped") {
           detailRows.push({ label: "Email", value: `${params.emailStepCount} steps \u2014 ${params.emailStatus}` });
         }

@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
           where: {
             senderId,
             personId: resolvedPersonId,
-            actionType: { in: ["message", "connect"] },
+            actionType: { in: ["message", "connect", "connection_request"] },
             status: "complete",
           },
           select: { id: true },

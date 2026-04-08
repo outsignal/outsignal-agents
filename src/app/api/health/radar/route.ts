@@ -4,17 +4,16 @@ import { readFile, writeFile, access, mkdir } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join, dirname } from "node:path";
 import { prisma } from "@/lib/db";
-import { emailguard } from "@/lib/emailguard/client";
-import { checkAllProviderBalances } from "@/lib/credits/provider-balances";
 import {
   parseCrossTeamEntries,
   type CrossTeamEntry,
 } from "@/lib/agents/memory";
+import type { ProviderBalance } from "@/lib/credits/provider-balances";
 
 export const maxDuration = 30;
 
 // ---------------------------------------------------------------------------
-// EmailGuard blacklist check (real-time, runs on every Monty poll)
+// Blacklist status from DB (data populated by domain-health cron, 2x/day)
 // ---------------------------------------------------------------------------
 
 interface BlacklistCheckResult {
@@ -27,88 +26,118 @@ interface BlacklistCheckResult {
   error?: string;
 }
 
-async function runEmailGuardBlacklistCheck(): Promise<BlacklistCheckResult> {
-  if (!process.env.EMAILGUARD_API_TOKEN) {
-    return {
-      status: "degraded",
-      domainsChecked: 0,
-      blacklistedDomains: [],
-      error: "EMAILGUARD_API_TOKEN not configured",
-    };
-  }
-
+async function getBlacklistStatusFromDb(): Promise<BlacklistCheckResult> {
   try {
-    // 1. List all registered domains
-    const domains = await emailguard.listDomains();
+    // Count total domains tracked in DomainHealth
+    const totalDomains = await prisma.domainHealth.count();
 
-    if (domains.length === 0) {
+    if (totalDomains === 0) {
       return { status: "ok", domainsChecked: 0, blacklistedDomains: [] };
     }
 
-    // 2. Run ad-hoc blacklist check on each (500ms throttle handled by client)
-    const blacklistedDomains: Array<{ domain: string; blacklists: string[] }> =
-      [];
+    // Find domains with warning or critical blacklist severity
+    const blacklistedRecords = await prisma.domainHealth.findMany({
+      where: {
+        blacklistSeverity: { in: ["warning", "critical"] },
+      },
+      select: {
+        domain: true,
+        blacklistHits: true,
+      },
+    });
 
-    const results = await Promise.allSettled(
-      domains.map(async (domain) => {
-        const check = await emailguard.runAdHocBlacklist(domain.name);
-        const listed: string[] = [];
-        if (check.blacklists) {
-          for (const bl of check.blacklists) {
-            if (bl.listed) listed.push(bl.name);
-          }
+    const blacklistedDomains = blacklistedRecords.map((record) => {
+      let blacklists: string[] = [];
+      if (record.blacklistHits) {
+        try {
+          blacklists = JSON.parse(record.blacklistHits) as string[];
+        } catch {
+          blacklists = [];
         }
-        return { domain: domain.name, listed };
-      }),
-    );
-
-    let checkedCount = 0;
-    const errors: string[] = [];
-
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        checkedCount++;
-        if (result.value.listed.length > 0) {
-          blacklistedDomains.push({
-            domain: result.value.domain,
-            blacklists: result.value.listed,
-          });
-        }
-      } else {
-        errors.push(String(result.reason));
       }
-    }
-
-    // If ALL checks failed, report degraded
-    if (checkedCount === 0 && errors.length > 0) {
-      return {
-        status: "degraded",
-        domainsChecked: 0,
-        blacklistedDomains: [],
-        error: `All ${errors.length} blacklist checks failed: ${errors[0]}`,
-      };
-    }
-
-    // If some checks failed, still report what we got but note partial failure
-    const partialError =
-      errors.length > 0
-        ? `${errors.length} of ${domains.length} checks failed`
-        : undefined;
+      return { domain: record.domain, blacklists };
+    });
 
     return {
       status: blacklistedDomains.length > 0 ? "critical" : "ok",
-      domainsChecked: checkedCount,
+      domainsChecked: totalDomains,
       blacklistedDomains,
-      error: partialError,
     };
   } catch (err) {
     return {
       status: "degraded",
       domainsChecked: 0,
       blacklistedDomains: [],
-      error: `EmailGuard API error: ${err instanceof Error ? err.message : String(err)}`,
+      error: `DB read error: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Provider credit balances from DB (data populated by credit-monitor cron, hourly)
+// ---------------------------------------------------------------------------
+
+async function getProviderBalancesFromDb(): Promise<{ providers: ProviderBalance[] }> {
+  try {
+    const rows = await prisma.providerCreditBalance.findMany();
+
+    const providers: ProviderBalance[] = rows.map((row) => ({
+      provider: row.provider,
+      status: row.status as ProviderBalance["status"],
+      creditsRemaining: row.creditsRemaining ?? null,
+      details: row.details,
+      thresholds: null, // thresholds are not stored in DB — not needed for status display
+    }));
+
+    return { providers };
+  } catch (err) {
+    // Return empty list on error so radar response still completes
+    console.error("[radar] Failed to read provider balances from DB:", err);
+    return { providers: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cron freshness check — flags stale data if crons haven't run recently
+// ---------------------------------------------------------------------------
+
+interface CronFreshnessResult {
+  domainHealth: { lastRun: string | null; stale: boolean };
+  creditMonitor: { lastRun: string | null; stale: boolean };
+}
+
+async function getCronFreshness(): Promise<CronFreshnessResult> {
+  const DOMAIN_HEALTH_STALE_MS = 14 * 60 * 60 * 1000; // 14 hours (runs 2x/day)
+  const CREDIT_MONITOR_STALE_MS = 2 * 60 * 60 * 1000;  // 2 hours (runs hourly)
+  const now = Date.now();
+
+  // Most recent DomainHealth DNS check across all domains
+  const latestDomainHealth = await prisma.domainHealth.findFirst({
+    where: { lastDnsCheck: { not: null } },
+    orderBy: { lastDnsCheck: "desc" },
+    select: { lastDnsCheck: true },
+  }).catch(() => null);
+
+  const domainHealthLastRun = latestDomainHealth?.lastDnsCheck?.toISOString() ?? null;
+  const domainHealthStale = domainHealthLastRun
+    ? now - new Date(domainHealthLastRun).getTime() > DOMAIN_HEALTH_STALE_MS
+    : true;
+
+  // Most recent ProviderCreditBalance check across all providers
+  const latestCreditCheck = await prisma.providerCreditBalance.findFirst({
+    orderBy: { checkedAt: "desc" },
+    select: { checkedAt: true },
+  }).catch(() => null);
+
+  const creditMonitorLastRun = latestCreditCheck?.checkedAt?.toISOString() ?? null;
+  const creditMonitorStale = creditMonitorLastRun
+    ? now - new Date(creditMonitorLastRun).getTime() > CREDIT_MONITOR_STALE_MS
+    : true;
+
+  return {
+    domainHealth: { lastRun: domainHealthLastRun, stale: domainHealthStale },
+    creditMonitor: { lastRun: creditMonitorLastRun, stale: creditMonitorStale },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -283,9 +312,10 @@ export async function GET(request: NextRequest) {
   todayEnd.setUTCHours(23, 59, 59, 999);
   const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  // Kick off EmailGuard blacklist check and credit balance checks in parallel
-  const blacklistCheckPromise = runEmailGuardBlacklistCheck();
-  const creditCheckPromise = checkAllProviderBalances();
+  // Kick off blacklist check (DB read) and credit balance check (DB read) in parallel
+  // Data is populated by domain-health cron (2x/day) and credit-monitor cron (hourly)
+  const blacklistCheckPromise = getBlacklistStatusFromDb();
+  const creditCheckPromise = getProviderBalancesFromDb();
 
   const workspaceResults = await Promise.all(
     workspaces.map(async (ws) => {
@@ -498,15 +528,16 @@ export async function GET(request: NextRequest) {
     }),
   );
 
-  // Await the blacklist check, credit balances, and cross-team updates (started in parallel above)
-  const [blacklistCheck, creditBalances, crossTeamUpdates] = await Promise.all([
+  // Await the blacklist check (DB), credit balances (DB), cross-team updates, and freshness in parallel
+  const [blacklistCheck, creditResult, crossTeamUpdates, cronFreshness] = await Promise.all([
     blacklistCheckPromise,
     creditCheckPromise,
     getCrossTeamUpdates(),
+    getCronFreshness(),
   ]);
 
-  const creditWarnings = creditBalances.filter((b) => b.status === "warning");
-  const creditCritical = creditBalances.filter((b) => b.status === "critical");
+  const creditWarnings = creditResult.providers.filter((b) => b.status === "warning");
+  const creditCritical = creditResult.providers.filter((b) => b.status === "critical");
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
@@ -514,8 +545,9 @@ export async function GET(request: NextRequest) {
     blacklistCheck,
     credits: {
       overallStatus: creditCritical.length > 0 ? "critical" : creditWarnings.length > 0 ? "warning" : "healthy",
-      providers: creditBalances,
+      providers: creditResult.providers,
     },
+    cronFreshness,
     crossTeam: crossTeamUpdates,
   });
 }

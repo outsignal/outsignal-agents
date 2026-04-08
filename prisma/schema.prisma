@@ -307,6 +307,7 @@ model Reply {
   objectionSubtype String?  // budget|timing|competitor|authority|need|trust (only when intent=objection)
   classificationSummary String? // 1-line LLM reasoning
   classifiedAt     DateTime?
+  classificationAttempts Int @default(0)
 
   // Override tracking
   overrideIntent       String?
@@ -1372,6 +1373,21 @@ model DomainHealth {
 
   @@index([overallHealth])
   @@index([lastDnsCheck])
+}
+
+// --- Provider Credit Balance (Monitoring Consolidation v2.0 Phase 1) ---
+// Written hourly by credit-monitor cron task. Radar reads from here instead of making live API calls.
+
+model ProviderCreditBalance {
+  id               String   @id @default(cuid())
+  provider         String   @unique
+  status           String
+  creditsRemaining Float?
+  details          String   @default("")
+  checkedAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([provider])
 }
 
 // --- Bounce Snapshot (v4.0 Phase 29) ---

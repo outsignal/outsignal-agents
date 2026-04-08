@@ -207,6 +207,15 @@ export const processReply = task({
       );
     } catch (err) {
       console.error("[process-reply] Classification failed, retry cron will pick it up:", err);
+      // Increment attempt counter so retry-classification has an accurate starting count
+      try {
+        await prisma.reply.update({
+          where: { id: replyId },
+          data: { classificationAttempts: { increment: 1 } },
+        });
+      } catch (updateErr) {
+        console.error("[process-reply] Failed to increment classificationAttempts:", updateErr);
+      }
       // Non-blocking — reply saved with intent=null, retry-classification cron picks it up
     }
 

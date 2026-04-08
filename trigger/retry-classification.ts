@@ -19,20 +19,37 @@ export const retryClassification = schedules.task({
   },
 
   run: async () => {
-    // Fetch ALL unclassified replies — no batch size limit (unlike the Vercel route's take: 50)
+    // Fetch unclassified replies: cap at 50 per run, skip replies that have hit the attempt limit
     const unclassified = await prisma.reply.findMany({
-      where: { classifiedAt: null },
+      where: {
+        classifiedAt: null,
+        classificationAttempts: { lt: 5 },
+      },
       orderBy: { createdAt: "asc" },
+      take: 50,
     });
 
     console.log(
-      `[retry-classification] Found ${unclassified.length} unclassified replies`,
+      `[retry-classification] Found ${unclassified.length} unclassified replies (attempt limit <5)`,
     );
 
     let classified = 0;
     let failed = 0;
 
     for (const reply of unclassified) {
+      // Increment attempt counter before trying — counts this attempt regardless of outcome
+      await prisma.reply.update({
+        where: { id: reply.id },
+        data: { classificationAttempts: { increment: 1 } },
+      });
+
+      // Warn when a reply has now reached 5 attempts (will be excluded next run)
+      if (reply.classificationAttempts + 1 >= 5) {
+        console.warn(
+          `[retry-classification] Reply ${reply.id} (${reply.senderEmail}) has reached 5 classification attempts — will not be retried further`,
+        );
+      }
+
       try {
         const classification = await classifyReply({
           subject: reply.subject,

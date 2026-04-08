@@ -137,7 +137,7 @@ export async function snapshotWorkspaceCampaigns(
           where: {
             workspaceSlug,
             campaignName: campaign.name,
-            actionType: "connect",
+            actionType: { in: ["connect", "connection_request"] },
             status: "complete",
           },
         }),
@@ -161,7 +161,7 @@ export async function snapshotWorkspaceCampaigns(
           where: {
             workspaceSlug,
             campaignName: campaign.name,
-            actionType: "connect",
+            actionType: { in: ["connect", "connection_request"] },
             status: "complete",
             result: { contains: '"accepted"' },
           },

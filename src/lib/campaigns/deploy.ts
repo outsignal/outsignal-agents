@@ -500,6 +500,7 @@ export async function executeDeploy(
         emailStatus: finalDeploy.emailStatus,
         linkedinStatus: finalDeploy.linkedinStatus,
         error: finalDeploy.error,
+        channels,
       }).catch((err) => console.error("Deploy notification failed:", err));
 
       // Send client-facing campaign-live notification (not for "failed" — that's admin-only via notifyDeploy)

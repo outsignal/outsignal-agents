@@ -50,6 +50,8 @@ export default async function PortalCampaignDetailPage({
   let sequenceSteps: SequenceStep[] = [];
   const hasPerformanceData = ["active", "paused", "completed"].includes(campaign.status);
   const needsSequenceSteps = hasPerformanceData || campaign.status === "pending_approval";
+  const isLinkedInOnly =
+    campaign.channels.includes("linkedin") && !campaign.channels.includes("email");
   if (needsSequenceSteps && campaign.emailBisonCampaignId) {
     try {
       const workspace = await getWorkspaceBySlug(workspaceSlug);
@@ -65,6 +67,71 @@ export default async function PortalCampaignDetailPage({
           }
         }
       }
+    } catch {
+      // Silently fail -- stats are non-critical
+    }
+  }
+
+  // Fetch LinkedIn stats when emailBisonCampaignId is null but campaign is LinkedIn
+  interface LinkedInStats {
+    totalActions: number;
+    connectionsSent: number;
+    messagesCompleted: number;
+    profileViews: number;
+    pendingActions: number;
+  }
+  let linkedInStats: LinkedInStats | null = null;
+  if (hasPerformanceData && !campaign.emailBisonCampaignId && campaign.channels.includes("linkedin")) {
+    try {
+      const [
+        totalActions,
+        connectionsSent,
+        messagesCompleted,
+        profileViews,
+        pendingActions,
+      ] = await Promise.all([
+        prisma.linkedInAction.count({
+          where: { campaignName: campaign.name, workspaceSlug },
+        }),
+        prisma.linkedInAction.count({
+          where: {
+            campaignName: campaign.name,
+            workspaceSlug,
+            actionType: "connect",
+            status: "complete",
+          },
+        }),
+        prisma.linkedInAction.count({
+          where: {
+            campaignName: campaign.name,
+            workspaceSlug,
+            actionType: "message",
+            status: "complete",
+          },
+        }),
+        prisma.linkedInAction.count({
+          where: {
+            campaignName: campaign.name,
+            workspaceSlug,
+            actionType: "profile_view",
+            status: "complete",
+          },
+        }),
+        prisma.linkedInAction.count({
+          where: {
+            campaignName: campaign.name,
+            workspaceSlug,
+            status: { in: ["pending", "running"] },
+          },
+        }),
+      ]);
+      linkedInStats = {
+        totalActions,
+        connectionsSent,
+        messagesCompleted,
+        profileViews,
+        pendingActions,
+      };
     } catch {
       // Silently fail -- stats are non-critical
     }
@@ -139,6 +206,42 @@ export default async function PortalCampaignDetailPage({
           case "LEAD_UNSUBSCRIBED":
             bucket.unsubscribed = (bucket.unsubscribed ?? 0) + 1;
             break;
+        }
+      }
+      chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
+    } catch {
+      // Silently fail -- chart is non-critical
+    }
+  } else if (hasPerformanceData && !campaign.emailBisonCampaignId && campaign.channels.includes("linkedin")) {
+    // LinkedIn chart data: group completed actions by date
+    try {
+      const sinceDate = new Date();
+      sinceDate.setDate(sinceDate.getDate() - 30);
+
+      const liActions = await prisma.linkedInAction.findMany({
+        where: {
+          campaignName: campaign.name,
+          workspaceSlug,
+          status: "complete",
+          completedAt: { gte: sinceDate },
+        },
+        select: { completedAt: true, actionType: true },
+        orderBy: { completedAt: "asc" },
+      });
+
+      const buckets = new Map<string, EmailActivityPoint>();
+      for (const action of liActions) {
+        if (!action.completedAt) continue;
+        const dateKey = action.completedAt.toISOString().slice(0, 10);
+        if (!buckets.has(dateKey)) {
+          buckets.set(dateKey, { date: dateKey, sent: 0, replied: 0 });
+        }
+        const bucket = buckets.get(dateKey)!;
+        // Map connect actions -> "sent" slot, messages -> "replied" slot for chart reuse
+        if (action.actionType === "connect") {
+          bucket.sent = (bucket.sent ?? 0) + 1;
+        } else if (action.actionType === "message") {
+          bucket.replied = (bucket.replied ?? 0) + 1;
         }
       }
       chartData = Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -385,6 +488,9 @@ export default async function PortalCampaignDetailPage({
             ...r,
             receivedAt: r.receivedAt.toISOString(),
           }))}
+          linkedInStats={linkedInStats}
+          linkedinSequence={campaign.linkedinSequence as unknown[] | null}
+          isLinkedInOnly={isLinkedInOnly}
         />
       )}
 

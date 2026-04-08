@@ -127,7 +127,7 @@ export async function getSequencePositions(
         day: "numeric",
       });
       const actionLabel =
-        nextAction.actionType === "connect"
+        (nextAction.actionType === "connect" || nextAction.actionType === "connection_request")
           ? "Connection request"
           : nextAction.actionType === "message"
             ? `Message ${completedSteps + 1}`

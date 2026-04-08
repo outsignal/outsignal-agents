@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -9,10 +10,11 @@ import {
 } from "@/components/charts/email-activity-chart";
 import type { EmailActivityPoint } from "@/components/charts/email-activity-chart";
 import { SequenceStepsDisplay } from "@/components/portal/sequence-steps-display";
+import type { LinkedInSequenceStep } from "@/components/portal/sequence-steps-display";
 import { CampaignLeadsTable } from "@/components/portal/campaign-leads-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, Users, ListOrdered, MessageSquare } from "lucide-react";
+import { BarChart3, Users, ListOrdered, MessageSquare, Linkedin } from "lucide-react";
 import type { Campaign as EBCampaign, SequenceStep } from "@/lib/emailbison/types";
 import Link from "next/link";
 
@@ -43,6 +45,14 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+interface LinkedInStats {
+  totalActions: number;
+  connectionsSent: number;
+  messagesCompleted: number;
+  profileViews: number;
+  pendingActions: number;
+}
+
 interface CampaignDetailTabsProps {
   // Stats tab
   ebCampaign: EBCampaign | null;
@@ -57,6 +67,119 @@ interface CampaignDetailTabsProps {
   replies: ReplyItem[];
   // Status context
   hasPerformanceData: boolean;
+  // LinkedIn
+  linkedInStats?: LinkedInStats | null;
+  linkedinSequence?: unknown[] | null;
+  isLinkedInOnly?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// LinkedIn Leads Table — fetches from the LinkedIn actions API endpoint
+// ---------------------------------------------------------------------------
+
+interface LinkedInLeadRow {
+  id: string;
+  actionType: string;
+  status: string;
+  completedAt: string | null;
+  person: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    jobTitle: string | null;
+    company: string | null;
+  } | null;
+}
+
+function LinkedInLeadsTable({ campaignId }: { campaignId: string }) {
+  const [rows, setRows] = useState<LinkedInLeadRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/portal/campaigns/${campaignId}/leads`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.data) setRows(json.data);
+        else setError("Failed to load leads");
+      })
+      .catch(() => setError("Failed to load leads"))
+      .finally(() => setLoading(false));
+  }, [campaignId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        Loading leads...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        No LinkedIn actions recorded yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/40">
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Name</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Title / Company</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Action</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const name =
+              row.person
+                ? [row.person.firstName, row.person.lastName].filter(Boolean).join(" ") || row.person.email || "Unknown"
+                : "Unknown";
+            const titleCompany = row.person
+              ? [row.person.jobTitle, row.person.company].filter(Boolean).join(" · ")
+              : null;
+            const date = row.completedAt
+              ? new Date(row.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "—";
+            return (
+              <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                <td className="px-4 py-3 font-medium text-foreground">{name}</td>
+                <td className="px-4 py-3 text-muted-foreground">{titleCompany ?? "—"}</td>
+                <td className="px-4 py-3 capitalize text-foreground">{row.actionType.replace(/_/g, " ")}</td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      row.status === "complete"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : row.status === "failed" || row.status === "cancelled"
+                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {row.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{date}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 const VALID_TABS = ["stats", "leads", "sequence", "replies"] as const;
@@ -75,6 +198,9 @@ export function CampaignDetailTabs({
   sequenceSteps,
   replies,
   hasPerformanceData,
+  linkedInStats,
+  linkedinSequence,
+  isLinkedInOnly,
 }: CampaignDetailTabsProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -217,6 +343,63 @@ export function CampaignDetailTabs({
               </Card>
             )}
           </div>
+        ) : isLinkedInOnly && linkedInStats ? (
+          /* LinkedIn-only stats */
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <MetricCard
+                label="Connections Sent"
+                value={linkedInStats.connectionsSent.toLocaleString()}
+                icon="UserPlus"
+                density="compact"
+              />
+              <MetricCard
+                label="Messages Sent"
+                value={linkedInStats.messagesCompleted.toLocaleString()}
+                icon="MessageSquare"
+                density="compact"
+              />
+              <MetricCard
+                label="Profile Views"
+                value={linkedInStats.profileViews.toLocaleString()}
+                icon="Eye"
+                density="compact"
+              />
+              <MetricCard
+                label="Total Actions"
+                value={linkedInStats.totalActions.toLocaleString()}
+                icon="Activity"
+                density="compact"
+              />
+              <MetricCard
+                label="Pending Actions"
+                value={linkedInStats.pendingActions.toLocaleString()}
+                trend={linkedInStats.pendingActions > 0 ? "neutral" : "up"}
+                icon="Zap"
+                density="compact"
+              />
+            </div>
+
+            {/* LinkedIn Activity Chart (connections + messages by day) */}
+            {chartData.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base font-heading flex items-center gap-2">
+                      <Linkedin className="h-4 w-4" />
+                      LinkedIn Activity (Last 30 Days)
+                    </CardTitle>
+                    <EmailActivityChartLegend
+                      keys={["sent", "replied"]}
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <EmailActivityChart data={chartData} height={260} />
+                </CardContent>
+              </Card>
+            )}
+          </div>
         ) : (
           <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
             Performance data will appear once the campaign is active.
@@ -231,6 +414,8 @@ export function CampaignDetailTabs({
             campaignId={campaignId}
             ebCampaignId={ebCampaignId}
           />
+        ) : hasPerformanceData && isLinkedInOnly ? (
+          <LinkedInLeadsTable campaignId={campaignId} />
         ) : (
           <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
             Lead data will appear once the campaign is deployed and active.
@@ -242,6 +427,8 @@ export function CampaignDetailTabs({
       <TabsContent value="sequence" className="pt-6">
         {sequenceSteps.length > 0 ? (
           <SequenceStepsDisplay steps={sequenceSteps} />
+        ) : linkedinSequence && linkedinSequence.length > 0 ? (
+          <SequenceStepsDisplay linkedinSteps={linkedinSequence as LinkedInSequenceStep[]} />
         ) : (
           <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
             No sequence steps available.

@@ -37,7 +37,7 @@ async function getConnectionTimeoutDaysForPerson(
     where: {
       personId,
       workspaceSlug,
-      actionType: "connect",
+      actionType: { in: ["connect", "connection_request"] },
       campaignName: { not: null },
     },
     orderBy: { createdAt: "desc" },
@@ -116,7 +116,7 @@ export async function pollConnectionAccepts(workspaceSlug: string): Promise<Poll
         personId: conn.personId,
         workspaceSlug: conn.sender.workspaceSlug,
         sequenceStepRef: "connection_retry",
-        actionType: "connect",
+        actionType: { in: ["connect", "connection_request"] },
       },
     });
 
