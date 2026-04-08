@@ -39,7 +39,7 @@
 
 - [x] **ANAL-01**: Metrics snapshot task uses adapters for per-channel metrics collection
 - [ ] **ANAL-02**: Cross-channel performance comparison view — side-by-side email vs LinkedIn metrics per workspace
-- [ ] **ANAL-03**: Notifications are channel-aware (deploy, health alerts, digests adapt to workspace's enabled channels)
+- [x] **ANAL-03**: Notifications are channel-aware (deploy, health alerts, digests adapt to workspace's enabled channels)
 
 ## Future Requirements
 
@@ -86,7 +86,7 @@
 | PORT-03 | Phase 74 | Complete |
 | ANAL-01 | Phase 75 | Complete |
 | ANAL-02 | Phase 75 | Pending |
-| ANAL-03 | Phase 75 | Pending |
+| ANAL-03 | Phase 75 | Complete |
 
 **Coverage:**
 - v10.0 requirements: 18 total

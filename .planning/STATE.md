@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Monty — Platform Engineering Agent Team
 status: unknown
-last_updated: "2026-04-08T20:07:15.258Z"
+last_updated: "2026-04-08T20:07:56.347Z"
 progress:
   total_phases: 73
   completed_phases: 70
   total_plans: 201
-  completed_plans: 200
+  completed_plans: 201
 ---
 
 # Project State
@@ -48,6 +48,7 @@ Progress: [██████████] 100%
 | Phase 74-portal-unification P03 | 12 | 1 tasks | 1 files |
 | 74 | 01 | 8min | 2 | 6 |
 | Phase 75 P01 | 2min | 1 tasks | 1 files |
+| Phase 75 P02 | 3min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,9 @@ Key v10.0 decisions:
 - [Phase 75]: [75-01]: Query workspace.package directly via Prisma so LinkedIn-only workspaces get channels resolved when no apiToken is set
 - [Phase 75]: [75-01]: Per-channel CachedMetrics rows use key pattern channel:campaignId (not channel:campaignName) to match existing code convention
 - [Phase 75]: [75-01]: Combined snapshot retained with direct queries alongside adapter per-channel rows — adapter calls are additive, not replacement
+- [Phase 75]: notifyWeeklyDigest has no email-specific sections — no channel gating needed; only generic KPI metrics shown
+- [Phase 75]: notifyDeploy hasEmailChannel replaced by hasEmail/hasLinkedIn pair derived from workspace.package via getEnabledChannels; per-call channels param still honoured as override
+- [Phase 75]: notifySenderHealth channel param is additive/optional — no existing callers break
 
 ### Research Flags
 
