@@ -1,172 +1,98 @@
-# Requirements: v9.0 Monty — Platform Engineering Agent Team
+# Requirements: Outsignal v10.0 Unified Outbound Architecture
 
-**Defined:** 2026-04-03
-**Core Value:** Build a Dev Orchestrator team (Monty) that handles all platform engineering work with clear structural boundary from Nova (campaign ops), preventing PM bypass violations and ensuring quality gates on all code changes.
+**Defined:** 2026-04-08
+**Core Value:** Channel-agnostic outbound platform where EmailBison is just one provider behind an adapter, not the foundation everything depends on.
 
-## v9.0 Requirements
+## v10.0 Requirements
 
 ### Foundation
 
-- [x] **FOUND-01**: `.monty/memory/` namespace exists with seed files (backlog.json, decisions.md, incidents.md, architecture.md, security.md)
-- [x] **FOUND-02**: Memory seed script (`scripts/monty-memory.ts`) creates initial memory structure
-- [x] **FOUND-03**: `loadMemoryContext()` in memory.ts accepts optional `memoryRoot` parameter (defaults to `.nova/memory`, Monty passes `.monty/memory`)
-- [x] **FOUND-04**: `scripts/dev-cli/*.ts` tool wrapper directory exists with shared harness pattern matching Nova's `scripts/cli/`
-- [x] **FOUND-05**: Rules files created for each agent (`.claude/rules/monty-orchestrator-rules.md`, `monty-dev-rules.md`, `monty-qa-rules.md`, `monty-security-rules.md`)
-- [x] **FOUND-06**: Boundary enforcement via tool scoping — Monty orchestratorTools contains NONE of Nova's delegation tools, Nova orchestratorTools contains NONE of Monty's
-- [x] **FOUND-07**: Both Nova and Monty orchestrator system prompts include boundary check — reject misrouted tasks with explanation and route suggestion
-- [x] **FOUND-08**: Boundary rejections written to memory (`.monty/memory/decisions.md` or `.nova/memory/global-insights.md`) so orchestrators learn what is/isn't their domain
-- [x] **FOUND-09**: Cross-team notification system — Monty agents write platform changes to `.nova/memory/global-insights.md`, Nova agents write platform issues to `.monty/memory/incidents.md`
-- [x] **FOUND-10**: Monty Radar polls cross-team memory files hourly for new entries — alerts user via ntfy/Slack with which orchestrator is being notified and a summary of the update (e.g., "Notifying Nova Orchestrator: enrichment decoupled from discovery — adapters no longer run inline enrichment"), AND triggers the receiving team's orchestrator to read and acknowledge the update
+- [ ] **FOUND-01**: All channel types, action types, and sender types extracted into typed constants (no raw strings in business logic)
+- [ ] **FOUND-02**: `ChannelAdapter` interface defined with methods: `getLeads`, `getActions`, `getMetrics`, `deploy`, `pause`, `resume`, `getSequenceSteps`
+- [ ] **FOUND-03**: Adapter registry (`Map<ChannelType, ChannelAdapter>`) with `getAdapter(channel)` resolver
+- [ ] **FOUND-04**: Unified type definitions: `UnifiedLead`, `UnifiedAction`, `UnifiedMetrics`, `UnifiedStep`, `CampaignChannelRef`
 
-### Dev Orchestrator (PM)
+### Adapters
 
-- [x] **ORCH-01**: Triage incoming work as bug / feature / improvement with severity/priority classification
-- [x] **ORCH-02**: Route to correct specialist via delegation tools (delegateToDevAgent, delegateToQA, delegateToSecurity)
-- [x] **ORCH-03**: Maintain backlog in `.monty/memory/backlog.json` — capture, prioritise, track status of future work
-- [x] **ORCH-04**: Sequential quality pipeline enforcement — Dev Generalist output reviewed by QA before deploy, auth-touching changes reviewed by Security
-- [x] **ORCH-05**: Pre-approval gate — state what's about to happen, estimate impact, wait for human approval before execution
-- [x] **ORCH-06**: `scripts/monty.ts` CLI entry point (interactive chat, matching `scripts/chat.ts` pattern)
-- [x] **ORCH-07**: AgentConfig with name, model, systemPrompt (from rules file), tools, maxSteps, onComplete hook
-- [x] **ORCH-08**: onComplete writes session summary to `.monty/memory/decisions.md`
+- [ ] **ADAPT-01**: LinkedIn adapter implementing full `ChannelAdapter` interface (wraps existing DB queries + Railway worker calls)
+- [ ] **ADAPT-02**: Email adapter implementing full `ChannelAdapter` interface (wraps existing EmailBison client)
+- [ ] **ADAPT-03**: Adapter unit tests with mock implementations validating interface contract
 
-### Dev Generalist Agent
+### Campaign
 
-- [x] **DEV-01**: Backend work — API routes, Prisma schema/queries, server logic, Trigger.dev tasks
-- [x] **DEV-02**: Frontend/UI work — React components, pages, design system, uses UI UX Pro Max skill
-- [x] **DEV-03**: Infrastructure work — deploy config, Railway, Vercel, Trigger.dev configuration, DNS
-- [x] **DEV-04**: Action tier model — read-only operations always allowed, reversible operations logged, destructive/gated operations require explicit approval
-- [x] **DEV-05**: Memory-informed — reads past decisions, incidents, architecture patterns from `.monty/memory/` before acting
-- [x] **DEV-06**: Automatically notifies Nova about platform changes via `.nova/memory/global-insights.md` — Nova reads this on every session so cross-team awareness is automatic. Actual rules/tools edits remain a PM decision.
-- [x] **DEV-09**: Writes platform change notifications to `.nova/memory/global-insights.md` when changes affect Nova agent behaviour (e.g., "Enrichment decoupled from discovery — adapters no longer run inline enrichment")
-- [x] **DEV-07**: AgentConfig with tools wrapping `scripts/dev-cli/*.ts` commands
-- [x] **DEV-08**: onComplete writes what was changed and why to `.monty/memory/decisions.md`
+- [ ] **CAMP-01**: Campaign deployment uses adapters (`executeDeploy` resolves adapter per channel, no direct EmailBison/LinkedIn calls)
+- [ ] **CAMP-02**: Campaign pause/resume uses adapters
+- [ ] **CAMP-03**: `CampaignChannelRef` replaces direct `emailBisonCampaignId` lookups across the codebase
 
-### QA Agent
+### Sender
 
-- [x] **QA-01**: Code review — TypeScript compilation check, pattern consistency with existing codebase, banned pattern detection
-- [x] **QA-02**: Adversarial review — minimum 3 findings per review, actively looks for problems (not just confirmation)
-- [x] **QA-03**: Test validation — run existing tests (`vitest`), verify changes don't break existing functionality
-- [x] **QA-04**: Review API integrations for pagination handling, error handling, and rate limit compliance
-- [x] **QA-05**: Detect dead code paths — endpoints with no callers, functions with no imports, orphaned files
-- [x] **QA-06**: AgentConfig with review tools
-- [x] **QA-07**: onComplete writes review findings to `.monty/memory/incidents.md` if issues found
-- [x] **QA-08**: Writes to `.nova/memory/global-insights.md` when QA findings affect Nova agent behaviour
+- [ ] **SEND-01**: Sender queries go through channel-aware helpers (no more `channel: { in: ['linkedin', 'both'] }` scattered across files)
+- [ ] **SEND-02**: Workspace channel configuration — config that defines which channels each client has enabled
 
-### Security Agent
+### Portal
 
-- [x] **SEC-01**: OWASP Top 10:2025 compliance check on code changes touching auth, input handling, or data access
-- [x] **SEC-02**: Credential exposure detection — scan for hardcoded secrets, API keys in source, `.env` values in logs
-- [x] **SEC-03**: Auth flow review — authentication, session handling, API key management, token storage
-- [x] **SEC-04**: On-call gate — changes touching auth/credentials/session management are blocked until Security Agent reviews
-- [x] **SEC-05**: AgentConfig with security scanning tools (npm audit, eslint-plugin-security if ESLint v9 compatible)
-- [x] **SEC-06**: onComplete writes security findings to `.monty/memory/security.md`
-- [x] **SEC-07**: Writes to `.nova/memory/global-insights.md` when security findings affect Nova agent behaviour (e.g., API key rotation, auth flow changes)
+- [ ] **PORT-01**: Portal campaign detail page consumes adapters for stats, leads, activity, sequence (replaces dual code paths)
+- [ ] **PORT-02**: Portal dashboard consumes adapters for cross-channel overview metrics
+- [ ] **PORT-03**: Portal activity feed consumes adapters (no direct table queries)
 
-## Data Consistency Requirements
+### Analytics & Notifications
 
-- [x] **CONSIST-01**: LinkedIn stats (KPIs + time-series) use `LinkedInDailyUsage` table in admin dashboard — replace `LinkedInAction` queries
-- [x] **CONSIST-02**: Email "Sent" count uses EmailBison API `getWorkspaceStats()` as primary source with `WebhookEvent` fallback in admin dashboard
-- [x] **CONSIST-03**: Reply count uses `Reply` table (direction=inbound) everywhere — admin dashboard stops counting WebhookEvents as replies
-- [x] **CONSIST-04**: Reply rate formula is `replies / sent * 100` in portal analytics — stops dividing by total people
-- [x] **CONSIST-05**: Bounce rate warning threshold aligned to >2% warning, >5% critical across portal and admin
-- [x] **CONSIST-06**: "Connections Made" on portal dashboard uses `connectionsAccepted` from LinkedInDailyUsage, not `connectionsSent`
-- [x] **CONSIST-07**: Admin workspace overview shows period-filtered stats (7/14/30/90 days with selector) instead of all-time campaign totals
-
-## LinkedIn State Machine Requirements
-
-- [x] **SEQ-01**: Campaign deploy creates only pre-connect actions (profile_view, connect) via chainActions — post-connect messages are NOT pre-scheduled as LinkedInAction records
-- [x] **SEQ-02**: Post-connect message steps become CampaignSequenceRules with triggerEvent "connection_accepted" — the connection-poller evaluates these rules and creates follow-up actions when acceptance is detected
-- [x] **SEQ-03**: Connection timeout logic works correctly — if not accepted within configurable days (default 14), prospect exits sequence (already implemented in pollConnectionAccepts, verify unchanged)
-- [x] **SEQ-04**: Reply cancellation — when a prospect replies to a LinkedIn message, all pending automated actions for that person are cancelled via cancelActionsForPerson
-- [x] **SEQ-05**: `connectionsAccepted` is incremented on `LinkedInDailyUsage` when a connection acceptance is detected by the connection-poller
-- [x] **SEQ-06**: Activity page shows connection acceptances and message sends with correct timestamps (driven by LinkedInDailyUsage connectionsAccepted counter)
-- [x] **SEQ-07**: Migration script exists to cancel existing pre-scheduled message actions for unconnected prospects and create CampaignSequenceRules for affected campaigns — idempotent, supports dry-run
+- [ ] **ANAL-01**: Metrics snapshot task uses adapters for per-channel metrics collection
+- [ ] **ANAL-02**: Cross-channel performance comparison view — side-by-side email vs LinkedIn metrics per workspace
+- [ ] **ANAL-03**: Notifications are channel-aware (deploy, health alerts, digests adapt to workspace's enabled channels)
 
 ## Future Requirements
 
-- **FUT-01**: Split Dev Generalist into Backend + Frontend/UI + Infrastructure specialists if generalist becomes a bottleneck
-- **FUT-02**: Automated regression test generation after QA reviews
-- **FUT-03**: Integration with GitHub Issues / Linear for external backlog sync
-- **FUT-04**: Cross-team orchestration — Monty Dev Agent automatically updates Nova rules when platform changes affect agents
+### New Channel Adapters
+
+- **CHAN-01**: Paid ads adapter (when provider is selected)
+- **CHAN-02**: Cold calls adapter (when provider is selected)
+- **CHAN-03**: SMS/WhatsApp adapter (if needed)
+
+### Advanced Cross-Channel
+
+- **CROSS-01**: Cross-channel attribution (which channel combination produces best results)
+- **CROSS-02**: Unified sequence builder (interleaved email + LinkedIn in one timeline) — explicitly deferred, agency model requires separate approval flows
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| CI/CD pipeline automation | Overkill for current scale — manual deploy with human approval is safer |
-| Autonomous deploys | Non-negotiable — human approval required before every deploy (Vercel Pro credits) |
-| Replicate GSD planning | GSD already handles phased planning — Monty handles execution within phases |
-| Nova agent modification | Monty builds platform, Nova handles campaigns — structural boundary |
-| Database migration automation | Too risky for autonomous agents — manual Prisma migrations only |
+| Unified sequence builder (interleaved channels) | Agency approval model requires separate email/LinkedIn sequences for dual approval |
+| Real-time cross-channel switching | EmailBison latency makes it meaningless |
+| Replacing EmailBison as email provider | EmailBison stays as the email provider — adapter wraps it, doesn't replace it |
+| Paid ads / cold call implementation | v10.0 builds the adapter foundation — actual new channel adapters are future work |
+| Webhook handlers through adapters | Webhooks are inbound event handlers, peers to adapters, not children |
+| Sender.channel junction table refactor | Cleaner model but too large a migration surface for this milestone |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 62 | Complete |
-| FOUND-02 | Phase 62 | Complete |
-| FOUND-03 | Phase 62 | Complete |
-| FOUND-04 | Phase 62 | Complete |
-| FOUND-05 | Phase 62 | Complete |
-| FOUND-06 | Phase 62 | Complete |
-| FOUND-07 | Phase 62 | Complete |
-| FOUND-08 | Phase 62 | Complete |
-| FOUND-09 | Phase 67 | Complete |
-| FOUND-10 | Phase 67 | Complete |
-| ORCH-01 | Phase 64 | Complete |
-| ORCH-02 | Phase 64 | Complete |
-| ORCH-03 | Phase 64 | Complete |
-| ORCH-04 | Phase 64 | Complete |
-| ORCH-05 | Phase 64 | Complete |
-| ORCH-06 | Phase 63 | Complete |
-| ORCH-07 | Phase 64 | Complete |
-| ORCH-08 | Phase 64 | Complete |
-| DEV-01 | Phase 64 | Complete |
-| DEV-02 | Phase 64 | Complete |
-| DEV-03 | Phase 64 | Complete |
-| DEV-04 | Phase 64 | Complete |
-| DEV-05 | Phase 64 | Complete |
-| DEV-06 | Phase 64 | Complete |
-| DEV-07 | Phase 63 | Complete |
-| DEV-08 | Phase 64 | Complete |
-| DEV-09 | Phase 64 | Complete |
-| QA-01 | Phase 65 | Complete |
-| QA-02 | Phase 65 | Complete |
-| QA-03 | Phase 65 | Complete |
-| QA-04 | Phase 65 | Complete |
-| QA-05 | Phase 65 | Complete |
-| QA-06 | Phase 65 | Complete |
-| QA-07 | Phase 65 | Complete |
-| QA-08 | Phase 65 | Complete |
-| SEC-01 | Phase 66 | Complete |
-| SEC-02 | Phase 66 | Complete |
-| SEC-03 | Phase 66 | Complete |
-| SEC-04 | Phase 66 | Complete |
-| SEC-05 | Phase 66 | Complete |
-| SEC-06 | Phase 66 | Complete |
-| SEC-07 | Phase 66 | Complete |
-| CONSIST-01 | Phase 69 | Planned |
-| CONSIST-02 | Phase 69 | Planned |
-| CONSIST-03 | Phase 69 | Planned |
-| CONSIST-04 | Phase 69 | Planned |
-| CONSIST-05 | Phase 69 | Planned |
-| CONSIST-06 | Phase 69 | Planned |
-| CONSIST-07 | Phase 69 | Planned |
-| SEQ-01 | Phase 70 | Planned |
-| SEQ-02 | Phase 70 | Planned |
-| SEQ-03 | Phase 70 | Planned |
-| SEQ-04 | Phase 70 | Planned |
-| SEQ-05 | Phase 70 | Planned |
-| SEQ-06 | Phase 70 | Planned |
-| SEQ-07 | Phase 70 | Planned |
+| FOUND-01 | — | Pending |
+| FOUND-02 | — | Pending |
+| FOUND-03 | — | Pending |
+| FOUND-04 | — | Pending |
+| ADAPT-01 | — | Pending |
+| ADAPT-02 | — | Pending |
+| ADAPT-03 | — | Pending |
+| CAMP-01 | — | Pending |
+| CAMP-02 | — | Pending |
+| CAMP-03 | — | Pending |
+| SEND-01 | — | Pending |
+| SEND-02 | — | Pending |
+| PORT-01 | — | Pending |
+| PORT-02 | — | Pending |
+| PORT-03 | — | Pending |
+| ANAL-01 | — | Pending |
+| ANAL-02 | — | Pending |
+| ANAL-03 | — | Pending |
 
 **Coverage:**
-- v9.0 requirements: 42 total (complete)
-- Data consistency requirements: 7 total (planned)
-- LinkedIn state machine requirements: 7 total (planned)
-- Mapped to phases: 56
-- Unmapped: 0
+- v10.0 requirements: 18 total
+- Mapped to phases: 0
+- Unmapped: 18
 
 ---
-*Requirements defined: 2026-04-03*
-*Last updated: 2026-04-07 after Phase 70 planning*
+*Requirements defined: 2026-04-08*
+*Last updated: 2026-04-08 after initial definition*
