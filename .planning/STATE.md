@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Monty — Platform Engineering Agent Team
 status: unknown
-last_updated: "2026-04-08T19:49:47.607Z"
+last_updated: "2026-04-08T19:49:53.392Z"
 progress:
   total_phases: 72
   completed_phases: 69
@@ -75,6 +75,9 @@ Key v10.0 decisions:
 - [Phase 74]: [74-02]: EmailBisonClient loaded via dynamic import() in helper — removes from top-level dashboard imports while keeping workspace-level API (no N+1)
 - [Phase 74]: [74-02]: getEnabledChannels() takes pkg string not workspace object — plan interface description was inaccurate, actual signature is simpler
 - [Phase 74]: [74-02]: hasEmail gate added — LinkedIn-only workspaces no longer make unused EB API calls
+- [Phase 74-03]: LinkedIn adapter actions have personId but no resolved person — batch-fetch persons after adapter call
+- [Phase 74-03]: Adapters return all actions without date filtering — apply date window filter post-fetch in route
+- [Phase 74-03]: channels JSON parsed per campaign with try/catch fallback to email
 
 ### Research Flags
 
