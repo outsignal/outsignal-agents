@@ -872,7 +872,9 @@ Plans:
   2. The `ChannelAdapter` interface compiles and has methods for `getLeads`, `getActions`, `getMetrics`, `deploy`, `pause`, `resume`, and `getSequenceSteps`
   3. `getAdapter(channel)` resolves the correct adapter from the registry, and throws a clear error for unknown channels
   4. `UnifiedLead`, `UnifiedAction`, `UnifiedMetrics`, `UnifiedStep`, and `CampaignChannelRef` types exist and are importable from `src/lib/channels/types.ts`
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 71-01-PLAN.md — Constants, ChannelAdapter interface, unified types, registry, and tests
 
 ### Phase 72: Adapter Implementations
 **Goal**: Both email and LinkedIn channels have working adapter implementations that encapsulate all channel-specific query logic, and workspace channel configuration determines which adapters are available
