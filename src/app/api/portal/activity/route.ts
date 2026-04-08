@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
         : prisma.linkedInAction.findMany({
             where: {
               workspaceSlug,
-              actionType: { notIn: ["profile_view", "check_connection"] },
+              actionType: { notIn: ["check_connection"] },
               status: { notIn: ["failed", "cancelled", "expired"] },
               OR: [
                 { scheduledFor: { gte: from, lte: to } },

@@ -11,6 +11,7 @@ import {
   Reply,
   Clock,
   Loader2,
+  Eye,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import { cn } from "@/lib/utils";
 interface ActivityItem {
   id: string;
   channel: "email" | "linkedin";
-  actionType: "send" | "reply" | "connect" | "message" | "connected";
+  actionType: "send" | "reply" | "connect" | "message" | "connected" | "profile_view" | "connection_request";
   status: "queued" | "in_progress" | "complete";
   personName: string | null;
   personCompany: string | null;
@@ -75,14 +76,18 @@ const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   connect: UserPlus,
   connected: UserCheck,
   message: MessageSquare,
+  profile_view: Eye,
+  connection_request: UserPlus,
 };
 
-const ACTION_BADGE_VARIANT: Record<string, "info" | "success" | "purple"> = {
+const ACTION_BADGE_VARIANT: Record<string, "info" | "success" | "purple" | "secondary"> = {
   send: "info",
   reply: "success",
   connect: "purple",
   connected: "success",
   message: "purple",
+  profile_view: "secondary",
+  connection_request: "purple",
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -91,6 +96,8 @@ const ACTION_LABELS: Record<string, string> = {
   connect: "Connection",
   connected: "Connected",
   message: "Message",
+  profile_view: "Profile View",
+  connection_request: "Connection Request",
 };
 
 const STATUS_BADGE_VARIANT: Record<string, "warning" | "info" | "success"> = {
