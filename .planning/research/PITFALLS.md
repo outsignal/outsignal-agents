@@ -1,422 +1,323 @@
-# Pitfalls Research
+# Domain Pitfalls: Channel Adapter Refactoring
 
-**Domain:** Dev Agent Team (Monty) — adding an autonomous coding agent team to an existing system with a campaign agent team (Nova)
-**Researched:** 2026-04-02
-**Confidence:** HIGH (cross-referenced against Stack Overflow AI incidents, GitHub multi-agent workflows research, NVIDIA agent security blog, Knostic Claude Code security findings, DEV Community guardrails post-mortems, and first-party evidence from this project)
+**Domain:** Multi-channel outbound adapter architecture retrofit
+**Researched:** 2026-04-08
+**Overall confidence:** HIGH (evidence-based from codebase analysis + 6 confirmed bugs from recent session)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Soft Instructions Don't Enforce — Rules Files Are Suggestions
+Mistakes that cause rewrites, data loss, or silent failures at production scale.
 
-**What goes wrong:**
-The existing `.claude/rules/` architecture has a `delegation-rules.md` that explicitly says "NEVER have subagents call `node scripts/cli/*.js` directly for workspace operations." On 2026-04-02, the PM violated this by spawning generic subagents to run CLI scripts directly for lead discovery — burning API credits, skipping quality gates, no audit trail. The rules file did not prevent it.
+### Pitfall 1: String Enum Sprawl Across Files (ALREADY HIT)
 
-For Monty, the same failure mode applies in reverse: a dev agent will be given codebase access and told "only modify platform code, never touch workspace/campaign data." In practice, when the dev agent needs to test a fix for a campaign pipeline bug, it will directly run a Prospeo search or modify a PersonWorkspace record to verify the fix, bypassing Nova entirely.
+**What goes wrong:** Action types, channel names, and status strings are raw strings compared with `===` across 36+ files. When the canonical value changes or a new variant is added, some files get updated and others silently break. The system appears to work because no errors are thrown -- the comparisons just evaluate to `false` and skip the code path.
 
-**Why it happens:**
-Rules files are prompts. Prompts are probabilistic. The model reads the rule, understands it, and then makes a judgment call about whether the current situation is "an exception." Under time pressure, with a specific goal in sight, the rule gets rationalized away. From the research: "Rules in prompts are advisory, while rules in hooks are structural." The rules file has no enforcement mechanism — it is a statement of intent, not a constraint.
+**Why it happens:** TypeScript's type system does not enforce string literal unions at the Prisma boundary. Prisma schema uses `String` not `enum`, so any string is accepted. Developers copy-paste comparisons like `actionType === "connect"` without a shared constant. Over time, the same concept gets different string representations: `"connect"` vs `"connection_request"`, `channel: "email"` vs missing the `"both"` case.
 
-**How to avoid:**
-Build the boundary into the tool surface, not just the system prompt:
-1. Monty's agents get a tool set that literally cannot execute Nova's tools. They have no `search-prospeo.js`, no `campaign-create.js`, no `save-draft.js` in their available toolset. A tool that doesn't exist cannot be called.
-2. Conversely, Nova's agents get no git, no file write access to source code, no Prisma schema access.
-3. The boundary is defined by what tools each team has, not by what their instructions say.
-4. If a dev agent needs to test against real data, it goes through a read-only test fixture — not live campaign data.
+**Evidence from THIS codebase:**
+- `actionType === "connect"` mismatch found in 7 files (just fixed today)
+- `channel: 'linkedin'` queries missing `channel: 'both'` senders (documented in live-data-rules.md)
+- LinkedIn queue uses `actionType: { in: ["connect", "connection_request"] }` -- a workaround for the inconsistency (line 253, 274 in queue.ts)
 
-**Warning signs:**
-- Dev agent session logs show calls to `scripts/cli/` wrapper scripts that are Nova tools (search-prospeo, save-draft, campaign-create)
-- Nova agent sessions show git operations or file edits to source code
-- "I'll just quickly check the live data to verify my fix works" appearing in dev agent output
-- A debugging session that starts as platform work ends with the agent modifying DB records directly
+**Consequences:** Silent data exclusion. LinkedIn campaigns showed blank in portal. Deploy notifications reported "LEADS: 0" for LinkedIn campaigns. Connection poller dropped pending connections.
 
-**Phase to address:**
-Phase 1 (Monty architecture and tool surface) — define the exact tool inventory for each team before any agent is built. This is not a rule to write; it is a capability boundary to implement.
+**Prevention:**
+1. Create a `src/lib/channels/constants.ts` file with ALL string enums as TypeScript const objects exported from a single source of truth
+2. Replace every raw string comparison with a reference to these constants
+3. Add a `grep` lint step (or ESLint rule) that flags raw channel/actionType string literals outside the constants file
+4. For Prisma queries involving `channel`, create helper functions like `isLinkedInSender(channel: string)` that encapsulate the `in: ["linkedin", "both"]` pattern
 
----
+**Detection:** Search for `=== "connect"`, `=== "email"`, `=== "linkedin"`, `channel:` in Prisma `where` clauses. Any raw string comparison on a channel-related field is a suspect. Run `grep -rn 'actionType === \|channel === ' src/` periodically.
 
-### Pitfall 2: Dev Agents Write Destructive Code Without Knowing It
-
-**What goes wrong:**
-The Backend Agent is tasked with fixing a bug in the enrichment waterfall. It rewrites the `deduplicateAndPromote` function with a cleaner implementation. The rewrite drops a null-check that was protecting against a race condition when two discovery runs promote the same person simultaneously. The old code had a comment about this, but the agent didn't trace the full caller graph. The new code passes unit tests. In production, two concurrent discovery runs corrupt 47 Person records with duplicate emails.
-
-Separately: the Infrastructure Agent is told to clean up stale Trigger.dev tasks. It deletes 3 tasks that look like duplicates. One of them is the active daily cron for domain health monitoring. Domain health stops running silently.
-
-**Why it happens:**
-Dev agents optimise for the visible task. The null-check protection for the race condition is not visible in the immediate code — it requires understanding the call graph, the concurrency model, and the production environment. Agents "write 1.7x more bugs than humans" (Stack Overflow research) and have a 75% higher rate of logic and configuration errors in pull requests. They are good at local coherence and poor at global correctness.
-
-Destructive code is especially dangerous because it often passes tests. Tests test what the original developer thought to test. Race conditions, cascading deletes, and missing null-guards are the things tests miss.
-
-**How to avoid:**
-1. **All destructive operations require explicit human approval before execution.** Define a three-tier action model:
-   - Tier 1 (autonomous): Read-only operations — file reads, git log, database reads, running tests
-   - Tier 2 (supervised): Reversible changes — new files, new functions, new routes that don't touch existing data
-   - Tier 3 (gated): Irreversible or high-risk — schema migrations, deleting tasks/crons, modifying existing data-mutating functions, any `prisma db push`, any deploy
-2. **No Tier 3 action executes without the PM seeing a diff and explicitly approving it.**
-3. **QA Agent reviews all Backend Agent PRs before merge.** The QA Agent's specific job is adversarial review — looking for the null-check that was dropped, the edge case that was missed, the cascade that wasn't considered.
-4. **Infrastructure Agent has a mandatory dry-run before any deletion.** `--dry-run` flag on all cleanup scripts. Output surfaces to PM before execution.
-
-**Warning signs:**
-- Backend Agent outputs "I've updated the function" without a diff
-- Infrastructure Agent deletes files or Trigger.dev tasks without a prior inventory step showing what it found
-- QA Agent is bypassed because "it's a simple fix"
-- Tests pass but no one has reviewed the change against the full call graph
-- Dev agent session involves `prisma db push` without PM review of the schema diff
-
-**Phase to address:**
-Phase 1 (Monty architecture) — action tier model must be defined before any specialist agent is built. Phase 3 (QA Agent) — adversarial review process defined as part of QA agent design, not retrofitted.
+**Phase to address:** Phase 1 (foundation) -- this must be fixed BEFORE any adapter work begins, because the adapter interface will define canonical values that every consumer must use.
 
 ---
 
-### Pitfall 3: The Nova/Monty Boundary Collapses Under Ambiguous Tasks
+### Pitfall 2: EmailBison IDs Hardwired Into Campaign Identity
 
-**What goes wrong:**
-The PM delegates: "Fix the bug where campaign creation fails for Lime Recruitment." This task is ambiguous. Is the bug in the campaign creation API route (Monty/codebase work) or in the Nova campaign agent's CLI script config (Nova/workspace work)? A dev agent starts investigating the API route, modifies `campaign-create.ts`, pushes a fix. Meanwhile, the actual bug is a misconfigured workspace package flag in Lime's DB record — a Nova operation. The dev agent's code change is a no-op at best, a regression at worst.
+**What goes wrong:** The Campaign model uses `emailBisonCampaignId` and `emailBisonSequenceId` as direct fields, and 10 files reference these 38 times. Code paths use these IDs to fetch leads, link replies, and look up analytics. When introducing an adapter layer, these EmailBison-specific IDs must be abstracted but cannot be removed (backward compatibility), creating a split-brain where some code uses the adapter and some still reaches for the raw EB IDs.
 
-The reverse also happens: Nova's campaign agent is asked to "resolve why the campaign pipeline is slow." It starts investigating the API response times, reads source code it shouldn't have access to, and suggests code changes directly.
+**Why it happens:** The system was built email-first, and EmailBison was the only campaign backend. Storing the EB campaign ID directly on the Campaign model was the simplest correct design at the time. Now every feature that touches campaigns has a dependency on EmailBison's data model.
 
-**Why it happens:**
-The boundary rule is "workspace slug → Nova, codebase → Monty." This sounds clear but breaks down on bugs that span both domains. Real bugs often have a platform manifestation AND a data/config manifestation. The PM decision about which team investigates determines whether the root cause gets found. An ambiguous delegation produces the wrong team on the wrong problem.
+**Evidence from THIS codebase:**
+- `emailBisonCampaignId` referenced in 10 files, 38 occurrences
+- Reply model has `emailBisonReplyId` as a unique field for dedup
+- `CampaignDeploy` model has its own `emailBisonCampaignId`
+- Webhook handler (`/api/webhooks/emailbison/route.ts`) uses EB campaign IDs to look up Outsignal campaigns
+- Analytics snapshot (`snapshot.ts`) queries EmailBison API by these IDs
 
-**How to avoid:**
-1. **Triage is an explicit step before delegation.** The PM (or Monty's orchestrator) must classify every task as: PLATFORM (code/infra), DATA (workspace records/config), or AMBIGUOUS. Ambiguous tasks go through a structured investigation first — lightweight read-only investigation from both sides — before any writing happens.
-2. **The boundary description is operational, not conceptual.** "Codebase" means: TypeScript source files in `src/`, Prisma schema, Trigger.dev task definitions, `.env` configuration, Railway/Vercel config. "Workspace" means: any Prisma record for a specific workspace, any Nova memory file, any EmailBison operation scoped to a client. Monty agents touch the first list. Nova agents touch the second list.
-3. **Bug reports go to PM first.** The PM classifies the bug and decides which team investigates. A dev agent never receives a "fix this client-facing bug" task without the PM having confirmed it is a platform bug.
+**Consequences:** If the adapter hides EmailBison behind an interface but some code paths still directly use `campaign.emailBisonCampaignId`, you get:
+- Two sources of truth for campaign identity
+- Webhook handlers that bypass the adapter entirely
+- Analytics that only work for the email channel
+- Reply linking that fails for non-email channels
 
-**Warning signs:**
-- Dev agent session includes DB operations on records scoped to a specific workspace slug
-- Monty investigating performance starts reading `.nova/memory/` files
-- Nova's orchestrator is asked to "check if the API is working" and starts reading route files
-- Bug fix task is delegated directly to a specialist agent without PM classification step
-- Same bug is being investigated by both teams simultaneously
+**Prevention:**
+1. Map EmailBison IDs into a generic `channelCampaignRef` concept -- a per-channel external reference stored in a separate table (e.g., `CampaignChannelRef { campaignId, channel, externalId, externalSequenceId }`)
+2. Keep `emailBisonCampaignId` on the Campaign model as deprecated (nullable), but all new code must use the adapter's `getExternalRef()` method
+3. Migrate existing data in a single migration that copies EB IDs into the new table
+4. Add a `@deprecated` JSDoc comment on `emailBisonCampaignId` and a lint warning
 
-**Phase to address:**
-Phase 1 (Monty architecture) — the triage classification step and operational boundary definition must be explicit in Monty's orchestrator design. This is a routing design, not an instruction to write.
+**Detection:** Any `import` of `emailBisonCampaignId` or direct Prisma query on this field outside the EmailAdapter is a violation.
 
----
-
-### Pitfall 4: Over-Engineering — Five Specialists When Two Would Work
-
-**What goes wrong:**
-The milestone spec calls for 5 specialist agents: Backend, Frontend/UI, Infrastructure, QA, Security. In practice:
-- Security reviews are needed on maybe 10% of tasks (auth changes, credential handling)
-- Infrastructure changes are rare after initial setup (mostly Vercel env vars, occasional Railway tweaks)
-- Frontend and Backend work almost always happen together (new API route + new page component)
-
-The result: 5 agents with distinct system prompts, tool sets, and memory spaces to maintain. Orchestration overhead is high. The PM has to route every task through the right specialist. Frontend-plus-Backend tasks require two sequential delegations and a coordination step. Security and Infrastructure agents sit idle 90% of the time, accumulating stale context.
-
-From the research: "Initial enthusiasm around modularity gave way to the realization that orchestration overhead and task fragility outweighed the theoretical benefits." And: "When an agent has too many tools and makes poor decisions about which tool to call next, context grows too complex."
-
-**Why it happens:**
-Agent team design tends toward specialization matching the org chart of a software team. But software team specializations exist because humans have bandwidth limits and context switching costs. Agents don't have the same constraints — a single well-scoped agent can hold both frontend and backend context simultaneously.
-
-**How to avoid:**
-Start with the minimum viable team. For this codebase's scale and change rate:
-- **Monty (Orchestrator/PM)**: triages, routes, manages backlog, tracks progress — no coding
-- **Dev Agent (generalist)**: handles 90% of implementation tasks — API routes, components, schema changes, scripts. Has read access to the full codebase, write access gated by tier model.
-- **QA Agent**: adversarial reviewer — reads diffs, writes tests, finds what Dev missed
-- **Security Agent**: on-call only — invoked by Monty when the task involves auth, credentials, or OWASP-adjacent concerns
-
-Infrastructure and Frontend/UI specializations can be roles within the Dev Agent's prompting, not separate agents. Add specialization only when a distinct agent has clear, frequent, non-overlapping work.
-
-**Warning signs:**
-- Multiple agents are being coordinated for a single feature (high orchestration tax)
-- An agent has been idle for 3+ phases with no tasks
-- Tasks routinely require "first Frontend then Backend" sequential coordination
-- PM spends more time routing between agents than reviewing their output
-- New team member (or new phase) can't tell which agent to use for a given task
-
-**Phase to address:**
-Phase 1 (Monty architecture) — agent count and specialization boundaries defined before any agents are built. Adding agents later is cheap. Removing agents after they have memory files, tool sets, and established patterns is expensive.
+**Phase to address:** Phase 1-2 -- define the abstraction in Phase 1, migrate the data in Phase 2, enforce usage in Phase 3.
 
 ---
 
-### Pitfall 5: Tool Proliferation Degrades Every Agent
+### Pitfall 3: Adapter Interface That Is Too Email-Shaped
 
-**What goes wrong:**
-Each Monty specialist agent accumulates tools as phases ship: git tools, file read/write tools, bash execution, Prisma query tools, Vercel CLI tools, Railway CLI tools, Trigger.dev tools, test runner tools, linter tools. By Phase 3, a Backend Agent has 35 tools in its tool definition. Research shows that 50+ tool definitions in context degrades LLM reasoning and tool selection accuracy. At 35 tools, the agent is already starting to make poor selection decisions — calling `get_file_contents` when it should call `search_codebase`, or invoking `run_tests` before it has confirmed the file has been saved.
+**What goes wrong:** When building the adapter interface, the initial design unconsciously mirrors EmailBison's API shape: sequences with subject lines, open tracking, bounce rates, sender rotation. LinkedIn does not have subject lines, open tracking, or bounce rates. Future channels (cold calls, paid ads) have entirely different concepts. The adapter becomes a leaky abstraction where non-email adapters return `null` or throw `NotSupported` for half the interface.
 
-Separately: Claude Code's subagents inherit all tools from the parent context. A spawned subagent doing a specific targeted task (write this one function) arrives with the full tool inventory it never needs for that task.
+**Why it happens:** The team has deep mental models of EmailBison's data. It is the path of least resistance to design `ChannelAdapter.getMetrics()` to return `{ openRate, replyRate, bounceRate }` because that is what the dashboard already displays. LinkedIn metrics (accept rate, message reply rate) do not map cleanly.
 
-**Why it happens:**
-Tool sets grow additively. Every new capability requires a new tool. No one removes tools because removing a tool might break something that uses it. Tool definitions sit in context even when the agent will never use them for the current task.
+**Evidence from THIS codebase:**
+- `CachedMetrics` model stores generic `metricType` + `data` JSON, which is good -- but the actual metric types are email-centric (`"campaign_performance"`, `"sender_health"`)
+- Analytics snapshot runs `EmailBisonClient.getCampaignStats()` directly
+- Dashboard sparkline was reusing email data source for LinkedIn "Connections Made" stat (bug #4)
+- Portal campaign detail was entirely EmailBison-dependent -- LinkedIn showed blank (bug #2)
+- Copy quality validation has `channel === "linkedin"` branches bolted on to an email-first validator
 
-**How to avoid:**
-1. **Tool budget per agent**: Max 15 tools per specialist. If a new tool is needed, an existing tool must be either removed or merged.
-2. **Role-scoped tool sets**: QA Agent has read tools + test runner + diff tools. It does NOT have write tools for source files. Security Agent has static analysis tools + grep + read tools. It does NOT have deploy tools. Toolset matches the agent's action tier.
-3. **Dynamic tool loading for subagents**: When Monty spawns a focused subagent, pass only the tools relevant to that task. Don't inherit the full parent tool set.
-4. **Tool audit at each phase**: Before shipping a new phase, review the tool inventory for each agent. Remove any tool that wasn't called in the last 3 tasks.
+**Consequences:**
+- Non-email adapters become second-class citizens with degraded functionality
+- Dashboard shows empty tiles for LinkedIn metrics because the adapter interface assumes email-shaped data
+- Feature parity becomes a never-ending chase: every new dashboard widget needs per-channel implementations
 
-**Warning signs:**
-- Agent task logs show frequent wrong tool calls (tool called, result empty, then correct tool called)
-- Agent "gets confused" about which tool to use and asks the PM for guidance
-- Session context window usage is high even for simple tasks (tool definitions consuming budget)
-- New tool added each phase with no corresponding removal
-- Subagent spawned with the instruction "do X" arrives with 40 tool definitions for a 2-tool task
+**Prevention:**
+1. Design the adapter interface from the NARROWEST common contract: `deploy()`, `pause()`, `resume()`, `getLeads()`, `getActions()`. Channel-specific metrics are optional extensions, not required interface members.
+2. Use a capability flags pattern: `adapter.capabilities()` returns `{ hasOpenTracking: boolean, hasBounceRate: boolean, hasAcceptRate: boolean }`. UI renders conditionally based on capabilities.
+3. Define a `ChannelMetric` union type: `{ type: "open_rate", value: number } | { type: "accept_rate", value: number } | ...` -- consumers pattern-match on type, not assume all metrics exist.
+4. Test the interface by writing the LinkedIn adapter FIRST (not the email adapter). If the interface feels awkward for LinkedIn, it is too email-shaped.
 
-**Phase to address:**
-Phase 1 (Monty architecture) — tool budget policy established upfront. Phase-by-phase tool audits built into each phase's completion criteria.
+**Detection:** Any adapter interface method that includes "subject", "open", "bounce", or "sender rotation" in its signature is likely too email-specific.
 
----
-
-### Pitfall 6: Credential and Secret Exposure Through Dev Agent Context
-
-**What goes wrong:**
-The Backend Agent is debugging a failing Trigger.dev task. It reads the `.env` file to check the `TRIGGER_SECRET_KEY` value. The agent outputs the full `.env` contents in its reasoning trace. The session log (which gets written to `.nova/memory/` or similar) now contains the raw `DATABASE_URL`, `ANTHROPIC_API_KEY`, and `EMAILBISON_API_KEY`. A future agent session loads this memory file and receives all production credentials in its context. If that session is logged, the credentials propagate further.
-
-Separately: Knostic research (2026) confirmed that Claude Code automatically loads `.env` secrets without user consent, and subagents spawn as separate OS processes that inherit all exported env variables. A prompt injection in a code comment or README can execute with full production credentials.
-
-**Why it happens:**
-Dev agents need to understand the environment to debug. The `.env` file is the source of truth for what APIs are configured. Reading it is the natural first step when a config-related bug appears. The agent doesn't know that outputting the value in its trace is a security violation — it's just trying to be helpful.
-
-**How to avoid:**
-1. **`.claudeignore` must block `.env`, `.env.*`, any secrets directory, SSH keys** — this already exists for Nova. Monty must inherit and extend it.
-2. **`sanitize-output.ts` must cover dev agent output** — strip any pattern matching `sk-`, `neon_`, `trigger_`, API key patterns from dev agent session output.
-3. **Dev agents check env var existence, not env var values.** The correct debug step is: "does `TRIGGER_SECRET_KEY` exist in the environment?" not "what is `TRIGGER_SECRET_KEY`?" Agents should use `env | grep TRIGGER_SECRET_KEY | wc -l` to confirm presence, never `echo $TRIGGER_SECRET_KEY`.
-4. **Memory files must never contain credential values.** Memory write governance for Monty agents must explicitly prohibit logging env var values. If a memory append would contain a pattern matching a credential, it is rejected.
-5. **Prompt injection guard**: Code comments and README files read by dev agents are untrusted content. Instructions appearing in code comments to "set API keys" or "run this command" must not be executed without PM review.
-
-**Warning signs:**
-- Dev agent output contains strings matching `sk-`, `neon_`, `trigger_`, URL patterns with passwords
-- `.env` appears in agent file access logs
-- Memory files contain API keys, connection strings, or passwords
-- Agent is told to "check if the API key is working" and outputs the key value rather than testing the connection
-- Session logs are growing unusually large (credential values inflate log size)
-
-**Phase to address:**
-Phase 1 (Monty architecture) — `.claudeignore` extension and `sanitize-output.ts` coverage defined before any dev agent touches the codebase. Security Agent (if included) validates these controls in Phase 2.
+**Phase to address:** Phase 1 (interface design) -- get this wrong and every subsequent phase inherits the leaky abstraction.
 
 ---
 
-### Pitfall 7: Memory Bloat and Context Rot in Long-Running Dev Agents
+### Pitfall 4: Dual-Write Window During Migration
 
-**What goes wrong:**
-The Dev Agent accumulates memory across phases: decisions made, patterns used, bugs fixed, architecture notes. By Phase 5, the memory file for the dev agent is 8,000 tokens. Each new session loads this memory, plus the task brief, plus tool definitions, plus the relevant code context. The agent is operating at 140K tokens before it starts work. Research shows context degradation begins around 32K tokens and becomes unreliable past 65% of the advertised context window. The agent starts making decisions that contradict earlier decisions documented in its own memory — because it's not actually reading the middle of the context where those decisions are stored.
+**What goes wrong:** During the transition period, some features read from the old EmailBison-direct path while others read from the new adapter path. Data written through one path is not visible through the other. Deploys work but analytics break. Webhook handlers create records that the adapter does not surface. The system is in a half-migrated state where both paths are active, and neither is complete.
 
-Separately: a 10-step dev task at 85% per-step accuracy has a 20% end-to-end success rate. Adding memory bloat that degrades per-step accuracy to 75% means the same task now succeeds 6% of the time.
+**Why it happens:** Migrating 65 files with 297 EmailBison references cannot happen in a single commit. The migration must be phased. But during the phased rollout, the old and new code paths coexist, and there is no enforcement mechanism to prevent the old path from being used.
 
-**Why it happens:**
-Memory is written because it feels useful at the time. "We decided to use `db push` over `migrate dev`" — worth noting. "Fixed a null check in deduplication" — also noted. Over 10 phases, the memory file contains hundreds of single-session observations that are stale or specific to a context that no longer applies. No one prunes it because pruning memory feels risky ("what if that matters?").
+**Evidence from THIS codebase:**
+- 65 files reference EmailBison directly (grep count)
+- Webhook handler creates Reply records with `emailBisonReplyId` -- these must continue working during migration
+- Analytics snapshot queries EmailBison API and writes to CachedMetrics -- if an adapter-based analytics path is introduced alongside, both will run
+- Notification system reads from Reply/WebhookEvent -- these are downstream of the webhook handler, not the adapter
 
-**How to avoid:**
-1. **Memory files have hard size limits**: Max 2,000 tokens per agent memory file (matching the Nova per-workspace memory budget). Enforcement at write time — if the new entry would push the file over the limit, the oldest entries are pruned.
-2. **Tiered memory**: Active decisions (current architecture, live constraints) in the primary memory file. Historical decisions in an archive file that is not auto-loaded.
-3. **Memory audit at each phase boundary**: Before starting a new phase, review the dev agent's memory file. Remove: entries specific to a completed phase, observations that have been superseded by newer decisions, one-off bug notes with no recurring pattern.
-4. **Context budget tracking per session**: The orchestrator calculates the estimated context budget (task brief + memory + tool definitions + code context) before spawning a dev agent. If the estimate exceeds 80K tokens, it prunes the memory file before loading.
+**Consequences:**
+- Metrics double-counted or missing depending on which path is active
+- Deploys succeed through adapter but analytics still query old path (stale data)
+- Notifications fire twice (once from webhook handler, once from adapter) or not at all
 
-**Warning signs:**
-- Dev agent memory file is over 3,000 tokens (approaching bloat territory)
-- Agent makes a decision in Phase 5 that directly contradicts a Phase 2 architectural decision in its own memory
-- Session context window is regularly over 100K tokens before any work starts
-- Agent's confidence on routine tasks is declining (more hedging, more clarification requests)
-- Memory file contains entries from every phase rather than just recurring patterns
+**Prevention:**
+1. Feature flag the adapter: `USE_CHANNEL_ADAPTER=true` on a per-workspace basis. A workspace is either fully on the old path OR fully on the new path, never both.
+2. The adapter wraps the existing code, not replaces it. `EmailAdapter.deploy()` internally calls the same `deployEmailChannel()` function that exists today. This means the adapter starts as a thin wrapper, not a rewrite.
+3. Define a migration checklist per workspace: webhook handler migrated, analytics migrated, notifications migrated, deploy migrated. Track completion.
+4. Add a "compatibility shim" period where the adapter reads from both old and new data sources and logs discrepancies. Fix discrepancies before removing the old path.
 
-**Phase to address:**
-Phase 1 (Monty architecture) — memory file size limits and audit cadence defined as part of memory governance. Built into phase completion criteria from day one.
+**Detection:** Any workspace where `USE_CHANNEL_ADAPTER=true` but any code path still directly references `EmailBisonClient` outside the adapter is a violation.
 
----
-
-### Pitfall 8: PM Bypasses Monty Just as PM Bypassed Nova
-
-**What goes wrong:**
-The PM (Claude Code main session) needs a quick fix: add a field to the Prisma schema and push it. Rather than delegating to Monty ("it'll be faster to just do it"), the PM spawns a generic subagent, writes the schema change, runs `prisma db push`, and closes the session. No Monty audit trail. No QA review. No memory write. The change is live on a production database with 14,563 Person records. If the migration was wrong, recovery requires manual intervention on live data.
-
-This is the same violation that burned API credits on 2026-04-02 when Nova was bypassed. The violation pattern is: "this task is small enough that the overhead of routing isn't worth it."
-
-**Why it happens:**
-The overhead of routing through an agent team is real. For a genuinely small task, delegating to Monty's orchestrator which then delegates to the Dev Agent adds latency and token cost. The PM rationally decides the overhead isn't worth it — and is right in 80% of cases. The problem is the 20% where "small task" turns out to be a live schema change with production implications.
-
-**How to avoid:**
-1. **Define explicitly which tasks require Monty and which the PM can do directly.** The boundary is not "use Monty for everything" (too expensive) or "use judgment" (too vague). The boundary is:
-   - PM can do directly: reading files, git log/status/diff, running tests, reviewing PRs, writing briefs, non-destructive queries
-   - Always goes through Monty: any write to source files, any schema change, any `prisma db push`, any deploy, any deletion
-2. **The Tier 3 gate applies to PM-direct work too.** If the PM is about to run a Tier 3 operation directly (without Monty), they must state the operation explicitly and confirm before executing.
-3. **Post-hoc audit**: After each work session, the PM checks git diff and confirms every change went through the intended channel. Untracked direct changes are flagged.
-
-**Warning signs:**
-- PM session contains file writes to `src/` without a preceding Monty delegation
-- `prisma db push` appears in PM session logs without a Monty task record
-- "Quick fix" or "just this once" language in PM reasoning before a direct code change
-- Git diff at session end shows changes the PM doesn't remember reviewing through Monty
-
-**Phase to address:**
-Phase 1 (Monty architecture) — the explicit PM action scope must be defined alongside Monty's scope. Both scopes written into the delegation rules file. The existing `delegation-rules.md` must be extended with a "Monty equivalent" section covering codebase operations.
+**Phase to address:** Phase 2-3 -- implement the wrapper in Phase 2, migrate consumers in Phase 3, remove old path in Phase 4.
 
 ---
 
-### Pitfall 9: QA Agent Becomes a Rubber Stamp
+### Pitfall 5: Portal Hardcoded to EmailBison (ALREADY HIT)
 
-**What goes wrong:**
-The QA Agent is given the diff from the Backend Agent and asked to review it. The QA Agent generates: "The changes look good. The null check has been added, the test passes, and the logic is consistent with the existing patterns." This is not adversarial review. It is a summary of what the Backend Agent already told the QA Agent in the handoff. The QA Agent has not:
-- Looked for the thing that was NOT changed but should have been
-- Tested the edge case where the fix works but breaks a caller
-- Verified that the test actually covers the failure mode that caused the bug
+**What goes wrong:** The client portal was built assuming all campaigns are email campaigns with EmailBison data. Campaign detail pages, activity feeds, lead lists, and analytics all query EmailBison directly. When LinkedIn campaigns are viewed in the portal, they show blank pages, zero leads, and no activity.
 
-The QA Agent adds a round-trip latency and a false sense of confidence without adding safety.
+**Why it happens:** The portal was built during v1.1 when only email existed. When LinkedIn was added, the portal was not updated because LinkedIn was primarily an admin-facing feature. But clients running LinkedIn-only campaigns (BlankTag) see a broken portal.
 
-**Why it happens:**
-Without explicit adversarial framing, language models default to agreeable summary. The model reads the diff, sees plausible changes, and produces a positive assessment because the context it was given (the Backend Agent's completed work) frames the changes as correct. The QA Agent needs to be designed to disagree — to look for the flaw — not to confirm the work.
+**Evidence from THIS codebase:**
+- Portal campaign detail was entirely EmailBison-dependent (bug #2, just fixed)
+- Portal files: `portal/campaigns/page.tsx`, `portal/campaigns/[id]/page.tsx`, `portal/activity/activity-log.tsx` -- all had EmailBison dependencies
+- `portal/campaigns/[id]/leads/route.ts` uses `emailBisonCampaignId` to fetch leads (3 occurrences)
+- `portal/sender-health/page.tsx` queries senders with `channel: { in: ["linkedin", "both"] }` -- at least this one was correct
 
-**How to avoid:**
-1. **QA Agent's system prompt frames the task as adversarial, not confirmatory.** "Your job is to find what is wrong, missing, or dangerous about this change. Do not summarize what was done — identify what could fail. A review that finds nothing is not a good review; it is a suspicious review."
-2. **QA Agent has specific mandatory checks per change type**:
-   - Schema change: what existing queries could break? What data could be corrupted during migration?
-   - New API route: what happens with invalid input? What auth check is missing?
-   - Modified function: what callers exist? What is the call graph? What edge cases did the original code handle?
-   - Deleted code: what depended on this? What breaks silently?
-3. **QA Agent produces a minimum 3 findings per review.** If it finds fewer than 3 things to flag (soft or hard), it must go deeper — check the callers, check the tests, check the migration path. A "clean" review requires explicit justification.
+**Consequences:**
+- Client sees blank campaign pages for LinkedIn campaigns
+- Client cannot review LinkedIn leads or activity
+- Client loses confidence in the platform
 
-**Warning signs:**
-- QA Agent reviews consistently produce "looks good" with no findings
-- QA Agent findings are all confirmatory ("the fix is correct") rather than adversarial ("the fix is correct but...")
-- Same type of bug appears in multiple PRs (QA Agent missed a recurring pattern)
-- Backend Agent's work passes QA on the first review every time (QA is too lenient)
+**Prevention:**
+1. The portal MUST consume the adapter interface, not the EmailBison client directly
+2. Every portal page needs a "channel tabs" component (already partially exists as `campaign-channel-tabs.tsx`) that renders per-channel data
+3. Portal feature parity test: for every email portal feature, verify LinkedIn equivalent exists and displays correctly
+4. Add an integration test that renders a LinkedIn-only campaign in the portal and asserts non-empty content
 
-**Phase to address:**
-Phase 3 (QA Agent design) — adversarial framing and mandatory check lists defined as part of QA Agent's system prompt design. Not an afterthought to add when bugs appear.
+**Detection:** Any `import` of `EmailBisonClient` or direct EB API query in `/app/(portal)/` code is a violation after migration.
+
+**Phase to address:** Phase 3 (portal unification) -- but validate with a test matrix in Phase 1 planning.
 
 ---
 
-### Pitfall 10: Infrastructure Agent Makes Irreversible Production Changes
+## Moderate Pitfalls
 
-**What goes wrong:**
-The Infrastructure Agent is asked to "clean up the Vercel environment variables — there are duplicates from old migrations." It identifies 8 variables that look like duplicates. It removes them via Vercel CLI. Two of those variables were feature flags controlling Nova agent behavior (NOVA_CLI_ENABLED, EMAILBISON_SENDER_MGMT_ENABLED). Nova agents immediately start failing. The feature flag removal is not easily reversible — the values weren't saved before deletion, and the correct values need to be reconstructed from documentation and memory.
+### Pitfall 6: Testing Gaps at the Adapter Boundary
 
-**Why it happens:**
-Infrastructure operations feel safer than code changes because they don't modify source files. But environment variable changes, Railway configuration changes, and DNS changes are often more dangerous — they take effect immediately in production with no git history, no diff review, and no easy rollback.
+**What goes wrong:** Tests mock the adapter interface but never test the actual EmailBison adapter implementation against real API responses. Or: tests exercise the email adapter thoroughly but the LinkedIn adapter has zero test coverage. The adapter contract is tested but the implementations are not.
 
-**How to avoid:**
-1. **All infra changes are Tier 3 operations.** No Vercel env var, Railway config, DNS record, or Trigger.dev schedule change executes without PM review of: what is being changed, what it currently is, and what it will be.
-2. **Before any deletion: inventory first, delete second.** Infrastructure Agent must output a full inventory of what exists before removing anything. The inventory is reviewed and approved before the deletion runs.
-3. **Maintain an infra state snapshot.** Before any infra change session, the Infrastructure Agent (or Dev Agent with infra scope) captures the current state (env vars list, Trigger.dev task list, Railway service config) to a timestamped file. If something breaks, this snapshot is the rollback reference.
-4. **No infra changes without a revert plan.** "If this goes wrong, we revert by [X]" must be stated before every Tier 3 infra operation.
+**Why it happens:** Adapter tests are written for the interface (easy to mock), not the implementations (require API fixtures). The email adapter gets tested because it wraps existing code that already worked. The LinkedIn adapter is new and lacks fixtures.
 
-**Warning signs:**
-- Infrastructure Agent output contains "I've removed..." without a preceding inventory step
-- Vercel or Railway changes made without a corresponding git commit or config snapshot
-- Feature flags disappear from environment (silent Nova breakage)
-- Trigger.dev cron count drops unexpectedly
-- Infrastructure changes were made in a session but aren't documented anywhere
+**Evidence from THIS codebase:**
+- `src/__tests__/emailbison-client.test.ts` exists (10 EmailBison references)
+- `src/__tests__/linkedin-queue.test.ts` exists but tests queue logic, not campaign operations
+- `src/lib/discovery/__tests__/channel-enrichment.test.ts` exists -- good pattern to follow
+- No integration test for LinkedIn campaign deploy end-to-end
 
-**Phase to address:**
-Phase 2 (Infrastructure Agent design) — Tier 3 infra operation protocol, inventory-first requirement, and state snapshot mechanism defined as part of the Infrastructure Agent's design.
+**Prevention:**
+1. For each adapter method, write at least one test per implementation (not just the interface)
+2. Create API response fixtures from real EmailBison and LinkedIn responses (anonymized)
+3. Add a "portal smoke test" that loads each portal page for an email campaign, a LinkedIn campaign, and a dual-channel campaign
+4. The test suite must include a "new channel checklist" test that fails if a new adapter is registered without corresponding test coverage
+
+**Phase to address:** Every phase -- each phase's PR must include adapter-level tests for the code it introduces.
 
 ---
 
-## Technical Debt Patterns
+### Pitfall 7: Sender Model `channel` Field Tri-State Problem
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Soft boundary enforcement (rules files only, no tool scoping) | Faster to implement — just write the rule | Agents violate boundary under pressure; PM replicates Nova bypass pattern with Monty | Never — tool surface must enforce the boundary |
-| 5+ specialist agents from day one | Matches "ideal software team" mental model | High orchestration overhead; idle specialists; multi-agent coordination for routine tasks | Never — start with 3-4 and specialize only when a distinct workload justifies it |
-| No action tier model (all ops treated equally) | Simpler agent design | Destructive ops execute without human review; production data and infra changed silently | Never — Tier 3 gate must exist from day one |
-| QA Agent as optional review step | Saves time on routine fixes | Rubber-stamp pattern develops; false confidence in untested changes; recurring bugs | Never — QA review is mandatory for Tier 2+ changes |
-| Full tool inventory on all agents | Simpler tool management | Context bloat, poor tool selection, degraded reasoning | Acceptable temporarily; must be audited each phase |
-| Dev agents read `.env` for debugging | Fastest path to understanding config | Credentials propagate through session logs and memory files | Never — check presence, not value |
-| PM does "small" codebase changes directly | Saves routing overhead | Bypasses QA, audit trail, and memory writes; same pattern that caused Nova bypass on 2026-04-02 | Only for read-only operations |
+**What goes wrong:** The Sender model has `channel: "email" | "linkedin" | "both"`, and every query that needs LinkedIn senders must use `channel: { in: ["linkedin", "both"] }`. This is a known footgun documented in `live-data-rules.md`. When the adapter is introduced, every adapter method that queries senders must remember this tri-state logic. If even one query uses `channel: "linkedin"` instead of `in: ["linkedin", "both"]`, it silently excludes dual-channel senders.
 
----
+**Evidence from THIS codebase:**
+- `live-data-rules.md` explicitly documents this as a violation pattern
+- 15+ files use `channel: { in: ["linkedin", "both"] }` -- the correct pattern
+- `sync-senders.ts` line 79 upgrades `"linkedin"` to `"both"` when an email is found
+- `workspaces/page.tsx` uses the correct pattern: `s.channel === "linkedin" || s.channel === "both"`
+- Previous violations documented: queries using `channel: 'linkedin'` that missed `both` senders
 
-## Integration Gotchas
+**Prevention:**
+1. The adapter MUST encapsulate sender queries. `EmailAdapter.getSenders()` returns email senders (channel `email` or `both`). `LinkedInAdapter.getSenders()` returns LinkedIn senders (channel `linkedin` or `both`). No consumer ever writes this filter directly.
+2. Consider refactoring to a many-to-many: `SenderChannel { senderId, channel }` junction table. A sender with two rows (`email`, `linkedin`) is easier to query than a tri-state string. This is a Phase 1 schema decision.
+3. If keeping the string field: add a `sendersByChannel(channel: "email" | "linkedin")` utility that encapsulates the `in` logic and is the ONLY way to query senders by channel.
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Prisma `db push` | Dev agent runs `db push` immediately after schema change | Schema change is Tier 3: PM reviews diff, approves push, confirms no data loss path |
-| Vercel env vars | Infrastructure Agent deletes "duplicates" without checking if they're feature flags | Inventory all vars, classify each (feature flag, API key, config), get PM approval before any deletion |
-| Trigger.dev tasks | Infrastructure Agent removes tasks that look inactive | List all tasks, check schedule and last run, confirm with PM before any deletion |
-| Railway config | Dev agent modifies Railway service config to fix a deployment | Railway changes are Tier 3 — state snapshot before, PM approval during, verify after |
-| `.env` file | Dev agent reads `.env` to debug missing API key | Check env var presence via `env | grep KEY_NAME | wc -l`, never read or output the value |
-| Git worktrees | Multiple dev agents working in parallel write to the same files | Each parallel agent gets its own git worktree/branch; no two agents share a working directory |
-| `sanitize-output.ts` | Output sanitization is only applied to Nova agent outputs | Dev agent outputs must also run through sanitization — key patterns appear in code reviews and debug traces |
+**Phase to address:** Phase 1 (schema design decision) -- either refactor to junction table or create the utility function.
 
 ---
 
-## Performance Traps
+### Pitfall 8: Notification System Assumes Email Reply Shape
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Memory file loaded in full for every session | Session context starts at 80K+ tokens; agent degradation on routine tasks | Hard size limit on memory files; archive historical entries; don't auto-load archive | After Phase 3, when memory accumulates |
-| Full tool set on focused subagents | Subagent spawned for 2-tool task arrives with 40 tool definitions consuming 15K context tokens | Pass only task-relevant tools when spawning subagents | Every subagent spawn without scoped tool loading |
-| Sequential multi-agent coordination for independent subtasks | Frontend fix waits for Backend fix to complete; total wall time doubles | Identify independent subtasks; parallelize across agents with separate worktrees | Any multi-specialist feature task |
-| QA Agent reviewing after merge rather than before | Bug reaches production; rollback required | QA review is a pre-merge gate, never post-merge | Immediately — post-merge QA has no preventive value |
-| Compound error accumulation in 10+ step dev tasks | Final output is subtly wrong in multiple small ways; hard to trace | Break long tasks into checkpoint stages; PM reviews at each checkpoint | Any task over 7 sequential steps |
+**What goes wrong:** The notification system (`src/lib/notifications.ts`) was designed around email replies: subject lines, email bodies, "Reply in Outsignal" buttons linking to the inbox. LinkedIn replies do not have subject lines. LinkedIn conversations live in a different UI. If notifications are extended to LinkedIn without adapting the format, clients get confusing notifications with empty subject fields and broken links.
 
----
+**Evidence from THIS codebase:**
+- Notification format documented in MEMORY.md: "Email subject: `[{Workspace Name}] New Reply from {lead name or email}`"
+- Reply model has `subject`, `bodyText`, `emailBisonReplyId` -- all email-centric
+- "Reply in Outsignal" button links to `https://app.outsignal.ai/inbox` -- this is the email inbox, not LinkedIn
+- 17 notification types exist, all wrapped with audit logging
 
-## Security Mistakes
+**Prevention:**
+1. Add a `channel` field to notification templates
+2. LinkedIn notifications should link to the LinkedIn conversation view (different URL)
+3. Subject line field should be optional in notification rendering -- LinkedIn replies do not have subjects
+4. Test each notification type with both email and LinkedIn reply data
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Dev agent reads `.env` for debugging | Credentials appear in session logs, memory files, output traces | `.claudeignore` blocks `.env`; `sanitize-output.ts` strips credential patterns; agents check presence not value |
-| Inherited shell env exposes all exported vars to subagents | All exported API keys accessible to every spawned subagent | Run dev agents in sandboxed environment; only export what the specific agent needs |
-| Prompt injection via code comments or README files | Attacker embeds instructions in code; agent executes them with production credentials | Code content is untrusted; agent must not execute instructions found in code files without PM review |
-| Security Agent bypassed because "this isn't a security change" | Auth vulnerability shipped without review | Security Agent is invoked for any task touching: auth routes, credential handling, user data, API key management |
-| Memory files contain credential values | Credentials persist in flat files; future sessions load them into context | Memory write governance explicitly prohibits logging credential values; pattern matching at write time |
+**Phase to address:** Phase 3 (notification channel awareness).
 
 ---
 
-## "Looks Done But Isn't" Checklist
+### Pitfall 9: Analytics Pipeline Tightly Coupled to EmailBison Stats API
 
-- [ ] **Tool surface enforces the Nova/Monty boundary**: Nova agents have no git or source file tools. Monty agents have no campaign, discovery, or EmailBison tools. Verified by listing each team's available tools.
-- [ ] **Tier 3 gate is implemented, not just described**: A Tier 3 operation (schema push, deletion, deploy) cannot execute without PM approval. Verified by attempting a Tier 3 op and confirming the gate fires.
-- [ ] **`.claudeignore` covers dev agent sessions**: `.env`, `*.env.*`, SSH keys, and secrets directories are blocked for dev agents. Verified by confirming the claudeignore entries exist and testing that a dev agent cannot read `.env`.
-- [ ] **QA Agent reviews use adversarial framing**: QA Agent prompt includes explicit instruction to find problems, not summarize correctness. Verified by reading the QA Agent system prompt.
-- [ ] **Memory files have enforced size limits**: Dev agent memory files are bounded. Verified by checking the memory governance rules include a size limit and a pruning mechanism.
-- [ ] **Infra changes require prior state snapshot**: Before any Infrastructure Agent deletes or modifies Vercel/Railway/Trigger.dev config, a snapshot of current state is captured. Verified by running a mock infra change and confirming the snapshot step runs.
-- [ ] **PM action scope is defined**: A written list of what the PM can do directly vs. what must go through Monty exists and matches the actual capability setup. Verified by checking the extended delegation rules.
-- [ ] **Monty orchestrator has a triage classification step**: Before delegating to any specialist, the orchestrator classifies the task as PLATFORM, DATA, or AMBIGUOUS. Verified by reviewing the orchestrator's routing logic.
-- [ ] **Parallel agent execution uses separate worktrees**: When two dev agents work simultaneously, they operate in separate git worktrees. Verified by checking the worktree setup in the parallel agent spawning logic.
+**What goes wrong:** The analytics snapshot (`src/lib/analytics/snapshot.ts`) directly calls `EmailBisonClient.getCampaignStats()` and writes results to `CachedMetrics`. The Intelligence Hub, campaign rankings, and step analytics all read from these cached metrics. If the adapter introduces its own metrics pipeline, there will be two metrics sources with different update cadences, formats, and coverage.
 
----
+**Evidence from THIS codebase:**
+- `snapshot.ts` has 5 EmailBison references and 4 actionType references
+- Dashboard stats route (`/api/dashboard/stats/route.ts`) has 7 EmailBison references
+- LinkedIn analytics are computed differently -- from `LinkedInAction` completion records, not an external API
+- CachedMetrics model is actually channel-agnostic (generic `metricType` + `data` JSON), which is a good foundation
 
-## Recovery Strategies
+**Prevention:**
+1. The adapter should expose `getMetrics(): ChannelMetric[]` that each implementation fills from its own data source (EB API for email, LinkedInAction table for LinkedIn)
+2. The snapshot cron calls `adapter.getMetrics()` for each active channel, not `EmailBisonClient` directly
+3. CachedMetrics remains the single storage layer -- adapters write to it, dashboard reads from it
+4. Add a `channel` discriminator to CachedMetrics records so email and LinkedIn metrics do not collide on the same `metricKey`
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Agent crossed Nova/Monty boundary | MEDIUM | Audit what the agent touched; reverse any DB changes via Prisma restore or manual correction; add the missed tool scope restriction; review memory files for boundary violations |
-| Destructive code pushed without QA review | HIGH | Roll back the commit; restore DB state from backup if data was corrupted; implement the missing null-check or guard; add test coverage for the failure mode |
-| Credentials in session logs or memory | HIGH | Rotate all credentials that appeared in logs; purge memory files containing credentials; check for downstream propagation in other memory files |
-| Over-engineered agent team slowing work | LOW | Collapse idle specialists into the generalist Dev Agent; merge their tool sets; rewrite their tasks in the generalist's memory |
-| Memory bloat causing context degradation | LOW | Run memory audit; archive entries older than the last 2 phases; enforce the size limit going forward; re-test affected agents on routine tasks |
-| QA rubber-stamping bugs through | MEDIUM | Switch to adversarial QA framing; review last 10 QA-approved PRs manually; add mandatory check lists to QA Agent |
-| PM bypassed Monty for a "small" schema change | MEDIUM | Run `prisma db push` output through QA review retroactively; document the change in Monty's backlog; extend delegation rules to cover this case |
-| Infra change deleted a feature flag | HIGH | Check env documentation for correct values; restore from `.env.example` or git history; verify Nova agents are functioning; document all feature flags in infra state snapshot |
+**Phase to address:** Phase 2-3 (analytics unification).
 
 ---
 
-## Pitfall-to-Phase Mapping
+### Pitfall 10: Feature Parity Assumption Trap
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Soft instructions don't enforce boundary | Phase 1: Monty architecture + tool scoping | Each team's tool inventory lists no overlap with the other team's tools |
-| Destructive code without approval | Phase 1: Action tier model definition | Tier 3 operation requires PM approval before execution; verified by test |
-| Nova/Monty boundary collapse on ambiguous tasks | Phase 1: Triage classification in orchestrator | Orchestrator routing logic includes PLATFORM/DATA/AMBIGUOUS classification |
-| Over-engineering agent count | Phase 1: Agent count decision | Start with 3-4 agents; document justification for each specialist |
-| Tool proliferation degrading agents | Phase 1: Tool budget policy; every phase: tool audit | Each agent has ≤15 tools; audit before each phase ships |
-| Credential exposure through dev context | Phase 1: `.claudeignore` + sanitize coverage | Dev agent cannot read `.env`; output sanitization strips key patterns |
-| Memory bloat and context rot | Phase 1: Memory governance with size limits | Memory files under 2K tokens; audit cadence in phase completion criteria |
-| PM bypasses Monty | Phase 1: Extended delegation rules | Delegation rules define PM-direct scope and Monty-required scope |
-| QA rubber stamp | Phase 3: QA Agent adversarial design | QA Agent prompt uses adversarial framing; mandatory 3+ findings per review |
-| Infrastructure irreversible changes | Phase 2: Infra agent Tier 3 protocol | Inventory-first and state snapshot required before any infra deletion |
+**What goes wrong:** The team assumes every email feature must have a LinkedIn equivalent. This leads to building features LinkedIn does not need (bounce rate monitoring for LinkedIn, open tracking, sender rotation) and missing features LinkedIn uniquely requires (connection acceptance tracking, profile view sequencing, warm-up day scheduling for LinkedIn accounts).
+
+**Evidence from THIS codebase:**
+- LinkedIn has its own rate limiter (`rate-limiter.ts`) with warmup schedules for connections/messages/profile views -- completely different from email warmup
+- LinkedIn has `LinkedInDailyUsage` tracking -- no email equivalent
+- LinkedIn has connection polling (`connection-poller.ts`) -- concept does not exist in email
+- Email has bounce monitoring (`bounce-monitor.ts`) -- concept does not exist in LinkedIn
+- Email has SPF/DKIM/DMARC health -- concept does not exist in LinkedIn
+
+**Prevention:**
+1. The adapter interface must NOT force parity. Email-specific features (bounce monitoring, DNS health, open tracking) stay in the EmailAdapter. LinkedIn-specific features (connection polling, acceptance rate, daily usage limits) stay in the LinkedInAdapter.
+2. Define "shared" vs "channel-specific" features explicitly in the interface design doc
+3. Dashboard sections that only apply to one channel should render conditionally based on `adapter.capabilities()`
+4. Resist the urge to create a `LinkedInBounceRate` metric just because email has one
+
+**Phase to address:** Phase 1 (interface design) -- explicitly categorize features as shared vs channel-specific.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall 11: Import Cycle Between Adapter and Existing Client
+
+**What goes wrong:** The `EmailAdapter` imports `EmailBisonClient`. But `EmailBisonClient` is already imported in 65 files. If any of those files also import from the adapter module (for types, constants, etc.), you get a circular dependency. TypeScript may not error on it (depending on structure), but runtime behavior becomes unpredictable.
+
+**Prevention:** The adapter module must be a clean layer above the client. No file in `src/lib/emailbison/` should ever import from `src/lib/channels/`. Enforce this with an ESLint import restriction rule or a simple grep in CI.
+
+**Phase to address:** Phase 1 (module structure).
+
+---
+
+### Pitfall 12: Webhook Handler Cannot Go Through Adapter
+
+**What goes wrong:** The EmailBison webhook handler receives events from an external service. It cannot be refactored to use an adapter pattern because it is the adapter's INBOUND path -- data flows from EmailBison to the system, not the other way. Trying to force webhook handling into the adapter interface creates awkward "receive" methods that do not fit the adapter's "command" interface.
+
+**Prevention:** Webhooks are NOT part of the adapter interface. The adapter handles outbound operations (deploy, pause, resume, get metrics). Inbound events (webhooks, polling results) are handled by separate event handlers that write to the same unified data model (Reply, LinkedInAction). The adapter and the webhook handler are peers, not parent-child.
+
+**Phase to address:** Phase 1 (architecture decision) -- document this explicitly to prevent confusion later.
+
+---
+
+### Pitfall 13: Migration Ordering Dependencies
+
+**What goes wrong:** Schema changes (new tables for channel references), data migrations (copying EB IDs), code changes (swapping direct calls for adapter calls), and feature flags must be deployed in a specific order. Deploying code that references a new table before the table exists crashes. Deploying the adapter before the feature flag system exists means no rollback path.
+
+**Prevention:**
+1. Phase 1: Schema + constants + interface (no behavior change)
+2. Phase 2: Adapter implementations + feature flag (adapters exist but are not called by default)
+3. Phase 3: Migrate consumers behind feature flag (old path still works when flag is off)
+4. Phase 4: Enable flag per workspace, validate, remove old path
+5. Never combine schema changes and behavior changes in the same deploy
+
+**Phase to address:** All phases -- this is the overall migration strategy.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Interface design (Phase 1) | Too email-shaped (Pitfall 3) | Write LinkedIn adapter FIRST; if it feels awkward, interface is wrong |
+| Constants extraction (Phase 1) | Missing some string literals (Pitfall 1) | Run `grep -rn` for ALL raw channel/actionType/status strings; create exhaustive list |
+| Schema changes (Phase 1) | Breaking existing queries (Pitfall 13) | Additive only -- new columns/tables, never remove existing fields in Phase 1 |
+| Email adapter (Phase 2) | Thin wrapper becomes thick abstraction | EmailAdapter should delegate to existing functions, not reimplement them |
+| LinkedIn adapter (Phase 2) | Missing the `"both"` channel case (Pitfall 7) | Encapsulate in adapter, never let consumers write channel queries |
+| Portal migration (Phase 3) | Blank pages for non-email campaigns (Pitfall 5) | Test matrix: email-only, LinkedIn-only, dual-channel campaigns |
+| Analytics migration (Phase 3) | Dual metrics pipelines (Pitfall 9) | Single CachedMetrics table with channel discriminator |
+| Notification migration (Phase 3) | Broken LinkedIn notification links (Pitfall 8) | Channel-aware notification templates with correct deep links |
+| Consumer migration (Phase 3-4) | Dual-write inconsistency (Pitfall 4) | Feature flag per workspace; workspace is ALL-old or ALL-new, never mixed |
+| Cleanup (Phase 4) | Removing deprecated fields too early | Keep `emailBisonCampaignId` as deprecated nullable until ALL consumers migrated and validated |
 
 ---
 
 ## Sources
 
-- [Are bugs and incidents inevitable with AI coding agents? — Stack Overflow Blog](https://stackoverflow.blog/2026/01/28/are-bugs-and-incidents-inevitable-with-ai-coding-agents/) — AI PRs have 75% more logic/config errors; AI creates 1.7x more bugs than humans; security vulnerabilities at 1.5-2x rate (MEDIUM confidence — survey data)
-- [Your agent's guardrails are suggestions, not enforcement — DEV Community](https://dev.to/brianrhall/your-agents-guardrails-are-suggestions-not-enforcement-2c8k) — rules in prompts are advisory; rules in hooks are structural; enforcement requires runtime layers (HIGH confidence — documented pattern)
-- [Claude Code Automatically Loads .env Secrets, Without Telling You — Knostic](https://www.knostic.ai/blog/claude-loads-secrets-without-permission) — Claude Code inherits shell env; subagents spawn as separate OS processes with full env inheritance; `.env` loaded without consent (HIGH confidence — security research with demonstrated exploit)
-- [How Code Execution Drives Key Risks in Agentic AI Systems — NVIDIA Technical Blog](https://developer.nvidia.com/blog/how-code-execution-drives-key-risks-in-agentic-ai-systems/) — sandboxing as the only reliable boundary; command allowlists; misinterpreted prompt can run `rm -rf` or push bad migrations (HIGH confidence — official NVIDIA blog)
-- [Multi-Agent Workflows Often Fail — GitHub Blog](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/) — inconsistent data exchange, unclear role boundaries, cascading failures; typed schemas, structured boundaries (MEDIUM confidence — practitioner post)
-- [The Multi-Agent Trap — Towards Data Science](https://towardsdatascience.com/the-multi-agent-trap/) — orchestration overhead outweighs modularity benefits; initial enthusiasm gives way to task fragility (MEDIUM confidence — practitioner analysis)
-- [AI Tool Overload: Why More Tools Mean Worse Performance — Jenova AI](https://www.jenova.ai/en/resources/mcp-tool-scalability-problem) — direct correlation between tool count and performance degradation; 50+ tools causes attention degradation and poor tool selection (MEDIUM confidence — documented benchmark)
-- [Agentic Context Engineering: How to Keep Agents Sharp — StackOne](https://www.stackone.com/blog/agent-suicide-by-context/) — context rot begins at 32K tokens; models degrade before they fill the advertised window; 65% capacity is the real limit (HIGH confidence — multiple studies cited)
-- [The 80% Problem in Agentic Coding — Addy Osmani](https://addyo.substack.com/p/the-80-problem-in-agentic-coding) — compound probability failure: 85% per-step accuracy produces 20% end-to-end success at 10 steps (HIGH confidence — widely cited and independently verified math)
-- [I Built the Guardrails Into the Repo. Not the Prompt. — DEV Community](https://dev.to/wilddog64/i-built-the-guardrails-into-the-repo-not-the-prompt-4n3l) — structural enforcement via repo design; Claude Code hooks for enforcement; prompt guardrails have no structural force (MEDIUM confidence — practitioner experience)
-- [Making Claude Code More Secure and Autonomous — Anthropic Engineering](https://www.anthropic.com/engineering/claude-code-sandboxing) — sandboxing approaches; deny rules for sensitive files; network restriction defaults (HIGH confidence — official Anthropic engineering blog)
-- First-party evidence: Nova boundary violation (2026-04-02) — PM spawned generic subagents to run Prospeo/AI Ark/enrichment CLI scripts directly, bypassing orchestrator. Results: no audit trail, no memory writes, burned API credits, embedded enrichment during discovery. (HIGH confidence — direct observation)
-
----
-*Pitfalls research for: dev agent team (Monty) — adding autonomous coding agents to existing Nova campaign agent system*
-*Researched: 2026-04-02*
+- Direct codebase analysis: 940+ files, ~146,700 LOC
+- Prisma schema: `prisma/schema.prisma` (1038+ lines, 30+ models)
+- Bug evidence: 6 confirmed bugs from 2026-04-08 session (actionType mismatch, portal blank, deploy notification, sparkline data, connection poller, activity feed)
+- Grep analysis: 297 EmailBison references across 65 files, 122 actionType references across 36 files, 71 files with channel filter patterns
+- Project rules: `data-validation-rules.md`, `live-data-rules.md`, `api-client-rules.md`
+- Confidence: HIGH -- all pitfalls grounded in actual codebase evidence and confirmed production bugs

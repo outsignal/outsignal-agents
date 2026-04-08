@@ -1,478 +1,493 @@
-# Architecture Research
+# Architecture Patterns: Channel Adapter Integration
 
-**Domain:** Dev Orchestrator (Monty) — integration with existing Nova agent framework
-**Researched:** 2026-04-02
-**Confidence:** HIGH — based on direct inspection of all existing agent framework files
+**Domain:** Multi-channel outbound platform (adapter pattern retrofit)
+**Researched:** 2026-04-08
+**Confidence:** HIGH -- based on direct codebase analysis, not external sources
 
----
+## Recommended Architecture
 
-## Standard Architecture
+The adapter pattern introduces a `ChannelAdapter` interface that normalises how the system interacts with email (EmailBison) and LinkedIn (DB + Railway worker). Every call site currently doing channel-specific branching (`if channel === 'email' ... else if channel === 'linkedin'`) gets replaced with a single adapter call. The adapter is resolved per-channel, so the system never cares which channel it is talking to.
 
-### System Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Entry Points (CLI)                               │
-│                                                                          │
-│   scripts/chat.ts (Nova)          scripts/monty.ts (Monty — new)        │
-│   npm run chat                    npm run monty                          │
-└─────────────────────┬──────────────────────────────────────┬────────────┘
-                      │                                      │
-┌─────────────────────▼──────────────┐  ┌───────────────────▼────────────┐
-│       Nova Orchestrator             │  │      Monty Orchestrator         │
-│   src/lib/agents/orchestrator.ts   │  │  src/lib/agents/dev/           │
-│                                    │  │  dev-orchestrator.ts            │
-│  DOMAIN: workspace slug present    │  │  DOMAIN: codebase changes       │
-│  TOOLS: workspace-scoped only      │  │  TOOLS: dev-scoped only         │
-│  MODEL: claude-opus-4-6            │  │  MODEL: claude-opus-4-6         │
-└─────────────────────┬──────────────┘  └───────────────────┬────────────┘
-                      │                                      │
-┌─────────────────────▼──────────────────────────────────────▼────────────┐
-│                      SHARED INFRASTRUCTURE (minimal changes)              │
-│                                                                           │
-│   src/lib/agents/runner.ts     — runAgent(), AgentRun audit, onComplete  │
-│   src/lib/agents/memory.ts     — loadMemoryContext(), appendToMemory()   │
-│   src/lib/agents/types.ts      — AgentConfig, AgentRunResult interfaces  │
-│   src/lib/agents/load-rules.ts — loadRules() from .claude/rules/         │
-└──────────────────────────────────────────────────────────────────────────┘
-                      │                                      │
-┌─────────────────────▼──────────────┐  ┌───────────────────▼────────────┐
-│       Nova Specialists (unchanged)  │  │      Monty Specialists (new)    │
-│   src/lib/agents/{specialist}.ts   │  │  src/lib/agents/dev/           │
-│                                    │  │  {specialist}.ts               │
-│  research.ts   writer.ts           │  │  backend.ts  frontend.ts       │
-│  leads.ts      campaign.ts         │  │  infra.ts    qa.ts             │
-│  deliverability.ts  intelligence.ts│  │  security.ts                   │
-│  onboarding.ts                     │  │                                 │
-└─────────────────────┬──────────────┘  └───────────────────┬────────────┘
-                      │                                      │
-┌─────────────────────▼──────────────────────────────────────▼────────────┐
-│                           Tool Namespaces (separated)                     │
-│                                                                           │
-│   Nova Tools (scripts/cli/*.ts)        Dev Tools (scripts/dev-cli/*.ts)  │
-│   — DB CRUD for campaign entities      — Git operations                  │
-│   — EmailBison API calls               — File read/write                 │
-│   — Discovery API adapters             — npm/build/test runners          │
-│   — Lead scoring, enrichment           — Vercel/Railway/Trigger.dev CLI  │
-│   — Workspace memory read/write        — Prisma schema introspection     │
-└──────────────────────────────────────────────────────────────────────────┘
-                      │                                      │
-┌─────────────────────▼──────────────────────────────────────▼────────────┐
-│                           Memory Namespaces (separated)                   │
-│                                                                           │
-│   .nova/memory/{slug}/           .monty/memory/                          │
-│     profile.md                     backlog.md                            │
-│     campaigns.md                   architecture.md                       │
-│     learnings.md                   decisions.md                          │
-│     feedback.md                    incidents.md                          │
-│   .nova/memory/global-insights.md  .monty/memory/global-insights.md     │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-### Component Responsibilities
-
-| Component | Responsibility | Shared or New |
-|-----------|----------------|---------------|
-| `runner.ts` | Core execution engine — AgentRun audit, generateText, onComplete hooks | **Shared unchanged.** Both Nova and Monty call `runAgent()` from this file. |
-| `memory.ts` | 3-layer context reads, appendToMemory, appendToGlobalMemory | **Shared with one change.** Gains optional `memoryRoot` param (default `.nova/memory`). Monty passes `.monty/memory`. |
-| `types.ts` | AgentConfig, AgentRunResult, specialist Input/Output interfaces | **Shared.** Monty-specific I/O types added as new exports in this file or in `dev/dev-types.ts`. |
-| `load-rules.ts` | Reads `.claude/rules/*.md` into system prompts | **Shared unchanged.** Monty adds its own `.claude/rules/dev-*.md` files read via the same function. |
-| `orchestrator.ts` (Nova) | Routes workspace work to 7 specialists, holds dashboard tools | **Unchanged.** No dev tools added here. |
-| `dev/dev-orchestrator.ts` | Triages bugs vs features, routes codebase work to 5 dev specialists, manages backlog | **New.** Mirrors structure of `orchestrator.ts` but dev-scoped. |
-| `dev/{specialist}.ts` | 5 dev specialists — each has config, tools, onComplete, `runXxxAgent()` export | **New.** Same file pattern as Nova specialists. |
-| `scripts/monty.ts` | Interactive CLI REPL for Monty — parallel to `scripts/chat.ts` | **New.** No workspace picker (dev work is project-wide, not workspace-scoped). |
-| `scripts/dev-cli/*.ts` | Dev tools invoked by Monty specialists (git, file ops, build, deploy) | **New.** Separate namespace from `scripts/cli/*.ts`. |
-
----
-
-## Recommended Project Structure
+### Where the Adapter Interface Lives
 
 ```
-src/lib/agents/
-├── runner.ts               SHARED — one-line change (memoryRoot param)
-├── memory.ts               SHARED — minor extension (memoryRoot param)
-├── types.ts                SHARED — new DevXxxInput/Output types appended
-├── load-rules.ts           SHARED — unchanged
-├── orchestrator.ts         Nova orchestrator — unchanged
-├── {nova-specialists}.ts   Nova specialists — unchanged
-└── dev/
-    ├── dev-orchestrator.ts # Monty orchestrator config + delegateToXxx tools
-    ├── dev-types.ts        # Monty-specific I/O types (DevTaskInput, BugReport, etc.)
-    ├── backend.ts          # Backend specialist (API routes, Prisma, Trigger.dev)
-    ├── frontend.ts         # Frontend/UI specialist (components, pages, design system)
-    ├── infra.ts            # Infrastructure specialist (deploys, Railway, DNS)
-    ├── qa.ts               # QA specialist (testing, code review, validation)
-    └── security.ts         # Security specialist (auth, OWASP, credential handling)
-
-scripts/
-├── chat.ts                 Nova CLI entry point — unchanged
-├── monty.ts                Monty CLI entry point — new (no workspace picker)
-├── cli/                    Nova CLI tools — unchanged (55 scripts)
-│   └── *.ts
-└── dev-cli/                Monty CLI tools — new namespace
-    ├── git-status.ts       git status + diff summary
-    ├── git-log.ts          recent commits with context
-    ├── run-tests.ts        npx tsx test runner wrapper
-    ├── build-check.ts      TypeScript compile check
-    ├── backlog-get.ts      read .monty/memory/backlog.md
-    ├── backlog-add.ts      append to backlog
-    ├── file-read.ts        safe file read (respects .claudeignore)
-    ├── file-write.ts       writes code changes via temp file pattern
-    └── deploy-status.ts    Vercel/Trigger.dev/Railway deployment status
-
-.claude/rules/
-├── {existing nova rules}          unchanged (12 files)
-├── dev-orchestrator-rules.md      Monty PM behaviour: triage, routing, boundary enforcement
-├── dev-backend-rules.md           Backend agent: Prisma patterns, Next.js API conventions
-├── dev-frontend-rules.md          Frontend agent: design system, component patterns
-├── dev-infra-rules.md             Infra agent: deploy commands, Railway/Vercel/Trigger.dev
-├── dev-qa-rules.md                QA agent: test patterns, review checklists
-└── dev-security-rules.md          Security agent: OWASP, secret handling, auth patterns
-
-.monty/memory/
-├── backlog.md              Bug/feature backlog (Monty writes here after triage)
-├── architecture.md         Key architecture decisions Monty has made/enforced
-├── decisions.md            ADRs and rationale from dev sessions
-├── incidents.md            Incident log (bugs found, root cause, fix applied)
-└── global-insights.md      Cross-session platform engineering patterns
+src/lib/channels/
+  types.ts              -- ChannelAdapter interface + shared types
+  registry.ts           -- getAdapter(channel): ChannelAdapter
+  email-adapter.ts      -- EmailAdapter implements ChannelAdapter (wraps EmailBisonClient)
+  linkedin-adapter.ts   -- LinkedInAdapter implements ChannelAdapter (wraps Prisma + worker)
 ```
 
-### Structure Rationale
+This is a new directory. It does NOT replace `src/lib/emailbison/` or `src/lib/linkedin/` -- those remain as low-level implementation details. The adapters are a thin orchestration layer on top.
 
-- **`src/lib/agents/dev/` subdirectory:** Keeps Monty agents namespaced away from Nova while sharing the same parent directory. Same import depth, no circular dependencies.
-- **`scripts/dev-cli/` namespace:** Monty's tools touch different surfaces than Nova's. Separate directory prevents tool pollution — Monty's toolset cannot accidentally include Nova's EmailBison tools and vice versa.
-- **`.monty/memory/` root:** Parallel to `.nova/memory/` but project-scoped rather than workspace-scoped. No `{slug}/` subdirectories needed — dev work is codebase-wide. Topic-based files (backlog, decisions, incidents) capture what matters without per-specialist siloing.
-- **`.claude/rules/dev-*.md` naming:** Consistent with the `loadRules()` pattern. `dev-` prefix prevents naming collision with Nova rules files.
-- **`scripts/monty.ts` separate entry point:** No workspace picker needed. Monty works on the project, not on a specific client. This also makes the two CLIs clearly different products for different audiences.
+### ChannelAdapter Interface
 
----
-
-## Architectural Patterns
-
-### Pattern 1: Same Runner, Different Memory Root
-
-**What:** Both Nova and Monty call `runAgent()` from `runner.ts` unchanged. The only infrastructure change is adding an optional `memoryRoot` parameter to `loadMemoryContext()` in `memory.ts`. Monty agents pass `".monty/memory"`. Nova agents continue to pass nothing (default is `".nova/memory"`).
-
-**When to use:** Always — this is the core integration approach. It preserves the single execution path and audit trail while giving Monty its own persistent context.
-
-**Trade-offs:** One small change to shared infrastructure (`memory.ts`). Backwards-compatible — all existing Nova calls continue working with no code changes.
-
-**Implementation:**
 ```typescript
-// memory.ts — extend signature, keep default
-export async function loadMemoryContext(
-  workspaceSlug?: string,
-  memoryRoot: string = ".nova/memory",
-): Promise<string> { ... }
+interface ChannelAdapter {
+  channel: 'email' | 'linkedin';
 
-// runner.ts — thread the new option through
-const memoryContext = await loadMemoryContext(
-  options?.workspaceSlug,
-  options?.memoryRoot,     // new option key, undefined = Nova default
+  // --- Deployment ---
+  deploy(ctx: DeployContext): Promise<DeployResult>;
+  pause(campaignRef: CampaignRef): Promise<void>;
+  resume(campaignRef: CampaignRef): Promise<void>;
+
+  // --- Metrics ---
+  getMetrics(campaignRef: CampaignRef): Promise<ChannelMetrics>;
+  getActivity(campaignRef: CampaignRef, opts: PaginationOpts): Promise<ActivityEntry[]>;
+
+  // --- Senders ---
+  getSenders(workspaceSlug: string): Promise<ChannelSender[]>;
+  getSenderHealth(workspaceSlug: string): Promise<SenderHealthReport>;
+
+  // --- Replies/Conversations ---
+  getReplies(workspaceSlug: string, opts: PaginationOpts): Promise<ChannelReply[]>;
+}
+
+interface DeployContext {
+  deployId: string;
+  campaignId: string;
+  campaignName: string;
+  workspaceSlug: string;
+  sequence: SequenceStep[];
+  targetListId: string;
+  hasOtherChannel: boolean; // for LinkedIn deploy, knows if email is also deploying
+}
+
+interface ChannelMetrics {
+  channel: 'email' | 'linkedin';
+  sent: number;
+  replied: number;
+  replyRate: number;
+  // Channel-specific extras as optional fields
+  opened?: number;             // email only
+  openRate?: number;           // email only
+  bounced?: number;            // email only
+  bounceRate?: number;         // email only
+  connectionsSent?: number;    // linkedin only
+  connectionsAccepted?: number; // linkedin only
+  acceptRate?: number;         // linkedin only
+}
+
+interface ChannelSender {
+  id: string;
+  name: string;
+  channel: 'email' | 'linkedin';
+  identifier: string;    // email address or LinkedIn profile URL
+  status: string;
+  healthStatus: string;
+}
+
+interface ChannelReply {
+  id: string;
+  channel: 'email' | 'linkedin';
+  from: string;
+  fromName?: string;
+  body: string;
+  receivedAt: Date;
+  campaignName?: string;
+  isOutbound: boolean;
+}
+```
+
+### Component Boundaries
+
+| Component | Responsibility | Communicates With |
+|-----------|---------------|-------------------|
+| `src/lib/channels/types.ts` | Interface contract, shared types | All consumers |
+| `src/lib/channels/registry.ts` | Factory: resolves channel string to adapter instance | Consumers call this |
+| `src/lib/channels/email-adapter.ts` | Wraps EmailBisonClient for deploy, metrics, senders, replies | `src/lib/emailbison/client.ts`, Prisma (Reply, Sender, BounceSnapshot) |
+| `src/lib/channels/linkedin-adapter.ts` | Wraps Prisma queries for LinkedIn actions, conversations, senders | Prisma (LinkedInAction, LinkedInConversation, LinkedInMessage, Sender, LinkedInDailyUsage) |
+| `src/lib/campaigns/deploy.ts` | Orchestrates multi-channel deploy -- EXISTING, refactored to use adapters | `registry.ts` |
+| `trigger/*.ts` | Trigger.dev tasks -- select tasks call adapters instead of direct EmailBison/Prisma | `registry.ts` |
+| Portal pages | Fetch data via adapters, render channel-agnostic UI | `registry.ts` via server components |
+| `src/lib/notifications.ts` | Sends channel-aware notifications | Reads channel from event context |
+
+### Data Flow
+
+#### Unified Campaign Deployment
+
+Current flow has two parallel functions (`deployEmailChannel` + `deployLinkedInChannel`) in `src/lib/campaigns/deploy.ts`. The adapter pattern replaces this:
+
+```
+executeDeploy(campaignId, deployId)
+  |
+  +-- parse campaign.channels JSON array
+  |
+  +-- for each channel in channels:
+  |     adapter = getAdapter(channel)
+  |     adapter.deploy(ctx)
+  |
+  +-- update CampaignDeploy record with per-channel status
+```
+
+The existing `deployEmailChannel()` and `deployLinkedInChannel()` functions become the internal implementation of `EmailAdapter.deploy()` and `LinkedInAdapter.deploy()` respectively. This is a refactor, not a rewrite -- the logic moves, the behaviour stays identical.
+
+#### Portal Data Queries
+
+Current: portal campaign detail page has two separate code paths -- one querying EmailBison API (lines 54-72 in campaign/[id]/page.tsx) and another querying Prisma for LinkedIn stats (lines 83-100+). With adapters:
+
+```typescript
+// In portal campaign detail server component
+const channels = JSON.parse(campaign.channels) as string[];
+const metrics = await Promise.all(
+  channels.map(ch => getAdapter(ch).getMetrics({ campaignId, workspaceSlug }))
 );
-
-// Monty specialist config
-const backendConfig: AgentConfig = {
-  name: "dev-backend",
-  model: NOVA_MODEL,
-  systemPrompt: ...,
-  tools: backendTools,
-};
-
-// Monty call site (dev-orchestrator.ts)
-await runAgent(backendConfig, task, {
-  memoryRoot: ".monty/memory",
-  triggeredBy: "monty-cli",
-});
+// Merge and pass to client component
 ```
 
-### Pattern 2: Boundary Enforcement via Tool Namespace Separation
+#### Analytics Pipeline
 
-**What:** Nova's orchestrator only has workspace-scoped tools (`delegateToResearch`, `delegateToLeads`, etc., plus dashboard tools querying workspace data). Monty's orchestrator only has dev-scoped tools (`delegateToBackend`, `delegateToFrontend`, etc., plus dev dashboard tools for git/build state). Neither orchestrator can call the other's tools — this is enforced at the TypeScript type level.
+`snapshot-metrics.ts` currently only snapshots EmailBison campaign data via `snapshotWorkspaceCampaigns()`. With adapters:
 
-**When to use:** Always — this makes the Nova/Monty boundary structural rather than instructional. A prompt can be overridden. A missing function cannot.
+```
+for each workspace:
+  for each enabled channel:
+    adapter = getAdapter(channel)
+    metrics = adapter.getMetrics(campaignRef)
+    upsert into CachedMetrics with metricKey = `${channel}:${campaignName}`
+```
 
-**Implementation:**
+This unifies the metrics table. LinkedIn daily usage data (currently in `LinkedInDailyUsage`) gets surfaced through the adapter rather than queried separately.
+
+## How Existing Code Paths Migrate
+
+### Priority 1: Campaign Deploy (deploy.ts)
+
+**Current state:** `deploy.ts` has `deployEmailChannel()` and `deployLinkedInChannel()` as separate 80+ line functions with channel-specific logic.
+
+**Migration:** Move each function body into the corresponding adapter class. The `executeDeploy()` orchestrator becomes a loop over `campaign.channels` calling `adapter.deploy()`. The `retryDeployChannel()` function becomes `getAdapter(channel).deploy(ctx)` with retry context.
+
+**Risk:** LOW. The deploy logic is already cleanly separated by channel. Moving it into adapter classes is mechanical.
+
+### Priority 2: Portal Campaign Detail (portal/campaigns/[id]/page.tsx)
+
+**Current state:** Lines 47-100+ have two branching code paths: one for EmailBison stats (when `emailBisonCampaignId` exists) and one for LinkedIn stats (direct Prisma queries). These are interleaved with conditionals.
+
+**Migration:** Replace both paths with:
 ```typescript
-// dev-orchestrator.ts — Monty toolset has zero overlap with Nova
-export const montyTools = {
-  delegateToBackend,
-  delegateToFrontend,
-  delegateToInfra,
-  delegateToQA,
-  delegateToSecurity,
-  // Dev-specific dashboard tools only:
-  getGitStatus,
-  getBacklog,
-  getDeployStatus,
-  // NOT present: clientSweep, delegateToLeads, getCampaigns, etc.
-};
+const channelList = JSON.parse(campaign.channels) as ('email' | 'linkedin')[];
+const [metrics, activity] = await Promise.all([
+  Promise.all(channelList.map(ch => getAdapter(ch).getMetrics(ref))),
+  Promise.all(channelList.map(ch => getAdapter(ch).getActivity(ref, opts))),
+]);
 ```
 
-### Pattern 3: PM Triage via System Prompt (Monty Orchestrator as PM)
+**Risk:** MEDIUM. The portal page has significant UI branching based on channel. The data fetching is straightforward to unify, but the `CampaignDetailTabs` component likely has channel-specific tab rendering that needs updating.
 
-**What:** Monty's orchestrator system prompt gives it PM-level triage logic: classify incoming requests as Bug (regression, broken feature, error), Feature (new capability), Debt (cleanup, refactor), or Security (auth, credential handling). Route accordingly to the right specialist(s). Bugs go to QA first (reproduce), then Backend or Frontend (fix). Features route directly to the responsible specialist.
+### Priority 3: Sender Management
 
-**When to use:** Always — the orchestrator IS the PM for dev work. This is consistent with how Nova's `campaign-rules.md` defines orchestrator routing behaviour for campaign work.
+**Current state:** The `Sender` model is a shared table with `channel: 'email' | 'linkedin' | 'both'`. Admin and portal pages scatter `channel` filter logic everywhere. The CLI scripts (`sender-health.js`, `inbox-status.js`, `domain-health.js`) are email-specific.
 
-**Rules file excerpt for dev-orchestrator-rules.md:**
-```markdown
-## Triage Decision Tree
+**Migration:** Adapters provide `getSenders()` and `getSenderHealth()` per channel. The `Sender` table stays as-is (no schema change needed). The adapter filters by channel internally:
+- `EmailAdapter.getSenders()` filters `channel IN ('email', 'both')`
+- `LinkedInAdapter.getSenders()` filters `channel IN ('linkedin', 'both')`
 
-STEP 1: Classify the request:
-- "broken", "error", "not working", "fails", "422", "500", "regression" → Bug
-- New page, new endpoint, new feature, "add", "build", "create" → Feature
-- "slow", "refactor", "cleanup", "tech debt", "unused" → Debt
-- "auth", "credential", "secret", "OWASP", "vulnerability", "exposure" → Security
+**Risk:** LOW. This is read-path only. No data model changes.
 
-STEP 2: Route:
-- Bug → delegateToQA (reproduce + confirm) → then delegateToBackend or delegateToFrontend (fix)
-- Feature → delegateToFrontend (UI work) or delegateToBackend (API work) or both sequentially
-- Infrastructure ("deploy", "Railway", "Vercel", "Trigger.dev", "DNS") → delegateToInfra
-- Debt → delegateToBackend or delegateToFrontend depending on location
-- Security → delegateToSecurity always, regardless of other routing
-- After any fix: delegateToQA to validate
+### Priority 4: Notifications
 
-STEP 3: Update backlog:
-- Write completed work to .monty/memory/incidents.md (bugs) or decisions.md (features/design)
+**Current state:** `notifications.ts` has 17 notification types. Most are email-centric (reply notifications reference EmailBison reply IDs, inbox URLs). LinkedIn notifications exist but are handled through a different path (LinkedIn reply -> process-reply task).
+
+**Migration:** Add a `channel` field to notification context. The `notifyReply()` function already receives enough context to determine channel. The notification template varies by channel (email replies link to `app.outsignal.ai/inbox`, LinkedIn replies could link to conversation view). This is additive, not destructive.
+
+**Risk:** LOW. Notifications are already workspace-scoped. Adding channel awareness is a small extension.
+
+### Priority 5: Trigger.dev Tasks
+
+**Current state:** Tasks are channel-specific:
+- `poll-replies.ts` -- email only (polls EmailBison)
+- `sync-sent-emails.ts` -- email only
+- `bounce-monitor.ts` -- email only
+- `process-reply.ts` -- handles both but with channel branching
+- `generate-suggestion.ts` -- email reply suggestions
+
+**Migration:** Most Trigger.dev tasks remain channel-specific because their underlying operations are inherently different (polling an HTTP API vs querying a database). The adapter pattern helps most in `process-reply.ts` and `snapshot-metrics.ts` where the task needs to handle events from multiple channels.
+
+Do NOT try to force all tasks through adapters. `bounce-monitor.ts` is fundamentally an email concern. `linkedin-fast-track.ts` is fundamentally a LinkedIn concern. Adapters help at the orchestration layer, not at the channel-specific operational layer.
+
+**Risk:** LOW. Most tasks stay as-is. Only `process-reply`, `snapshot-metrics`, and `campaign-deploy` change.
+
+### Priority 6: Analytics (CachedMetrics + snapshot)
+
+**Current state:** `CachedMetrics` stores email-centric metrics from EmailBison API. LinkedIn metrics live in `LinkedInDailyUsage` separately. No unified view.
+
+**Migration:** Extend `snapshotWorkspaceCampaigns()` to call each adapter's `getMetrics()`. Store with channel-prefixed `metricKey` (e.g., `email:Rise Q1` vs `linkedin:Rise Q1`). Portal analytics pages read `CachedMetrics` and aggregate across channels when needed.
+
+The `LinkedInDailyUsage` table stays -- it captures per-sender daily granularity that is specific to LinkedIn rate limiting. The adapter surfaces aggregated metrics from it.
+
+**Risk:** MEDIUM. Need to decide on metric key naming convention and ensure backwards compatibility with existing CachedMetrics data.
+
+## Campaign Model Changes
+
+The Campaign model already has multi-channel fields and needs minimal changes:
+
+| Field | Current | Change Needed |
+|-------|---------|---------------|
+| `channels` | JSON string `["email"]` or `["email","linkedin"]` | No change |
+| `emailBisonCampaignId` | Direct EmailBison FK | Keep -- adapter reads this internally |
+| `emailSequence` | JSON string | No change -- adapter reads this |
+| `linkedinSequence` | JSON string | No change -- adapter reads this |
+| `emailBisonSequenceId` | Direct EB FK | Keep -- adapter internal |
+
+The Campaign model is already channel-agnostic in structure. The adapter pattern does NOT require Campaign schema changes.
+
+## Sender Model Evolution
+
+The `Sender` model is the most complex entity because it serves both channels from one table. The adapter pattern does NOT split this table -- that would be a massive migration for minimal gain. Instead:
+
+**Current:** `channel: 'email' | 'linkedin' | 'both'` on the Sender row.
+
+**With adapters:** Each adapter filters the Sender table by channel. The `both` value means the sender appears in both adapters' results. The adapter wraps the raw Sender fields into a `ChannelSender` type that exposes only the relevant fields:
+
+- `EmailAdapter.getSenders()` returns `{ identifier: sender.emailAddress, ... }`
+- `LinkedInAdapter.getSenders()` returns `{ identifier: sender.linkedinProfileUrl, ... }`
+
+No Sender schema migration needed.
+
+## Workspace Channel Configuration
+
+The `Workspace.package` field (`"email" | "linkedin" | "email_linkedin" | "consultancy"`) already controls which channels are enabled. The adapter registry uses this:
+
+```typescript
+function getEnabledChannels(workspace: Workspace): Channel[] {
+  switch (workspace.package) {
+    case 'email': return ['email'];
+    case 'linkedin': return ['linkedin'];
+    case 'email_linkedin': return ['email', 'linkedin'];
+    case 'consultancy': return []; // no sending
+  }
+}
+
+function getAdapter(channel: 'email' | 'linkedin'): ChannelAdapter {
+  switch (channel) {
+    case 'email': return new EmailAdapter();
+    case 'linkedin': return new LinkedInAdapter();
+  }
+}
 ```
 
-### Pattern 4: Dev CLI Tools as Thin Shell Wrappers
+No Workspace schema changes needed. The `package` field already encodes channel configuration.
 
-**What:** Monty's `scripts/dev-cli/*.ts` tools are thin TypeScript wrappers around shell commands (`git`, `npx tsx`, `tsc`, `vercel`, `railway`) — the same pattern as Nova's `scripts/cli/*.ts` wrapping `node dist/cli/...` invocations. The specialists call these via a dev equivalent of `cliSpawn`.
+## Patterns to Follow
 
-**When to use:** Any time Monty needs to read codebase state (git log, file read, build check) or trigger operations (run tests, check deploy status).
+### Pattern 1: Adapter as Facade
 
-**Trade-offs:** Agents remain isolated from direct Node.js API calls. All operations are named and observable in the AgentRun audit trail. Safety: dev-cli tools are read-heavy by default; write operations (file edits, deploys) are explicit tools that specialists must call consciously.
+The adapter is a thin facade over existing implementation. It does NOT rewrite business logic.
 
----
+**What:** Each adapter method delegates to existing code (EmailBisonClient methods, Prisma queries, LinkedIn helper functions). The adapter provides a uniform interface but the implementation stays in its original module.
 
-## Data Flow
+**When:** Always. The adapter never contains substantial business logic.
 
-### Bug Fix Request Flow
+**Example:**
+```typescript
+// email-adapter.ts
+class EmailAdapter implements ChannelAdapter {
+  async getMetrics(ref: CampaignRef): Promise<ChannelMetrics> {
+    const workspace = await getWorkspaceBySlug(ref.workspaceSlug);
+    if (!workspace?.apiToken) throw new Error('No API token');
 
-```
-User: "The EmailBison webhook is returning 422"
-    ↓
-scripts/monty.ts (Monty CLI REPL)
-    ↓
-dev-orchestrator.ts
-  classifies: Bug (422 error)
-  routes: QA first
-    ↓
-delegateToQA
-  reads route handler file, identifies validation mismatch
-  returns: reproduction steps + root cause hypothesis
-    ↓
-delegateToBackend
-  reads route handler, proposes fix with updated TypeScript
-  writes fix summary to .monty/memory/incidents.md
-    ↓
-delegateToQA
-  validates: does fix handle the edge case? any test coverage gaps?
-    ↓
-Monty CLI: "Here's the fix. Review and commit when ready."
-User commits independently.
-```
+    const client = new EmailBisonClient(workspace.apiToken);
+    const ebCampaign = await client.getCampaignById(ref.emailBisonCampaignId!);
 
-### Feature Request Flow
-
-```
-User: "Add a Monty radar health dashboard page"
-    ↓
-scripts/monty.ts
-    ↓
-dev-orchestrator.ts
-  classifies: Feature (new page)
-  routes: Frontend + Backend sequentially
-    ↓
-delegateToFrontend
-  reads design system conventions, existing page patterns
-  proposes TSX component + page structure
-    ↓
-delegateToBackend
-  proposes API route + Prisma query for radar health data
-    ↓
-delegateToQA
-  reviews both: are the types consistent? Any missing error states?
-    ↓
-Monty writes to .monty/memory/decisions.md: "Radar health page pattern used"
-User reviews output, commits.
+    return {
+      channel: 'email',
+      sent: ebCampaign?.stats?.emails_sent ?? 0,
+      replied: ebCampaign?.stats?.replied ?? 0,
+      replyRate: ebCampaign?.stats?.reply_rate ?? 0,
+      opened: ebCampaign?.stats?.opened ?? 0,
+      openRate: ebCampaign?.stats?.open_rate ?? 0,
+      bounced: ebCampaign?.stats?.bounced ?? 0,
+      bounceRate: ebCampaign?.stats?.bounce_rate ?? 0,
+    };
+  }
+}
 ```
 
-### Nova/Monty Handoff at Domain Boundary
+### Pattern 2: Channel-Agnostic Rendering
 
+Portal components receive `ChannelMetrics[]` and render generically.
+
+**What:** Instead of `{isLinkedIn ? <LinkedInStats /> : <EmailStats />}`, components receive an array of channel metrics and render each channel's card/row uniformly.
+
+**When:** Portal pages, admin dashboard, campaign detail views.
+
+**Example:**
+```typescript
+// components/portal/channel-metrics-cards.tsx
+function ChannelMetricsCards({ metrics }: { metrics: ChannelMetrics[] }) {
+  return (
+    <div className="grid gap-4">
+      {metrics.map(m => (
+        <Card key={m.channel}>
+          <CardHeader>{m.channel === 'email' ? 'Email' : 'LinkedIn'}</CardHeader>
+          <CardContent>
+            <Stat label="Sent" value={m.sent} />
+            <Stat label="Replied" value={m.replied} />
+            <Stat label="Reply Rate" value={`${m.replyRate}%`} />
+            {m.openRate != null && <Stat label="Open Rate" value={`${m.openRate}%`} />}
+            {m.acceptRate != null && <Stat label="Accept Rate" value={`${m.acceptRate}%`} />}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 ```
-User in Nova chat: "Fix the webhook bug AND push the 1210 campaign"
-    ↓
-Nova Orchestrator:
-  Detects "fix the webhook bug" = codebase change request
-  Nova responds: "Codebase changes belong to Monty (npm run monty).
-  I'll handle the 1210 campaign push now."
-    ↓ (campaign work proceeds through Nova specialists as normal)
-User switches to Monty CLI for the bug fix.
+
+### Pattern 3: Registry Factory
+
+Never instantiate adapters directly. Always go through the registry.
+
+**What:** `getAdapter(channel)` is the single entry point. This enables future channels (paid ads, cold calls) to be added by registering a new adapter, not modifying consumers.
+
+**When:** Every call site that needs channel-specific behaviour.
+
+### Pattern 4: CampaignRef as Universal Identifier
+
+**What:** A `CampaignRef` object carries all identifiers needed to look up a campaign across channels: `{ campaignId, workspaceSlug, campaignName, emailBisonCampaignId? }`. Each adapter uses whichever identifiers it needs -- EmailAdapter uses `emailBisonCampaignId`, LinkedInAdapter uses `campaignName + workspaceSlug` (since LinkedIn actions are matched by campaign name).
+
+**When:** All adapter methods that operate on a campaign.
+
+```typescript
+interface CampaignRef {
+  campaignId: string;            // Outsignal internal Campaign.id
+  workspaceSlug: string;
+  campaignName: string;          // used by LinkedIn (LinkedInAction.campaignName)
+  emailBisonCampaignId?: number; // used by Email (EmailBison API)
+}
 ```
 
-**Enforcement:** Nova's rules file includes: "If the user asks to edit code, fix a bug, or modify any file in the codebase, respond: 'Codebase work belongs to Monty — run npm run monty.' Do not attempt code changes." Monty's rules file includes: "If the user asks about a workspace slug, client campaign, or live client data, respond: 'Campaign work belongs to Nova — run npm run chat.' Do not query workspace data."
+## Anti-Patterns to Avoid
 
----
+### Anti-Pattern 1: Over-Abstracting Channel Differences
 
-## Component Boundaries: Shared vs Separate
+**What:** Trying to make email and LinkedIn look identical by forcing shared types that do not fit. For example, pretending LinkedIn "connections sent" is equivalent to email "sent" in a generic `sent` field.
 
-### Shared Infrastructure (zero or minimal changes)
+**Why bad:** Email and LinkedIn are fundamentally different channels with different metrics, different lifecycle stages, and different operational concerns. Forcing them into one shape loses information and creates confusing UIs.
 
-| Component | Change Required | Why |
-|-----------|----------------|-----|
-| `runner.ts` — `runAgent()` | No code change | Monty calls same function with new option key |
-| `memory.ts` — `loadMemoryContext()` | Add `memoryRoot` optional param (default `.nova/memory`) | One line change, fully backwards-compatible |
-| `memory.ts` — `appendToMemory()` | Add `memoryRoot` optional param | Same change, same approach |
-| `types.ts` — `AgentConfig` interface | No change | Monty specialist configs implement the same interface |
-| `types.ts` — `AgentRunResult` | No change | Same audit trail type — all Monty runs appear in `AgentRun` DB table |
-| `load-rules.ts` — `loadRules()` | No change | Loads `dev-*.md` files using the same resolver |
-| `prisma.agentRun` table | No schema change | `agent` field distinguishes Monty runs (`"dev-backend"`, `"dev-qa"`, etc.) |
+**Instead:** Use optional/channel-specific fields on ChannelMetrics. Let the UI decide what to show per channel. The adapter normalises the _access pattern_ (how you get data), not the _data shape_ (what data you get).
 
-### Separate Additions (new, no impact on Nova)
+### Anti-Pattern 2: Moving All Business Logic Into Adapters
 
-| Component | Why Separate |
-|-----------|-------------|
-| `dev/dev-orchestrator.ts` | Different tool namespace — dev tools only, zero workspace tools |
-| `dev/{backend,frontend,infra,qa,security}.ts` | Different specialisations, no functional overlap with Nova specialists |
-| `scripts/monty.ts` | No workspace picker — Monty is project-scoped |
-| `scripts/dev-cli/*.ts` | Different surfaces — git/build/filesystem vs EmailBison/discovery APIs |
-| `.monty/memory/` | Different namespace — project-scoped, topic-based (not workspace-slug-based) |
-| `.claude/rules/dev-*.md` | Dev-specific behaviour rules, separate from Nova campaign rules |
+**What:** Making the adapter responsible for retry logic, rate limiting, sender assignment, warmup management, etc.
 
----
+**Why bad:** The adapter becomes a god object. The existing modules (`src/lib/linkedin/chain.ts`, `src/lib/linkedin/sender.ts`, `src/lib/emailbison/client.ts`) already handle these concerns well. Duplicating or moving that logic into adapters creates maintenance burden.
 
-## Build Order (Dependency-Aware)
+**Instead:** Adapters call existing modules. They are orchestrators, not implementors.
 
-Each phase is unblocked by the previous. Phases within a tier can be built in parallel.
+### Anti-Pattern 3: Premature Channel Extraction for Tasks
 
-| Phase | Tier | Components | Dependencies |
-|-------|------|------------|-------------|
-| 1 | Foundation | `memory.ts` extension — add `memoryRoot` param (one change, backwards-compatible) | None |
-| 2 | Foundation | `.monty/memory/` directory + seed files (backlog.md, architecture.md, decisions.md, incidents.md, global-insights.md) | None |
-| 3 | Foundation | `.claude/rules/dev-*.md` — 6 rules files (orchestrator, backend, frontend, infra, qa, security) | None |
-| 4 | Foundation | `scripts/dev-cli/*.ts` — 9 thin tool wrappers | Phases 2+3 (tools reference memory files and follow rules conventions) |
-| 5 | Specialists | `dev/dev-types.ts` — DevTaskInput, BugReport, FeatureRequest, DevOutput types | Phase 1 |
-| 6 | Specialists | `dev/backend.ts` specialist config + tools + onComplete | Phases 1+3+4+5 |
-| 7 | Specialists | `dev/frontend.ts` specialist | Phases 1+3+4+5 |
-| 8 | Specialists | `dev/infra.ts` specialist | Phases 1+3+4+5 |
-| 9 | Specialists | `dev/security.ts` specialist | Phases 1+3+4+5 |
-| 10 | Specialists | `dev/qa.ts` specialist — reviews output of 6+7+8+9 | Phases 6+7+8+9 (QA validates their work) |
-| 11 | Orchestrator | `dev/dev-orchestrator.ts` — imports all specialist `runXxxAgent()` exports | Phases 6-10 |
-| 12 | Entry Point | `scripts/monty.ts` CLI REPL | Phase 11 |
+**What:** Trying to make `bounce-monitor.ts` or `poll-replies.ts` work through adapters when they are inherently single-channel operations.
 
-**Why this order:** Rules files and memory structure are pure content — no code dependencies, build immediately. CLI tools are standalone scripts the specialists invoke — build before specialists. Specialists come before the orchestrator because the orchestrator imports them directly (same pattern as `orchestrator.ts` importing `runLeadsAgent`, `runWriterAgent`, etc.). QA comes after the other specialists because it reviews their output. The CLI entry point is last because it wraps the orchestrator.
+**Why bad:** Forces artificial abstraction. Bounce monitoring is an email concept -- LinkedIn does not have bounces. LinkedIn session keepalive is a LinkedIn concept -- email does not have sessions.
 
----
+**Instead:** Only use adapters at integration points where multiple channels converge: deploy, metrics aggregation, portal rendering, notifications. Leave channel-specific tasks as-is.
 
-## Integration Points with Existing Framework
+### Anti-Pattern 4: Database Schema Changes for Adapter Purity
 
-### What the Existing `orchestrator.ts` Reveals About the Pattern
+**What:** Splitting the `Sender` table into `EmailSender` and `LinkedInSender`, or creating a `ChannelConfig` table, or normalising `CachedMetrics` with a `channel` column.
 
-Reading `orchestrator.ts` directly shows the exact pattern Monty must follow:
+**Why bad:** Schema migrations with 15K+ records are risky and unnecessary. The existing schema already supports multi-channel (Sender has `channel` field, Campaign has `channels` JSON, CampaignDeploy has per-channel status). Adding adapter code on top of the existing schema is far safer than restructuring the data layer.
 
-1. Each `delegateToXxx` tool creates a typed input, calls `runXxxAgent()`, returns a typed summary
-2. The orchestrator has both delegation tools AND direct dashboard tools for simple queries
-3. CLI mode (`isCliMode()`) vs API mode routing is handled inside each delegation tool
-4. `orchestratorTools` is the combined export consumed by both `scripts/chat.ts` and the dashboard chat route
+**Instead:** Adapters work with the existing schema. If a new column is needed (e.g., `CachedMetrics.channel`), it is additive and nullable.
 
-Monty follows this same pattern: `montyTools` exported from `dev/dev-orchestrator.ts`, consumed by `scripts/monty.ts`.
+## Integration Points: New vs Modified
 
-### What `runner.ts` Reveals
+### New Files (create from scratch)
 
-`runner.ts` does five things: create AgentRun record, load memory context, call `generateText`, extract tool steps, fire `onComplete`. Monty reuses all five. The only change is that `loadMemoryContext(options?.workspaceSlug, options?.memoryRoot)` is called with the Monty memory root.
+| File | Purpose |
+|------|---------|
+| `src/lib/channels/types.ts` | Interface definition, shared types |
+| `src/lib/channels/registry.ts` | Factory function, channel resolution |
+| `src/lib/channels/email-adapter.ts` | EmailBison adapter implementation |
+| `src/lib/channels/linkedin-adapter.ts` | LinkedIn adapter implementation |
+| `src/components/portal/channel-metrics-cards.tsx` | Unified metrics display component |
 
-### What `scripts/chat.ts` Reveals About the CLI Pattern
+### Modified Files (refactor existing code)
 
-`scripts/chat.ts` shows exactly what `scripts/monty.ts` needs:
-- Load `.env` files
-- Import orchestrator config and tools
-- REPL loop with readline
-- Session persistence to `AgentRun` on exit
-- Memory context injection into system prompt per turn
+| File | Change | Scope |
+|------|--------|-------|
+| `src/lib/campaigns/deploy.ts` | `executeDeploy` calls adapters instead of inline channel functions | Core logic moves into adapters, orchestrator simplified |
+| `src/app/(portal)/portal/campaigns/[id]/page.tsx` | Replace dual code paths with adapter calls | Data fetching layer only |
+| `src/app/(portal)/portal/page.tsx` | Dashboard uses adapter for cross-channel metrics | Data fetching |
+| `src/app/(portal)/portal/activity/page.tsx` | Activity feed from both channels via adapter | Data fetching |
+| `src/app/(portal)/portal/sender-health/page.tsx` | Sender list through adapters | Data fetching |
+| `trigger/campaign-deploy.ts` | No change -- already delegates to `deploy.ts` | None |
+| `trigger/snapshot-metrics.ts` | Call adapter.getMetrics per channel | Add channel loop |
+| `trigger/process-reply.ts` | Use adapter for reply normalisation | Minor |
+| `src/lib/notifications.ts` | Add channel to notification context | Additive |
+| `src/lib/analytics/snapshot.ts` | Extend to accept channel parameter | Additive |
 
-The key difference for `monty.ts`: no workspace picker. Monty receives `--workspace` as an optional flag if context is needed, but defaults to project-wide scope.
+### Unchanged Files (adapter does NOT touch these)
 
-### How AgentRun Audit Trail Works for Monty
+| File | Why Unchanged |
+|------|---------------|
+| `src/lib/emailbison/client.ts` | Low-level API client -- adapter wraps it |
+| `src/lib/linkedin/chain.ts` | LinkedIn-specific orchestration -- adapter calls it |
+| `src/lib/linkedin/sender.ts` | Sender assignment logic -- adapter calls it |
+| `src/lib/linkedin/sequencing.ts` | Sequence rule creation -- adapter calls it |
+| `trigger/bounce-monitor.ts` | Email-only concern |
+| `trigger/poll-replies.ts` | Email-only concern (polls EB API) |
+| `trigger/sync-sent-emails.ts` | Email-only concern |
+| `trigger/linkedin-fast-track.ts` | LinkedIn-only concern |
+| `trigger/domain-health.ts` | Email-only concern |
+| `trigger/inbox-check.ts` | Email-only concern |
+| `prisma/schema.prisma` | No schema changes needed |
 
-All Monty runs appear in the same `AgentRun` Prisma table. They are distinguishable by:
-- `agent` field: `"dev-backend"`, `"dev-frontend"`, `"dev-qa"`, etc.
-- `workspaceSlug` field: `null` for most Monty runs (project-scoped), or a slug if debugging a workspace-specific bug
-- `triggeredBy` field: `"monty-cli"`
+## Suggested Build Order
 
-This means Monty runs appear in the existing admin dashboard's agent monitoring UI without any schema changes.
+Build order follows dependency graph: interface first, then implementations, then consumers.
 
----
+### Phase 1: Interface + Registry + Adapter Shells
 
-## Anti-Patterns
+1. Create `src/lib/channels/types.ts` with `ChannelAdapter` interface and all shared types
+2. Create `src/lib/channels/registry.ts` with `getAdapter()` factory and `getEnabledChannels()` helper
+3. Create `src/lib/channels/email-adapter.ts` -- implement `getMetrics()` and `getSenders()` only
+4. Create `src/lib/channels/linkedin-adapter.ts` -- implement `getMetrics()` and `getSenders()` only
+5. Write tests for adapters against real schema (vitest)
 
-### Anti-Pattern 1: Adding Dev Tools to Nova's Orchestrator
+**Why first:** Everything else depends on the interface. Starting with metrics + senders gives immediate testable value without touching deploy logic.
 
-**What people do:** Add `git status` or file-edit tools to `orchestratorTools` in `orchestrator.ts` so Nova can "also fix bugs while doing campaign work."
+### Phase 2: Deploy Through Adapters
 
-**Why it's wrong:** Destroys the boundary. Nova receives a dev request, attempts a file edit, and corrupts workspace work. The AgentRun audit trail mixes campaign and dev work, making monitoring useless. More critically: Nova's memory context is workspace-scoped, so a dev task would write to the wrong memory namespace.
+1. Move `deployEmailChannel()` body into `EmailAdapter.deploy()`
+2. Move `deployLinkedInChannel()` body into `LinkedInAdapter.deploy()`
+3. Refactor `executeDeploy()` to loop over channels + call adapters
+4. Keep `retryDeployChannel()` working through adapter
+5. Implement `pause()` and `resume()` on both adapters
 
-**Do this instead:** Two separate CLIs, two separate orchestrators, two separate tool namespaces. If the user wants both, they use both CLIs sequentially. The boundary is a feature, not a limitation.
+**Why second:** Deploy is the highest-risk integration point. Get it right early before touching UI. The existing deploy logic is already cleanly separated, making this a safe mechanical refactor.
 
-### Anti-Pattern 2: Copying `runner.ts` into `dev/dev-runner.ts`
+### Phase 3: Portal Pages Through Adapters
 
-**What people do:** Fork `runner.ts` into `dev/dev-runner.ts` to avoid touching existing code, producing two maintenance surfaces.
+1. Refactor campaign detail page to use adapters for data fetching
+2. Create `ChannelMetricsCards` component for unified rendering
+3. Update portal dashboard to aggregate metrics across channels
+4. Update activity page to merge email + LinkedIn activity via adapters
+5. Update sender-health page to query through adapters
 
-**Why it's wrong:** The runner is pure infrastructure — it contains no Nova-specific logic. Memory loading, audit trail, onComplete hooks — all of these should be consistent across Nova and Monty. Drift between two runners causes silent bugs (e.g., Monty runs not appearing in the admin dashboard's AgentRun view).
+**Why third:** UI changes are lower risk (read-only) and can be done incrementally page by page.
 
-**Do this instead:** Parameterise the single `runner.ts`. One code path for all agents. The `memoryRoot` option is the only Monty-specific addition.
+### Phase 4: Analytics + Notifications
 
-### Anti-Pattern 3: Per-Specialist Memory Files Instead of Project-Scoped Files
+1. Extend `snapshot-metrics.ts` to snapshot per-channel via adapters
+2. Add `channel` context to notification functions
+3. Update reply processing to normalise through adapters
+4. Ensure CachedMetrics backwards compatibility (existing keys stay, new keys use channel prefix)
 
-**What people do:** Create `.monty/memory/backend/`, `.monty/memory/frontend/`, etc., mirroring Nova's per-workspace structure.
+**Why last:** These are background operations. Getting them wrong has lower immediate impact than deploy or portal.
 
-**Why it's wrong:** Dev agents do not have different persistent contexts per specialist. A backend agent's decision about API design is relevant context for the QA agent reviewing that API. Siloing by specialist creates artificial barriers to shared context.
+## Scalability Considerations
 
-**Do this instead:** Flat `.monty/memory/` files by topic (backlog, decisions, incidents, architecture). All dev agents read and write to the same namespace — they coordinate through shared context, just like how Nova agents for different tasks all read the same `.nova/memory/{slug}/` files.
-
-### Anti-Pattern 4: Monty Reading Live Workspace Data
-
-**What people do:** Add a Prisma query tool to Monty's orchestrator so it can look up client workspace data when fixing workspace-related bugs (e.g., "fix the Rise webhook" — Monty queries the Rise workspace to understand the bug).
-
-**Why it's wrong:** Couples dev and campaign concerns. Monty should fix the code path, not the client data state. A Monty bug that corrupts a DB query could silently damage client data.
-
-**Do this instead:** Monty reads the codebase (schema files, route handlers, test fixtures) to understand the data model. If live data is needed for debugging, the PM (user) fetches it from Nova and pastes it into the Monty conversation as context.
-
-### Anti-Pattern 5: Monty Committing Code Without User Review
-
-**What people do:** Give Monty a `git commit` tool so it can automatically commit its fixes.
-
-**Why it's wrong:** Code changes need human review. Monty proposes the fix; the user decides whether to commit it. Automating commits removes the review gate that catches hallucinations or incorrect fixes.
-
-**Do this instead:** Monty writes file changes to temp locations or proposes diffs. User reviews and uses standard `git add + git commit` workflow. Monty can have a `git-status.ts` and `git-diff.ts` tool to read current state but no write tools for git history.
-
----
-
-## Scaling Considerations
-
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| Current (1 engineer, 10 clients) | Single Monty CLI, project-scoped memory. No scaling concerns. |
-| 2-3 engineers | Same Monty CLI. `.monty/memory/` files become shared context between engineers' sessions. |
-| Team growth (5+ engineers) | `.monty/memory/` files may need migration to a DB-backed store to handle concurrent writes. Backlog specifically should move to a structured format. |
-
----
+| Concern | 10 workspaces (now) | 50 workspaces | 200+ workspaces |
+|---------|---------------------|---------------|-----------------|
+| Adapter instantiation | No concern -- stateless, new per request | Same | Consider adapter pooling if EmailBisonClient connections become costly |
+| Metrics aggregation | In-memory merge of 2 channel results | Same | CachedMetrics with channel column, pre-aggregated |
+| Deploy parallelism | Sequential per campaign | Same | Consider per-channel deploy tasks (separate Trigger.dev jobs) |
+| Future channels | N/A | Add new adapter class + register | Interface may need optional methods or capability flags |
 
 ## Sources
 
-- Direct inspection: `src/lib/agents/runner.ts` — shared execution engine
-- Direct inspection: `src/lib/agents/orchestrator.ts` — Nova orchestrator pattern (delegation tools, dashboard tools, combined export)
-- Direct inspection: `src/lib/agents/memory.ts` — 3-layer memory system, namespace conventions
-- Direct inspection: `src/lib/agents/types.ts` — AgentConfig interface
-- Direct inspection: `src/lib/agents/load-rules.ts` — rules file resolver
-- Direct inspection: `scripts/chat.ts` — established CLI REPL pattern
-- Direct inspection: `scripts/cli/` — 55 Nova CLI tools, namespace established
-- Direct inspection: `.claude/rules/` — 12 existing rules files, naming conventions
-- Direct inspection: `.nova/memory/` — workspace-scoped memory structure
-- Project context: `.planning/PROJECT.md` — v9.0 milestone requirements (Monty)
-
----
-*Architecture research for: v9.0 Monty Dev Orchestrator — integration with Nova agent framework*
-*Researched: 2026-04-02*
+- Direct codebase analysis: `prisma/schema.prisma`, `src/lib/campaigns/deploy.ts`, `src/lib/emailbison/client.ts`, `src/app/(portal)/portal/campaigns/[id]/page.tsx`, `trigger/*.ts`
+- Existing architecture patterns in the codebase (EmailBison client wrapper, LinkedIn chain/sender modules)
+- Campaign model already supports multi-channel (channels JSON, per-channel sequences, CampaignDeploy per-channel status)
