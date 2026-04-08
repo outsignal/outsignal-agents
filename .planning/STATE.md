@@ -46,6 +46,7 @@ Progress: [██████████] 100%
 | 73 | 02 | 2min | 2 | 2 |
 | 74 | 02 | 1min | 1 | 1 |
 | Phase 74-portal-unification P03 | 12 | 1 tasks | 1 files |
+| 74 | 01 | 8min | 2 | 6 |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Key v10.0 decisions:
 - [Phase 74-03]: LinkedIn adapter actions have personId but no resolved person — batch-fetch persons after adapter call
 - [Phase 74-03]: Adapters return all actions without date filtering — apply date window filter post-fetch in route
 - [Phase 74-03]: channels JSON parsed per campaign with try/catch fallback to email
+- [74-01]: buildRef helper centralises CampaignChannelRef construction — prevents emailBisonCampaignId omission bugs
+- [74-01]: LinkedIn chart data uses adapter.getActions() + server-side date bucketing (not direct prisma.linkedInAction)
+- [74-01]: CampaignDetailTabs now accepts UnifiedMetrics[], UnifiedStep[] — zero isLinkedInOnly or ebCampaign references
 
 ### Research Flags
 
@@ -95,5 +99,5 @@ None blocking v10.0.
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Completed 74-02-PLAN.md — Phase 74 Plan 2 complete (portal dashboard channel-aware refactor)
+Stopped at: Completed 74-01-PLAN.md — Phase 74 Plan 1 complete (campaign detail adapter refactor)
 Resume file: None
