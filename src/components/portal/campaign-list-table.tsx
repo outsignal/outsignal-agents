@@ -59,7 +59,7 @@ interface CampaignListTableProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 20;
 
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
@@ -207,7 +207,7 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
       </div>
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-hidden rounded-lg border">
+      <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
