@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 71 of 75 (Foundation — Constants, Interface & Registry)
-Plan: 1 of 1 (complete)
-Status: Phase 71 complete — ready for Phase 72
-Last activity: 2026-04-08 — Completed 71-01 (constants, interface, registry)
+Phase: 72 of 75 (Adapter Implementations)
+Plan: 2 of 3
+Status: Executing Phase 72 — completed 72-02 (sender helpers, workspace channels)
+Last activity: 2026-04-08 — Completed 72-02 (sender helpers, workspace channels)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
@@ -39,6 +39,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 71 | 01 | 3min | 3 | 6 |
+| 72 | 02 | 3min | 3 | 2 |
 
 ## Accumulated Context
 
@@ -53,6 +54,8 @@ Key v10.0 decisions:
 - [v10.0]: Constants extracted FIRST (6 production bugs from raw strings). LinkedIn adapter built FIRST to validate interface is not email-shaped.
 - [71-01]: Used as-const objects (not TS enums) to match codebase convention
 - [71-01]: Used Array.from() for Map iteration to avoid downlevelIteration requirement
+- [72-02]: Used SENDER_STATUSES.ACTIVE constant instead of raw 'active' string for sender queries
+- [72-02]: workspace-channels.ts already existed from 72-01 — verified identical, no duplicate commit
 
 ### Research Flags
 
@@ -70,5 +73,5 @@ None blocking v10.0.
 ## Session Continuity
 
 Last session: 2026-04-08
-Stopped at: Completed 71-01-PLAN.md — Phase 71 complete, ready for Phase 72
+Stopped at: Completed 72-02-PLAN.md — sender helpers and workspace channels
 Resume file: None

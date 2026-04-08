@@ -26,8 +26,8 @@
 
 ### Sender
 
-- [ ] **SEND-01**: Sender queries go through channel-aware helpers (no more `channel: { in: ['linkedin', 'both'] }` scattered across files)
-- [ ] **SEND-02**: Workspace channel configuration — config that defines which channels each client has enabled
+- [x] **SEND-01**: Sender queries go through channel-aware helpers (no more `channel: { in: ['linkedin', 'both'] }` scattered across files)
+- [x] **SEND-02**: Workspace channel configuration — config that defines which channels each client has enabled
 
 ### Portal
 
@@ -76,8 +76,8 @@
 | ADAPT-01 | Phase 72 | Pending |
 | ADAPT-02 | Phase 72 | Pending |
 | ADAPT-03 | Phase 72 | Pending |
-| SEND-01 | Phase 72 | Pending |
-| SEND-02 | Phase 72 | Pending |
+| SEND-01 | Phase 72 | Complete |
+| SEND-02 | Phase 72 | Complete |
 | CAMP-01 | Phase 73 | Pending |
 | CAMP-02 | Phase 73 | Pending |
 | CAMP-03 | Phase 73 | Pending |
