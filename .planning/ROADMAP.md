@@ -859,7 +859,7 @@ Plans:
 - [x] **Phase 72: Adapter Implementations** - LinkedIn and email adapters implementing the full interface, with sender query helpers and workspace channel config (completed 2026-04-08)
 - [x] **Phase 73: Campaign Deploy Refactor** - Deploy, pause, and resume go through adapters; CampaignChannelRef replaces direct EmailBison ID lookups (completed 2026-04-08)
 - [x] **Phase 74: Portal Unification** - Portal campaign detail, dashboard, and activity feed consume adapters instead of direct channel queries (completed 2026-04-08)
-- [ ] **Phase 75: Analytics & Notifications** - Metrics snapshot via adapters, cross-channel comparison view, channel-aware notifications
+- [x] **Phase 75: Analytics & Notifications** - Metrics snapshot via adapters, cross-channel comparison view, channel-aware notifications (completed 2026-04-09)
 
 ## Phase Details — v10.0
 
@@ -944,4 +944,4 @@ Plans:
 | 72. Adapter Implementations | 3/3 | Complete    | 2026-04-08 |
 | 73. Campaign Deploy Refactor | 2/2 | Complete    | 2026-04-08 |
 | 74. Portal Unification | 3/3 | Complete    | 2026-04-08 |
-| 75. Analytics & Notifications | 2/3 | In Progress|  |
+| 75. Analytics & Notifications | 3/3 | Complete   | 2026-04-09 |
