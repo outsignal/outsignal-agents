@@ -106,8 +106,11 @@ async function verifyFoundEmail(
         console.warn(`[waterfall] Kitt verify returned ${kittResult.status} for ${email} — rejecting`);
         return false;
       } catch (kittErr) {
-        // Credit exhaustion in verification — halt everything
-        if (isCreditExhaustion(kittErr)) throw kittErr;
+        // Credit exhaustion in Kitt verifier — treat as unverifiable, reject this email
+        if (isCreditExhaustion(kittErr)) {
+          console.warn(`[waterfall] Kitt verify credit exhaustion for ${email} — treating as unverifiable, rejecting`);
+          return false;
+        }
         console.warn(`[waterfall] Kitt verify error for ${email}:`, kittErr);
         return false; // both verifiers failed — reject
       }
@@ -117,8 +120,11 @@ async function verifyFoundEmail(
     console.warn(`[waterfall] BounceBan returned ${bbResult.status} for ${email} — rejecting`);
     return false;
   } catch (err) {
-    // Credit exhaustion — re-throw immediately, never swallow
-    if (isCreditExhaustion(err)) throw err;
+    // Credit exhaustion in BounceBan — treat as unverifiable, reject this email
+    if (isCreditExhaustion(err)) {
+      console.warn(`[waterfall] BounceBan credit exhaustion for ${email} — treating as unverifiable, rejecting`);
+      return false;
+    }
     // BounceBan error — try Kitt as fallback
     console.warn(`[waterfall] BounceBan error for ${email}:`, err, "— trying Kitt fallback");
     try {
@@ -128,8 +134,11 @@ async function verifyFoundEmail(
       }
       return false;
     } catch (kittErr) {
-      // Credit exhaustion in Kitt fallback — halt everything
-      if (isCreditExhaustion(kittErr)) throw kittErr;
+      // Credit exhaustion in Kitt fallback — treat as unverifiable, reject this email
+      if (isCreditExhaustion(kittErr)) {
+        console.warn(`[waterfall] Kitt verify credit exhaustion (fallback) for ${email} — treating as unverifiable, rejecting`);
+        return false;
+      }
       console.warn(`[waterfall] Kitt verify also failed for ${email}:`, kittErr);
       return false; // both verifiers unavailable — reject to be safe
     }
@@ -390,14 +399,15 @@ export async function enrichEmail(
         lastError = null;
         break; // success — exit retry loop
       } catch (err) {
-        // Credit exhaustion — notify admin and halt the entire waterfall
+        // Credit exhaustion — notify admin and skip to next provider
         if (isCreditExhaustion(err)) {
           await notifyCreditExhaustion({
             provider: (err as CreditExhaustionError).provider,
             httpStatus: (err as CreditExhaustionError).httpStatus,
-            context: `enrichment waterfall (${name}) for person ${personId}`,
+            context: `enrichment waterfall (${name}) for person ${personId} — skipping to next provider`,
           });
-          throw err;
+          console.warn(`[waterfall] ${name} credit exhaustion — skipping to next provider`);
+          break; // exit retry loop, fall through to next provider
         }
         const error = err instanceof Error ? err : new Error(String(err));
         const is429 = isRateLimited(err) || error.message.includes("429");
@@ -423,7 +433,7 @@ export async function enrichEmail(
         costUsd: 0,
         workspaceSlug,
       });
-      // Don't increment circuit breaker for credit exhaustion (already re-thrown above)
+      // Don't increment circuit breaker for credit exhaustion (skipped above via break)
       if (!isCreditExhaustion(lastError)) {
         breaker.consecutiveFailures.set(name, failures + 1);
       }
@@ -598,14 +608,15 @@ export async function enrichCompany(
         lastError = null;
         break;
       } catch (err) {
-        // Credit exhaustion — notify admin and halt the entire waterfall
+        // Credit exhaustion — notify admin and skip to next provider
         if (isCreditExhaustion(err)) {
           await notifyCreditExhaustion({
             provider: (err as CreditExhaustionError).provider,
             httpStatus: (err as CreditExhaustionError).httpStatus,
-            context: `company enrichment waterfall (${name}) for domain ${domain}`,
+            context: `company enrichment waterfall (${name}) for domain ${domain} — skipping to next provider`,
           });
-          throw err;
+          console.warn(`[waterfall] ${name} credit exhaustion — skipping to next provider`);
+          break; // exit retry loop, fall through to next provider
         }
         const error = err instanceof Error ? err : new Error(String(err));
         const is429 = isRateLimited(err) || error.message.includes("429");
@@ -631,6 +642,7 @@ export async function enrichCompany(
         costUsd: 0,
         workspaceSlug,
       });
+      // Don't increment circuit breaker for credit exhaustion (skipped above via break)
       if (!isCreditExhaustion(lastError)) {
         breaker.consecutiveFailures.set(name, failures + 1);
       }
