@@ -350,7 +350,7 @@ export class LinkedInAdapter implements ChannelAdapter {
         campaignName: ref.campaignName,
         workspaceSlug: ref.workspaceSlug,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { completedAt: { sort: "desc", nulls: "last" } },
     });
 
     return actions.map((action) => ({
@@ -360,7 +360,7 @@ export class LinkedInAdapter implements ChannelAdapter {
       status: action.status,
       personId: action.personId ?? undefined,
       detail: action.messageBody ?? undefined,
-      performedAt: action.createdAt,
+      performedAt: action.completedAt ?? action.lastAttemptAt ?? action.createdAt,
       campaignName: action.campaignName ?? undefined,
     }));
   }
