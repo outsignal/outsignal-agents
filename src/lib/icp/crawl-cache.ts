@@ -1,15 +1,40 @@
 /**
- * Crawl cache — caches Firecrawl homepage scrapes on the Company record.
- * Checks Company.crawledAt before calling Firecrawl. Cache is permanent
+ * Crawl cache — caches homepage scrapes on the Company record.
+ * Tries a free fetch + HTML-to-text first, falls back to Firecrawl if available.
+ * Checks Company.crawledAt before scraping. Cache is permanent
  * (no TTL) — use force_recrawl parameter to refresh.
  *
- * Includes in-memory inflight dedup to prevent duplicate Firecrawl calls
+ * Includes in-memory inflight dedup to prevent duplicate scrape calls
  * when multiple concurrent scorers request the same domain.
  */
 import { prisma } from "@/lib/db";
 import { scrapeUrl } from "@/lib/firecrawl/client";
 
 const MAX_MARKDOWN_LENGTH = 50_000;
+
+/**
+ * Convert raw HTML to readable plain text without external dependencies.
+ * Strips scripts, styles, nav/header/footer, HTML tags, and collapses whitespace.
+ */
+function htmlToText(html: string): string {
+  let text = html;
+  // Remove script, style, nav, footer, header, noscript, svg blocks entirely
+  text = text.replace(/<(script|style|nav|footer|header|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // Remove HTML comments
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+  // Replace block-closing tags with newlines
+  text = text.replace(/<\/(p|div|li|h[1-6]|tr|section|article)>/gi, '\n');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  // Strip remaining HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+  // Decode common HTML entities
+  text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  // Collapse whitespace
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.replace(/\n\s*\n/g, '\n\n');
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+}
 
 /**
  * In-memory map of domain -> pending crawl promise.
@@ -45,7 +70,7 @@ export async function getCrawlMarkdown(
 }
 
 /**
- * Inner implementation — checks DB cache, falls back to Firecrawl scrape.
+ * Inner implementation — checks DB cache, tries free fetch, falls back to Firecrawl.
  */
 async function getCrawlMarkdownInner(
   domain: string,
@@ -59,42 +84,71 @@ async function getCrawlMarkdownInner(
     return company.crawlMarkdown ?? null;
   }
 
-  // Cache miss or force refresh — scrape via Firecrawl
+  // --- Try free fetch first ---
+  let markdown: string | null = null;
+
   try {
-    const result = await scrapeUrl(`https://${domain}`);
-    const markdown = result.markdown.slice(0, MAX_MARKDOWN_LENGTH);
-
-    if (company) {
-      // Company exists — update crawl fields
-      await prisma.company.update({
-        where: { domain },
-        data: {
-          crawlMarkdown: markdown,
-          crawledAt: new Date(),
-        },
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(`https://${domain}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; OutsignalBot/1.0)' },
+        signal: controller.signal,
+        redirect: 'follow',
       });
-    } else {
-      // Company doesn't exist — upsert (handles Pitfall 4: Company record may not exist yet)
-      await prisma.company.upsert({
-        where: { domain },
-        create: {
-          domain,
-          name: domain,
-          crawlMarkdown: markdown,
-          crawledAt: new Date(),
-        },
-        update: {
-          crawlMarkdown: markdown,
-          crawledAt: new Date(),
-        },
-      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const text = htmlToText(html);
+      markdown = text.slice(0, MAX_MARKDOWN_LENGTH);
+      console.log(`[crawl-cache] ${domain}: free fetch OK (${markdown.length} chars)`);
+    } finally {
+      clearTimeout(timeout);
     }
+  } catch (fetchErr) {
+    // --- Fall back to Firecrawl if available ---
+    if (process.env.FIRECRAWL_API_KEY) {
+      console.log(`[crawl-cache] ${domain}: free fetch failed, trying Firecrawl`);
+      try {
+        const result = await scrapeUrl(`https://${domain}`);
+        markdown = result.markdown.slice(0, MAX_MARKDOWN_LENGTH);
+      } catch (firecrawlErr) {
+        console.error(`[crawl-cache] ${domain}: Firecrawl also failed:`, firecrawlErr);
+      }
+    } else {
+      console.log(`[crawl-cache] ${domain}: free fetch failed, no Firecrawl key`);
+    }
+  }
 
-    return markdown;
-  } catch (error) {
-    console.error(`[crawl-cache] Failed to scrape ${domain}:`, error);
+  if (!markdown) {
     return null;
   }
+
+  // Store result in Company model
+  if (company) {
+    await prisma.company.update({
+      where: { domain },
+      data: {
+        crawlMarkdown: markdown,
+        crawledAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.company.upsert({
+      where: { domain },
+      create: {
+        domain,
+        name: domain,
+        crawlMarkdown: markdown,
+        crawledAt: new Date(),
+      },
+      update: {
+        crawlMarkdown: markdown,
+        crawledAt: new Date(),
+      },
+    });
+  }
+
+  return markdown;
 }
 
 /**
