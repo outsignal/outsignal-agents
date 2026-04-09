@@ -22,7 +22,9 @@ interface EmailTimelineStep {
   position: number;
   subject: string;
   subjectVariantB?: string;
-  body: string;
+  body?: string;
+  bodyText?: string;
+  bodyHtml?: string;
   delayDays: number;
 }
 
@@ -139,7 +141,7 @@ function EmailCard({
   onToggle: () => void;
   showChannel: boolean;
 }) {
-  const body = normaliseBody(step.body);
+  const body = normaliseBody(step.body ?? step.bodyText ?? step.bodyHtml ?? "");
 
   return (
     <div

@@ -181,15 +181,14 @@ export function SequenceStepsDisplay({ steps, linkedinSteps }: Props) {
                     <p className="font-medium text-sm">{step.subject}</p>
                   </div>
                 )}
-                {step.body && (
+                {(step.body ?? (step as unknown as { bodyText?: string }).bodyText ?? (step as unknown as { bodyHtml?: string }).bodyHtml) ? (
                   <div className={step.subject ? "" : "pt-3"}>
                     <p className="text-xs text-muted-foreground mb-1">Body</p>
                     <div className="whitespace-pre-wrap text-sm leading-relaxed bg-muted/30 rounded-md p-3">
-                      {stripHtml(step.body)}
+                      {stripHtml(step.body ?? (step as unknown as { bodyText?: string }).bodyText ?? (step as unknown as { bodyHtml?: string }).bodyHtml ?? "")}
                     </div>
                   </div>
-                )}
-                {!step.body && (
+                ) : (
                   <div className="pt-3">
                     <p className="text-sm text-muted-foreground italic">
                       No body content for this step.
