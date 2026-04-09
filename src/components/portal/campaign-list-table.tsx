@@ -35,6 +35,7 @@ export interface MergedCampaign {
   channels: string[];
   status: string;
   completionPercentage: number;
+  // Email stats (EmailBison)
   emailsSent: number;
   opened: number;
   uniqueOpens: number;
@@ -48,6 +49,11 @@ export interface MergedCampaign {
   openTracking: boolean;
   tags: string[];
   updatedAt: string;
+  // LinkedIn stats (adapter)
+  linkedinConnectionsSent?: number;
+  linkedinConnectionsAccepted?: number;
+  linkedinMessagesSent?: number;
+  linkedinProfileViews?: number;
 }
 
 interface CampaignListTableProps {
@@ -145,6 +151,11 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
 
+  // Detect if all visible campaigns are LinkedIn-only (for channel-aware headers)
+  const allLinkedIn = campaigns.length > 0 && campaigns.every(
+    (c) => c.channels.includes("linkedin") && !c.channels.includes("email"),
+  );
+
   // Filter
   const filtered = useMemo(() => {
     let result = campaigns;
@@ -218,10 +229,18 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
               <TableHead className="text-right font-semibold text-foreground">Total Leads</TableHead>
               <TableHead className="text-right font-semibold text-foreground">Contacted</TableHead>
               <TableHead className="text-right font-semibold text-foreground">Sent</TableHead>
-              <TableHead className="text-right font-semibold text-foreground">Opens</TableHead>
-              <TableHead className="text-right font-semibold text-foreground">Replies</TableHead>
-              <TableHead className="text-right font-semibold text-foreground">Unsubs</TableHead>
-              <TableHead className="text-right font-semibold text-foreground">Bounces</TableHead>
+              <TableHead className="text-right font-semibold text-foreground">
+                {allLinkedIn ? "Accepted" : "Opens"}
+              </TableHead>
+              <TableHead className="text-right font-semibold text-foreground">
+                {allLinkedIn ? "Replies" : "Replies"}
+              </TableHead>
+              <TableHead className="text-right font-semibold text-foreground">
+                {allLinkedIn ? "Messages" : "Unsubs"}
+              </TableHead>
+              <TableHead className="text-right font-semibold text-foreground">
+                {allLinkedIn ? "Profile Views" : "Bounces"}
+              </TableHead>
               <TableHead className="text-right font-semibold text-foreground">Interested</TableHead>
               <TableHead className="text-center font-semibold text-foreground">Manage</TableHead>
             </TableRow>
@@ -238,8 +257,23 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
               </TableRow>
             ) : (
               pageItems.map((c) => {
+                const isLinkedIn = c.channels.includes("linkedin") && !c.channels.includes("email");
                 const bounceRate =
                   c.emailsSent > 0 ? (c.bounced / c.emailsSent) * 100 : 0;
+
+                // LinkedIn-specific derived stats
+                const connsSent = c.linkedinConnectionsSent ?? 0;
+                const connsAccepted = c.linkedinConnectionsAccepted ?? 0;
+                const msgsSent = c.linkedinMessagesSent ?? 0;
+                const profViews = c.linkedinProfileViews ?? 0;
+                const acceptRate = connsSent > 0
+                  ? Math.round((connsAccepted / connsSent) * 1000) / 10
+                  : 0;
+
+                // For LinkedIn: contacted = profile views + connections sent (unique people reached)
+                const linkedinContacted = connsSent;
+                // For LinkedIn: "sent" = total actions (connections + messages)
+                const linkedinSent = connsSent + msgsSent;
 
                 return (
                   <TableRow key={c.internalId} className="hover:bg-stone-50 dark:hover:bg-stone-800/50 [&>td]:py-3">
@@ -297,17 +331,28 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
 
                     {/* Contacted */}
                     <TableCell className="text-right tabular-nums">
-                      {c.totalLeadsContacted.toLocaleString()}
+                      {isLinkedIn
+                        ? linkedinContacted.toLocaleString()
+                        : c.totalLeadsContacted.toLocaleString()}
                     </TableCell>
 
-                    {/* Sent */}
+                    {/* Sent — email: emails sent / linkedin: connections + messages */}
                     <TableCell className="text-right tabular-nums">
-                      {c.emailsSent.toLocaleString()}
+                      {isLinkedIn
+                        ? linkedinSent.toLocaleString()
+                        : c.emailsSent.toLocaleString()}
                     </TableCell>
 
-                    {/* Opens */}
+                    {/* Col 4: Email=Opens / LinkedIn=Accepted */}
                     <TableCell className="text-right tabular-nums">
-                      {c.openTracking ? (
+                      {isLinkedIn ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {connsAccepted.toLocaleString()}
+                          <span className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-1 py-0 rounded text-[11px] font-medium">
+                            {acceptRate.toFixed(1)}%
+                          </span>
+                        </span>
+                      ) : c.openTracking ? (
                         <span className="inline-flex items-center gap-1.5">
                           {c.opened.toLocaleString()}
                           <span className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-1 py-0 rounded text-[11px] font-medium">
@@ -315,56 +360,70 @@ export function CampaignListTable({ campaigns, className }: CampaignListTablePro
                           </span>
                         </span>
                       ) : (
-                        <span className="text-muted-foreground text-xs">
-                          N/A
+                        <span className="text-muted-foreground text-xs">N/A</span>
+                      )}
+                    </TableCell>
+
+                    {/* Replies — email: unique replies / linkedin: replies (tracked separately, shows 0) */}
+                    <TableCell className="text-right tabular-nums">
+                      {isLinkedIn ? (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          {c.uniqueReplies.toLocaleString()}
+                          <span className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-1 py-0 rounded text-[11px] font-medium">
+                            {pct(c.uniqueReplies, c.emailsSent)}
+                          </span>
                         </span>
                       )}
                     </TableCell>
 
-                    {/* Replies */}
+                    {/* Col 6: Email=Unsubs / LinkedIn=Messages */}
                     <TableCell className="text-right tabular-nums">
-                      <span className="inline-flex items-center gap-1.5">
-                        {c.uniqueReplies.toLocaleString()}
-                        <span className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-1 py-0 rounded text-[11px] font-medium">
-                          {pct(c.uniqueReplies, c.emailsSent)}
+                      {isLinkedIn ? (
+                        msgsSent.toLocaleString()
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          {c.unsubscribed.toLocaleString()}
+                          <span
+                            className={`px-1 py-0 rounded text-[11px] font-medium ${c.unsubscribed > 0 ? "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
+                          >
+                            {pct(c.unsubscribed, c.emailsSent)}
+                          </span>
                         </span>
-                      </span>
+                      )}
                     </TableCell>
 
-                    {/* Unsubscribes */}
+                    {/* Col 7: Email=Bounces / LinkedIn=Profile Views */}
                     <TableCell className="text-right tabular-nums">
-                      <span className="inline-flex items-center gap-1.5">
-                        {c.unsubscribed.toLocaleString()}
-                        <span
-                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.unsubscribed > 0 ? "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
-                        >
-                          {pct(c.unsubscribed, c.emailsSent)}
+                      {isLinkedIn ? (
+                        profViews.toLocaleString()
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          {c.bounced.toLocaleString()}
+                          <span
+                            className={`px-1 py-0 rounded text-[11px] font-medium ${bounceRate > 2 ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
+                          >
+                            {pct(c.bounced, c.emailsSent)}
+                          </span>
                         </span>
-                      </span>
+                      )}
                     </TableCell>
 
-                    {/* Bounces */}
+                    {/* Interested — email only, LinkedIn shows dash */}
                     <TableCell className="text-right tabular-nums">
-                      <span className="inline-flex items-center gap-1.5">
-                        {c.bounced.toLocaleString()}
-                        <span
-                          className={`px-1 py-0 rounded text-[11px] font-medium ${bounceRate > 2 ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
-                        >
-                          {pct(c.bounced, c.emailsSent)}
+                      {isLinkedIn ? (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          {c.interested.toLocaleString()}
+                          <span
+                            className={`px-1 py-0 rounded text-[11px] font-medium ${c.interested > 0 ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
+                          >
+                            {pct(c.interested, c.emailsSent)}
+                          </span>
                         </span>
-                      </span>
-                    </TableCell>
-
-                    {/* Interested */}
-                    <TableCell className="text-right tabular-nums">
-                      <span className="inline-flex items-center gap-1.5">
-                        {c.interested.toLocaleString()}
-                        <span
-                          className={`px-1 py-0 rounded text-[11px] font-medium ${c.interested > 0 ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300" : "bg-stone-100 dark:bg-stone-800 text-muted-foreground"}`}
-                        >
-                          {pct(c.interested, c.emailsSent)}
-                        </span>
-                      </span>
+                      )}
                     </TableCell>
 
                     {/* Manage */}

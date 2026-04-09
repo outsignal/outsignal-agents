@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PortalRefreshButton } from "@/components/portal/portal-refresh-button";
 import { Clock, Megaphone } from "lucide-react";
 import type { Campaign as EBCampaign } from "@/lib/emailbison/types";
+import { initAdapters, getAdapter, buildRef } from "@/lib/channels";
 
 export default async function PortalCampaignsPage({
   searchParams,
@@ -43,36 +44,73 @@ export default async function PortalCampaignsPage({
   // Exclude draft campaigns from the portal — only show published/pending
   const visibleCampaigns = internalCampaigns.filter((c) => c.status !== "draft");
 
-  // Merge internal campaigns with EB data
-  const merged: MergedCampaign[] = visibleCampaigns.map((c) => {
-    // Match by EB campaign ID first, fall back to name match
-    const ebMatch = c.emailBisonCampaignId
-      ? ebCampaigns.find((eb) => eb.id === c.emailBisonCampaignId)
-      : ebCampaigns.find((eb) => eb.name === c.name);
+  // Bootstrap channel adapters (idempotent)
+  initAdapters();
+  const linkedinAdapter = getAdapter("linkedin");
 
-    return {
-      internalId: c.id,
-      ebId: ebMatch?.id ?? null,
-      name: c.name,
-      type: c.type,
-      channels: c.channels,
-      status: ebMatch?.status ?? c.status,
-      completionPercentage: ebMatch?.completion_percentage ?? 0,
-      emailsSent: ebMatch?.emails_sent ?? 0,
-      opened: ebMatch?.opened ?? 0,
-      uniqueOpens: ebMatch?.unique_opens ?? 0,
-      replied: ebMatch?.replied ?? 0,
-      uniqueReplies: ebMatch?.unique_replies ?? 0,
-      bounced: ebMatch?.bounced ?? 0,
-      unsubscribed: ebMatch?.unsubscribed ?? 0,
-      interested: ebMatch?.interested ?? 0,
-      totalLeadsContacted: ebMatch?.total_leads_contacted ?? 0,
-      totalLeads: ebMatch?.total_leads ?? c.targetListLeadCount ?? 0,
-      openTracking: ebMatch?.open_tracking ?? false,
-      tags: ebMatch?.tags?.map((t) => t.name) ?? [],
-      updatedAt: c.updatedAt.toISOString(),
-    };
-  });
+  // Merge internal campaigns with EB data + LinkedIn adapter stats
+  const merged: MergedCampaign[] = await Promise.all(
+    visibleCampaigns.map(async (c) => {
+      // Match by EB campaign ID first, fall back to name match
+      const ebMatch = c.emailBisonCampaignId
+        ? ebCampaigns.find((eb) => eb.id === c.emailBisonCampaignId)
+        : ebCampaigns.find((eb) => eb.name === c.name);
+
+      // Fetch LinkedIn stats if this campaign uses the LinkedIn channel
+      const isLinkedIn = c.channels.includes("linkedin");
+      let linkedinMetrics: {
+        connectionsSent?: number;
+        connectionsAccepted?: number;
+        messagesSent?: number;
+        profileViews?: number;
+      } = {};
+
+      if (isLinkedIn && linkedinAdapter) {
+        try {
+          const ref = buildRef(
+            { id: c.id, name: c.name, emailBisonCampaignId: c.emailBisonCampaignId },
+            workspaceSlug,
+          );
+          const metrics = await linkedinAdapter.getMetrics(ref);
+          linkedinMetrics = {
+            connectionsSent: metrics.connectionsSent ?? 0,
+            connectionsAccepted: metrics.connectionsAccepted ?? 0,
+            messagesSent: metrics.messagesSent ?? 0,
+            profileViews: metrics.profileViews ?? 0,
+          };
+        } catch {
+          // LinkedIn stats unavailable — leave as undefined (shows 0)
+        }
+      }
+
+      return {
+        internalId: c.id,
+        ebId: ebMatch?.id ?? null,
+        name: c.name,
+        type: c.type,
+        channels: c.channels,
+        status: ebMatch?.status ?? c.status,
+        completionPercentage: ebMatch?.completion_percentage ?? 0,
+        emailsSent: ebMatch?.emails_sent ?? 0,
+        opened: ebMatch?.opened ?? 0,
+        uniqueOpens: ebMatch?.unique_opens ?? 0,
+        replied: ebMatch?.replied ?? 0,
+        uniqueReplies: ebMatch?.unique_replies ?? 0,
+        bounced: ebMatch?.bounced ?? 0,
+        unsubscribed: ebMatch?.unsubscribed ?? 0,
+        interested: ebMatch?.interested ?? 0,
+        totalLeadsContacted: ebMatch?.total_leads_contacted ?? 0,
+        totalLeads: ebMatch?.total_leads ?? c.targetListLeadCount ?? 0,
+        openTracking: ebMatch?.open_tracking ?? false,
+        tags: ebMatch?.tags?.map((t) => t.name) ?? [],
+        updatedAt: c.updatedAt.toISOString(),
+        linkedinConnectionsSent: linkedinMetrics.connectionsSent,
+        linkedinConnectionsAccepted: linkedinMetrics.connectionsAccepted,
+        linkedinMessagesSent: linkedinMetrics.messagesSent,
+        linkedinProfileViews: linkedinMetrics.profileViews,
+      };
+    }),
+  );
 
   // Sort: pending first, then by updatedAt desc
   merged.sort((a, b) => {
