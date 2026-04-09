@@ -10,7 +10,7 @@
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { scorePersonIcp } from "@/lib/icp/scorer";
+import { scorePersonIcp, scorePersonIcpBatch } from "@/lib/icp/scorer";
 import * as operations from "@/lib/leads/operations";
 
 export function registerScoreTools(server: McpServer): void {
@@ -83,35 +83,16 @@ export function registerScoreTools(server: McpServer): void {
         return { content: [{ type: "text" as const, text }] };
       }
 
-      // Execute batch scoring (up to limit)
+      // Execute batch scoring (up to limit) using batch API
       const batch = unscoredPws.slice(0, limit);
-      let successCount = 0;
-      let failureCount = 0;
-      const scores: number[] = [];
+      const batchPersonIds = batch.map((pw) => pw.person.id);
 
-      for (const pw of batch) {
-        try {
-          const result = await scorePersonIcp(pw.person.id, workspace);
-          scores.push(result.score);
-          successCount++;
-        } catch (err) {
-          console.error(
-            `[batch_score_list] Failed to score person ${pw.person.id}:`,
-            err,
-          );
-          failureCount++;
-        }
-      }
-
-      const avgScore =
-        scores.length > 0
-          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-          : 0;
+      const result = await scorePersonIcpBatch(batchPersonIds, workspace);
 
       const text = [
-        `Scored ${successCount}/${batch.length}.`,
-        `Failures: ${failureCount}.`,
-        scores.length > 0 ? `Average score: ${avgScore}/100.` : "No scores recorded.",
+        `Scored ${result.scored}/${batch.length}.`,
+        `Failures: ${result.failed}.`,
+        result.skipped > 0 ? `Skipped: ${result.skipped}.` : "",
         total > limit
           ? `\n${total - limit} people remain unscored. Run again to continue.`
           : "",

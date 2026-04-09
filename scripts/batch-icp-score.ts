@@ -7,7 +7,7 @@
  * Requires .env with DATABASE_URL and ANTHROPIC_API_KEY.
  */
 import { PrismaClient } from "@prisma/client";
-import { scorePersonIcp } from "../src/lib/icp/scorer";
+import { scorePersonIcp, scorePersonIcpBatch } from "../src/lib/icp/scorer";
 import { prefetchDomains } from "../src/lib/icp/crawl-cache";
 
 const prisma = new PrismaClient();
@@ -23,6 +23,8 @@ function parseArgs() {
     workspace: flags.workspace,
     concurrency: parseInt(flags.concurrency ?? "3", 10),
     dryRun: process.argv.includes("--dry-run"),
+    batch: !process.argv.includes("--no-batch"),
+    batchSize: parseInt(flags["batch-size"] ?? "15", 10),
   };
 }
 
@@ -31,12 +33,16 @@ async function sleep(ms: number) {
 }
 
 async function main() {
-  const { listId, workspace, concurrency, dryRun } = parseArgs();
+  const { listId, workspace, concurrency, dryRun, batch, batchSize } = parseArgs();
 
   if (!listId || !workspace) {
-    console.error("Usage: npx tsx scripts/batch-icp-score.ts --listId <id> --workspace <slug> [--concurrency N]");
+    console.error(
+      "Usage: npx tsx scripts/batch-icp-score.ts --listId <id> --workspace <slug> [--concurrency N] [--no-batch] [--batch-size N]",
+    );
     process.exit(1);
   }
+
+  console.log(`Mode: ${batch ? `batch (size=${batchSize})` : `individual (concurrency=${concurrency})`}`);
 
   // Get all person IDs in the target list
   const listPeople = await prisma.targetListPerson.findMany({
@@ -84,44 +90,88 @@ async function main() {
   );
 
   const unscoredIds = unscored.map((u) => u.personId);
-  let scored = 0;
-  let failed = 0;
   const startTime = Date.now();
 
-  // Process in batches with concurrency
-  for (let i = 0; i < unscoredIds.length; i += concurrency) {
-    const batch = unscoredIds.slice(i, i + concurrency);
+  if (batch) {
+    // --- Batch mode: use scorePersonIcpBatch (multiple people per Claude call) ---
+    const totalBatches = Math.ceil(unscoredIds.length / batchSize);
+    console.log(`Scoring ${unscoredIds.length} people in ${totalBatches} batches of up to ${batchSize}...`);
 
-    const results = await Promise.allSettled(
-      batch.map((personId) => scorePersonIcp(personId, workspace))
-    );
+    let totalScored = 0;
+    let totalFailed = 0;
+    let totalSkipped = 0;
 
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        scored++;
-      } else {
-        failed++;
-        console.error(`  FAIL: ${result.reason?.message?.slice(0, 120)}`);
+    for (let i = 0; i < unscoredIds.length; i += batchSize) {
+      const chunk = unscoredIds.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+
+      const result = await scorePersonIcpBatch(chunk, workspace, {
+        batchSize,
+        forceRecrawl: false,
+      });
+
+      totalScored += result.scored;
+      totalFailed += result.failed;
+      totalSkipped += result.skipped;
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const total = totalScored + totalFailed + totalSkipped;
+      const pct = ((total / unscoredIds.length) * 100).toFixed(1);
+      const rate = (total / (parseFloat(elapsed) || 1)).toFixed(1);
+      const eta = ((unscoredIds.length - total) / (parseFloat(rate) || 1)).toFixed(0);
+      console.log(
+        `[${elapsed}s] Batch ${batchNum}/${totalBatches} — ${total}/${unscoredIds.length} (${pct}%) — ${totalScored} scored, ${totalFailed} failed, ${totalSkipped} skipped — ${rate}/s — ETA ${eta}s`,
+      );
+
+      // Small delay between batches to avoid rate limits
+      if (i + batchSize < unscoredIds.length) {
+        await sleep(200);
       }
     }
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    const total = scored + failed;
-    const pct = ((total / unscoredIds.length) * 100).toFixed(1);
-    const rate = (total / (parseFloat(elapsed) || 1)).toFixed(1);
-    const eta = ((unscoredIds.length - total) / (parseFloat(rate) || 1)).toFixed(0);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(
-      `[${elapsed}s] ${total}/${unscoredIds.length} (${pct}%) — ${scored} scored, ${failed} failed — ${rate}/s — ETA ${eta}s`
+      `\nDone in ${totalTime}s. Scored: ${totalScored}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`,
     );
+  } else {
+    // --- Individual mode: score one person per Claude call ---
+    let scored = 0;
+    let failed = 0;
 
-    // Small delay between batches to avoid rate limits
-    if (i + concurrency < unscoredIds.length) {
-      await sleep(200);
+    for (let i = 0; i < unscoredIds.length; i += concurrency) {
+      const chunk = unscoredIds.slice(i, i + concurrency);
+
+      const results = await Promise.allSettled(
+        chunk.map((personId) => scorePersonIcp(personId, workspace)),
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          scored++;
+        } else {
+          failed++;
+          console.error(`  FAIL: ${result.reason?.message?.slice(0, 120)}`);
+        }
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const total = scored + failed;
+      const pct = ((total / unscoredIds.length) * 100).toFixed(1);
+      const rate = (total / (parseFloat(elapsed) || 1)).toFixed(1);
+      const eta = ((unscoredIds.length - total) / (parseFloat(rate) || 1)).toFixed(0);
+      console.log(
+        `[${elapsed}s] ${total}/${unscoredIds.length} (${pct}%) — ${scored} scored, ${failed} failed — ${rate}/s — ETA ${eta}s`,
+      );
+
+      // Small delay between batches to avoid rate limits
+      if (i + concurrency < unscoredIds.length) {
+        await sleep(200);
+      }
     }
-  }
 
-  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`\nDone in ${totalTime}s. Scored: ${scored}, Failed: ${failed}`);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`\nDone in ${totalTime}s. Scored: ${scored}, Failed: ${failed}`);
+  }
 
   await prisma.$disconnect();
 }
