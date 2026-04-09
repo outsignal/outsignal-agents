@@ -93,45 +93,17 @@ async function main() {
   const startTime = Date.now();
 
   if (batch) {
-    // --- Batch mode: use scorePersonIcpBatch (multiple people per Claude call) ---
-    const totalBatches = Math.ceil(unscoredIds.length / batchSize);
-    console.log(`Scoring ${unscoredIds.length} people in ${totalBatches} batches of up to ${batchSize}...`);
+    // --- Batch mode: use scorePersonIcpBatch (handles internal chunking) ---
+    console.log(`Scoring ${unscoredIds.length} people in batch mode (internal batch size=${batchSize})...`);
 
-    let totalScored = 0;
-    let totalFailed = 0;
-    let totalSkipped = 0;
-
-    for (let i = 0; i < unscoredIds.length; i += batchSize) {
-      const chunk = unscoredIds.slice(i, i + batchSize);
-      const batchNum = Math.floor(i / batchSize) + 1;
-
-      const result = await scorePersonIcpBatch(chunk, workspace, {
-        batchSize,
-        forceRecrawl: false,
-      });
-
-      totalScored += result.scored;
-      totalFailed += result.failed;
-      totalSkipped += result.skipped;
-
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const total = totalScored + totalFailed + totalSkipped;
-      const pct = ((total / unscoredIds.length) * 100).toFixed(1);
-      const rate = (total / (parseFloat(elapsed) || 1)).toFixed(1);
-      const eta = ((unscoredIds.length - total) / (parseFloat(rate) || 1)).toFixed(0);
-      console.log(
-        `[${elapsed}s] Batch ${batchNum}/${totalBatches} — ${total}/${unscoredIds.length} (${pct}%) — ${totalScored} scored, ${totalFailed} failed, ${totalSkipped} skipped — ${rate}/s — ETA ${eta}s`,
-      );
-
-      // Small delay between batches to avoid rate limits
-      if (i + batchSize < unscoredIds.length) {
-        await sleep(200);
-      }
-    }
+    const result = await scorePersonIcpBatch(unscoredIds, workspace, {
+      batchSize,
+      forceRecrawl: false,
+    });
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(
-      `\nDone in ${totalTime}s. Scored: ${totalScored}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`,
+      `\nDone in ${totalTime}s. Scored: ${result.scored}, Failed: ${result.failed}, Skipped: ${result.skipped}`,
     );
   } else {
     // --- Individual mode: score one person per Claude call ---

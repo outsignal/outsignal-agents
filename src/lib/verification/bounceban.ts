@@ -442,59 +442,78 @@ export async function bulkVerifyEmails(
     return results;
   }
 
-  // Map results back to personIds via email join key
+  // Map results back to personIds via email join key.
+  // Process in parallel batches of 20 for DB throughput.
+  const CONCURRENCY = 20;
+  const itemsToProcess: Array<{ item: typeof dumpParsed.data.items[number]; personId: string }> = [];
+
   for (const item of dumpParsed.data.items) {
     const personId = emailToPersonId.get(item.email.toLowerCase());
     if (!personId) {
       console.warn(`[bounceban-bulk] Result for unknown email: ${item.email}`);
       continue;
     }
+    itemsToProcess.push({ item, personId });
+  }
 
-    const { status, isExportable } = mapResult(item.result, item.is_accept_all);
-    const costUsd = COST_PER_VERIFICATION;
+  for (let i = 0; i < itemsToProcess.length; i += CONCURRENCY) {
+    const batch = itemsToProcess.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(
+      batch.map(async ({ item, personId }) => {
+        const { status, isExportable } = mapResult(item.result, item.is_accept_all);
+        const costUsd = COST_PER_VERIFICATION;
 
-    results.set(personId, {
-      email: item.email,
-      status,
-      isExportable,
-      costUsd,
-    });
+        results.set(personId, {
+          email: item.email,
+          status,
+          isExportable,
+          costUsd,
+        });
 
-    // Track cost
-    await incrementDailySpend("bounceban-verify", costUsd);
+        // Track cost
+        await incrementDailySpend("bounceban-verify", costUsd);
 
-    // Record enrichment log
-    await recordEnrichment({
-      entityId: personId,
-      entityType: "person",
-      provider: "bounceban-verify",
-      status: "success",
-      fieldsWritten: ["emailVerificationStatus"],
-      costUsd,
-      rawResponse: item,
-    });
+        // Record enrichment log
+        await recordEnrichment({
+          entityId: personId,
+          entityType: "person",
+          provider: "bounceban-verify",
+          status: "success",
+          fieldsWritten: ["emailVerificationStatus"],
+          costUsd,
+          rawResponse: item,
+        });
 
-    // Persist verification result on Person.enrichmentData
-    const person = await prisma.person.findUnique({ where: { id: personId } });
-    const existing = person?.enrichmentData
-      ? (() => { try { return JSON.parse(person.enrichmentData); } catch { return {}; } })()
-      : {};
-    await prisma.person.update({
-      where: { id: personId },
-      data: {
-        enrichmentData: JSON.stringify({
-          ...existing,
-          emailVerificationStatus: status,
-          emailVerifiedAt: new Date().toISOString(),
-          emailVerificationProvider: "bounceban",
-          emailVerificationScore: item.score,
-          emailIsDisposable: item.is_disposable,
-          emailIsRole: item.is_role,
-          emailIsFree: item.is_free,
-          emailSmtpProvider: item.smtp_provider ?? null,
-        }),
-      },
-    });
+        // Persist verification result on Person.enrichmentData
+        const person = await prisma.person.findUnique({ where: { id: personId } });
+        const existing = person?.enrichmentData
+          ? (() => { try { return JSON.parse(person.enrichmentData); } catch { return {}; } })()
+          : {};
+        await prisma.person.update({
+          where: { id: personId },
+          data: {
+            enrichmentData: JSON.stringify({
+              ...existing,
+              emailVerificationStatus: status,
+              emailVerifiedAt: new Date().toISOString(),
+              emailVerificationProvider: "bounceban",
+              emailVerificationScore: item.score,
+              emailIsDisposable: item.is_disposable,
+              emailIsRole: item.is_role,
+              emailIsFree: item.is_free,
+              emailSmtpProvider: item.smtp_provider ?? null,
+            }),
+          },
+        });
+      }),
+    );
+
+    // Log any individual failures without halting the batch
+    for (const result of settled) {
+      if (result.status === "rejected") {
+        console.error(`[bounceban-bulk] Result processing error:`, result.reason);
+      }
+    }
   }
 
   // Any entries not in the dump result → unknown

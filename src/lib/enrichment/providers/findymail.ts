@@ -108,90 +108,94 @@ export async function bulkFindEmail(
 
   const apiKey = getApiKey();
 
-  const promises = people.map((person, index) =>
-    limiter.run(async () => {
-      // Check if credit exhaustion was detected — skip remaining
-      if (creditExhausted) {
-        results.set(person.personId, {
-          email: null,
-          source: "findymail",
-          rawResponse: { skipped: "credit_exhaustion_in_batch" },
-          costUsd: 0,
-        });
-        return;
-      }
-
-      // Stagger launches by 10ms to avoid burst
-      if (index > 0) {
-        await new Promise((r) => setTimeout(r, 10));
-      }
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-      try {
-        const res = await fetch(FINDYMAIL_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({ linkedin_url: person.linkedinUrl }),
-          signal: controller.signal,
-        });
-
-        if (res.status === 402 || res.status === 403) {
-          creditExhausted = true;
-          throw new CreditExhaustionError("findymail", res.status);
-        }
-
-        if (res.status === 429) {
-          const err = new Error(`FindyMail rate-limited: HTTP 429`);
-          (err as any).status = 429;
-          throw err;
-        }
-
-        if (!res.ok) {
-          throw new Error(`FindyMail HTTP error: ${res.status} ${res.statusText}`);
-        }
-
-        const raw = await res.json();
-        const parsed = FindyMailResponseSchema.safeParse(raw);
-
-        const email = parsed.success
-          ? parsed.data.email ?? null
-          : (raw as any)?.email ??
-            (raw as any)?.data?.email ??
-            (raw as any)?.verified_email ??
-            null;
-
-        results.set(person.personId, {
-          email,
-          source: "findymail",
-          rawResponse: raw,
-          costUsd: PROVIDER_COSTS.findymail,
-        });
-      } catch (err) {
-        if (err instanceof CreditExhaustionError) {
+  // Stagger launches by 10ms BEFORE entering the limiter to avoid burst.
+  // The limiter controls concurrency at 100; the stagger spaces out entries.
+  const promises: Promise<void>[] = [];
+  for (let i = 0; i < people.length; i++) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const person = people[i];
+    promises.push(
+      limiter.run(async () => {
+        // Check if credit exhaustion was detected — skip remaining
+        if (creditExhausted) {
           results.set(person.personId, {
             email: null,
             source: "findymail",
-            rawResponse: { error: "credit_exhaustion" },
+            rawResponse: { skipped: "credit_exhaustion_in_batch" },
             costUsd: 0,
           });
           return;
         }
-        results.set(person.personId, {
-          email: null,
-          source: "findymail",
-          rawResponse: { error: err instanceof Error ? err.message : String(err) },
-          costUsd: 0,
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
-    }),
-  );
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        try {
+          const res = await fetch(FINDYMAIL_ENDPOINT, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({ linkedin_url: person.linkedinUrl }),
+            signal: controller.signal,
+          });
+
+          if (res.status === 402 || res.status === 403) {
+            creditExhausted = true;
+            throw new CreditExhaustionError("findymail", res.status);
+          }
+
+          if (res.status === 429) {
+            const err = new Error(`FindyMail rate-limited: HTTP 429`);
+            (err as any).status = 429;
+            throw err;
+          }
+
+          if (!res.ok) {
+            throw new Error(`FindyMail HTTP error: ${res.status} ${res.statusText}`);
+          }
+
+          const raw = await res.json();
+          const parsed = FindyMailResponseSchema.safeParse(raw);
+
+          const email = parsed.success
+            ? parsed.data.email ?? null
+            : (raw as any)?.email ??
+              (raw as any)?.data?.email ??
+              (raw as any)?.verified_email ??
+              null;
+
+          results.set(person.personId, {
+            email,
+            source: "findymail",
+            rawResponse: raw,
+            costUsd: PROVIDER_COSTS.findymail,
+          });
+        } catch (err) {
+          if (err instanceof CreditExhaustionError) {
+            results.set(person.personId, {
+              email: null,
+              source: "findymail",
+              rawResponse: { error: "credit_exhaustion" },
+              costUsd: 0,
+            });
+            return;
+          }
+          results.set(person.personId, {
+            email: null,
+            source: "findymail",
+            rawResponse: { error: err instanceof Error ? err.message : String(err) },
+            costUsd: 0,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+      }),
+    );
+  }
 
   await Promise.allSettled(promises);
 

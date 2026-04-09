@@ -166,14 +166,26 @@ export async function processNextChunk(
             status: "paused",
           };
         }
-        errors.push({ entityId: "batch", error: errMsg });
-        processedInChunk = chunk.length; // mark all as processed (with error)
+        // Generic batch error — fall back to individual processing if onProcess is available
+        if (onProcess) {
+          console.warn(
+            `[enrichment-queue] Batch failed for job ${job.id}, falling back to individual processing: ${errMsg}`,
+          );
+          // Reset processedInChunk (was 0) and let the individual loop below handle each entity
+          processedInChunk = 0;
+        } else {
+          // No single-entity callback available — log error but mark as processed to avoid infinite loop
+          errors.push({ entityId: "batch", error: errMsg });
+          processedInChunk = chunk.length;
+        }
       }
-    } else {
-    // Single mode: process entities one at a time (original flow)
+    }
 
-    for (const entityId of chunk) {
-      if (onProcess) {
+    // Single mode: process entities one at a time.
+    // Runs when: (a) no batch callback, (b) chunk has 1 entity, or
+    // (c) batch callback failed with generic error and fell back (processedInChunk === 0).
+    if (processedInChunk === 0 && onProcess) {
+      for (const entityId of chunk) {
         try {
           await onProcess(entityId, {
             entityType: job.entityType,
@@ -235,8 +247,6 @@ export async function processNextChunk(
         }
       }
     }
-
-    } // end else (single mode)
 
     // Update progress
     const newProcessedCount = chunkStart + chunk.length;

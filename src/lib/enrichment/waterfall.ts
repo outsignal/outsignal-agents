@@ -703,7 +703,7 @@ export async function enrichEmailBatch(
           });
 
           if (result.email) {
-            foundEmails.set(personId, result.email);
+            foundEmails.set(personId, result.email.trim() || null);
           }
         }
         breaker.consecutiveFailures.set("prospeo", 0);
@@ -766,7 +766,7 @@ export async function enrichEmailBatch(
           });
 
           if (result.email) {
-            foundEmails.set(personId, result.email);
+            foundEmails.set(personId, result.email.trim() || null);
           }
         }
         breaker.consecutiveFailures.set("findymail", 0);
@@ -825,7 +825,7 @@ export async function enrichEmailBatch(
             addCost("kitt-find", result.costUsd);
 
             if (result.email) {
-              foundEmails.set(person.personId, result.email);
+              foundEmails.set(person.personId, result.email.trim() || null);
             }
           } catch (err) {
             if (isCreditExhaustion(err)) {
