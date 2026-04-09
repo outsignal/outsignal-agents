@@ -149,7 +149,9 @@ export const generateSuggestion = task({
       );
 
       // The writer in reply mode returns plain text (not JSON). Use result.text directly.
-      const result = await runAgent(writerConfig, userMessage, {
+      // Use Sonnet for cost/speed — Opus is reserved for interactive Nova sessions.
+      const suggestionWriterConfig = { ...writerConfig, model: "claude-sonnet-4-6" as const };
+      const result = await runAgent(suggestionWriterConfig, userMessage, {
         triggeredBy: "trigger-task",
         workspaceSlug,
       });
@@ -214,7 +216,7 @@ export const generateSuggestion = task({
         // Retry once with correction instruction
         const correctionMessage = `${userMessage}\n\nCORRECTION: Your previous reply contains banned patterns: ${violationNames}. Rewrite without these patterns. Keep the same intent but use natural, conversational language.`;
 
-        const retryResult = await runAgent(writerConfig, correctionMessage, {
+        const retryResult = await runAgent(suggestionWriterConfig, correctionMessage, {
           triggeredBy: "trigger-task",
           workspaceSlug,
         });

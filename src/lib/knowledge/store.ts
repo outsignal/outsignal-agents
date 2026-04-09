@@ -1,6 +1,52 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { embedText, embedBatch } from "./embeddings";
+import { createHash } from "crypto";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { join } from "path";
+
+// ---------------------------------------------------------------------------
+// File-based KB search cache (session-length, 30-minute TTL)
+// ---------------------------------------------------------------------------
+
+const KB_CACHE_DIR = "/tmp/outsignal-kb-cache";
+const KB_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function kbCacheKey(query: string, tags?: string, limit?: number): string {
+  const raw = `${query}||${tags ?? ""}||${limit ?? 10}`;
+  return createHash("md5").update(raw).digest("hex");
+}
+
+function readKBCache(
+  key: string,
+): { title: string; chunk: string; tags: string | null }[] | null {
+  const path = join(KB_CACHE_DIR, `${key}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      ts: number;
+      results: { title: string; chunk: string; tags: string | null }[];
+    };
+    if (Date.now() - parsed.ts > KB_CACHE_TTL_MS) return null; // expired
+    return parsed.results;
+  } catch {
+    return null;
+  }
+}
+
+function writeKBCache(
+  key: string,
+  results: { title: string; chunk: string; tags: string | null }[],
+): void {
+  try {
+    mkdirSync(KB_CACHE_DIR, { recursive: true });
+    const path = join(KB_CACHE_DIR, `${key}.json`);
+    writeFileSync(path, JSON.stringify({ ts: Date.now(), results }), "utf-8");
+  } catch {
+    // Cache write failure is non-fatal
+  }
+}
 
 /**
  * Knowledge base store for cold outbound best practices and reference documents.
@@ -145,6 +191,14 @@ export async function searchKnowledge(
 ): Promise<{ title: string; chunk: string; tags: string | null }[]> {
   const limit = options?.limit ?? 10;
 
+  // Check file-based cache first (30-minute TTL, persists across tool calls in same session)
+  const cacheKey = kbCacheKey(query, options?.tags, limit);
+  const cached = readKBCache(cacheKey);
+  if (cached) {
+    console.log(`[knowledge] Cache hit for query: "${query}" (key: ${cacheKey})`);
+    return cached;
+  }
+
   // Check if we have vector chunks (primary path)
   const chunkCount = await prisma.knowledgeChunk.count();
 
@@ -171,11 +225,13 @@ export async function searchKnowledge(
         LIMIT ${limit}
       `;
 
-      return results.map((r) => ({
+      const mapped = results.map((r) => ({
         title: r.title,
         chunk: r.content,
         tags: r.tags,
       }));
+      writeKBCache(cacheKey, mapped);
+      return mapped;
     } catch (err) {
       console.warn(
         "[store] pgvector search failed, falling back to keyword search:",
@@ -225,11 +281,13 @@ export async function searchKnowledge(
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map(({ title, chunk, tags }) => ({
+  const keywordResults = scored.slice(0, limit).map(({ title, chunk, tags }) => ({
     title,
     chunk,
     tags,
   }));
+  writeKBCache(cacheKey, keywordResults);
+  return keywordResults;
 }
 
 /**

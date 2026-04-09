@@ -243,7 +243,6 @@ export function checkGreeting(
  * Banned AI-cliche CTA patterns. Internal to checkCTAFormat.
  */
 const BANNED_CTA_PATTERNS = [
-  /worth a chat\?/i,
   /open to exploring\?/i,
   /ring any bells\?/i,
   /sound familiar\?/i,
@@ -254,13 +253,72 @@ const BANNED_CTA_PATTERNS = [
 ];
 
 /**
+ * Strip common sign-off patterns from the end of the email body.
+ * This prevents sign-off blocks (e.g. "Daniel" or "All the best,\nDaniel")
+ * from causing false CTA violations.
+ */
+function stripSignOff(text: string): string {
+  // Common sign-off greetings that precede a name
+  const greetings = [
+    "all the best",
+    "best regards",
+    "kind regards",
+    "best",
+    "cheers",
+    "thanks",
+  ];
+
+  const lines = text.trimEnd().split("\n");
+
+  // Walk backwards from the end, stripping blank lines first
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].trim() === "") {
+    end--;
+  }
+
+  if (end === 0) return text;
+
+  // Check if the last non-blank line is a standalone first name (single word, capitalised, no punctuation except optional comma)
+  const lastLine = lines[end - 1].trim();
+  const isSingleName = /^[A-Z][a-z]+,?$/.test(lastLine);
+
+  if (isSingleName) {
+    // Check if the line before the name is a greeting line
+    let nameStart = end - 1;
+    let greetingStart = nameStart;
+
+    // Skip blank lines between greeting and name
+    let checkIdx = nameStart - 1;
+    while (checkIdx >= 0 && lines[checkIdx].trim() === "") {
+      checkIdx--;
+    }
+
+    if (checkIdx >= 0) {
+      const candidate = lines[checkIdx].trim().replace(/,\s*$/, "").toLowerCase();
+      if (greetings.includes(candidate)) {
+        greetingStart = checkIdx;
+      }
+    }
+
+    // Strip from greetingStart to end
+    const kept = lines.slice(0, greetingStart).join("\n").trimEnd();
+    if (kept.length > 0) return kept;
+  }
+
+  return text;
+}
+
+/**
  * Check that the CTA is a question (ends with ?) and is not an AI-cliche.
  * Scans the last 2 sentences of the text.
  */
 export function checkCTAFormat(text: string): CheckResult | null {
   if (!text) return null;
 
-  const sentences = text.trim().split(/(?<=[.!?])\s+/);
+  // Strip sign-off blocks before analysis
+  const cleaned = stripSignOff(text);
+
+  const sentences = cleaned.trim().split(/(?<=[.!?])\s+/);
   const lastTwo = sentences.slice(-2).join(" ");
 
   // Check for banned AI-cliche CTAs (hard-block)
@@ -274,7 +332,7 @@ export function checkCTAFormat(text: string): CheckResult | null {
   }
 
   // Check that CTA is a question (ends with ?)
-  const trimmed = text.trimEnd();
+  const trimmed = cleaned.trimEnd();
   if (!trimmed.endsWith("?")) {
     return {
       severity: "hard",

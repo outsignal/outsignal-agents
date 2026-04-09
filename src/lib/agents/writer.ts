@@ -800,10 +800,15 @@ const writerConfig: AgentConfig = {
  */
 export async function runWriterAgent(
   input: WriterInput,
+  options?: { modelOverride?: AgentConfig["model"] },
 ): Promise<WriterOutput> {
   const userMessage = buildWriterMessage(input);
 
-  const result = await runAgent<WriterOutput>(writerConfig, userMessage, {
+  const config = options?.modelOverride
+    ? { ...writerConfig, model: options.modelOverride }
+    : writerConfig;
+
+  const result = await runAgent<WriterOutput>(config, userMessage, {
     triggeredBy: "cli",
     workspaceSlug: input.workspaceSlug,
     input,

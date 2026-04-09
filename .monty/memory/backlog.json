@@ -7,10 +7,76 @@
       "type": "feature",
       "severity": null,
       "priority": 2,
-      "status": "open",
+      "status": "wont_fix",
       "createdAt": "2026-04-07T15:00:34.756Z",
-      "updatedAt": "2026-04-07T15:00:34.757Z",
-      "notes": "GSD executor agents bypass runAgent() so onComplete never fires. All GSD phase completions should write a summary to .monty/memory/decisions.md so Monty knows what was built. This affects Monty directly — any code change to the system changes what Monty is working with."
+      "updatedAt": "2026-04-08T14:30:00.000Z",
+      "notes": "GSD executor agents bypass runAgent() so onComplete never fires. All GSD phase completions should write a summary to .monty/memory/decisions.md so Monty knows what was built. This affects Monty directly — any code change to the system changes what Monty is working with. WONT_FIX: The GSD framework lives in ~/.claude/get-shit-done/ (global, not project code) and modifying it is out of scope for Monty. Pragmatic alternative: PM should manually append a note to .monty/memory/decisions.md after each GSD phase completes summarising what was built."
+    },
+    {
+      "id": "BL-002",
+      "title": "Add post-search location filter to discovery pipeline",
+      "type": "improvement",
+      "severity": null,
+      "priority": 2,
+      "status": "done",
+      "createdAt": "2026-04-08T14:00:00.000Z",
+      "updatedAt": "2026-04-08T14:30:00.000Z",
+      "notes": "DONE. Added filterByLocation() to src/lib/discovery/filters.ts. Accepts expectedCountries string array (country names, ISO codes, or Prospeo '#CC' format). Matching is case-insensitive and partial — 'London, United Kingdom' matches 'UK' or 'GB'. Expands aliases via COUNTRY_ALIASES map covering common codes and abbreviations. People with no location field pass through (cannot reject what cannot be verified). Wired into applyDiscoveryFilters() as the third stage after title + company filters. Return type extended with locationFiltered count."
+    },
+    {
+      "id": "BL-003",
+      "title": "Fix CTA validator check to handle sign-off blocks",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 2,
+      "status": "done",
+      "createdAt": "2026-04-08T18:00:00.000Z",
+      "updatedAt": "2026-04-08T21:00:00.000Z",
+      "notes": "Fixed. Added stripSignOff() helper to copy-quality.ts — validator now looks past sign-off blocks (name, greeting+name) when checking CTA ends with '?'. Removed 'worth a chat?' from BANNED_CTA_PATTERNS to align with writer-rules.md. 9 new tests added, all passing."
+    },
+    {
+      "id": "BL-004",
+      "title": "Resume YoopKnows enrichment job — paused at 140/400",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 1,
+      "status": "open",
+      "createdAt": "2026-04-08T21:00:00.000Z",
+      "updatedAt": "2026-04-08T21:00:00.000Z",
+      "notes": "Enrichment job cmnq5v3y300xcp801gfxwbmor for yoopknows is paused at 140/400 processed. Only 400 of 1,551 promoted people were queued. Likely paused when Claude Code hit rate limits mid-session. 1,779 of 2,078 new people have emails already, but ~299 are unenriched. Investigate: (1) why only 400 were queued not 1,551, (2) resume or create new job for remaining people, (3) check if enrichment processor handles interruptions gracefully."
+    },
+    {
+      "id": "BL-005",
+      "title": "Agent token budget awareness for Max plan limits",
+      "type": "improvement",
+      "severity": null,
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-08T21:30:00.000Z",
+      "updatedAt": "2026-04-08T21:30:00.000Z",
+      "notes": "Session 48 hit Max plan rate limits twice. PM window alone consumed ~1M tokens (375 tool calls, 15 agents) plus Monty + 2 Nova windows running in parallel. Heaviest agents: writer (97k per run due to 3-tier KB consultation + validation), reply analysis (101k), discovery (98k). Consider: (1) can writer KB consultation be cached or reduced for same-workspace repeat calls? (2) can enrichment processor run independently via Trigger.dev without needing a live Claude Code session? (3) audit agents could be lighter — do we need full schema reads every time?"
+    },
+    {
+      "id": "BL-006",
+      "title": "Switch ICP scoring CLI to Haiku model",
+      "type": "improvement",
+      "severity": null,
+      "priority": 1,
+      "status": "open",
+      "createdAt": "2026-04-09T10:00:00.000Z",
+      "updatedAt": "2026-04-09T10:00:00.000Z",
+      "notes": "scripts/cli/list-score.ts line 118 calls `npx -y @anthropic-ai/claude-code -p` with no --model flag, defaulting to Opus. ICP scoring is structured evaluation (5 criteria, 0-20 each, JSON output) — doesn't need Opus. Add `--model haiku` to the command. This applies to ALL ICP scoring across Nova — check if there are other callers (validate-sequence.ts also uses claude -p for semantic checks). User confirmed: use Haiku for ICP scoring across the board. This will dramatically reduce Max plan usage — 1210 alone has 1,208 people still to score."
+    },
+    {
+      "id": "BL-007",
+      "title": "Audit all Claude CLI calls — assign right model per task type",
+      "type": "improvement",
+      "severity": null,
+      "priority": 1,
+      "status": "open",
+      "createdAt": "2026-04-09T10:30:00.000Z",
+      "updatedAt": "2026-04-09T10:30:00.000Z",
+      "notes": "Broader follow-up to BL-006. Audit every `claude -p` / `npx @anthropic-ai/claude-code -p` call across the codebase and assign the cheapest model that can do the job. Principle: Opus for creative/nuanced work (copy writing, complex analysis), Sonnet for structured reasoning with judgment (semantic validation, reply suggestions), Haiku for structured extraction and scoring (ICP scoring, classification, normalisation). Files to audit: scripts/cli/list-score.ts (DONE via BL-006), scripts/cli/validate-sequence.ts (semantic checks — likely Sonnet), any other scripts or agent tools that shell out to Claude CLI. Also check if the Nova agent runner or orchestrator spawns CLI subprocesses. User wants this applied across all of Nova, not just scoring."
     }
   ]
 }

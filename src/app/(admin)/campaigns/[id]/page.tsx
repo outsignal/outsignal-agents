@@ -155,12 +155,12 @@ export default async function CampaignDetailPage({
 
   // Map sequences to SequenceFlowTimeline format
   const emailTimelineSteps: TimelineStep[] = Array.isArray(campaign.emailSequence)
-    ? (campaign.emailSequence as Array<{ position: number; subject?: string; subjectVariantB?: string; body: string; delayDays: number }>).map(step => ({
+    ? (campaign.emailSequence as Array<{ position: number; subject?: string; subjectVariantB?: string; body?: string; bodyText?: string; bodyHtml?: string; delayDays: number }>).map(step => ({
         type: "email" as const,
         position: step.position,
         subject: step.subject ?? "",
         subjectVariantB: step.subjectVariantB,
-        body: step.body,
+        body: step.body ?? step.bodyText ?? step.bodyHtml ?? "",
         delayDays: step.delayDays,
       }))
     : [];

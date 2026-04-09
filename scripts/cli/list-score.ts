@@ -115,7 +115,7 @@ async function scorePersonViaCli(
     writeFileSync(promptPath, fullPrompt);
 
     const output = execSync(
-      `claude -p "$(cat '${promptPath}')" --output-format json`,
+      `npx -y @anthropic-ai/claude-code -p "$(cat '${promptPath}')" --output-format json --model claude-haiku-4-5`,
       {
         timeout: 60_000,
         encoding: "utf-8",

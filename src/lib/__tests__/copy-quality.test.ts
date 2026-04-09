@@ -182,11 +182,9 @@ describe("checkCTAFormat", () => {
     expect(result!.severity).toBe("hard");
   });
 
-  it("returns hard violation for 'worth a chat?'", () => {
+  it("allows 'worth a chat?' as a valid soft CTA", () => {
     const result = checkCTAFormat("Let me know if it is worth a chat?");
-    expect(result).not.toBeNull();
-    expect(result!.severity).toBe("hard");
-    expect(result!.violation).toContain("AI-cliche");
+    expect(result).toBeNull();
   });
 
   it("returns hard violation for 'open to exploring?'", () => {
@@ -239,6 +237,56 @@ describe("checkCTAFormat", () => {
   it("returns null for good CTA 'want me to send over some examples?'", () => {
     const result = checkCTAFormat("Want me to send over some examples?");
     expect(result).toBeNull();
+  });
+
+  // Sign-off stripping tests
+  it("strips single name sign-off and detects CTA question", () => {
+    const text = "Worth a quick comparison?\n\nDaniel";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("strips greeting + name sign-off and detects CTA question", () => {
+    const text = "Worth a quick comparison?\n\nAll the best,\nDaniel";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("strips 'Best,' + name sign-off", () => {
+    const text = "Worth a quick comparison?\n\nBest,\nJames";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("strips 'Cheers,' + name sign-off", () => {
+    const text = "Worth a quick comparison?\n\nCheers,\nJames";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("strips 'Thanks,' + name sign-off", () => {
+    const text = "Worth a quick comparison?\n\nThanks,\nJames";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("strips 'Kind regards,' + name sign-off", () => {
+    const text = "Worth a quick comparison?\n\nKind regards,\nDaniel";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("strips 'Best regards,' + name sign-off", () => {
+    const text = "Worth a quick comparison?\n\nBest regards,\nDaniel";
+    expect(checkCTAFormat(text)).toBeNull();
+  });
+
+  it("still catches missing CTA question after sign-off stripping", () => {
+    const text = "We help companies scale outreach.\n\nDaniel";
+    const result = checkCTAFormat(text);
+    expect(result).not.toBeNull();
+    expect(result!.violation).toContain("CTA must be a question");
+  });
+
+  it("does not strip legitimate content that looks like a name", () => {
+    // If the body is ONLY a name, don't strip it (nothing left)
+    const text = "Daniel";
+    const result = checkCTAFormat(text);
+    expect(result).not.toBeNull();
   });
 });
 

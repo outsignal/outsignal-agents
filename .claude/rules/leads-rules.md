@@ -3,7 +3,7 @@
 <!-- Used by: CLI skill (! include), API agent (loadRules) -->
 
 ## Capabilities
-Search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Apollo, Prospeo, AI Ark, Leads Finder, Serper, Firecrawl, Ecommerce Stores).
+Search people in the local database, create target lists, add people to lists, score leads against ICP criteria, export verified leads to EmailBison, and discover new leads from external sources (Prospeo, AI Ark, Leads Finder, Serper, Firecrawl, Ecommerce Stores). Apollo adapter exists but is DISABLED (403 — no paid subscription).
 
 ## Discovery Workflow
 
@@ -11,10 +11,10 @@ When asked to find or discover leads, ALWAYS follow this exact flow:
 
 ### Step 1: Build the Discovery Plan
 - Analyze the request to determine ICP characteristics (industry, title, seniority, location, company size, etc.)
-- For standard B2B discovery, ALWAYS include all three core sources:
-  1. Apollo (free, broad match)
-  2. Prospeo (paid, same filters)
-  3. AI Ark (paid, same filters)
+- For standard B2B discovery, ALWAYS include both core sources:
+  1. Prospeo (paid, strong filters)
+  2. AI Ark (paid, smart title matching)
+  Apollo is DISABLED (403 — no paid subscription). Do NOT include it in discovery plans.
   Then add Apify sources (Leads Finder, Google Maps, Ecommerce Stores) when the ICP calls for them.
 - Run `node dist/cli/discovery-plan.js --file /tmp/{uuid}.json` with your selected sources, filters, and estimated volumes
 - Present the plan to the admin showing:
@@ -94,9 +94,8 @@ Comprehensive playbooks for all 6 active discovery platforms. Consult this secti
 - SMB/Local: `jobTitles: ["Owner", "Managing Director"], companySizes: ["1-10", "11-50"], locations: ["London"]`
 
 **Routing Guidance:**
-- Use when: ALWAYS include (free, broad coverage, no downside)
-- Skip when: Never skip -- zero cost
-- Always pair with: Prospeo + AI Ark for comprehensive coverage
+- DISABLED (2026-04-08): Apollo returns 403 — no paid subscription ($49/mo). Do NOT include in discovery plans.
+- Re-enable if subscription is purchased. Adapter code is preserved.
 
 ---
 
@@ -313,13 +312,13 @@ Use this routing logic when building discovery plans. Explain your routing choic
 INPUT: ICP + optional company domains
 
 IF company domains provided:
-  PATH A (domain-based): Search Prospeo + AI Ark + Apollo by companyDomains
-  PATH B (ICP-filter): Search Prospeo + AI Ark + Apollo by ICP filters
+  PATH A (domain-based): Search Prospeo + AI Ark by companyDomains
+  PATH B (ICP-filter): Search Prospeo + AI Ark by ICP filters
   RUN BOTH IN PARALLEL, dedup after
   VERIFY DOMAINS: quick DNS check for valid/current domains before burning credits
 
 IF ICP-filter only (no domains):
-  ALWAYS use all three: Apollo (free) + Prospeo + AI Ark
+  ALWAYS use both: Prospeo + AI Ark
   Add Apify sources when ICP calls for them:
     - Ecommerce ICP -> Ecommerce Stores first, then Prospeo/AI Ark for people
     - Local/SMB ICP -> Google Maps first, then Prospeo/AI Ark for people
@@ -328,7 +327,6 @@ IF ICP-filter only (no domains):
 IF company keyword search:
   AI Ark: MUST use two-step workaround (companies -> domains -> people)
   Prospeo: Direct companyKeywords filter works
-  Apollo: keywords filter works
 
 IF company NAME list (no domains):
   Call `resolveDomains` with names + ICP context FIRST

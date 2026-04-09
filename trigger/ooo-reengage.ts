@@ -430,7 +430,7 @@ ${missedStepsRef}`,
       copyStrategy: "custom",
     };
 
-    const writerOutput = await runWriterAgent(writerInput);
+    const writerOutput = await runWriterAgent(writerInput, { modelOverride: "claude-sonnet-4-6" });
 
     if (writerOutput.emailSteps && writerOutput.emailSteps.length > 0) {
       emailSteps = writerOutput.emailSteps.map((s) => ({

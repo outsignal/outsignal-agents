@@ -476,7 +476,7 @@ Be specific with numbers. Do not make generic observations. If data is insuffici
 Return as JSON: { "globalInsights": ["..."], "workspaceInsights": ["..."] }`;
 
   const result = await generateText({
-    model: anthropic(NOVA_MODEL),
+    model: anthropic("claude-sonnet-4-6"),
     prompt,
   });
 

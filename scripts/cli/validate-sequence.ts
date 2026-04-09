@@ -319,7 +319,7 @@ runWithHarness("validate-sequence --file <path>", async () => {
     writeFileSync(promptPath, prompt);
 
     const output = execSync(
-      `claude -p "$(cat '${promptPath}')" --output-format json`,
+      `claude -p "$(cat '${promptPath}')" --output-format json --model claude-haiku-4-5`,
       {
         timeout: 60_000,
         encoding: "utf-8",

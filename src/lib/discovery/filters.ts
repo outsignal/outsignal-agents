@@ -280,29 +280,174 @@ export function filterByCompanyType(
 }
 
 // ---------------------------------------------------------------------------
-// 4. Combined filter pipeline
+// 4. Post-search location filter
 // ---------------------------------------------------------------------------
 
 /**
- * Run all discovery filters in sequence: title filter, then company-type filter.
+ * Country name aliases — maps common codes/abbreviations to their canonical names
+ * and vice versa. Used for lenient matching so "UK", "GB", and "United Kingdom"
+ * all resolve to the same country.
+ */
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  "united kingdom": ["uk", "gb", "great britain", "england", "scotland", "wales", "northern ireland"],
+  "united states": ["us", "usa", "united states of america", "america"],
+  "australia": ["au", "aus"],
+  "canada": ["ca", "can"],
+  "germany": ["de", "deu", "deutschland"],
+  "france": ["fr", "fra"],
+  "netherlands": ["nl", "nld", "holland"],
+  "ireland": ["ie", "irl", "republic of ireland"],
+  "spain": ["es", "esp"],
+  "italy": ["it", "ita"],
+  "sweden": ["se", "swe"],
+  "norway": ["no", "nor"],
+  "denmark": ["dk", "dnk"],
+  "finland": ["fi", "fin"],
+  "belgium": ["be", "bel"],
+  "switzerland": ["ch", "che"],
+  "singapore": ["sg", "sgp"],
+  "new zealand": ["nz", "nzl"],
+};
+
+/**
+ * Normalise a location string or expected country token to a set of lowercase
+ * terms that can be matched against. Strips Prospeo's "#CC" suffix and
+ * expands abbreviations via COUNTRY_ALIASES.
+ */
+function expandCountryTerms(token: string): Set<string> {
+  // Strip Prospeo's " #CC" suffix (e.g. "United Kingdom #GB" -> "United Kingdom")
+  const stripped = token.replace(/\s*#[A-Z]{2,3}$/, "").toLowerCase().trim();
+  const terms = new Set<string>([stripped]);
+
+  // Add all aliases for this canonical name
+  const aliases = COUNTRY_ALIASES[stripped];
+  if (aliases) {
+    for (const alias of aliases) {
+      terms.add(alias);
+    }
+  }
+
+  // Also check if the stripped value IS an alias — resolve to canonical + its aliases
+  for (const [canonical, aliasList] of Object.entries(COUNTRY_ALIASES)) {
+    if (aliasList.includes(stripped)) {
+      terms.add(canonical);
+      for (const alias of aliasList) {
+        terms.add(alias);
+      }
+      break;
+    }
+  }
+
+  return terms;
+}
+
+/**
+ * Check whether a person's location string matches any of the expected country terms.
+ * Matching is lenient — partial substring match is allowed (e.g. "London, United Kingdom"
+ * will match if "United Kingdom" or "UK" is in the expected list).
+ */
+function locationMatchesExpected(
+  personLocation: string,
+  expectedTermSets: Set<string>[],
+): boolean {
+  const loc = personLocation.toLowerCase();
+
+  for (const termSet of expectedTermSets) {
+    for (const term of termSet) {
+      if (loc.includes(term)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Filter discovered people by expected country/location.
+ *
+ * - Accepts country names, ISO codes, or Prospeo-format strings ("United Kingdom #GB")
+ * - Matching is case-insensitive and partial ("London, United Kingdom" matches "UK")
+ * - If `expectedCountries` is empty or omitted, all people pass through (no-op)
+ *
+ * @param people - Discovered people to filter
+ * @param expectedCountries - Accepted country names/codes. Pass empty array to disable.
+ * @returns Object with passed (location-matching) and filtered (non-matching) arrays
+ */
+export function filterByLocation(
+  people: DiscoveredPersonResult[],
+  expectedCountries: string[] = [],
+): { passed: DiscoveredPersonResult[]; filtered: DiscoveredPersonResult[] } {
+  // No-op if no countries specified
+  if (expectedCountries.length === 0) {
+    return { passed: people, filtered: [] };
+  }
+
+  // Pre-expand all expected country tokens once
+  const expectedTermSets = expectedCountries.map(expandCountryTerms);
+
+  const passed: DiscoveredPersonResult[] = [];
+  const filtered: DiscoveredPersonResult[] = [];
+
+  for (const person of people) {
+    if (!person.location) {
+      // No location data — pass through (cannot reject what we cannot verify)
+      passed.push(person);
+      continue;
+    }
+
+    if (locationMatchesExpected(person.location, expectedTermSets)) {
+      passed.push(person);
+    } else {
+      filtered.push(person);
+    }
+  }
+
+  if (filtered.length > 0) {
+    const examples = filtered
+      .slice(0, 5)
+      .map((p) => `${p.firstName ?? ""} ${p.lastName ?? ""} — ${p.location}`)
+      .join("; ");
+    console.log(
+      `[discovery-filters] Location filter: ${filtered.length} excluded (${passed.length} passed). Expected: [${expectedCountries.join(", ")}]. Examples: ${examples}`,
+    );
+  }
+
+  return { passed, filtered };
+}
+
+// ---------------------------------------------------------------------------
+// 5. Combined filter pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Run all discovery filters in sequence: title filter, then company-type filter,
+ * then location filter.
  * Returns the passing people and a summary of what was filtered.
  */
 export function applyDiscoveryFilters(
   people: DiscoveredPersonResult[],
   companyFilterOptions?: CompanyFilterOptions,
+  expectedCountries?: string[],
 ): {
   passed: DiscoveredPersonResult[];
   titleFiltered: number;
   companyFiltered: number;
+  locationFiltered: number;
   totalFiltered: number;
 } {
   const titleResult = filterByTitle(people);
   const companyResult = filterByCompanyType(titleResult.passed, companyFilterOptions);
+  const locationResult = filterByLocation(companyResult.passed, expectedCountries);
 
   return {
-    passed: companyResult.passed,
+    passed: locationResult.passed,
     titleFiltered: titleResult.filtered.length,
     companyFiltered: companyResult.filtered.length,
-    totalFiltered: titleResult.filtered.length + companyResult.filtered.length,
+    locationFiltered: locationResult.filtered.length,
+    totalFiltered:
+      titleResult.filtered.length +
+      companyResult.filtered.length +
+      locationResult.filtered.length,
   };
 }

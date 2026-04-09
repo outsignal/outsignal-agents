@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
-import { getWorkspaceBySlug } from "@/lib/workspaces";
+import { getWorkspaceBySlug, type WorkspaceConfig } from "@/lib/workspaces";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
@@ -9,9 +9,61 @@ import { type PerformanceDayPoint } from "@/components/portal/portal-performance
 import { RelativeTimestamp } from "@/components/portal/relative-timestamp";
 import { PeriodSelector } from "@/components/portal/period-selector";
 import { Mail } from "lucide-react";
-import { EmailBisonClient } from "@/lib/emailbison/client";
+import { getEnabledChannels } from "@/lib/channels";
 
 import Link from "next/link";
+
+// ---------------------------------------------------------------------------
+// Workspace-level email stats helper — keeps EmailBisonClient out of the
+// dashboard component body while still using the optimised workspace-level API
+// (not N+1 per campaign).
+// ---------------------------------------------------------------------------
+async function getEmailWorkspaceStats(
+  workspace: WorkspaceConfig,
+  startDate: string,
+  endDate: string,
+): Promise<number> {
+  if (!workspace.apiToken) return 0;
+  try {
+    const { EmailBisonClient } = await import("@/lib/emailbison/client");
+    const ebClient = new EmailBisonClient(workspace.apiToken);
+    const stats = await ebClient.getWorkspaceStats(startDate, endDate);
+    return parseInt(stats.emails_sent, 10) || 0;
+  } catch (err) {
+    console.warn("[portal-dashboard] Failed to fetch EB workspace stats:", err);
+    return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace-level LinkedIn stats helper — wraps the Prisma LinkedInDailyUsage
+// query so the dashboard component body reads cleanly.
+// ---------------------------------------------------------------------------
+async function getLinkedInWorkspaceStats(
+  workspaceSlug: string,
+  sinceDate: Date,
+) {
+  const linkedInSenderIds = (
+    await prisma.sender.findMany({
+      where: { workspaceSlug, channel: { in: ["linkedin", "both"] } },
+      select: { id: true },
+    })
+  ).map((s) => s.id);
+
+  if (linkedInSenderIds.length === 0) {
+    return { dailyUsage: [], senderIds: [] };
+  }
+
+  const dailyUsage = await prisma.linkedInDailyUsage.findMany({
+    where: {
+      senderId: { in: linkedInSenderIds },
+      date: { gte: sinceDate },
+    },
+    orderBy: { date: "asc" },
+  });
+
+  return { dailyUsage, senderIds: linkedInSenderIds };
+}
 
 
 const VALID_PERIODS = [7, 14, 30, 90] as const;
@@ -48,27 +100,15 @@ export default async function PortalDashboardPage({
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - timeSeriesDays);
 
-  // LinkedIn stats — only query if workspace package includes LinkedIn
-  const hasLinkedIn = workspace.package === "linkedin" || workspace.package === "email_linkedin";
+  // Channel detection — derive which channels this workspace has enabled.
+  const enabledChannels = getEnabledChannels(workspace.package ?? "");
+  const hasEmail = enabledChannels.includes("email");
+  const hasLinkedIn = enabledChannels.includes("linkedin");
 
-  // Get LinkedIn senders for this workspace
-  const linkedInSenderIds = hasLinkedIn
-    ? (await prisma.sender.findMany({
-        where: { workspaceSlug, channel: { in: ["linkedin", "both"] } },
-        select: { id: true },
-      })).map((s) => s.id)
-    : [];
-
-  // Query LinkedInDailyUsage (aggregated daily stats) instead of LinkedInAction
-  const linkedInDailyUsage = hasLinkedIn && linkedInSenderIds.length > 0
-    ? await prisma.linkedInDailyUsage.findMany({
-        where: {
-          senderId: { in: linkedInSenderIds },
-          date: { gte: sinceDate },
-        },
-        orderBy: { date: "asc" },
-      })
-    : [];
+  // LinkedIn stats — only query if workspace package includes LinkedIn.
+  const { dailyUsage: linkedInDailyUsage } = hasLinkedIn
+    ? await getLinkedInWorkspaceStats(workspaceSlug, sinceDate)
+    : { dailyUsage: [] };
 
   const linkedInTotals = {
     connectionsSent: linkedInDailyUsage.reduce((sum, r) => sum + r.connectionsSent, 0),
@@ -78,18 +118,12 @@ export default async function PortalDashboardPage({
   };
 
   // Fetch sent count from EmailBison workspace stats API (source of truth).
-  // This gives us the exact sent count for the selected time period directly.
+  // Only fetched for workspaces with the email channel enabled.
   let ebPeriodSent = 0;
-  if (workspace.apiToken) {
-    try {
-      const ebClient = new EmailBisonClient(workspace.apiToken);
-      const startDate = sinceDate.toISOString().slice(0, 10);
-      const endDate = new Date().toISOString().slice(0, 10);
-      const stats = await ebClient.getWorkspaceStats(startDate, endDate);
-      ebPeriodSent = parseInt(stats.emails_sent, 10) || 0;
-    } catch (err) {
-      console.warn("[portal-dashboard] Failed to fetch EB workspace stats:", err);
-    }
+  if (hasEmail) {
+    const startDate = sinceDate.toISOString().slice(0, 10);
+    const endDate = new Date().toISOString().slice(0, 10);
+    ebPeriodSent = await getEmailWorkspaceStats(workspace, startDate, endDate);
   }
 
   // Webhook events — still used for bounce/interested/unsubscribed tracking

@@ -15,7 +15,9 @@ interface EmailStep {
   position: number;
   subjectLine: string;
   subjectVariantB?: string;
-  body: string;
+  body?: string;
+  bodyText?: string;
+  bodyHtml?: string;
   delayDays: number;
   notes?: string;
 }
@@ -136,7 +138,7 @@ export function CampaignApprovalContent({
       position: s.position,
       subject: s.subjectLine,
       subjectVariantB: s.subjectVariantB,
-      body: s.body,
+      body: s.body ?? s.bodyText ?? s.bodyHtml ?? "",
       delayDays: s.delayDays,
     })),
     ...linkedinSteps.map((s) => ({
@@ -304,7 +306,7 @@ export function CampaignApprovalContent({
                             Body
                           </p>
                           <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                            <PreviewText raw={step.body} />
+                            <PreviewText raw={step.body ?? step.bodyText ?? step.bodyHtml ?? ""} />
                           </div>
                         </div>
                       </div>

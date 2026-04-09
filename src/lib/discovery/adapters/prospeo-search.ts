@@ -29,6 +29,44 @@ const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
 
 /**
+ * Map internal seniority values (lowercase/underscore) to Prospeo's expected
+ * capitalised format. Prospeo silently ignores unrecognised seniority values,
+ * so sending "manager" instead of "Manager" causes the filter to be dropped.
+ */
+const SENIORITY_MAP: Record<string, string> = {
+  c_suite: "C-Suite",
+  vp: "VP",
+  director: "Director",
+  manager: "Manager",
+  senior: "Senior",
+  ic: "Individual Contributor",
+  // Also handle if someone passes already-capitalised values
+  "C-Suite": "C-Suite",
+  VP: "VP",
+  Director: "Director",
+  Manager: "Manager",
+  Senior: "Senior",
+};
+
+function mapSeniorityToProspeo(values: string[]): string[] {
+  return values.map((v) => {
+    const mapped = SENIORITY_MAP[v];
+    if (!mapped) {
+      // Defensive: capitalise first letter of each word as best-effort
+      const capitalised = v
+        .split(/[_\s-]+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+      console.warn(
+        `[ProspeoSearchAdapter] Unknown seniority value "${v}", capitalised to "${capitalised}"`
+      );
+      return capitalised;
+    }
+    return mapped;
+  });
+}
+
+/**
  * Prospeo search endpoint rate limits.
  * Source: Prospeo API docs.
  *
@@ -144,11 +182,19 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.seniority?.length) {
-      f.person_seniority = { include: filters.seniority };
+      f.person_seniority = { include: mapSeniorityToProspeo(filters.seniority) };
     }
 
     if (filters.locations?.length) {
       // Prospeo requires "Country Name #CC" format (e.g., "United Kingdom #GB")
+      // Warn if any location doesn't match expected format
+      for (const loc of filters.locations) {
+        if (!loc.includes("#")) {
+          console.warn(
+            `[ProspeoSearchAdapter] Location "${loc}" missing country code (expected format: "Country Name #CC"). Filter may not apply correctly.`
+          );
+        }
+      }
       f.person_location_search = { include: filters.locations };
     }
 
@@ -256,6 +302,10 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     const body: Record<string, unknown> = { filters: f, page };
+
+    console.log(
+      `[ProspeoSearchAdapter] Request body: ${JSON.stringify(body, null, 2)}`
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
