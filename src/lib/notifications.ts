@@ -2139,7 +2139,7 @@ export async function notifyLinkedInMessage(params: {
 
 // DB-backed dedup — don't notify for the same provider within 1 hour.
 // In-memory cache is useless for Trigger.dev tasks (fresh process each invocation).
-const CREDIT_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const CREDIT_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours — one notification per day max
 
 export async function notifyCreditExhaustion(params: {
   provider: string;
