@@ -550,10 +550,11 @@ export async function enrichEmail(
 // enrichEmailBatch — Batch mode for parallel enrichment
 // ---------------------------------------------------------------------------
 
-import { bulkEnrichPerson } from "./providers/prospeo";
+import { bulkEnrichPerson, bulkEnrichByPersonId } from "./providers/prospeo";
 import { bulkFindEmail } from "./providers/findymail";
 import { bulkVerifyEmails } from "@/lib/verification/bounceban";
 import { findEmail as kittFindEmail } from "@/lib/verification/kitt";
+import { aiarkEmailFinderByTrackId } from "./providers/aiark-person";
 
 /**
  * Input for batch enrichment — one entry per person.
@@ -566,6 +567,10 @@ export interface PersonForEnrichment {
   companyDomain?: string | null;
   companyName?: string | null;
   email?: string | null; // existing email from AI Ark step
+  /** Discovery platform source ID (Prospeo person_id, AI Ark person id) for source-first enrichment */
+  sourceId?: string | null;
+  /** Which discovery platform found this person: 'prospeo', 'aiark', 'apify-leads-finder', etc. */
+  discoverySource?: string | null;
 }
 
 /**
@@ -656,7 +661,129 @@ export async function enrichEmailBatch(
   if (capHit) throw new Error("DAILY_CAP_HIT");
 
   // -------------------------------------------------------------------------
-  // Step 1: Prospeo bulk for all eligible people
+  // Step 0: Source-first enrichment — use discovery platform IDs directly
+  //
+  // People discovered via Prospeo have a person_id that allows direct lookup
+  // (much higher hit rate than generic name/LinkedIn matching). AI Ark people
+  // have a trackId (expires in 6 hours, one-time use) for email-finder.
+  //
+  // AI Ark emails are pre-verified by BounceBan — skip our own verification.
+  // Prospeo emails are NOT pre-verified — they go through BounceBan below.
+  // -------------------------------------------------------------------------
+  const prospeoSourced: Array<{ personId: string; prospeoPersonId: string }> = [];
+  const aiarkSourced: Array<{ personId: string; aiarkTrackId: string }> = [];
+  // Track people whose emails were found by AI Ark (skip BounceBan for these)
+  const aiarkVerifiedPersonIds = new Set<string>();
+
+  for (const person of needEmail) {
+    if (!person.sourceId) continue;
+    if (person.discoverySource === "prospeo") {
+      prospeoSourced.push({ personId: person.personId, prospeoPersonId: person.sourceId });
+    } else if (person.discoverySource === "aiark") {
+      aiarkSourced.push({ personId: person.personId, aiarkTrackId: person.sourceId });
+    }
+  }
+
+  // --- Prospeo source-first: bulk enrich by person_id ---
+  if (prospeoSourced.length > 0) {
+    const prospeoFailures0 = breaker.consecutiveFailures.get("prospeo") ?? 0;
+    if (prospeoFailures0 < CIRCUIT_BREAKER_THRESHOLD) {
+      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
+
+      try {
+        console.log(`[waterfall-batch] Prospeo source-first (person_id): ${prospeoSourced.length} people`);
+        const prospeoResults = await bulkEnrichByPersonId(prospeoSourced);
+
+        for (const [personId, result] of prospeoResults) {
+          addCost("prospeo", result.costUsd);
+          if (result.costUsd > 0) {
+            await incrementDailySpend("prospeo", result.costUsd);
+          }
+          await recordEnrichment({
+            entityId: personId,
+            entityType: "person",
+            provider: "prospeo",
+            status: "success",
+            fieldsWritten: result.email ? ["email"] : [],
+            costUsd: result.costUsd,
+            rawResponse: result.rawResponse,
+            workspaceSlug,
+          });
+
+          if (result.email) {
+            foundEmails.set(personId, result.email.trim() || null);
+          }
+        }
+        breaker.consecutiveFailures.set("prospeo", 0);
+      } catch (err) {
+        if (isCreditExhaustion(err)) {
+          await notifyCreditExhaustion({
+            provider: (err as CreditExhaustionError).provider,
+            httpStatus: (err as CreditExhaustionError).httpStatus,
+            context: `batch enrichment (prospeo source-first person_id) — falling through to generic waterfall`,
+          });
+          console.warn(`[waterfall-batch] Prospeo source-first credit exhaustion — falling through`);
+        } else {
+          breaker.consecutiveFailures.set("prospeo", (breaker.consecutiveFailures.get("prospeo") ?? 0) + 1);
+          console.error(`[waterfall-batch] Prospeo source-first error:`, err);
+        }
+      }
+    }
+  }
+
+  // --- AI Ark source-first: email-finder by trackId ---
+  // trackId expires in 6 hours and is one-time use. Enrichment runs within
+  // minutes of promotion, well within the expiry window.
+  // AI Ark emails are pre-verified by BounceBan — skip our own verification.
+  if (aiarkSourced.length > 0) {
+    const aiarkFailures0 = breaker.consecutiveFailures.get("aiark") ?? 0;
+    if (aiarkFailures0 < CIRCUIT_BREAKER_THRESHOLD) {
+      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
+
+      console.log(`[waterfall-batch] AI Ark source-first (trackId email-finder): ${aiarkSourced.length} people`);
+      const aiarkLimiter = createBatchLimiter(5); // Respect AI Ark 5 req/s limit
+
+      const aiarkPromises = aiarkSourced.map((entry) =>
+        aiarkLimiter.run(async () => {
+          try {
+            const result = await aiarkEmailFinderByTrackId(entry.aiarkTrackId, entry.personId);
+            addCost("aiark", result.costUsd);
+            if (result.costUsd > 0) {
+              await incrementDailySpend("aiark", result.costUsd);
+            }
+            await recordEnrichment({
+              entityId: entry.personId,
+              entityType: "person",
+              provider: "aiark",
+              status: "success",
+              fieldsWritten: result.email ? ["email"] : [],
+              costUsd: result.costUsd,
+              rawResponse: result.rawResponse,
+              workspaceSlug,
+            });
+
+            if (result.email) {
+              foundEmails.set(entry.personId, result.email.trim() || null);
+              // AI Ark emails are pre-verified by BounceBan — mark for skip
+              aiarkVerifiedPersonIds.add(entry.personId);
+            }
+          } catch (err) {
+            if (isCreditExhaustion(err)) {
+              console.warn(`[waterfall-batch] AI Ark email-finder credit exhaustion for ${entry.personId}`);
+            } else {
+              console.error(`[waterfall-batch] AI Ark email-finder error for ${entry.personId}:`, err);
+            }
+          }
+        }),
+      );
+
+      await Promise.allSettled(aiarkPromises);
+      breaker.consecutiveFailures.set("aiark", 0);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 1: Prospeo bulk for all eligible people (generic — no person_id)
   // -------------------------------------------------------------------------
   const prospeoFailures = breaker.consecutiveFailures.get("prospeo") ?? 0;
   if (prospeoFailures < CIRCUIT_BREAKER_THRESHOLD && needEmail.length > 0) {
@@ -845,17 +972,71 @@ export async function enrichEmailBatch(
 
   // -------------------------------------------------------------------------
   // Step 4: BounceBan bulk verify all found emails
+  //
+  // EXCEPTION: AI Ark source-first emails are pre-verified by BounceBan
+  // on AI Ark's side — skip our own verification for those to save credits.
+  // Apify Leads Finder emails are NOT pre-verified — must go through BounceBan
+  // despite Apify claiming "validated" status.
   // -------------------------------------------------------------------------
   const allFoundEmails: Array<{ personId: string; email: string }> = [];
+  // AI Ark pre-verified emails — bypass BounceBan, go straight to merge
+  const preVerifiedEmails: Array<{ personId: string; email: string }> = [];
+
   for (const [personId, email] of foundEmails) {
     if (email) {
-      allFoundEmails.push({ personId, email });
+      if (aiarkVerifiedPersonIds.has(personId)) {
+        preVerifiedEmails.push({ personId, email });
+      } else {
+        allFoundEmails.push({ personId, email });
+      }
     }
   }
-  // Include pre-existing emails (from AI Ark)
+  // Include pre-existing emails (from AI Ark enrichment step)
   for (const entry of alreadyHaveEmail) {
-    if (!allFoundEmails.find((e) => e.personId === entry.personId)) {
+    if (!allFoundEmails.find((e) => e.personId === entry.personId) &&
+        !preVerifiedEmails.find((e) => e.personId === entry.personId)) {
       allFoundEmails.push(entry);
+    }
+  }
+
+  if (preVerifiedEmails.length > 0) {
+    console.log(`[waterfall-batch] Skipping BounceBan for ${preVerifiedEmails.length} AI Ark pre-verified emails`);
+  }
+
+  // Merge pre-verified AI Ark emails directly (no BounceBan needed)
+  for (const entry of preVerifiedEmails) {
+    try {
+      const personData: Parameters<typeof mergePersonData>[1] = {
+        email: entry.email,
+      };
+      await mergePersonData(entry.personId, personData);
+      enriched++;
+      verified++;
+
+      // Run normalizers
+      const updatedPerson = await prisma.person.findUnique({ where: { id: entry.personId } });
+      if (updatedPerson?.jobTitle) {
+        try {
+          const titleResult = await classifyJobTitle(updatedPerson.jobTitle);
+          if (titleResult) {
+            const existing = updatedPerson.enrichmentData
+              ? (() => { try { return JSON.parse(updatedPerson.enrichmentData) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+              : {};
+            await prisma.person.update({
+              where: { id: entry.personId },
+              data: {
+                jobTitle: titleResult.canonical,
+                enrichmentData: JSON.stringify({ ...existing, seniority: titleResult.seniority }),
+              },
+            });
+          }
+        } catch (err) {
+          console.warn(`[waterfall-batch] classifyJobTitle failed for pre-verified ${entry.personId}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error(`[waterfall-batch] Failed to merge pre-verified email ${entry.email} for ${entry.personId}:`, err);
+      failed++;
     }
   }
 

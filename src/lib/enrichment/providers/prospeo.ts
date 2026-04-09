@@ -266,6 +266,141 @@ export async function bulkEnrichPerson(
 }
 
 // ---------------------------------------------------------------------------
+// Bulk enrichment by Prospeo person_id (source-first)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bulk enrich by Prospeo person_id — much higher hit rate than name/LinkedIn matching.
+ * Uses the same /bulk-enrich-person endpoint but passes `person_id` as the direct
+ * lookup identifier. No name/company matching needed — Prospeo resolves by internal ID.
+ *
+ * This is the preferred path for people originally discovered via Prospeo Search,
+ * since we already have their person_id from the search results.
+ *
+ * @param people - Array of { personId (our DB ID), prospeoPersonId (Prospeo's person_id) }
+ * @returns Map of our personId → EmailProviderResult
+ */
+export async function bulkEnrichByPersonId(
+  people: Array<{ personId: string; prospeoPersonId: string }>,
+): Promise<Map<string, EmailProviderResult>> {
+  const results = new Map<string, EmailProviderResult>();
+  const apiKey = getApiKey();
+
+  // Chunk into batches of 50 (Prospeo bulk limit)
+  for (let i = 0; i < people.length; i += BULK_BATCH_SIZE) {
+    const batch = people.slice(i, i + BULK_BATCH_SIZE);
+
+    const dataPoints = batch.map((p) => ({
+      identifier: p.personId,
+      person_id: p.prospeoPersonId,
+    }));
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+
+    try {
+      const res = await fetch(PROSPEO_BULK_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-KEY": apiKey,
+        },
+        body: JSON.stringify({
+          only_verified_email: false,
+          data: dataPoints,
+        }),
+        signal: controller.signal,
+      });
+
+      if (res.status === 402 || res.status === 403) {
+        throw new CreditExhaustionError("prospeo", res.status);
+      }
+
+      if (res.status === 429) {
+        const err = new Error("Prospeo bulk (person_id) rate-limited: HTTP 429");
+        (err as any).status = 429;
+        throw err;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Prospeo bulk (person_id) HTTP error: ${res.status} ${res.statusText}`);
+      }
+
+      const raw = await res.json();
+      const parsed = ProspeosBulkResponseSchema.safeParse(raw);
+
+      if (!parsed.success) {
+        console.warn("[prospeo-bulk-person-id] Zod validation failed:", parsed.error.message);
+        for (const dp of dataPoints) {
+          results.set(dp.identifier, {
+            email: null,
+            source: "prospeo",
+            rawResponse: raw,
+            costUsd: PROVIDER_COSTS.prospeo,
+          });
+        }
+        continue;
+      }
+
+      const matchedIds = new Set<string>();
+      if (parsed.data.matched) {
+        for (const match of parsed.data.matched) {
+          matchedIds.add(match.identifier);
+          const email = match.person?.email?.email ?? null;
+          results.set(match.identifier, {
+            email,
+            source: "prospeo",
+            rawResponse: match,
+            costUsd: PROVIDER_COSTS.prospeo,
+          });
+        }
+      }
+
+      if (parsed.data.not_matched) {
+        for (const id of parsed.data.not_matched) {
+          if (!matchedIds.has(id)) {
+            results.set(id, {
+              email: null,
+              source: "prospeo",
+              rawResponse: { not_matched: true },
+              costUsd: PROVIDER_COSTS.prospeo,
+            });
+          }
+        }
+      }
+
+      if (parsed.data.invalid_datapoints) {
+        for (const id of parsed.data.invalid_datapoints) {
+          if (!matchedIds.has(id)) {
+            results.set(id, {
+              email: null,
+              source: "prospeo",
+              rawResponse: { invalid_datapoint: true },
+              costUsd: 0,
+            });
+          }
+        }
+      }
+
+      for (const dp of dataPoints) {
+        if (!results.has(dp.identifier)) {
+          results.set(dp.identifier, {
+            email: null,
+            source: "prospeo",
+            rawResponse: { missing_from_response: true },
+            costUsd: PROVIDER_COSTS.prospeo,
+          });
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // Single enrichment (existing)
 // ---------------------------------------------------------------------------
 

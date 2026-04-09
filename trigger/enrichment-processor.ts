@@ -76,11 +76,29 @@ export const enrichmentProcessorTask = schedules.task({
           where: { id: { in: entityIds } },
         });
 
+        // Load PersonWorkspace records to get sourceId and discover which
+        // platform originally found each person (source-first enrichment).
+        const personWorkspaces = job.workspaceSlug
+          ? await prisma.personWorkspace.findMany({
+              where: {
+                personId: { in: entityIds },
+                workspace: job.workspaceSlug,
+              },
+              select: { personId: true, sourceId: true },
+            })
+          : [];
+        const pwMap = new Map(personWorkspaces.map((pw) => [pw.personId, pw.sourceId]));
+
         const personMap = new Map(persons.map((p) => [p.id, p]));
         const batchInput: PersonForEnrichment[] = entityIds
           .filter((id) => personMap.has(id))
           .map((id) => {
             const p = personMap.get(id)!;
+            // Derive discoverySource from Person.source field
+            // Person.source is set to `discovery-{source}` during promotion
+            const discoverySource = p.source?.startsWith("discovery-")
+              ? p.source.replace("discovery-", "")
+              : null;
             return {
               personId: p.id,
               firstName: p.firstName,
@@ -89,6 +107,8 @@ export const enrichmentProcessorTask = schedules.task({
               companyDomain: p.companyDomain,
               companyName: p.company,
               email: p.email,
+              sourceId: pwMap.get(p.id) ?? null,
+              discoverySource,
             };
           });
 

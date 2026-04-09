@@ -113,6 +113,23 @@ interface StagedRecord {
   location: string | null;
   discoverySource: string;
   workspaceSlug: string;
+  rawResponse: string | null;
+}
+
+/**
+ * Extract the discovery source ID (e.g. Prospeo person_id, AI Ark person id)
+ * from the rawResponse JSON. Staging embeds it as `_discoverySourceId`.
+ */
+function extractSourceId(rawResponse: string | null): string | null {
+  if (!rawResponse) return null;
+  try {
+    const parsed = JSON.parse(rawResponse);
+    return typeof parsed._discoverySourceId === "string"
+      ? parsed._discoverySourceId
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -221,7 +238,7 @@ function findExistingPersonFromMaps(dp: StagedRecord, maps: DedupMaps): string |
  */
 async function promoteToPerson(
   dp: StagedRecord,
-  workspaceSlug: string
+  workspaceSlug: string,
 ): Promise<{ id: string }> {
   const email = dp.email ?? null;
 
@@ -279,6 +296,10 @@ async function promoteToPerson(
   }
 
   // Upsert PersonWorkspace junction — idempotent
+  // Preserve discovery sourceId (Prospeo person_id, AI Ark id, etc.) for
+  // source-first enrichment: the waterfall can use the original platform's
+  // ID for a direct lookup instead of generic name/company matching.
+  const discoverySourceId = extractSourceId(dp.rawResponse);
   await prisma.personWorkspace.upsert({
     where: {
       personId_workspace: {
@@ -289,8 +310,12 @@ async function promoteToPerson(
     create: {
       personId: person.id,
       workspace: workspaceSlug,
+      sourceId: discoverySourceId,
     },
-    update: {},
+    update: {
+      // Only set sourceId if not already populated (don't overwrite)
+      ...(discoverySourceId ? { sourceId: discoverySourceId } : {}),
+    },
   });
 
   return person;
@@ -356,6 +381,7 @@ export async function deduplicateAndPromote(
       location: true,
       discoverySource: true,
       workspaceSlug: true,
+      rawResponse: true,
     },
   });
 
