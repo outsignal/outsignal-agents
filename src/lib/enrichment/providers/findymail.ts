@@ -93,7 +93,7 @@ export interface BulkFindEmailInput {
 
 /**
  * Bulk find emails via FindyMail using parallel fan-out.
- * Fires up to 100 concurrent requests (under the 300 API limit).
+ * Fires up to 200 concurrent requests (under the 300 API limit).
  * Adds a 10ms delay between launches to avoid burst.
  *
  * Returns a Map of personId → EmailProviderResult.
@@ -103,7 +103,7 @@ export async function bulkFindEmail(
   people: BulkFindEmailInput[],
 ): Promise<Map<string, EmailProviderResult>> {
   const results = new Map<string, EmailProviderResult>();
-  const limiter = createLimiter(100);
+  const limiter = createLimiter(200);
   let creditExhausted = false;
 
   const apiKey = getApiKey();

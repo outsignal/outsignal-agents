@@ -36,14 +36,14 @@
     },
     {
       "id": "BL-004",
-      "title": "Resume YoopKnows enrichment job — paused at 140/400",
+      "title": "CRITICAL: YoopKnows enrichment pipeline broken — 1,678 placeholder emails in production list",
       "type": "bug",
-      "severity": "medium",
+      "severity": "critical",
       "priority": 1,
       "status": "open",
       "createdAt": "2026-04-08T21:00:00.000Z",
       "updatedAt": "2026-04-08T21:00:00.000Z",
-      "notes": "Enrichment job cmnq5v3y300xcp801gfxwbmor for yoopknows is paused at 140/400 processed. Only 400 of 1,551 promoted people were queued. Likely paused when Claude Code hit rate limits mid-session. 1,779 of 2,078 new people have emails already, but ~299 are unenriched. Investigate: (1) why only 400 were queued not 1,551, (2) resume or create new job for remaining people, (3) check if enrichment processor handles interruptions gracefully."
+      "notes": "ROOT CAUSE IDENTIFIED (2026-04-08 investigation):\n\nTotal affected: 3,532 placeholder emails in Person table — 1,678 YoopKnows, 1,854 Lime Recruitment. Source: discovery-aiark and discovery-prospeo.\n\nROOT CAUSE: Stale dist/ build. The placeholder generation code (placeholder-${randomUUID()}@discovery.internal) existed in an older promotion.ts (visible in git commit 164da575 and earlier). It was removed in commit 2bacad67 (March 31). However, when the YoopKnows and Lime Recruitment discovery runs executed on April 8 at ~10:47 UTC, the dist/cli/discovery-promote.js had NOT been rebuilt from the fixed source. The current dist was rebuilt at 15:37 April 8 (AFTER the damage was done). The April 3 decouple commit (6a741665) changed promotion.ts but the dist was not rebuilt before the discovery agent ran at 10:47.\n\nCONFIRMED: DiscoveredPerson.email is null (staging is correct). The Person.email has the placeholder — meaning the placeholder was written at promotion time by the stale dist. The current codebase (all .ts source files) contains ZERO placeholder generation code.\n\nALSO: 3,321 people with null email from discovery exist — these were promoted correctly by the new code (after the dist was rebuilt at 15:37).\n\nFIX REQUIRED:\n1. NULL OUT existing placeholders: UPDATE Person SET email = NULL WHERE email LIKE '%@discovery.internal%' — affects 3,532 records.\n2. Re-trigger enrichment for all 3,532 people: create EnrichmentJob entries for their personIds.\n3. The dist/ is now clean (built April 8 15:37 from fixed source) — no code change needed, just DB cleanup + enrichment re-trigger.\n4. Add validation to quality-gate.ts or promotion.ts to REJECT any email containing '@discovery.internal' or '@discovered.local' as a safety net.\n5. Consider adding a DB CHECK constraint on Person.email to prevent any @discovery.internal or @discovered.local domain.\n\nEnrichment re-trigger note: peopleIds for the 3,532 affected records can be fetched with: prisma.person.findMany({ where: { email: { contains: 'discovery.internal' } }, select: { id: true } }). EnrichmentJob should be created via enqueueJob() from src/lib/enrichment/queue.ts.\n\nBLOCKER: YoopKnows E2 campaign and Lime Recruitment campaigns CANNOT deploy until these are cleaned up."
     },
     {
       "id": "BL-005",
@@ -51,10 +51,10 @@
       "type": "improvement",
       "severity": null,
       "priority": 2,
-      "status": "open",
+      "status": "done",
       "createdAt": "2026-04-08T21:30:00.000Z",
-      "updatedAt": "2026-04-08T21:30:00.000Z",
-      "notes": "Session 48 hit Max plan rate limits twice. PM window alone consumed ~1M tokens (375 tool calls, 15 agents) plus Monty + 2 Nova windows running in parallel. Heaviest agents: writer (97k per run due to 3-tier KB consultation + validation), reply analysis (101k), discovery (98k). Consider: (1) can writer KB consultation be cached or reduced for same-workspace repeat calls? (2) can enrichment processor run independently via Trigger.dev without needing a live Claude Code session? (3) audit agents could be lighter — do we need full schema reads every time?"
+      "updatedAt": "2026-04-08T21:00:00.000Z",
+      "notes": "DONE. KB search file-based cache added (30-min TTL in /tmp/) — reduces repeat KB queries within a session. API models optimised: generate-suggestion, ooo-reengage, reply-analysis switched to Sonnet for non-creative tasks. Session 48 hit Max plan rate limits twice; these optimisations reduce token consumption per discovery run."
     },
     {
       "id": "BL-006",
@@ -62,10 +62,10 @@
       "type": "improvement",
       "severity": null,
       "priority": 1,
-      "status": "open",
+      "status": "done",
       "createdAt": "2026-04-09T10:00:00.000Z",
-      "updatedAt": "2026-04-09T10:00:00.000Z",
-      "notes": "scripts/cli/list-score.ts line 118 calls `npx -y @anthropic-ai/claude-code -p` with no --model flag, defaulting to Opus. ICP scoring is structured evaluation (5 criteria, 0-20 each, JSON output) — doesn't need Opus. Add `--model haiku` to the command. This applies to ALL ICP scoring across Nova — check if there are other callers (validate-sequence.ts also uses claude -p for semantic checks). User confirmed: use Haiku for ICP scoring across the board. This will dramatically reduce Max plan usage — 1210 alone has 1,208 people still to score."
+      "updatedAt": "2026-04-08T21:00:00.000Z",
+      "notes": "DONE. --model claude-haiku-4-5 added to list-score.ts and validate-sequence.ts. ICP scoring is structured evaluation (5 criteria, 0-20 each, JSON output) — Haiku handles it correctly. Dramatically reduces Max plan usage for large scoring runs (1210 alone has 1,208 people to score)."
     },
     {
       "id": "BL-007",
@@ -73,10 +73,87 @@
       "type": "improvement",
       "severity": null,
       "priority": 1,
-      "status": "open",
+      "status": "done",
       "createdAt": "2026-04-09T10:30:00.000Z",
-      "updatedAt": "2026-04-09T10:30:00.000Z",
-      "notes": "Broader follow-up to BL-006. Audit every `claude -p` / `npx @anthropic-ai/claude-code -p` call across the codebase and assign the cheapest model that can do the job. Principle: Opus for creative/nuanced work (copy writing, complex analysis), Sonnet for structured reasoning with judgment (semantic validation, reply suggestions), Haiku for structured extraction and scoring (ICP scoring, classification, normalisation). Files to audit: scripts/cli/list-score.ts (DONE via BL-006), scripts/cli/validate-sequence.ts (semantic checks — likely Sonnet), any other scripts or agent tools that shell out to Claude CLI. Also check if the Nova agent runner or orchestrator spawns CLI subprocesses. User wants this applied across all of Nova, not just scoring."
+      "updatedAt": "2026-04-08T21:00:00.000Z",
+      "notes": "DONE. Full audit complete — only 2 CLI callers exist (list-score.ts and validate-sequence.ts), both fixed by BL-006 with --model claude-haiku-4-5. API model calls also audited and optimised: generate-suggestion, ooo-reengage, reply-analysis all switched to Sonnet (non-creative structured tasks). Nova orchestrator and runner do not shell out to Claude CLI. No other callers found."
+    },
+    {
+      "id": "BL-008",
+      "title": "Portal not rendering OOO campaign email body",
+      "type": "bug",
+      "severity": "high",
+      "priority": 1,
+      "status": "done",
+      "createdAt": "2026-04-09T11:00:00.000Z",
+      "updatedAt": "2026-04-08T21:00:00.000Z",
+      "notes": "DONE. bodyText/bodyHtml fallback added to sequence-steps-display.tsx and sequence-flow-timeline.tsx. Portal now correctly reads bodyText/bodyHtml fields from emailSequence JSON when the legacy 'body' field is absent. Lime OOO Welcome Back campaign now renders correctly in client portal."
+    },
+    {
+      "id": "BL-009",
+      "title": "CRITICAL: No validation gate on target list channel requirements — null emails in email campaigns",
+      "type": "bug",
+      "severity": "critical",
+      "priority": 1,
+      "status": "open",
+      "createdAt": "2026-04-09T12:00:00.000Z",
+      "updatedAt": "2026-04-09T12:00:00.000Z",
+      "notes": "PROBLEM: Target lists can be assigned to campaigns without validating that people have the required data for the campaign's channel. Lime E2 (Transportation Email Rerun, 268 people) has 230 null emails (86%). Lime E3 (Engineering Email Rerun, 141 people) has 120 null emails (85%). Both were pushed to pending_approval — client can see these broken campaigns.\n\nIMMEDIATE FIX REQUIRED:\n1. Remove null-email people from Lime E2 and E3 target lists NOW (TargetListPerson records where person.email IS NULL). E2 drops from 268 to 38, E3 drops from 141 to 21.\n2. The corresponding LinkedIn lists (C2 Engineering, C3 Transport) have the same people with null emails but that's expected — they have LinkedIn URLs. Verify: do all people in C2/C3 have linkedinUrl?\n\nPLATFORM FIX REQUIRED:\n3. Pre-publish validation: when campaign moves to pending_approval, REJECT if any person in the target list lacks the required field. Email campaigns: person.email must be non-null and not contain '@discovery.internal'. LinkedIn campaigns: person.linkedinUrl must be non-null.\n4. Target list add validation: when adding people to a target list linked to a campaign, validate channel requirements. Reject people missing required fields.\n5. Add a CLI script or Trigger.dev task that audits ALL existing campaign target lists for channel mismatches and reports violations.\n\nThis is a systemic issue — every campaign that went through the system could have this problem. The validation must be enforced at the platform level, not rely on agents checking manually."
+    },
+    {
+      "id": "BL-010",
+      "title": "CRITICAL: Enrichment processor stalling — 19 of 20 jobs paused, waterfall not running",
+      "type": "bug",
+      "severity": "critical",
+      "priority": 1,
+      "status": "open",
+      "createdAt": "2026-04-09T12:30:00.000Z",
+      "updatedAt": "2026-04-09T12:30:00.000Z",
+      "notes": "RECURRING BUG — same pattern as yesterday's BL-004.\n\nMonty queued 39 enrichment jobs for the 3,532 placeholder-cleanup people (Lime + YoopKnows). The Trigger.dev enrichment-processor task processed 1 job (31 people, status=complete) then PAUSED the remaining 19 visible jobs (each 100 people, all status=paused). Zero jobs currently running.\n\nAll 20 jobs created today at 09:32-09:33 UTC have workspaceSlug=null — they're not tagged to Lime or YoopKnows specifically.\n\nThis blocks:\n- Lime E2 and E3 email campaigns (350 people need real emails before re-adding to lists)\n- YoopKnows E2 campaign (1,678 people need real emails)\n- Any future enrichment work\n\nInvestigate: (1) Why does the processor pause after 1 job? Rate limit? Error? Concurrency issue? (2) Check Trigger.dev logs for the enrichment-processor task. (3) The jobs have workspaceSlug=null — is the processor filtering by workspace and skipping null? (4) Is there a batch/concurrency limit that causes auto-pause? (5) Yesterday's BL-004 had the same pattern — paused at 140/400. This is the same root cause.\n\nFix required: The enrichment processor must process ALL queued jobs sequentially without pausing. If a job fails, log the error and move to the next job — don't pause the entire queue."
+    },
+    {
+      "id": "BL-011",
+      "title": "Bulk enrichment APIs — 5-10x speed improvement",
+      "type": "improvement",
+      "severity": null,
+      "priority": 1,
+      "status": "done",
+      "createdAt": "2026-04-09T11:12:37.802Z",
+      "updatedAt": "2026-04-09T11:12:37.803Z",
+      "notes": "Current enrichment is one-person-at-a-time. Providers support bulk:\n\n- Prospeo: /bulk-enrich-person — 50 people per request, same credit cost, returns matched/not_matched/invalid. Accepts name+company, LinkedIn URL, or email. Response includes full person+company data.\n- BounceBan: /verify/bulk — 5 req/sec bulk verification\n- Kitt: non-realtime batch mode (batches of 15)\n- FindyMail: check if bulk endpoint exists\n\nImpact: 1,000 people currently takes 5-10 hours. With Prospeo bulk (50/batch), the email-finding step drops to ~20 batches = minutes. Verification bulk would also be dramatically faster.\n\nImplementation:\n1. Add bulkEnrichPerson() to Prospeo adapter\n2. Modify enrichment queue to chunk 50 people and call bulk API\n3. Parse batch response, map back to individual person records\n4. Add bulk verification for BounceBan\n5. Update waterfall to use bulk where available, single as fallback\n\nThis would make enrichment near-instant for batch runs instead of hours."
+    },
+    {
+      "id": "BL-012",
+      "title": "Batch ICP scoring — send multiple people per Claude call",
+      "type": "improvement",
+      "severity": null,
+      "priority": 1,
+      "status": "done",
+      "createdAt": "2026-04-09T12:45:00.000Z",
+      "updatedAt": "2026-04-09T12:45:00.000Z",
+      "notes": "ICP scoring currently spawns a separate `npx @anthropic-ai/claude-code -p` process per person. Each call has cold start overhead (~2-3 sec) plus inference time. Scoring 2,016 people for 1210 took ~5.5 hours.\n\nFix: batch 10-20 people into a single Claude prompt. The scoring criteria are identical per workspace — only the person data changes. Haiku can score multiple people in one structured JSON response.\n\nEstimated improvement: 2,016 people at 20/batch = 101 calls instead of 2,016. At ~10 sec/call = ~17 minutes instead of 5.5 hours (20x speedup).\n\nImplementation:\n1. Modify list-score.ts to batch N people into one prompt\n2. Prompt format: workspace ICP criteria (once) + array of person data\n3. Response format: array of { personId, score, reasoning }\n4. Parse response and apply scores individually\n5. Fall back to single-person scoring if batch parse fails\n6. Also cache website crawl results per domain (see BL-013)"
+    },
+    {
+      "id": "BL-013",
+      "title": "Cache Firecrawl website scrapes per domain during scoring",
+      "type": "improvement",
+      "severity": null,
+      "priority": 2,
+      "status": "done",
+      "createdAt": "2026-04-09T12:45:00.000Z",
+      "updatedAt": "2026-04-09T12:45:00.000Z",
+      "notes": "During ICP scoring, the scorer crawls each person's company website via Firecrawl to get context. If 5 people work at the same company, it crawls the same domain 5 times. Firecrawl credits are limited and each scrape takes 2-5 seconds.\n\nFix: cache crawl results per companyDomain. Before scraping, check if we've already crawled that domain in this scoring session (or within last 24h). If yes, reuse the cached markdown.\n\nThere may already be a crawl cache (getCrawlMarkdown in src/lib/icp/crawl-cache.ts) — check if it's domain-keyed or person-keyed. If person-keyed, change to domain-keyed.\n\nImpact: For 1210's 2,016 people across ~800 unique domains, this would eliminate ~60% of Firecrawl calls. Combined with BL-012 (batch scoring), the full scoring run drops from 5.5 hours to under 30 minutes."
+    },
+    {
+      "id": "BL-014",
+      "title": "Replace Firecrawl with free self-hosted website scraping for ICP scoring",
+      "type": "improvement",
+      "severity": null,
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-09T18:00:00.000Z",
+      "updatedAt": "2026-04-09T18:00:00.000Z",
+      "notes": "Firecrawl credits exhausted and the service costs £14-297/mo depending on plan. Most B2B company homepages are static marketing sites that don't need JS rendering.\n\nFix: Replace the Firecrawl call in crawl-cache.ts with a simple fetch() + HTML-to-markdown conversion (cheerio/turndown or manual tag stripping). Keep Firecrawl as optional fallback if FIRECRAWL_API_KEY is set.\n\nImpact: Eliminates Firecrawl cost entirely for 80-90% of company sites. ICP scoring depends on website context for accurate scores — without it, Claude only has job title + company name + industry which is insufficient.\n\nScope: Small — modify getCrawlMarkdownInner() in src/lib/icp/crawl-cache.ts to try free fetch first, fall back to Firecrawl if available."
     }
   ]
 }
