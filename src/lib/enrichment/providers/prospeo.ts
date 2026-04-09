@@ -59,6 +59,220 @@ const ProspeoResponseSchema = z.object({
  * Prospeo adapter — finds email via LinkedIn URL or name+company fallback.
  * Returns null email (costUsd=0) when insufficient input provided.
  */
+// ---------------------------------------------------------------------------
+// Bulk enrichment
+// ---------------------------------------------------------------------------
+
+const PROSPEO_BULK_ENDPOINT = "https://api.prospeo.io/bulk-enrich-person";
+const BULK_BATCH_SIZE = 50;
+
+const ProspeosBulkResponseSchema = z.object({
+  error: z.boolean(),
+  total_cost: z.number().optional(),
+  matched: z.array(
+    z.object({
+      identifier: z.string(),
+      person: z
+        .object({
+          email: z
+            .object({
+              email: z.string().nullable().optional(),
+            })
+            .optional(),
+        })
+        .passthrough()
+        .optional(),
+      company: z.object({}).passthrough().optional(),
+    }).passthrough(),
+  ).optional(),
+  not_matched: z.array(z.string()).optional(),
+  invalid_datapoints: z.array(z.string()).optional(),
+}).passthrough();
+
+export interface BulkEnrichPersonInput {
+  personId: string;
+  firstName?: string;
+  lastName?: string;
+  linkedinUrl?: string;
+  companyDomain?: string;
+}
+
+/**
+ * Bulk enrich people via Prospeo.
+ * Accepts up to any number of people — automatically chunks into batches of 50.
+ * Returns a Map of personId → EmailProviderResult.
+ */
+export async function bulkEnrichPerson(
+  people: BulkEnrichPersonInput[],
+): Promise<Map<string, EmailProviderResult>> {
+  const results = new Map<string, EmailProviderResult>();
+  const apiKey = getApiKey();
+
+  // Chunk into batches of 50
+  for (let i = 0; i < people.length; i += BULK_BATCH_SIZE) {
+    const batch = people.slice(i, i + BULK_BATCH_SIZE);
+
+    // Build request data — filter to people with sufficient input
+    const dataPoints: Array<{
+      identifier: string;
+      first_name?: string;
+      last_name?: string;
+      linkedin_url?: string;
+      company_website?: string;
+    }> = [];
+
+    for (const person of batch) {
+      const hasLinkedin = Boolean(person.linkedinUrl);
+      const hasNameAndCompany =
+        Boolean(person.firstName) &&
+        Boolean(person.lastName) &&
+        Boolean(person.companyDomain);
+
+      if (!hasLinkedin && !hasNameAndCompany) {
+        // Insufficient input — skip with zero cost
+        results.set(person.personId, {
+          email: null,
+          source: "prospeo",
+          rawResponse: { skipped: "insufficient input" },
+          costUsd: 0,
+        });
+        continue;
+      }
+
+      const dp: {
+        identifier: string;
+        first_name?: string;
+        last_name?: string;
+        linkedin_url?: string;
+        company_website?: string;
+      } = { identifier: person.personId };
+      if (person.firstName) dp.first_name = person.firstName;
+      if (person.lastName) dp.last_name = person.lastName;
+      if (person.linkedinUrl) dp.linkedin_url = person.linkedinUrl;
+      if (person.companyDomain) dp.company_website = person.companyDomain;
+      dataPoints.push(dp);
+    }
+
+    if (dataPoints.length === 0) continue;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000); // longer timeout for bulk
+
+    try {
+      const res = await fetch(PROSPEO_BULK_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-KEY": apiKey,
+        },
+        body: JSON.stringify({
+          only_verified_email: false,
+          data: dataPoints,
+        }),
+        signal: controller.signal,
+      });
+
+      if (res.status === 402 || res.status === 403) {
+        throw new CreditExhaustionError("prospeo", res.status);
+      }
+
+      if (res.status === 429) {
+        const err = new Error("Prospeo bulk rate-limited: HTTP 429");
+        (err as any).status = 429;
+        throw err;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Prospeo bulk HTTP error: ${res.status} ${res.statusText}`);
+      }
+
+      const raw = await res.json();
+      const parsed = ProspeosBulkResponseSchema.safeParse(raw);
+
+      if (!parsed.success) {
+        console.warn("[prospeo-bulk] Zod validation failed:", parsed.error.message, "rawResponse:", raw);
+        // Mark all in this batch as failed with cost
+        for (const dp of dataPoints) {
+          results.set(dp.identifier, {
+            email: null,
+            source: "prospeo",
+            rawResponse: raw,
+            costUsd: PROVIDER_COSTS.prospeo,
+          });
+        }
+        continue;
+      }
+
+      // Process matched results
+      const matchedIds = new Set<string>();
+      if (parsed.data.matched) {
+        for (const match of parsed.data.matched) {
+          matchedIds.add(match.identifier);
+          const email = match.person?.email?.email ?? null;
+          results.set(match.identifier, {
+            email,
+            source: "prospeo",
+            rawResponse: match,
+            costUsd: PROVIDER_COSTS.prospeo,
+          });
+        }
+      }
+
+      // Process not_matched
+      if (parsed.data.not_matched) {
+        for (const id of parsed.data.not_matched) {
+          if (!matchedIds.has(id)) {
+            results.set(id, {
+              email: null,
+              source: "prospeo",
+              rawResponse: { not_matched: true },
+              costUsd: PROVIDER_COSTS.prospeo,
+            });
+          }
+        }
+      }
+
+      // Process invalid_datapoints
+      if (parsed.data.invalid_datapoints) {
+        for (const id of parsed.data.invalid_datapoints) {
+          if (!matchedIds.has(id)) {
+            results.set(id, {
+              email: null,
+              source: "prospeo",
+              rawResponse: { invalid_datapoint: true },
+              costUsd: 0, // invalid datapoints don't cost credits
+            });
+          }
+        }
+      }
+
+      // Any remaining people in the batch that weren't in any response category
+      for (const dp of dataPoints) {
+        if (!results.has(dp.identifier)) {
+          results.set(dp.identifier, {
+            email: null,
+            source: "prospeo",
+            rawResponse: { missing_from_response: true },
+            costUsd: PROVIDER_COSTS.prospeo,
+          });
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Single enrichment (existing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Prospeo adapter — finds email via LinkedIn URL or name+company fallback.
+ * Returns null email (costUsd=0) when insufficient input provided.
+ */
 export const prospeoAdapter: EmailAdapter = async (
   input
 ): Promise<EmailProviderResult> => {

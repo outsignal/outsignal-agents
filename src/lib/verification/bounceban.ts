@@ -261,6 +261,257 @@ export async function verifyEmail(
   return { email, status, isExportable, costUsd };
 }
 
+// ---------------------------------------------------------------------------
+// Bulk verification (async: submit → poll → retrieve)
+// ---------------------------------------------------------------------------
+
+const BULK_SUBMIT_ENDPOINT = "https://api.bounceban.com/v1/verify/bulk";
+const BULK_STATUS_ENDPOINT = "https://api.bounceban.com/v1/verify/bulk/status";
+const BULK_DUMP_ENDPOINT = "https://api.bounceban.com/v1/verify/bulk/dump";
+const BULK_POLL_INTERVAL_MS = 5_000;
+const BULK_TIMEOUT_MS = 10 * 60 * 1_000; // 10 minutes
+
+const BulkSubmitResponseSchema = z.object({
+  id: z.string(),
+  credits_remaining: z.number().optional(),
+}).passthrough();
+
+const BulkStatusResponseSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  total_count: z.number().optional(),
+  deliverable_count: z.number().optional(),
+  undeliverable_count: z.number().optional(),
+  risky_count: z.number().optional(),
+  unknown_count: z.number().optional(),
+  credits_consumed: z.number().optional(),
+  credits_remaining: z.number().optional(),
+}).passthrough();
+
+const BulkDumpItemSchema = z.object({
+  email: z.string(),
+  result: z.enum(["deliverable", "risky", "undeliverable", "unknown"]),
+  score: z.number(),
+  is_disposable: z.boolean(),
+  is_accept_all: z.boolean(),
+  is_role: z.boolean(),
+  is_free: z.boolean(),
+  mx_records: z.array(z.string()).optional(),
+  smtp_provider: z.string().optional(),
+}).passthrough();
+
+const BulkDumpResponseSchema = z.object({
+  items: z.array(BulkDumpItemSchema),
+  result: z.string().optional(),
+}).passthrough();
+
+export interface BulkVerifyEntry {
+  email: string;
+  personId: string;
+}
+
+/**
+ * Bulk verify emails via BounceBan async bulk API.
+ * Submits all emails, polls until finished, retrieves results.
+ * Returns a Map of personId → VerificationResult.
+ */
+export async function bulkVerifyEmails(
+  entries: BulkVerifyEntry[],
+): Promise<Map<string, VerificationResult>> {
+  const results = new Map<string, VerificationResult>();
+
+  if (entries.length === 0) return results;
+
+  const apiKey = getApiKey();
+  const emails = entries.map((e) => e.email);
+
+  // Build email→personId lookup (handle duplicates: last wins)
+  const emailToPersonId = new Map<string, string>();
+  for (const entry of entries) {
+    emailToPersonId.set(entry.email.toLowerCase(), entry.personId);
+  }
+
+  // --- Step 1: Submit ---
+  const submitRes = await fetch(BULK_SUBMIT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: apiKey,
+    },
+    body: JSON.stringify({ emails }),
+  });
+
+  if (submitRes.status === 403) {
+    throw new CreditExhaustionError("bounceban", 403);
+  }
+  if (!submitRes.ok) {
+    throw new Error(`BounceBan bulk submit HTTP error: ${submitRes.status} ${submitRes.statusText}`);
+  }
+
+  const submitRaw = await submitRes.json();
+  const submitParsed = BulkSubmitResponseSchema.safeParse(submitRaw);
+  if (!submitParsed.success) {
+    throw new Error(`BounceBan bulk submit invalid response: ${submitParsed.error.message}`);
+  }
+
+  const taskId = submitParsed.data.id;
+  console.log(`[bounceban-bulk] Submitted ${emails.length} emails, taskId=${taskId}`);
+
+  // --- Step 2: Poll until finished ---
+  const startTime = Date.now();
+  let finished = false;
+
+  while (!finished) {
+    if (Date.now() - startTime > BULK_TIMEOUT_MS) {
+      console.error(`[bounceban-bulk] Timeout waiting for taskId=${taskId} after ${BULK_TIMEOUT_MS / 1000}s`);
+      // Return unknown for all entries
+      for (const entry of entries) {
+        results.set(entry.personId, {
+          email: entry.email,
+          status: "unknown",
+          isExportable: false,
+          costUsd: 0,
+        });
+      }
+      return results;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, BULK_POLL_INTERVAL_MS));
+
+    const statusUrl = new URL(BULK_STATUS_ENDPOINT);
+    statusUrl.searchParams.set("id", taskId);
+
+    const statusRes = await fetch(statusUrl.toString(), {
+      method: "GET",
+      headers: { Authorization: apiKey },
+    });
+
+    if (statusRes.status === 403) {
+      throw new CreditExhaustionError("bounceban", 403);
+    }
+    if (!statusRes.ok) {
+      console.warn(`[bounceban-bulk] Status poll HTTP ${statusRes.status}, retrying...`);
+      continue;
+    }
+
+    const statusRaw = await statusRes.json();
+    const statusParsed = BulkStatusResponseSchema.safeParse(statusRaw);
+
+    if (!statusParsed.success) {
+      console.warn(`[bounceban-bulk] Status poll parse error:`, statusParsed.error.message);
+      continue;
+    }
+
+    if (statusParsed.data.status === "finished") {
+      finished = true;
+      console.log(`[bounceban-bulk] Task ${taskId} finished. Credits consumed: ${statusParsed.data.credits_consumed ?? "unknown"}`);
+    }
+  }
+
+  // --- Step 3: Retrieve results ---
+  const dumpUrl = new URL(BULK_DUMP_ENDPOINT);
+  dumpUrl.searchParams.set("id", taskId);
+  dumpUrl.searchParams.set("retrieve_all", "1");
+
+  const dumpRes = await fetch(dumpUrl.toString(), {
+    method: "GET",
+    headers: { Authorization: apiKey },
+  });
+
+  if (dumpRes.status === 403) {
+    throw new CreditExhaustionError("bounceban", 403);
+  }
+  if (!dumpRes.ok) {
+    throw new Error(`BounceBan bulk dump HTTP error: ${dumpRes.status} ${dumpRes.statusText}`);
+  }
+
+  const dumpRaw = await dumpRes.json();
+  const dumpParsed = BulkDumpResponseSchema.safeParse(dumpRaw);
+
+  if (!dumpParsed.success) {
+    console.error(`[bounceban-bulk] Dump parse error:`, dumpParsed.error.message, "raw:", dumpRaw);
+    // Return unknown for all
+    for (const entry of entries) {
+      results.set(entry.personId, {
+        email: entry.email,
+        status: "unknown",
+        isExportable: false,
+        costUsd: COST_PER_VERIFICATION,
+      });
+    }
+    return results;
+  }
+
+  // Map results back to personIds via email join key
+  for (const item of dumpParsed.data.items) {
+    const personId = emailToPersonId.get(item.email.toLowerCase());
+    if (!personId) {
+      console.warn(`[bounceban-bulk] Result for unknown email: ${item.email}`);
+      continue;
+    }
+
+    const { status, isExportable } = mapResult(item.result, item.is_accept_all);
+    const costUsd = COST_PER_VERIFICATION;
+
+    results.set(personId, {
+      email: item.email,
+      status,
+      isExportable,
+      costUsd,
+    });
+
+    // Track cost
+    await incrementDailySpend("bounceban-verify", costUsd);
+
+    // Record enrichment log
+    await recordEnrichment({
+      entityId: personId,
+      entityType: "person",
+      provider: "bounceban-verify",
+      status: "success",
+      fieldsWritten: ["emailVerificationStatus"],
+      costUsd,
+      rawResponse: item,
+    });
+
+    // Persist verification result on Person.enrichmentData
+    const person = await prisma.person.findUnique({ where: { id: personId } });
+    const existing = person?.enrichmentData
+      ? (() => { try { return JSON.parse(person.enrichmentData); } catch { return {}; } })()
+      : {};
+    await prisma.person.update({
+      where: { id: personId },
+      data: {
+        enrichmentData: JSON.stringify({
+          ...existing,
+          emailVerificationStatus: status,
+          emailVerifiedAt: new Date().toISOString(),
+          emailVerificationProvider: "bounceban",
+          emailVerificationScore: item.score,
+          emailIsDisposable: item.is_disposable,
+          emailIsRole: item.is_role,
+          emailIsFree: item.is_free,
+          emailSmtpProvider: item.smtp_provider ?? null,
+        }),
+      },
+    });
+  }
+
+  // Any entries not in the dump result → unknown
+  for (const entry of entries) {
+    if (!results.has(entry.personId)) {
+      results.set(entry.personId, {
+        email: entry.email,
+        status: "unknown",
+        isExportable: false,
+        costUsd: 0,
+      });
+    }
+  }
+
+  return results;
+}
+
 /**
  * Check if a person's email is verified and exportable.
  * Returns cached verification status if available, null if never verified.

@@ -1,7 +1,8 @@
 import { schedules } from "@trigger.dev/sdk";
 import { PrismaClient } from "@prisma/client";
 import { processNextChunk } from "@/lib/enrichment/queue";
-import { enrichEmail, enrichCompany, createCircuitBreaker } from "@/lib/enrichment/waterfall";
+import { enrichEmail, enrichEmailBatch, enrichCompany, createCircuitBreaker } from "@/lib/enrichment/waterfall";
+import type { PersonForEnrichment } from "@/lib/enrichment/waterfall";
 import { postMessage } from "@/lib/slack";
 
 // PrismaClient at module scope — not inside run()
@@ -64,6 +65,46 @@ export const enrichmentProcessorTask = schedules.task({
       }
     };
 
+    // Batch callback for person enrichment — uses parallel bulk APIs
+    const onProcessBatch = async (
+      entityIds: string[],
+      job: { entityType: string; provider: string; workspaceSlug?: string | null },
+    ) => {
+      if (job.entityType === "person") {
+        // Load all person records for the batch
+        const persons = await prisma.person.findMany({
+          where: { id: { in: entityIds } },
+        });
+
+        const personMap = new Map(persons.map((p) => [p.id, p]));
+        const batchInput: PersonForEnrichment[] = entityIds
+          .filter((id) => personMap.has(id))
+          .map((id) => {
+            const p = personMap.get(id)!;
+            return {
+              personId: p.id,
+              firstName: p.firstName,
+              lastName: p.lastName,
+              linkedinUrl: p.linkedinUrl,
+              companyDomain: p.companyDomain,
+              companyName: p.company,
+              email: p.email,
+            };
+          });
+
+        const summary = await enrichEmailBatch(batchInput, breaker, job.workspaceSlug ?? undefined);
+        console.log(
+          `${LOG_PREFIX} Batch enrichment: ${summary.total} total, ${summary.enriched} enriched, ${summary.verified} verified, ${summary.failed} failed`,
+        );
+      } else {
+        // Company enrichment: no batch mode — process one by one
+        for (const entityId of entityIds) {
+          const company = await prisma.company.findUniqueOrThrow({ where: { id: entityId } });
+          await enrichCompany(company.domain, breaker, job.workspaceSlug ?? undefined);
+        }
+      }
+    };
+
     // Stats tracking
     let totalChunks = 0;
     let jobsCompleted = 0;
@@ -82,7 +123,7 @@ export const enrichmentProcessorTask = schedules.task({
       }
       let result;
       try {
-        result = await processNextChunk(onProcess);
+        result = await processNextChunk(onProcess, onProcessBatch);
       } catch (err) {
         console.error(`${LOG_PREFIX} processNextChunk threw:`, err);
         jobsFailed++;

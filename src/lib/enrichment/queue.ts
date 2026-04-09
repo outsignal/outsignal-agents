@@ -66,11 +66,21 @@ export async function enqueueJob(params: EnqueueJobParams): Promise<string> {
  *   If not provided, the chunk is marked as processed without doing any work.
  *   This allows Phase 1 to test the queue mechanics independently of provider logic.
  */
+/**
+ * Optional batch callback for processing multiple entities at once.
+ * When provided, called instead of per-entity onProcess for chunks with >1 entities.
+ */
+export type OnProcessBatch = (
+  entityIds: string[],
+  job: { entityType: string; provider: string; workspaceSlug?: string | null },
+) => Promise<void>;
+
 export async function processNextChunk(
   onProcess?: (
     entityId: string,
     job: { entityType: string; provider: string; workspaceSlug?: string | null },
   ) => Promise<void>,
+  onProcessBatch?: OnProcessBatch,
 ): Promise<ChunkResult | null> {
   // Pick up the oldest pending job, or a paused job whose resumeAt is in the past
   const job = await prisma.enrichmentJob.findFirst({
@@ -100,6 +110,67 @@ export async function processNextChunk(
     // Process each entity in the chunk
     const errors: Array<{ entityId: string; error: string }> = [];
     let processedInChunk = 0;
+
+    // Batch mode: when onProcessBatch is available and chunk has >1 entities
+    if (onProcessBatch && chunk.length > 1) {
+      try {
+        await onProcessBatch(chunk, {
+          entityType: job.entityType,
+          provider: job.provider,
+          workspaceSlug: job.workspaceSlug,
+        });
+        processedInChunk = chunk.length;
+      } catch (err) {
+        // Credit exhaustion — pause the job with 1-hour resume
+        if (isCreditExhaustion(err)) {
+          await notifyCreditExhaustion({
+            provider: (err as any).provider,
+            httpStatus: (err as any).httpStatus,
+            context: `enrichment queue batch processing (job ${job.id})`,
+          });
+          const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+          await prisma.enrichmentJob.update({
+            where: { id: job.id },
+            data: {
+              status: "paused",
+              resumeAt: oneHourFromNow,
+              processedCount: chunkStart + processedInChunk,
+            },
+          });
+          return {
+            jobId: job.id,
+            processed: processedInChunk,
+            total: job.totalCount,
+            done: false,
+            status: "paused",
+          };
+        }
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg === "DAILY_CAP_HIT") {
+          const tomorrow = new Date();
+          tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+          tomorrow.setUTCHours(0, 0, 0, 0);
+          await prisma.enrichmentJob.update({
+            where: { id: job.id },
+            data: {
+              status: "paused",
+              resumeAt: tomorrow,
+              processedCount: chunkStart + processedInChunk,
+            },
+          });
+          return {
+            jobId: job.id,
+            processed: processedInChunk,
+            total: job.totalCount,
+            done: false,
+            status: "paused",
+          };
+        }
+        errors.push({ entityId: "batch", error: errMsg });
+        processedInChunk = chunk.length; // mark all as processed (with error)
+      }
+    } else {
+    // Single mode: process entities one at a time (original flow)
 
     for (const entityId of chunk) {
       if (onProcess) {
@@ -164,6 +235,8 @@ export async function processNextChunk(
         }
       }
     }
+
+    } // end else (single mode)
 
     // Update progress
     const newProcessedCount = chunkStart + chunk.length;

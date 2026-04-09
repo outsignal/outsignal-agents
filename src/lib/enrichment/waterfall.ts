@@ -547,6 +547,464 @@ export async function enrichEmail(
 }
 
 // ---------------------------------------------------------------------------
+// enrichEmailBatch — Batch mode for parallel enrichment
+// ---------------------------------------------------------------------------
+
+import { bulkEnrichPerson } from "./providers/prospeo";
+import { bulkFindEmail } from "./providers/findymail";
+import { bulkVerifyEmails } from "@/lib/verification/bounceban";
+import { findEmail as kittFindEmail } from "@/lib/verification/kitt";
+
+/**
+ * Input for batch enrichment — one entry per person.
+ */
+export interface PersonForEnrichment {
+  personId: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  linkedinUrl?: string | null;
+  companyDomain?: string | null;
+  companyName?: string | null;
+  email?: string | null; // existing email from AI Ark step
+}
+
+/**
+ * Summary returned after batch enrichment.
+ */
+export interface BatchEnrichmentSummary {
+  total: number;
+  enriched: number;
+  verified: number;
+  failed: number;
+  costs: Record<string, number>;
+}
+
+/**
+ * Simple concurrency limiter for Kitt parallel calls.
+ */
+function createBatchLimiter(concurrency: number) {
+  let running = 0;
+  const queue: Array<() => void> = [];
+
+  async function run<T>(fn: () => Promise<T>): Promise<T> {
+    while (running >= concurrency) {
+      await new Promise<void>((resolve) => queue.push(resolve));
+    }
+    running++;
+    try {
+      return await fn();
+    } finally {
+      running--;
+      if (queue.length > 0) {
+        const next = queue.shift()!;
+        next();
+      }
+    }
+  }
+
+  return { run };
+}
+
+/**
+ * Batch email enrichment — processes multiple people in parallel using bulk APIs.
+ *
+ * Flow:
+ * 1. Dedup gate + daily cap check
+ * 2. Prospeo bulk (50/batch) for all eligible people
+ * 3. FindyMail parallel (100 concurrent) for remaining people with LinkedIn URLs
+ * 4. Kitt single (15 concurrent) for remaining people
+ * 5. BounceBan bulk verify all found emails
+ * 6. Kitt verify fallback for "unknown" results (15 concurrent)
+ * 7. Merge verified emails to Person records + normalize
+ *
+ * Preserves all existing single-person flow — this is purely additive.
+ */
+export async function enrichEmailBatch(
+  people: PersonForEnrichment[],
+  breaker: CircuitBreaker,
+  workspaceSlug?: string,
+): Promise<BatchEnrichmentSummary> {
+  const costs: Record<string, number> = {};
+  const addCost = (provider: string, amount: number) => {
+    costs[provider] = (costs[provider] ?? 0) + amount;
+  };
+
+  let enriched = 0;
+  let verified = 0;
+  let failed = 0;
+
+  // Track which people still need an email
+  // Map of personId → found email (null means not found yet)
+  const foundEmails = new Map<string, string | null>();
+
+  // People who already have emails (from AI Ark) go straight to verification
+  const alreadyHaveEmail: Array<{ personId: string; email: string }> = [];
+  const needEmail: PersonForEnrichment[] = [];
+
+  for (const person of people) {
+    if (person.email) {
+      alreadyHaveEmail.push({ personId: person.personId, email: person.email });
+      foundEmails.set(person.personId, person.email);
+    } else {
+      needEmail.push(person);
+      foundEmails.set(person.personId, null);
+    }
+  }
+
+  // --- Daily cap check ---
+  const capHit = await checkDailyCap();
+  if (capHit) throw new Error("DAILY_CAP_HIT");
+
+  // -------------------------------------------------------------------------
+  // Step 1: Prospeo bulk for all eligible people
+  // -------------------------------------------------------------------------
+  const prospeoFailures = breaker.consecutiveFailures.get("prospeo") ?? 0;
+  if (prospeoFailures < CIRCUIT_BREAKER_THRESHOLD && needEmail.length > 0) {
+    // Filter to people eligible for Prospeo (dedup gate)
+    const prospeoEligible: typeof needEmail = [];
+    for (const person of needEmail) {
+      const shouldRun = await shouldEnrich(person.personId, "person", "prospeo");
+      if (shouldRun) {
+        prospeoEligible.push(person);
+      }
+    }
+
+    if (prospeoEligible.length > 0) {
+      // Check daily cap again before Prospeo
+      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
+
+      try {
+        console.log(`[waterfall-batch] Prospeo bulk: ${prospeoEligible.length} people`);
+        const prospeoResults = await bulkEnrichPerson(
+          prospeoEligible.map((p) => ({
+            personId: p.personId,
+            firstName: p.firstName ?? undefined,
+            lastName: p.lastName ?? undefined,
+            linkedinUrl: p.linkedinUrl ?? undefined,
+            companyDomain: p.companyDomain ?? undefined,
+          })),
+        );
+
+        // Process Prospeo results
+        for (const [personId, result] of prospeoResults) {
+          addCost("prospeo", result.costUsd);
+          if (result.costUsd > 0) {
+            await incrementDailySpend("prospeo", result.costUsd);
+          }
+          await recordEnrichment({
+            entityId: personId,
+            entityType: "person",
+            provider: "prospeo",
+            status: "success",
+            fieldsWritten: result.email ? ["email"] : [],
+            costUsd: result.costUsd,
+            rawResponse: result.rawResponse,
+            workspaceSlug,
+          });
+
+          if (result.email) {
+            foundEmails.set(personId, result.email);
+          }
+        }
+        breaker.consecutiveFailures.set("prospeo", 0);
+      } catch (err) {
+        if (isCreditExhaustion(err)) {
+          await notifyCreditExhaustion({
+            provider: (err as CreditExhaustionError).provider,
+            httpStatus: (err as CreditExhaustionError).httpStatus,
+            context: `batch enrichment (prospeo bulk) — skipping to FindyMail`,
+          });
+          console.warn(`[waterfall-batch] Prospeo credit exhaustion — skipping to FindyMail`);
+        } else {
+          breaker.consecutiveFailures.set("prospeo", prospeoFailures + 1);
+          console.error(`[waterfall-batch] Prospeo bulk error:`, err);
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 2: FindyMail parallel for remaining people with LinkedIn URLs
+  // -------------------------------------------------------------------------
+  const findymailFailures = breaker.consecutiveFailures.get("findymail") ?? 0;
+  const stillNeedEmail = needEmail.filter((p) => !foundEmails.get(p.personId));
+
+  if (findymailFailures < CIRCUIT_BREAKER_THRESHOLD && stillNeedEmail.length > 0) {
+    const findymailEligible: Array<{ personId: string; linkedinUrl: string }> = [];
+    for (const person of stillNeedEmail) {
+      if (!person.linkedinUrl) continue;
+      const shouldRun = await shouldEnrich(person.personId, "person", "findymail");
+      if (shouldRun) {
+        findymailEligible.push({
+          personId: person.personId,
+          linkedinUrl: person.linkedinUrl,
+        });
+      }
+    }
+
+    if (findymailEligible.length > 0) {
+      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
+
+      try {
+        console.log(`[waterfall-batch] FindyMail parallel: ${findymailEligible.length} people`);
+        const findymailResults = await bulkFindEmail(findymailEligible);
+
+        for (const [personId, result] of findymailResults) {
+          addCost("findymail", result.costUsd);
+          if (result.costUsd > 0) {
+            await incrementDailySpend("findymail", result.costUsd);
+          }
+          await recordEnrichment({
+            entityId: personId,
+            entityType: "person",
+            provider: "findymail",
+            status: "success",
+            fieldsWritten: result.email ? ["email"] : [],
+            costUsd: result.costUsd,
+            rawResponse: result.rawResponse,
+            workspaceSlug,
+          });
+
+          if (result.email) {
+            foundEmails.set(personId, result.email);
+          }
+        }
+        breaker.consecutiveFailures.set("findymail", 0);
+      } catch (err) {
+        if (isCreditExhaustion(err)) {
+          await notifyCreditExhaustion({
+            provider: (err as CreditExhaustionError).provider,
+            httpStatus: (err as CreditExhaustionError).httpStatus,
+            context: `batch enrichment (findymail parallel) — skipping to Kitt`,
+          });
+          console.warn(`[waterfall-batch] FindyMail credit exhaustion — skipping to Kitt`);
+        } else {
+          breaker.consecutiveFailures.set("findymail", findymailFailures + 1);
+          console.error(`[waterfall-batch] FindyMail bulk error:`, err);
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 3: Kitt single (15 concurrent) for remaining people
+  // -------------------------------------------------------------------------
+  const kittFailures = breaker.consecutiveFailures.get("kitt-find") ?? 0;
+  const stillNeedEmail2 = needEmail.filter((p) => !foundEmails.get(p.personId));
+
+  if (kittFailures < CIRCUIT_BREAKER_THRESHOLD && stillNeedEmail2.length > 0) {
+    const kittEligible: PersonForEnrichment[] = [];
+    for (const person of stillNeedEmail2) {
+      // Kitt requires name + domain
+      if (!person.firstName || !person.lastName) continue;
+      if (!person.companyDomain && !person.companyName) continue;
+      const shouldRun = await shouldEnrich(person.personId, "person", "kitt-find");
+      if (shouldRun) {
+        kittEligible.push(person);
+      }
+    }
+
+    if (kittEligible.length > 0) {
+      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
+
+      console.log(`[waterfall-batch] Kitt parallel: ${kittEligible.length} people`);
+      const kittLimiter = createBatchLimiter(15);
+
+      const kittPromises = kittEligible.map((person) =>
+        kittLimiter.run(async () => {
+          try {
+            const fullName = `${person.firstName} ${person.lastName}`;
+            const domain = person.companyDomain ?? person.companyName ?? "";
+            const result = await kittFindEmail({
+              fullName,
+              domain,
+              linkedinUrl: person.linkedinUrl ?? undefined,
+              personId: person.personId,
+            });
+
+            addCost("kitt-find", result.costUsd);
+
+            if (result.email) {
+              foundEmails.set(person.personId, result.email);
+            }
+          } catch (err) {
+            if (isCreditExhaustion(err)) {
+              console.warn(`[waterfall-batch] Kitt credit exhaustion for ${person.personId}`);
+              // Don't throw — let other parallel tasks finish
+            } else {
+              console.error(`[waterfall-batch] Kitt error for ${person.personId}:`, err);
+            }
+          }
+        }),
+      );
+
+      await Promise.allSettled(kittPromises);
+      breaker.consecutiveFailures.set("kitt-find", 0);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 4: BounceBan bulk verify all found emails
+  // -------------------------------------------------------------------------
+  const allFoundEmails: Array<{ personId: string; email: string }> = [];
+  for (const [personId, email] of foundEmails) {
+    if (email) {
+      allFoundEmails.push({ personId, email });
+    }
+  }
+  // Include pre-existing emails (from AI Ark)
+  for (const entry of alreadyHaveEmail) {
+    if (!allFoundEmails.find((e) => e.personId === entry.personId)) {
+      allFoundEmails.push(entry);
+    }
+  }
+
+  if (allFoundEmails.length > 0) {
+    console.log(`[waterfall-batch] BounceBan bulk verify: ${allFoundEmails.length} emails`);
+
+    let verificationResults: Map<string, import("@/lib/verification/bounceban").VerificationResult>;
+
+    try {
+      verificationResults = await bulkVerifyEmails(
+        allFoundEmails.map((e) => ({ email: e.email, personId: e.personId })),
+      );
+
+      // Sum verification costs
+      for (const [, result] of verificationResults) {
+        addCost("bounceban-verify", result.costUsd);
+      }
+    } catch (err) {
+      if (isCreditExhaustion(err)) {
+        await notifyCreditExhaustion({
+          provider: (err as CreditExhaustionError).provider,
+          httpStatus: (err as CreditExhaustionError).httpStatus,
+          context: `batch enrichment (bounceban bulk verify)`,
+        });
+        console.warn(`[waterfall-batch] BounceBan credit exhaustion — skipping verification`);
+        // All emails remain unverified — mark as failed
+        failed = allFoundEmails.length;
+        return { total: people.length, enriched, verified, failed, costs };
+      }
+      throw err;
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 5: Kitt verify fallback for "unknown" results (15 concurrent)
+    // -----------------------------------------------------------------------
+    const unknownResults: Array<{ personId: string; email: string }> = [];
+    for (const [personId, result] of verificationResults) {
+      if (result.status === "unknown") {
+        unknownResults.push({ personId, email: result.email });
+      }
+    }
+
+    if (unknownResults.length > 0) {
+      console.log(`[waterfall-batch] Kitt verify fallback: ${unknownResults.length} unknowns`);
+      const kittVerifyLimiter = createBatchLimiter(15);
+
+      const kittVerifyPromises = unknownResults.map((entry) =>
+        kittVerifyLimiter.run(async () => {
+          try {
+            const kittResult = await kittVerify(entry.email, entry.personId);
+            addCost("kitt-verify", kittResult.costUsd);
+
+            // Update the verification result map
+            verificationResults.set(entry.personId, kittResult);
+          } catch (err) {
+            if (isCreditExhaustion(err)) {
+              console.warn(`[waterfall-batch] Kitt verify credit exhaustion for ${entry.email}`);
+            } else {
+              console.error(`[waterfall-batch] Kitt verify error for ${entry.email}:`, err);
+            }
+          }
+        }),
+      );
+
+      await Promise.allSettled(kittVerifyPromises);
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 6: Merge verified emails to Person records + normalize
+    // -----------------------------------------------------------------------
+    for (const entry of allFoundEmails) {
+      const vResult = verificationResults.get(entry.personId);
+      if (!vResult) {
+        failed++;
+        continue;
+      }
+
+      const isValid = vResult.status === "valid" || vResult.status === "valid_catch_all";
+
+      if (!isValid) {
+        // Verification failed — null out the email if it was written
+        console.warn(`[waterfall-batch] Email ${entry.email} for ${entry.personId} failed verification (${vResult.status})`);
+        await prisma.person.update({
+          where: { id: entry.personId },
+          data: { email: null },
+        });
+        failed++;
+        continue;
+      }
+
+      // Verified valid — merge person data
+      const person = people.find((p) => p.personId === entry.personId);
+      const personData: Parameters<typeof mergePersonData>[1] = {
+        email: entry.email,
+      };
+
+      const fieldsWritten = await mergePersonData(entry.personId, personData);
+      enriched++;
+      verified++;
+
+      // Run normalizers inline
+      const updatedPerson = await prisma.person.findUnique({ where: { id: entry.personId } });
+      if (updatedPerson?.jobTitle) {
+        try {
+          const titleResult = await classifyJobTitle(updatedPerson.jobTitle);
+          if (titleResult) {
+            const existing = updatedPerson.enrichmentData
+              ? (() => { try { return JSON.parse(updatedPerson.enrichmentData) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+              : {};
+            await prisma.person.update({
+              where: { id: entry.personId },
+              data: {
+                jobTitle: titleResult.canonical,
+                enrichmentData: JSON.stringify({ ...existing, seniority: titleResult.seniority }),
+              },
+            });
+          }
+        } catch (err) {
+          console.warn(`[waterfall-batch] classifyJobTitle failed for ${entry.personId}:`, err);
+        }
+      }
+
+      if (updatedPerson?.company && fieldsWritten.includes("company")) {
+        try {
+          const normalizedName = await classifyCompanyName(updatedPerson.company);
+          if (normalizedName) {
+            await prisma.person.update({
+              where: { id: entry.personId },
+              data: { company: normalizedName },
+            });
+          }
+        } catch (err) {
+          console.warn(`[waterfall-batch] classifyCompanyName failed for ${entry.personId}:`, err);
+        }
+      }
+    }
+  }
+
+  // People who never got an email at all
+  for (const person of needEmail) {
+    if (!foundEmails.get(person.personId) && !allFoundEmails.find((e) => e.personId === person.personId)) {
+      failed++;
+    }
+  }
+
+  return { total: people.length, enriched, verified, failed, costs };
+}
+
+// ---------------------------------------------------------------------------
 // enrichCompany
 // ---------------------------------------------------------------------------
 

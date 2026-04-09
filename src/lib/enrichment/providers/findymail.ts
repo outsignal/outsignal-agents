@@ -55,6 +55,153 @@ const FindyMailResponseSchema = z
   })
   .passthrough();
 
+// ---------------------------------------------------------------------------
+// Bulk parallel fan-out
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple concurrency limiter (pLimit pattern).
+ * Caps how many promises run at once.
+ */
+function createLimiter(concurrency: number) {
+  let running = 0;
+  const queue: Array<() => void> = [];
+
+  async function run<T>(fn: () => Promise<T>): Promise<T> {
+    while (running >= concurrency) {
+      await new Promise<void>((resolve) => queue.push(resolve));
+    }
+    running++;
+    try {
+      return await fn();
+    } finally {
+      running--;
+      if (queue.length > 0) {
+        const next = queue.shift()!;
+        next();
+      }
+    }
+  }
+
+  return { run };
+}
+
+export interface BulkFindEmailInput {
+  personId: string;
+  linkedinUrl: string;
+}
+
+/**
+ * Bulk find emails via FindyMail using parallel fan-out.
+ * Fires up to 100 concurrent requests (under the 300 API limit).
+ * Adds a 10ms delay between launches to avoid burst.
+ *
+ * Returns a Map of personId → EmailProviderResult.
+ * People without a linkedinUrl should be filtered out before calling this.
+ */
+export async function bulkFindEmail(
+  people: BulkFindEmailInput[],
+): Promise<Map<string, EmailProviderResult>> {
+  const results = new Map<string, EmailProviderResult>();
+  const limiter = createLimiter(100);
+  let creditExhausted = false;
+
+  const apiKey = getApiKey();
+
+  const promises = people.map((person, index) =>
+    limiter.run(async () => {
+      // Check if credit exhaustion was detected — skip remaining
+      if (creditExhausted) {
+        results.set(person.personId, {
+          email: null,
+          source: "findymail",
+          rawResponse: { skipped: "credit_exhaustion_in_batch" },
+          costUsd: 0,
+        });
+        return;
+      }
+
+      // Stagger launches by 10ms to avoid burst
+      if (index > 0) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+      try {
+        const res = await fetch(FINDYMAIL_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({ linkedin_url: person.linkedinUrl }),
+          signal: controller.signal,
+        });
+
+        if (res.status === 402 || res.status === 403) {
+          creditExhausted = true;
+          throw new CreditExhaustionError("findymail", res.status);
+        }
+
+        if (res.status === 429) {
+          const err = new Error(`FindyMail rate-limited: HTTP 429`);
+          (err as any).status = 429;
+          throw err;
+        }
+
+        if (!res.ok) {
+          throw new Error(`FindyMail HTTP error: ${res.status} ${res.statusText}`);
+        }
+
+        const raw = await res.json();
+        const parsed = FindyMailResponseSchema.safeParse(raw);
+
+        const email = parsed.success
+          ? parsed.data.email ?? null
+          : (raw as any)?.email ??
+            (raw as any)?.data?.email ??
+            (raw as any)?.verified_email ??
+            null;
+
+        results.set(person.personId, {
+          email,
+          source: "findymail",
+          rawResponse: raw,
+          costUsd: PROVIDER_COSTS.findymail,
+        });
+      } catch (err) {
+        if (err instanceof CreditExhaustionError) {
+          results.set(person.personId, {
+            email: null,
+            source: "findymail",
+            rawResponse: { error: "credit_exhaustion" },
+            costUsd: 0,
+          });
+          return;
+        }
+        results.set(person.personId, {
+          email: null,
+          source: "findymail",
+          rawResponse: { error: err instanceof Error ? err.message : String(err) },
+          costUsd: 0,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }),
+  );
+
+  await Promise.allSettled(promises);
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Single enrichment (existing)
+// ---------------------------------------------------------------------------
+
 /**
  * FindyMail adapter — finds email from LinkedIn profile URL.
  * Returns null email (costUsd=0) when no LinkedIn URL is provided.
