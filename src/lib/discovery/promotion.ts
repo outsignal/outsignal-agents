@@ -17,6 +17,22 @@ import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
 
 // ---------------------------------------------------------------------------
+// Safety net: placeholder email domains that must never enter the Person table.
+// These are internal sentinel values used during discovery staging — they are
+// NOT real addresses. Defence-in-depth guard against stale dist regressions.
+// ---------------------------------------------------------------------------
+const PLACEHOLDER_EMAIL_DOMAINS = ["@discovery.internal", "@discovered.local"];
+
+/**
+ * Returns true if the email is a known placeholder / internal sentinel value.
+ * If detected, the caller should set email to null and log a warning.
+ */
+function isPlaceholderEmail(email: string): boolean {
+  const lower = email.toLowerCase();
+  return PLACEHOLDER_EMAIL_DOMAINS.some((domain) => lower.endsWith(domain));
+}
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -342,6 +358,20 @@ export async function deduplicateAndPromote(
       workspaceSlug: true,
     },
   });
+
+  // --- Defence-in-depth: strip any placeholder emails before processing ---
+  // Placeholder emails (e.g. foo@discovery.internal) are internal sentinel values
+  // that should never reach production. This guard protects against stale dist
+  // regressions where old compiled code re-introduces placeholder generation.
+  for (const record of staged) {
+    if (record.email && isPlaceholderEmail(record.email)) {
+      console.warn(
+        `[promotion] WARNING: placeholder email detected and stripped — "${record.email}" (id: ${record.id}). ` +
+        `This should never occur in production. Check for stale dist/ files.`
+      );
+      record.email = null;
+    }
+  }
 
   const promotedIds: string[] = [];
   const duplicatePersonIds: string[] = [];

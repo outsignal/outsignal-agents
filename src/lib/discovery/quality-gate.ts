@@ -28,6 +28,10 @@ const JUNK_EMAIL_PREFIXES = [
   "office@",
 ];
 
+// Placeholder email domains used internally during discovery staging.
+// These are never real addresses — treat as junk / no-email.
+const PLACEHOLDER_EMAIL_DOMAINS = ["@discovery.internal", "@discovered.local"];
+
 const JUNK_NAME_PATTERNS = [
   /^(n\/a|na|unknown|test|none|null)$/i,
   /^[a-z]$/i, // single character
@@ -70,10 +74,11 @@ export interface QualityReport {
  * - Both email AND linkedinUrl are missing/null
  */
 export function detectJunk(person: DiscoveredPersonResult): boolean {
-  // Check junk email prefixes and placeholders
+  // Check junk email prefixes and placeholder domains
   if (person.email) {
     const lower = person.email.toLowerCase();
     if (JUNK_EMAIL_PREFIXES.some((p) => lower.startsWith(p))) return true;
+    if (PLACEHOLDER_EMAIL_DOMAINS.some((d) => lower.endsWith(d))) return true;
   }
 
   // Check junk names
@@ -104,6 +109,7 @@ function hasRealEmail(person: DiscoveredPersonResult): boolean {
   if (!person.email) return false;
   const lower = person.email.toLowerCase();
   if (JUNK_EMAIL_PREFIXES.some((p) => lower.startsWith(p))) return false;
+  if (PLACEHOLDER_EMAIL_DOMAINS.some((d) => lower.endsWith(d))) return false;
   return true;
 }
 
