@@ -95,10 +95,10 @@
       "type": "bug",
       "severity": "critical",
       "priority": 1,
-      "status": "open",
+      "status": "done",
       "createdAt": "2026-04-09T12:00:00.000Z",
       "updatedAt": "2026-04-09T12:00:00.000Z",
-      "notes": "PROBLEM: Target lists can be assigned to campaigns without validating that people have the required data for the campaign's channel. Lime E2 (Transportation Email Rerun, 268 people) has 230 null emails (86%). Lime E3 (Engineering Email Rerun, 141 people) has 120 null emails (85%). Both were pushed to pending_approval — client can see these broken campaigns.\n\nIMMEDIATE FIX REQUIRED:\n1. Remove null-email people from Lime E2 and E3 target lists NOW (TargetListPerson records where person.email IS NULL). E2 drops from 268 to 38, E3 drops from 141 to 21.\n2. The corresponding LinkedIn lists (C2 Engineering, C3 Transport) have the same people with null emails but that's expected — they have LinkedIn URLs. Verify: do all people in C2/C3 have linkedinUrl?\n\nPLATFORM FIX REQUIRED:\n3. Pre-publish validation: when campaign moves to pending_approval, REJECT if any person in the target list lacks the required field. Email campaigns: person.email must be non-null and not contain '@discovery.internal'. LinkedIn campaigns: person.linkedinUrl must be non-null.\n4. Target list add validation: when adding people to a target list linked to a campaign, validate channel requirements. Reject people missing required fields.\n5. Add a CLI script or Trigger.dev task that audits ALL existing campaign target lists for channel mismatches and reports violations.\n\nThis is a systemic issue — every campaign that went through the system could have this problem. The validation must be enforced at the platform level, not rely on agents checking manually."
+      "notes": "PROBLEM: Target lists can be assigned to campaigns without validating that people have the required data for the campaign's channel. Lime E2 (Transportation Email Rerun, 268 people) has 230 null emails (86%). Lime E3 (Engineering Email Rerun, 141 people) has 120 null emails (85%). Both were pushed to pending_approval — client can see these broken campaigns.\n\nIMMEDIATE FIX REQUIRED:\n1. Remove null-email people from Lime E2 and E3 target lists NOW (TargetListPerson records where person.email IS NULL). E2 drops from 268 to 38, E3 drops from 141 to 21.\n2. The corresponding LinkedIn lists (C2 Engineering, C3 Transport) have the same people with null emails but that's expected — they have LinkedIn URLs. Verify: do all people in C2/C3 have linkedinUrl?\n\nPLATFORM FIX REQUIRED:\n3. Pre-publish validation: when campaign moves to pending_approval, REJECT if any person in the target list lacks the required field. Email campaigns: person.email must be non-null and not contain '@discovery.internal'. LinkedIn campaigns: person.linkedinUrl must be non-null.\n4. Target list add validation: when adding people to a target list linked to a campaign, validate channel requirements. Reject people missing required fields.\n5. Add a CLI script or Trigger.dev task that audits ALL existing campaign target lists for channel mismatches and reports violations.\n\nThis is a systemic issue — every campaign that went through the system could have this problem. The validation must be enforced at the platform level, not rely on agents checking manually.\n\nADDITIONAL REQUIREMENT (2026-04-09): Email verification status must also be checked. 1210 had 93 invalid emails and 257 unverified emails in campaign lists. Rule: email campaigns must only contain people with emailVerificationStatus = 'valid' or 'deliverable'. Invalid, unknown, and unverified emails must be rejected at list-add time. Catch-all can be allowed with a flag."
     },
     {
       "id": "BL-010",
@@ -128,10 +128,10 @@
       "type": "improvement",
       "severity": null,
       "priority": 1,
-      "status": "done",
+      "status": "open",
       "createdAt": "2026-04-09T12:45:00.000Z",
       "updatedAt": "2026-04-09T12:45:00.000Z",
-      "notes": "ICP scoring currently spawns a separate `npx @anthropic-ai/claude-code -p` process per person. Each call has cold start overhead (~2-3 sec) plus inference time. Scoring 2,016 people for 1210 took ~5.5 hours.\n\nFix: batch 10-20 people into a single Claude prompt. The scoring criteria are identical per workspace — only the person data changes. Haiku can score multiple people in one structured JSON response.\n\nEstimated improvement: 2,016 people at 20/batch = 101 calls instead of 2,016. At ~10 sec/call = ~17 minutes instead of 5.5 hours (20x speedup).\n\nImplementation:\n1. Modify list-score.ts to batch N people into one prompt\n2. Prompt format: workspace ICP criteria (once) + array of person data\n3. Response format: array of { personId, score, reasoning }\n4. Parse response and apply scores individually\n5. Fall back to single-person scoring if batch parse fails\n6. Also cache website crawl results per domain (see BL-013)"
+      "notes": "PARTIALLY DONE — batch function exists but not wired into CLI.\n\nscorePersonIcpBatch() was built in src/lib/icp/scorer.ts (commit f319ecce) with batchSize=15, Claude Code CLI path. BUT scripts/cli/list-score.ts still calls the OLD single-person scoring path. The CLI script was not updated to use the new batch function.\n\nRemaining work: Update list-score.ts to import and call scorePersonIcpBatch() instead of the per-person loop. The function signature is in scorer.ts line 335+. It accepts workspace slug, person IDs array, and options { batchSize, forceRecrawl }.\n\nThis is why the benchmark on 117 people is still running slow — it's using the old code path."
     },
     {
       "id": "BL-013",
@@ -150,7 +150,7 @@
       "type": "improvement",
       "severity": null,
       "priority": 2,
-      "status": "open",
+      "status": "done",
       "createdAt": "2026-04-09T18:00:00.000Z",
       "updatedAt": "2026-04-09T18:00:00.000Z",
       "notes": "Firecrawl credits exhausted and the service costs £14-297/mo depending on plan. Most B2B company homepages are static marketing sites that don't need JS rendering.\n\nFix: Replace the Firecrawl call in crawl-cache.ts with a simple fetch() + HTML-to-markdown conversion (cheerio/turndown or manual tag stripping). Keep Firecrawl as optional fallback if FIRECRAWL_API_KEY is set.\n\nImpact: Eliminates Firecrawl cost entirely for 80-90% of company sites. ICP scoring depends on website context for accurate scores — without it, Claude only has job title + company name + industry which is insufficient.\n\nScope: Small — modify getCrawlMarkdownInner() in src/lib/icp/crawl-cache.ts to try free fetch first, fall back to Firecrawl if available."
