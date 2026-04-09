@@ -13,6 +13,7 @@
 
 import { prisma } from "@/lib/db";
 import { validateListForChannel, runDataQualityPreCheck, type DataQualityReport } from "@/lib/campaigns/list-validation";
+import { filterPeopleForChannels } from "@/lib/channels/validation";
 import { detectOverlaps, type OverlapResult } from "@/lib/campaigns/overlap-detection";
 
 // ---------------------------------------------------------------------------
@@ -576,13 +577,30 @@ export async function publishForReview(id: string): Promise<PublishForReviewResu
 
   const people = targetListPeople.map((tlp) => tlp.person);
 
-  // Hard-block: channel requirements
+  // Hard-block: channel requirements (structural — 0 valid emails / LinkedIn URLs)
   const channelFailures: string[] = [];
   for (const channel of channels) {
     const result = validateListForChannel(channel, people);
     if (!result.valid) {
       channelFailures.push(...result.hardFailures);
     }
+  }
+
+  // Hard-block: per-person validation (placeholder emails, missing LinkedIn URLs)
+  const { rejected: perPersonRejected } = filterPeopleForChannels(people, channels);
+  if (perPersonRejected.length > 0) {
+    // Group reasons for a compact error message.
+    const reasonCounts = new Map<string, number>();
+    for (const { reason } of perPersonRejected) {
+      reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    }
+    const reasonSummary = Array.from(reasonCounts.entries())
+      .map(([r, n]) => `${n}× ${r}`)
+      .join("; ");
+    channelFailures.push(
+      `${perPersonRejected.length} of ${people.length} people fail channel requirements — ${reasonSummary}. ` +
+        `Remove these people from the list before publishing.`,
+    );
   }
 
   if (channelFailures.length > 0) {

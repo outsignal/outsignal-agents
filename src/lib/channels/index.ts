@@ -21,6 +21,13 @@ export { getEnabledChannels } from "./workspace-channels";
 export { LinkedInAdapter } from "./linkedin-adapter";
 export { EmailAdapter } from "./email-adapter";
 export { buildRef } from "./helpers";
+export {
+  validatePersonForChannel,
+  filterPeopleForChannels,
+  type ChannelValidationPerson,
+  type PersonChannelValidation,
+  type FilterResult,
+} from "./validation";
 
 // ---------------------------------------------------------------------------
 // Bootstrap — call once before using getAdapter()

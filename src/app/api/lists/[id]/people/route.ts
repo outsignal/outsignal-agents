@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { removePeopleFromListSchema } from "@/lib/validations/lists";
+import { addPeopleToList } from "@/lib/leads/operations";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -111,15 +112,14 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ added: 0 });
     }
 
-    const result = await prisma.targetListPerson.createMany({
-      data: personIds.map((personId) => ({
-        listId: id,
-        personId,
-      })),
-      skipDuplicates: true,
-    });
+    const result = await addPeopleToList(id, personIds);
 
-    return NextResponse.json({ added: result.count });
+    return NextResponse.json({
+      added: result.added,
+      ...(result.rejected !== undefined && result.rejected > 0
+        ? { rejected: result.rejected, rejectionSummary: result.rejectionSummary }
+        : {}),
+    });
   } catch (err) {
     console.error("[POST /api/lists/[id]/people] Error:", err);
     return NextResponse.json(

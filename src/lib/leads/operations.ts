@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import { scorePersonIcp } from "@/lib/icp/scorer";
 import { getListExportReadiness } from "@/lib/export/verification-gate";
 import { getClientForWorkspace } from "@/lib/workspaces";
+import { filterPeopleForChannels } from "@/lib/channels/validation";
 import type { TargetList, Person, Workspace } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,10 @@ export interface CreateListParams {
 export interface AddPeopleToListResult {
   added: number;
   alreadyInList: number;
+  /** People rejected due to channel validation (only present when list is campaign-linked). */
+  rejected?: number;
+  /** Rejection reason summary (only present when rejected > 0). */
+  rejectionSummary?: string;
 }
 
 export interface ListSummary {
@@ -332,9 +337,16 @@ export async function createList(params: CreateListParams): Promise<TargetList> 
 /**
  * Add people to a target list. Skips duplicates (already-in-list people).
  *
- * @param listId - TargetList ID
+ * If the list is linked to a campaign, channel validation is applied before
+ * inserting: people who do not satisfy the campaign's channel requirements
+ * (e.g. no email for an email campaign, no LinkedIn URL for a LinkedIn
+ * campaign) are silently rejected and counted in the returned `rejected`
+ * field.  This prevents invalid contacts from accumulating on a list and
+ * blocking the campaign at publish time.
+ *
+ * @param listId    - TargetList ID
  * @param personIds - Array of Person IDs to add
- * @returns { added, alreadyInList }
+ * @returns { added, alreadyInList, rejected?, rejectionSummary? }
  */
 export async function addPeopleToList(
   listId: string,
@@ -344,16 +356,72 @@ export async function addPeopleToList(
     return { added: 0, alreadyInList: 0 };
   }
 
+  // --- Channel validation gate ---
+  // Check if the list is linked to a campaign (a campaign may link to a list
+  // via targetListId). If so, we need to validate each person against the
+  // campaign's channels before inserting.
+  const linkedCampaign = await prisma.campaign.findFirst({
+    where: { targetListId: listId },
+    select: { channels: true },
+  });
+
+  let validPersonIds = personIds;
+  let rejectedCount = 0;
+  let rejectionSummary: string | undefined;
+
+  if (linkedCampaign) {
+    // Parse channels JSON (stored as a JSON string in the DB).
+    let channels: string[] = ["email"];
+    try {
+      const parsed = JSON.parse(linkedCampaign.channels ?? '["email"]');
+      if (Array.isArray(parsed)) channels = parsed as string[];
+    } catch {
+      // Fallback to email-only if JSON is malformed.
+      channels = ["email"];
+    }
+
+    // Fetch the person data required for validation in a single query.
+    const people = await prisma.person.findMany({
+      where: { id: { in: personIds } },
+      select: { id: true, email: true, linkedinUrl: true },
+    });
+
+    const { valid, rejected } = filterPeopleForChannels(people, channels);
+
+    validPersonIds = valid.map((p) => p.id);
+    rejectedCount = rejected.length;
+
+    if (rejectedCount > 0) {
+      // Summarise rejections: aggregate reasons across all people.
+      const reasonCounts = new Map<string, number>();
+      for (const { reason } of rejected) {
+        reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+      }
+      rejectionSummary = Array.from(reasonCounts.entries())
+        .map(([r, n]) => `${n}× ${r}`)
+        .join("; ");
+
+      console.info(
+        `[addPeopleToList] list=${listId} channel-validation: ` +
+          `${validPersonIds.length} valid, ${rejectedCount} rejected — ${rejectionSummary}`,
+      );
+    }
+  }
+
+  if (validPersonIds.length === 0) {
+    return { added: 0, alreadyInList: 0, rejected: rejectedCount, rejectionSummary };
+  }
+
   // Count existing before insert to calculate alreadyInList
   const existingCount = await prisma.targetListPerson.count({
     where: {
       listId,
-      personId: { in: personIds },
+      personId: { in: validPersonIds },
     },
   });
 
   const createResult = await prisma.targetListPerson.createMany({
-    data: personIds.map((personId) => ({
+    data: validPersonIds.map((personId) => ({
       listId,
       personId,
     })),
@@ -363,6 +431,7 @@ export async function addPeopleToList(
   return {
     added: createResult.count,
     alreadyInList: existingCount,
+    ...(rejectedCount > 0 ? { rejected: rejectedCount, rejectionSummary } : {}),
   };
 }
 
