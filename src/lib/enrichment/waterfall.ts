@@ -194,14 +194,17 @@ export async function enrichEmail(
           aiarkError = null;
           break;
         } catch (err) {
-          // Credit exhaustion — notify admin and halt the entire waterfall
+          // Credit exhaustion — notify admin but DON'T halt the waterfall.
+          // AI Ark is optional person-data enrichment, not email finding.
+          // Skip to email providers instead of pausing the entire job.
           if (isCreditExhaustion(err)) {
             await notifyCreditExhaustion({
               provider: (err as CreditExhaustionError).provider,
               httpStatus: (err as CreditExhaustionError).httpStatus,
-              context: `enrichment waterfall (aiark person data) for person ${personId}`,
+              context: `enrichment waterfall (aiark person data) for person ${personId} — skipping, continuing to email providers`,
             });
-            throw err;
+            console.warn(`[waterfall] AI Ark credit exhaustion for ${personId} — skipping person data, continuing to email providers`);
+            break; // exit retry loop, fall through to email providers
           }
           const error = err instanceof Error ? err : new Error(String(err));
           const is429 = isRateLimited(err) || error.message.includes("429");
