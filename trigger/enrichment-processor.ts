@@ -112,8 +112,8 @@ export const enrichmentProcessorTask = schedules.task({
         console.log(
           `${LOG_PREFIX} Paused job ${result.jobId}: ${result.processed}/${result.total} (${result.status})`,
         );
-        // Don't keep looping on a paused job — move to the next one or exit
-        continue;
+        // Daily cap hit — stop the entire run. Don't cascade-pause remaining jobs.
+        break;
       }
 
       // If this job is done, loop to pick up the next one; otherwise keep processing chunks
