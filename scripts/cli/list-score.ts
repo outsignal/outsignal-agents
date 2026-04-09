@@ -15,144 +15,8 @@ config({ path: ".env.local" });
 
 import { runWithHarness } from "./_cli-harness";
 import { prisma } from "@/lib/db";
-import { buildScoringPrompt, IcpScoreSchema } from "@/lib/icp/scorer";
-import { getCrawlMarkdown } from "@/lib/icp/crawl-cache";
-import { writeFileSync, unlinkSync } from "fs";
-import { execSync } from "child_process";
-import { randomUUID } from "crypto";
-
-// --- JSON extraction from Claude output ---
-
-function extractJSON(text: string): unknown {
-  // Try raw parse first
-  try {
-    return JSON.parse(text);
-  } catch {
-    // noop
-  }
-
-  // Try extracting from ```json code blocks
-  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (codeBlockMatch) {
-    try {
-      return JSON.parse(codeBlockMatch[1]);
-    } catch {
-      // noop
-    }
-  }
-
-  // Try finding a JSON object in surrounding text
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    try {
-      return JSON.parse(jsonMatch[0]);
-    } catch {
-      // noop
-    }
-  }
-
-  return null;
-}
-
-// --- Score a single person via Claude Code CLI ---
-
-async function scorePersonViaCli(
-  personId: string,
-  workspaceSlug: string,
-  icpCriteriaPrompt: string,
-): Promise<{ score: number; reasoning: string; confidence: "high" | "medium" | "low" }> {
-  // 1. Fetch person data
-  const person = await prisma.person.findUniqueOrThrow({
-    where: { id: personId },
-  });
-
-  // 2. Get company homepage markdown (from cache or Firecrawl)
-  const websiteMarkdown = person.companyDomain
-    ? await getCrawlMarkdown(person.companyDomain, false)
-    : null;
-
-  // 3. Fetch company record
-  const company = person.companyDomain
-    ? await prisma.company.findUnique({ where: { domain: person.companyDomain } })
-    : null;
-
-  // 4. Build scoring prompt (same function as the API scorer)
-  const scoringPrompt = buildScoringPrompt({
-    person: {
-      firstName: person.firstName,
-      lastName: person.lastName,
-      jobTitle: person.jobTitle,
-      company: person.company,
-      vertical: person.vertical,
-      location: person.location,
-      enrichmentData: person.enrichmentData,
-    },
-    company: company
-      ? {
-          headcount: company.headcount,
-          industry: company.industry,
-          description: company.description,
-          yearFounded: company.yearFounded,
-        }
-      : null,
-    websiteMarkdown,
-  });
-
-  // 5. Build full prompt with system instructions
-  const fullPrompt = [
-    "You are an ICP scoring assistant. Here are the workspace ICP criteria:\n",
-    icpCriteriaPrompt,
-    "\n---\n",
-    scoringPrompt,
-    "\n---\n",
-    "Return ONLY a raw JSON object with these fields: score (number 0-100), reasoning (string, 1-3 sentences), confidence (\"high\"|\"medium\"|\"low\"). No markdown, no explanation, no code fences.",
-  ].join("\n");
-
-  // 6. Write prompt to temp file and call Claude Code CLI
-  const promptPath = `/tmp/icp-score-${randomUUID()}.txt`;
-
-  try {
-    writeFileSync(promptPath, fullPrompt);
-
-    const output = execSync(
-      `npx -y @anthropic-ai/claude-code -p "$(cat '${promptPath}')" --output-format json --model claude-haiku-4-5`,
-      {
-        timeout: 60_000,
-        encoding: "utf-8",
-        maxBuffer: 10 * 1024 * 1024,
-      },
-    );
-
-    // Parse Claude's output — it wraps in a JSON envelope with "result" field
-    let rawText = output;
-    try {
-      const envelope = JSON.parse(output);
-      if (envelope.result) {
-        rawText = envelope.result;
-      }
-    } catch {
-      // Not a JSON envelope, use raw output
-    }
-
-    const parsed = extractJSON(rawText);
-    if (!parsed) {
-      throw new Error("Could not extract JSON from Claude output");
-    }
-
-    const validated = IcpScoreSchema.safeParse(parsed);
-    if (!validated.success) {
-      throw new Error(`Invalid score format: ${validated.error.message}`);
-    }
-
-    return validated.data;
-  } finally {
-    try {
-      unlinkSync(promptPath);
-    } catch {
-      // ignore cleanup errors
-    }
-  }
-}
+import { scorePersonIcpBatch } from "@/lib/icp/scorer";
+import { prefetchDomains } from "@/lib/icp/crawl-cache";
 
 const [, , listId, workspaceSlug] = process.argv;
 
@@ -210,66 +74,44 @@ runWithHarness("list-score <listId> <workspaceSlug>", async () => {
   );
 
   if (unscored.length === 0) {
-    return {
-      scored: 0,
-      skipped,
-      failed: 0,
-      results: [],
-    };
+    return { scored: 0, skipped, failed: 0 };
   }
 
-  // 3. Score each person sequentially via Claude Code CLI
-  //    (sequential because claude -p is a local process, not an API call)
-  const results: Array<{ personId: string; score: number; reasoning: string }> = [];
-  let failed = 0;
+  // 3. Prefetch website data for unique domains
+  const people = await prisma.person.findMany({
+    where: { id: { in: unscored } },
+    select: { companyDomain: true },
+  });
+  const domains = people
+    .map((p) => p.companyDomain)
+    .filter(Boolean) as string[];
+  const uniqueDomains = [...new Set(domains)];
 
-  for (let i = 0; i < unscored.length; i++) {
-    const personId = unscored[i];
+  if (uniqueDomains.length > 0) {
     console.error(
-      `[list-score] Scoring ${i + 1}/${unscored.length}: ${personId}`,
+      `[list-score] Prefetching website data for ${uniqueDomains.length} unique domains...`,
     );
-
-    try {
-      const result = await scorePersonViaCli(
-        personId,
-        workspaceSlug,
-        workspace.icpCriteriaPrompt,
-      );
-
-      // Persist score on PersonWorkspace
-      await prisma.personWorkspace.update({
-        where: {
-          personId_workspace: {
-            personId,
-            workspace: workspaceSlug,
-          },
-        },
-        data: {
-          icpScore: result.score,
-          icpReasoning: result.reasoning,
-          icpConfidence: result.confidence,
-          icpScoredAt: new Date(),
-        },
-      });
-
-      results.push({
-        personId,
-        score: result.score,
-        reasoning: result.reasoning,
-      });
-    } catch (err) {
-      failed++;
-      console.error(
-        `[list-score] Failed to score person ${personId}:`,
-        err instanceof Error ? err.message : String(err),
-      );
-    }
+    const prefetchResult = await prefetchDomains(uniqueDomains);
+    console.error(
+      `[list-score] Prefetch: ${prefetchResult.cached} cached, ${prefetchResult.crawled} crawled, ${prefetchResult.failed} failed`,
+    );
   }
+
+  // 4. Batch score via Claude Code CLI (15 people per call)
+  console.error(
+    `[list-score] Batch scoring ${unscored.length} people (batch size: 15)...`,
+  );
+  const result = await scorePersonIcpBatch(unscored, workspaceSlug, {
+    batchSize: 15,
+  });
+
+  console.error(
+    `[list-score] Done: ${result.scored} scored, ${result.failed} failed, ${result.skipped} skipped`,
+  );
 
   return {
-    scored: results.length,
-    skipped,
-    failed,
-    results,
+    scored: result.scored,
+    skipped: skipped + result.skipped,
+    failed: result.failed,
   };
 });
