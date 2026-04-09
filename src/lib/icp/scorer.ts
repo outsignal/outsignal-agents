@@ -283,10 +283,60 @@ function buildBatchPersonEntry(params: {
 }
 
 /**
+ * Parse JSON from Claude Code CLI output.
+ * Handles raw JSON, JSON envelope with `result` field, markdown code-fenced JSON,
+ * and JSON arrays embedded in surrounding text.
+ */
+function parseCliJsonArray(output: string): unknown {
+  // Claude Code --output-format json wraps in a JSON envelope with "result" field
+  let rawText = output.trim();
+  try {
+    const envelope = JSON.parse(rawText);
+    if (envelope.result) {
+      rawText = envelope.result;
+    }
+  } catch {
+    // Not a JSON envelope, use raw output
+  }
+
+  // Try raw JSON parse first
+  try {
+    return JSON.parse(rawText.trim());
+  } catch {
+    // noop
+  }
+
+  // Try extracting from markdown code fence
+  const fenceMatch = rawText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenceMatch) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch {
+      // noop
+    }
+  }
+
+  // Try finding JSON array in the output
+  const arrayMatch = rawText.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0]);
+    } catch {
+      // noop
+    }
+  }
+
+  throw new Error(
+    `Could not parse JSON from Claude Code output: ${rawText.substring(0, 200)}`,
+  );
+}
+
+/**
  * Score multiple people's ICP fit for a workspace in batches.
  *
- * Sends multiple people per Claude call to reduce API overhead.
- * Falls back to individual scoring if a batch call fails.
+ * Uses Claude Code CLI (`claude -p`) instead of the Anthropic API to avoid
+ * API credit costs. Falls back to marking the batch as failed if a CLI call
+ * or JSON parse fails.
  *
  * @param personIds - Array of Person record IDs
  * @param workspaceSlug - Workspace slug
@@ -298,6 +348,12 @@ export async function scorePersonIcpBatch(
   workspaceSlug: string,
   options?: { batchSize?: number; forceRecrawl?: boolean },
 ): Promise<BatchIcpScoreResult> {
+  const { execSync } = await import("child_process");
+  const { writeFileSync, unlinkSync } = await import("fs");
+  const { randomUUID } = await import("crypto");
+  const { tmpdir } = await import("os");
+  const { join } = await import("path");
+
   const batchSize = options?.batchSize ?? 15;
   const forceRecrawl = options?.forceRecrawl ?? false;
 
@@ -368,7 +424,7 @@ export async function scorePersonIcpBatch(
   });
   const companyMap = new Map(companies.map((c) => [c.domain, c]));
 
-  // 4. Chunk into batches and process
+  // 4. Chunk into batches and process via Claude Code CLI
   for (let i = 0; i < validIds.length; i += batchSize) {
     const batchIds = validIds.slice(i, i + batchSize);
 
@@ -408,37 +464,64 @@ export async function scorePersonIcpBatch(
       );
     }
 
-    const batchPrompt = `Score the following ${batchIds.length} people against the ICP criteria. Return a JSON array with one entry per person, using the personId shown for each.
+    const fullPrompt = [
+      "You are an ICP (Ideal Customer Profile) scoring expert. Score each person below against these criteria:\n",
+      workspace.icpCriteriaPrompt,
+      "\n\nFor each person, return a JSON array where each element has:",
+      "- personId: the ID shown for that person",
+      "- score: 0-100 ICP fit score",
+      '- reasoning: 1-3 sentences explaining the score',
+      '- confidence: "high", "medium", or "low"',
+      "\nReturn ONLY the JSON array, no other text.\n",
+      entries.map((e) => `---\n${e}`).join("\n\n"),
+      "\n\nSet confidence based on data completeness:",
+      '- "high": Person data + company data + website all available',
+      '- "medium": 2 out of 3 signal types available',
+      '- "low": Only 1 signal type or very sparse data',
+    ].join("\n");
 
-${entries.map((e) => `---\n${e}`).join("\n\n")}
-
-Return a score from 0-100 and 1-3 sentence reasoning for each person. Set confidence based on data completeness:
-- "high": Person data + company data + website all available
-- "medium": 2 out of 3 signal types available
-- "low": Only 1 signal type or very sparse data`;
+    const promptPath = join(tmpdir(), `icp-batch-${randomUUID()}.txt`);
 
     try {
-      const { object: results } = await generateObject({
-        model: anthropic("claude-haiku-4-5-20251001"),
-        schema: BatchIcpScoreSchema,
-        system: workspace.icpCriteriaPrompt,
-        prompt: batchPrompt,
-      });
+      writeFileSync(promptPath, fullPrompt, "utf-8");
 
-      // Map results back by personId for reliable matching
-      const resultMap = new Map(results.map((r) => [r.personId, r]));
+      const output = execSync(
+        `npx -y @anthropic-ai/claude-code -p "$(cat '${promptPath}')" --output-format json --model claude-haiku-4-5`,
+        {
+          encoding: "utf-8",
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 120_000,
+        },
+      ).trim();
+
+      const parsed = parseCliJsonArray(output);
+
+      // Validate it is an array
+      if (!Array.isArray(parsed)) {
+        throw new Error(
+          `Expected JSON array from Claude Code, got ${typeof parsed}`,
+        );
+      }
+
+      // Validate each entry and build a result map
+      const resultMap = new Map<
+        string,
+        { personId: string; score: number; reasoning: string; confidence: "high" | "medium" | "low" }
+      >();
+
+      for (const entry of parsed) {
+        const validated = BatchIcpScoreSchema.element.safeParse(entry);
+        if (validated.success) {
+          resultMap.set(validated.data.personId, validated.data);
+        }
+      }
 
       // Persist each score
       for (const id of batchIds) {
         const result = resultMap.get(id);
         if (!result) {
-          // Person not in response — fall back to individual scoring
-          try {
-            await scorePersonIcp(id, workspaceSlug, forceRecrawl);
-            scored++;
-          } catch {
-            failed++;
-          }
+          // Person not in response — count as failed
+          failed++;
           continue;
         }
 
@@ -463,18 +546,16 @@ Return a score from 0-100 and 1-3 sentence reasoning for each person. Set confid
         }
       }
     } catch (error) {
-      // Batch call failed — fall back to individual scoring for this batch
+      // Batch CLI call failed — mark entire batch as failed, continue to next batch
       console.error(
-        `[icp-scorer] Batch scoring failed, falling back to individual: ${error instanceof Error ? error.message : String(error)}`,
+        `[icp-scorer] Batch scoring via CLI failed for ${batchIds.length} people: ${error instanceof Error ? error.message : String(error)}`,
       );
-
-      for (const id of batchIds) {
-        try {
-          await scorePersonIcp(id, workspaceSlug, forceRecrawl);
-          scored++;
-        } catch {
-          failed++;
-        }
+      failed += batchIds.length;
+    } finally {
+      try {
+        unlinkSync(promptPath);
+      } catch {
+        // ignore cleanup errors
       }
     }
   }
