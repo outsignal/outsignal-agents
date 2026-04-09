@@ -2250,3 +2250,173 @@ export async function notifyCreditExhaustion(params: {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// notifyCampaignsPendingApproval — alert client when campaigns are pushed for review
+// ---------------------------------------------------------------------------
+
+export interface CampaignApprovalSummary {
+  name: string;
+  channel: string;
+  leadCount: number;
+}
+
+export async function notifyCampaignsPendingApproval(params: {
+  workspaceSlug: string;
+  campaigns: CampaignApprovalSummary[];
+}): Promise<void> {
+  if (params.campaigns.length === 0) return;
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: params.workspaceSlug },
+  });
+
+  if (!workspace) return;
+
+  const count = params.campaigns.length;
+  const portalUrl = "https://portal.outsignal.ai/campaigns";
+
+  // ---------- Slack ----------
+
+  const slackChannelId =
+    workspace.approvalsSlackChannelId ?? workspace.slackChannelId;
+
+  if (slackChannelId) {
+    if (verifySlackChannel(slackChannelId, "client", "notifyCampaignsPendingApproval")) {
+      try {
+        const campaignLines = params.campaigns
+          .map((c) => `${c.name} — ${c.channel} — ${c.leadCount} leads`)
+          .join("\n");
+
+        await audited(
+          {
+            notificationType: "campaigns_pending_approval",
+            channel: "slack",
+            recipient: slackChannelId,
+            workspaceSlug: params.workspaceSlug,
+          },
+          () =>
+            postMessage(
+              slackChannelId,
+              `${count} campaign(s) ready for review`,
+              [
+                {
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: `📋 ${count} Campaign(s) Ready for Review`,
+                  },
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: campaignLines,
+                  },
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: { type: "plain_text", text: "Review in Portal" },
+                      url: portalUrl,
+                    },
+                  ],
+                },
+              ],
+            ),
+        );
+      } catch (err) {
+        console.error("[notifyCampaignsPendingApproval] Slack notification failed:", err);
+      }
+    }
+  } else {
+    auditSkipped({
+      notificationType: "campaigns_pending_approval",
+      channel: "slack",
+      recipient: "none",
+      workspaceSlug: params.workspaceSlug,
+      metadata: { reason: "No slackChannelId or approvalsSlackChannelId configured" },
+    });
+  }
+
+  // ---------- Email ----------
+
+  {
+    const recipientEmails = await getMemberNotificationEmails(params.workspaceSlug);
+    if (recipientEmails.length > 0) {
+      try {
+        const verified = verifyEmailRecipients(
+          recipientEmails,
+          "client",
+          "notifyCampaignsPendingApproval",
+        );
+        if (verified.length > 0) {
+          const subject = `[${workspace.name}] Campaigns Ready for Review`;
+
+          const campaignRows = params.campaigns
+            .map(
+              (c) =>
+                `<tr>
+                  <td style="padding:8px 12px;border-bottom:1px solid #e5e5e5;">${c.name}</td>
+                  <td style="padding:8px 12px;border-bottom:1px solid #e5e5e5;">${c.channel}</td>
+                  <td style="padding:8px 12px;border-bottom:1px solid #e5e5e5;text-align:right;">${c.leadCount}</td>
+                </tr>`,
+            )
+            .join("");
+
+          const campaignTable = `
+            <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+              <thead>
+                <tr style="background:#f5f5f5;">
+                  <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e5e5e5;">Campaign</th>
+                  <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e5e5e5;">Channel</th>
+                  <th style="padding:8px 12px;text-align:right;border-bottom:2px solid #e5e5e5;">Leads</th>
+                </tr>
+              </thead>
+              <tbody>${campaignRows}</tbody>
+            </table>`;
+
+          await audited(
+            {
+              notificationType: "campaigns_pending_approval",
+              channel: "email",
+              recipient: verified.join(","),
+              workspaceSlug: params.workspaceSlug,
+            },
+            () =>
+              sendNotificationEmail({
+                to: verified,
+                subject,
+                html: emailLayout({
+                  body: [
+                    emailHeading(
+                      `${count} Campaign(s) Ready for Review`,
+                      workspace.name,
+                    ),
+                    emailText(
+                      `The following campaign${count > 1 ? "s have" : " has"} been submitted for your review. Please review the leads and content, then approve or request changes.`,
+                    ),
+                    campaignTable,
+                    emailButton("Review in Portal", portalUrl),
+                  ].join(""),
+                  footerNote: `Sent to ${workspace.name} notification recipients. You received this because you are subscribed to campaign updates.`,
+                }),
+              }),
+          );
+        }
+      } catch (err) {
+        console.error("[notifyCampaignsPendingApproval] Email notification failed:", err);
+      }
+    } else {
+      auditSkipped({
+        notificationType: "campaigns_pending_approval",
+        channel: "email",
+        recipient: "none",
+        workspaceSlug: params.workspaceSlug,
+        metadata: { reason: "No members with notifications enabled" },
+      });
+    }
+  }
+}

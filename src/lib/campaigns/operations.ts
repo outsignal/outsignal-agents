@@ -662,10 +662,30 @@ export async function publishForReview(id: string): Promise<PublishForReviewResu
     warnings.channelGate = channelGateResult;
   }
 
-  return {
+  const result: PublishForReviewResult = {
     campaign: formatCampaignDetail(campaign),
     ...(Object.keys(warnings).length > 0 ? { warnings } : {}),
   };
+
+  // Notify client that campaign is ready for review (non-blocking)
+  try {
+    const { notifyCampaignsPendingApproval } = await import("@/lib/notifications");
+    const channels = (parseJsonArray(campaign.channels) as string[] ?? ["email"]);
+    await notifyCampaignsPendingApproval({
+      workspaceSlug: campaign.workspaceSlug,
+      campaigns: [
+        {
+          name: campaign.name,
+          channel: channels.join(", "),
+          leadCount: campaign.targetList?._count.people ?? 0,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error("[publishForReview] Failed to send pending approval notification:", err);
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
