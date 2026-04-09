@@ -6,6 +6,11 @@
  *
  * JSON file format: { "jobTitles": [...], "seniority": [...], "industries": [...], ... }
  * COSTS CREDITS (~$0.003/call). Returns identity data only.
+ *
+ * TODO: Add --export flag to use the Export People with Email endpoint
+ * (searchWithEmail from aiark-search.ts). This submits an async export job
+ * and results arrive via webhook at /api/webhooks/aiark/export. The CLI
+ * should print the trackId and estimated total, then exit (results are async).
  */
 
 import { config } from "dotenv";

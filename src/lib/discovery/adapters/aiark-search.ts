@@ -33,6 +33,7 @@ import { CreditExhaustionError, isCreditExhaustion } from "@/lib/enrichment/cred
 import { stripWwwAll, type RateLimits } from "../rate-limit";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
+const AIARK_PEOPLE_EXPORT_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people/export";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
 
 /**
@@ -614,6 +615,145 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
       rawResponse: raw,
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Export People with Email — async endpoint with webhook delivery
+// ---------------------------------------------------------------------------
+
+/**
+ * Result from submitting an AI Ark export request.
+ * The actual people + emails arrive asynchronously via webhook.
+ */
+export interface AiArkExportResult {
+  /** AI Ark tracking ID for this export job */
+  trackId: string;
+  /** Estimated total people matching the filters */
+  totalEstimate: number;
+  /** Export job state: PENDING, IN_PROGRESS, COMPLETED, FAILED */
+  state: string;
+}
+
+const AiArkExportResponseSchema = z
+  .object({
+    trackId: z.string(),
+    statistics: z
+      .object({
+        total: z.number().optional().default(0),
+        found: z.number().optional().default(0),
+      })
+      .passthrough()
+      .optional(),
+    webhook: z
+      .object({
+        state: z.string().optional(),
+        retry: z.unknown().optional(),
+      })
+      .passthrough()
+      .optional(),
+    state: z.string().optional().default("PENDING"),
+    description: z.string().optional().nullable(),
+  })
+  .passthrough();
+
+/**
+ * Submit an AI Ark "Export People with Email" request.
+ *
+ * This calls the async export endpoint which returns immediately with a trackId.
+ * The actual results (people with verified emails) are delivered via webhook
+ * to the specified URL. All emails are BounceBan-verified by AI Ark.
+ *
+ * @param filters - Same DiscoveryFilter used by the search method
+ * @param discoveryRunId - The discovery run ID, appended to webhook URL as query param
+ * @param options - Optional size (max 10,000) and extras
+ * @returns Export submission result with trackId and estimated total
+ */
+export async function searchWithEmail(
+  filters: DiscoveryFilter,
+  discoveryRunId: string,
+  options?: {
+    /** Max results to export (default 100, max 10,000) */
+    size?: number;
+    /** Webhook base URL override (default: https://admin.outsignal.ai) */
+    webhookBaseUrl?: string;
+    extras?: Record<string, unknown>;
+  },
+): Promise<AiArkExportResult> {
+  const apiKey = getApiKey();
+
+  const size = Math.min(options?.size ?? 100, 10_000);
+  const webhookBaseUrl = options?.webhookBaseUrl ?? "https://admin.outsignal.ai";
+  const webhookUrl = `${webhookBaseUrl}/api/webhooks/aiark/export?runId=${encodeURIComponent(discoveryRunId)}`;
+
+  // Build the same filter body as the search endpoint, plus the webhook URL
+  const body = buildRequestBody(filters, 0, size, options?.extras);
+  body.webhook = webhookUrl;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let raw: unknown;
+
+  try {
+    const response = await fetch(AIARK_PEOPLE_EXPORT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "accept": "application/json",
+        [AUTH_HEADER_NAME]: apiKey,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.status === 402 || response.status === 403) {
+      throw new CreditExhaustionError("aiark", response.status, "AI Ark export credits exhausted");
+    }
+
+    if (response.status === 401) {
+      console.warn(
+        `AI Ark export auth failed (${response.status}) — verify AIARK_API_KEY env var.`,
+      );
+      throw new Error(`AI Ark export auth error: HTTP ${response.status}`);
+    }
+
+    if (response.status === 429) {
+      throw Object.assign(new Error("AI Ark export rate limit exceeded"), { status: 429 });
+    }
+
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(`AI Ark export unexpected error: HTTP ${response.status}`),
+        { status: response.status },
+      );
+    }
+
+    raw = await response.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
+
+  const parsed = AiArkExportResponseSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn("[aiark-export] Response did not match expected schema:", parsed.error.message);
+    throw new Error(`AI Ark export: unexpected response shape — ${parsed.error.message}`);
+  }
+
+  const data = parsed.data;
+
+  console.log(
+    `[aiark-export] Submitted export: trackId=${data.trackId}, state=${data.state}, ` +
+    `estimated=${data.statistics?.total ?? 0}, webhook=${webhookUrl}`,
+  );
+
+  return {
+    trackId: data.trackId,
+    totalEstimate: data.statistics?.total ?? 0,
+    state: data.state,
+  };
 }
 
 /** Singleton instance for use throughout the application. */

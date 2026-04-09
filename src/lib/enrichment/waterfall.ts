@@ -554,8 +554,6 @@ import { bulkEnrichPerson, bulkEnrichByPersonId } from "./providers/prospeo";
 import { bulkFindEmail } from "./providers/findymail";
 import { bulkVerifyEmails } from "@/lib/verification/bounceban";
 import { findEmail as kittFindEmail } from "@/lib/verification/kitt";
-import { aiarkEmailFinderByTrackId } from "./providers/aiark-person";
-
 /**
  * Input for batch enrichment — one entry per person.
  */
@@ -642,12 +640,21 @@ export async function enrichEmailBatch(
   // Map of personId → found email (null means not found yet)
   const foundEmails = new Map<string, string | null>();
 
-  // People who already have emails (from AI Ark) go straight to verification
+  // People who already have emails go to verification — EXCEPT aiark-export
+  // sourced people whose emails are pre-verified by AI Ark (BounceBan).
   const alreadyHaveEmail: Array<{ personId: string; email: string }> = [];
   const needEmail: PersonForEnrichment[] = [];
 
+  // Track people whose emails were found by AI Ark export (skip BounceBan for these)
+  const aiarkVerifiedPersonIds = new Set<string>();
+
   for (const person of people) {
     if (person.email) {
+      // AI Ark export-sourced people with emails are pre-verified by BounceBan
+      // on AI Ark's side — skip our own verification entirely
+      if (person.discoverySource === "aiark-export") {
+        aiarkVerifiedPersonIds.add(person.personId);
+      }
       alreadyHaveEmail.push({ personId: person.personId, email: person.email });
       foundEmails.set(person.personId, person.email);
     } else {
@@ -664,24 +671,21 @@ export async function enrichEmailBatch(
   // Step 0: Source-first enrichment — use discovery platform IDs directly
   //
   // People discovered via Prospeo have a person_id that allows direct lookup
-  // (much higher hit rate than generic name/LinkedIn matching). AI Ark people
-  // have a trackId (expires in 6 hours, one-time use) for email-finder.
+  // (much higher hit rate than generic name/LinkedIn matching).
   //
-  // AI Ark emails are pre-verified by BounceBan — skip our own verification.
+  // AI Ark export-sourced people already have emails from the export endpoint
+  // (pre-verified by BounceBan). They skip this step entirely — handled above.
+  //
   // Prospeo emails are NOT pre-verified — they go through BounceBan below.
   // -------------------------------------------------------------------------
   const prospeoSourced: Array<{ personId: string; prospeoPersonId: string }> = [];
-  const aiarkSourced: Array<{ personId: string; aiarkTrackId: string }> = [];
-  // Track people whose emails were found by AI Ark (skip BounceBan for these)
-  const aiarkVerifiedPersonIds = new Set<string>();
 
   for (const person of needEmail) {
     if (!person.sourceId) continue;
     if (person.discoverySource === "prospeo") {
       prospeoSourced.push({ personId: person.personId, prospeoPersonId: person.sourceId });
-    } else if (person.discoverySource === "aiark") {
-      aiarkSourced.push({ personId: person.personId, aiarkTrackId: person.sourceId });
     }
+    // AI Ark export people already have emails populated — no source-first needed
   }
 
   // --- Prospeo source-first: bulk enrich by person_id ---
@@ -728,57 +732,6 @@ export async function enrichEmailBatch(
           console.error(`[waterfall-batch] Prospeo source-first error:`, err);
         }
       }
-    }
-  }
-
-  // --- AI Ark source-first: email-finder by trackId ---
-  // trackId expires in 6 hours and is one-time use. Enrichment runs within
-  // minutes of promotion, well within the expiry window.
-  // AI Ark emails are pre-verified by BounceBan — skip our own verification.
-  if (aiarkSourced.length > 0) {
-    const aiarkFailures0 = breaker.consecutiveFailures.get("aiark") ?? 0;
-    if (aiarkFailures0 < CIRCUIT_BREAKER_THRESHOLD) {
-      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
-
-      console.log(`[waterfall-batch] AI Ark source-first (trackId email-finder): ${aiarkSourced.length} people`);
-      const aiarkLimiter = createBatchLimiter(5); // Respect AI Ark 5 req/s limit
-
-      const aiarkPromises = aiarkSourced.map((entry) =>
-        aiarkLimiter.run(async () => {
-          try {
-            const result = await aiarkEmailFinderByTrackId(entry.aiarkTrackId, entry.personId);
-            addCost("aiark", result.costUsd);
-            if (result.costUsd > 0) {
-              await incrementDailySpend("aiark", result.costUsd);
-            }
-            await recordEnrichment({
-              entityId: entry.personId,
-              entityType: "person",
-              provider: "aiark",
-              status: "success",
-              fieldsWritten: result.email ? ["email"] : [],
-              costUsd: result.costUsd,
-              rawResponse: result.rawResponse,
-              workspaceSlug,
-            });
-
-            if (result.email) {
-              foundEmails.set(entry.personId, result.email.trim() || null);
-              // AI Ark emails are pre-verified by BounceBan — mark for skip
-              aiarkVerifiedPersonIds.add(entry.personId);
-            }
-          } catch (err) {
-            if (isCreditExhaustion(err)) {
-              console.warn(`[waterfall-batch] AI Ark email-finder credit exhaustion for ${entry.personId}`);
-            } else {
-              console.error(`[waterfall-batch] AI Ark email-finder error for ${entry.personId}:`, err);
-            }
-          }
-        }),
-      );
-
-      await Promise.allSettled(aiarkPromises);
-      breaker.consecutiveFailures.set("aiark", 0);
     }
   }
 
