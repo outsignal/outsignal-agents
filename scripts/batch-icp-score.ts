@@ -8,6 +8,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { scorePersonIcp } from "../src/lib/icp/scorer";
+import { prefetchDomains } from "../src/lib/icp/crawl-cache";
 
 const prisma = new PrismaClient();
 
@@ -68,6 +69,19 @@ async function main() {
     await prisma.$disconnect();
     return;
   }
+
+  // Prefetch company website crawls to avoid duplicate Firecrawl calls during scoring
+  const unscoredPeople = await prisma.person.findMany({
+    where: { id: { in: unscored.map((u) => u.personId) } },
+    select: { id: true, companyDomain: true },
+  });
+
+  const domains = unscoredPeople.map((p) => p.companyDomain);
+  console.log(`Prefetching website crawls for ${new Set(domains.filter(Boolean)).size} unique domains...`);
+  const prefetchResult = await prefetchDomains(domains);
+  console.log(
+    `Prefetch complete: ${prefetchResult.cached} cached, ${prefetchResult.crawled} crawled, ${prefetchResult.failed} failed`
+  );
 
   const unscoredIds = unscored.map((u) => u.personId);
   let scored = 0;
