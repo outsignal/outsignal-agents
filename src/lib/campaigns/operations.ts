@@ -14,6 +14,7 @@
 import { prisma } from "@/lib/db";
 import { validateListForChannel, runDataQualityPreCheck, type DataQualityReport } from "@/lib/campaigns/list-validation";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
+import { auditTargetListForChannel, type ChannelValidationResult } from "@/lib/validation/channel-gate";
 import { detectOverlaps, type OverlapResult } from "@/lib/campaigns/overlap-detection";
 
 // ---------------------------------------------------------------------------
@@ -484,6 +485,7 @@ export interface PublishForReviewResult {
   warnings?: {
     dataQuality?: DataQualityReport;
     overlaps?: OverlapResult[];
+    channelGate?: ChannelValidationResult;
   };
 }
 
@@ -620,6 +622,25 @@ export async function publishForReview(id: string): Promise<PublishForReviewResu
     excludeCampaignId: id,
   });
 
+  // Non-blocking: verification-aware channel gate audit (BL-009)
+  // Soft gate — warns about unverified/invalid emails but does not block publishing.
+  const channelForGate = channels.includes("email") && channels.includes("linkedin")
+    ? "both" as const
+    : channels.includes("linkedin")
+      ? "linkedin" as const
+      : "email" as const;
+  const channelGateResult = await auditTargetListForChannel(
+    current.targetListId,
+    channelForGate,
+  );
+  if (channelGateResult.rejected.length > 0) {
+    console.warn(
+      `[publishForReview] campaign=${id} channel-gate audit: ` +
+        `${channelGateResult.rejected.length} of ${personIds.length} people ` +
+        `fail verification requirements (soft warning, not blocking)`,
+    );
+  }
+
   // All checks passed — publish
   const campaign = await prisma.campaign.update({
     where: { id },
@@ -636,6 +657,9 @@ export async function publishForReview(id: string): Promise<PublishForReviewResu
   }
   if (overlaps.length > 0) {
     warnings.overlaps = overlaps;
+  }
+  if (channelGateResult.rejected.length > 0) {
+    warnings.channelGate = channelGateResult;
   }
 
   return {

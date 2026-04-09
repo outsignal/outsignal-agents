@@ -18,6 +18,7 @@ import { scorePersonIcp } from "@/lib/icp/scorer";
 import { getListExportReadiness } from "@/lib/export/verification-gate";
 import { getClientForWorkspace } from "@/lib/workspaces";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
+import { validatePeopleForChannel } from "@/lib/validation/channel-gate";
 import type { TargetList, Person, Workspace } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -390,6 +391,28 @@ export async function addPeopleToList(
 
     validPersonIds = valid.map((p) => p.id);
     rejectedCount = rejected.length;
+
+    // --- Verification-aware gate (BL-009) ---
+    // After structural checks pass, validate email verification status for
+    // email campaigns. This catches people with null/invalid/unverified emails.
+    if (validPersonIds.length > 0 && channels.includes("email")) {
+      const channelType = channels.includes("linkedin") ? "both" as const : "email" as const;
+      const verificationResult = await validatePeopleForChannel(
+        validPersonIds,
+        channelType,
+      );
+      if (verificationResult.rejected.length > 0) {
+        // Merge verification rejections into the overall rejection count
+        for (const { personId, reason } of verificationResult.rejected) {
+          const matchedPerson = people.find((p) => p.id === personId);
+          if (matchedPerson) {
+            rejected.push({ person: matchedPerson, reason });
+          }
+        }
+        validPersonIds = verificationResult.accepted;
+        rejectedCount += verificationResult.rejected.length;
+      }
+    }
 
     if (rejectedCount > 0) {
       // Summarise rejections: aggregate reasons across all people.
