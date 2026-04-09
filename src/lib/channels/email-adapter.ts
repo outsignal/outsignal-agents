@@ -352,8 +352,12 @@ export class EmailAdapter implements ChannelAdapter {
       const steps = JSON.parse(campaign.emailSequence) as Array<{
         position?: number;
         subjectLine?: string;
+        subjectVariantB?: string;
         body?: string;
+        bodyText?: string;
+        bodyHtml?: string;
         delayDays?: number;
+        notes?: string;
       }>;
 
       return steps.map((step, index) => ({
@@ -362,7 +366,8 @@ export class EmailAdapter implements ChannelAdapter {
         type: "email",
         delayDays: step.delayDays ?? 0,
         subjectLine: step.subjectLine ?? undefined,
-        bodyHtml: step.body ?? undefined,
+        bodyHtml: step.bodyHtml ?? step.body ?? step.bodyText ?? undefined,
+        messageBody: step.bodyText ?? step.body ?? undefined,
       }));
     } catch {
       return [];
