@@ -245,6 +245,7 @@ export async function verifyEmail(
       data: {
         enrichmentData: JSON.stringify({
           ...existing,
+          email,
           emailVerificationStatus: status,
           emailVerifiedAt: new Date().toISOString(),
           emailVerificationProvider: "bounceban",
@@ -484,7 +485,7 @@ export async function bulkVerifyEmails(
           rawResponse: item,
         });
 
-        // Persist verification result on Person.enrichmentData
+        // Persist verification result + email on Person.enrichmentData
         const person = await prisma.person.findUnique({ where: { id: personId } });
         const existing = person?.enrichmentData
           ? (() => { try { return JSON.parse(person.enrichmentData); } catch { return {}; } })()
@@ -494,6 +495,7 @@ export async function bulkVerifyEmails(
           data: {
             enrichmentData: JSON.stringify({
               ...existing,
+              email: item.email,
               emailVerificationStatus: status,
               emailVerifiedAt: new Date().toISOString(),
               emailVerificationProvider: "bounceban",

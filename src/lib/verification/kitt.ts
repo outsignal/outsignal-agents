@@ -336,7 +336,7 @@ export async function verifyEmail(
       rawResponse: raw,
     });
 
-    // Persist verification result on Person.enrichmentData
+    // Persist verification result + email on Person.enrichmentData
     const person = await prisma.person.findUnique({ where: { id: personId } });
     const existing = person?.enrichmentData
       ? JSON.parse(person.enrichmentData)
@@ -346,6 +346,7 @@ export async function verifyEmail(
       data: {
         enrichmentData: JSON.stringify({
           ...existing,
+          email,
           emailVerificationStatus: status,
           emailVerifiedAt: new Date().toISOString(),
           emailVerifiedBy: "kitt",

@@ -947,49 +947,55 @@ export async function enrichEmailBatch(
       }
 
       // Verified valid — merge person data
-      const person = people.find((p) => p.personId === entry.personId);
-      const personData: Parameters<typeof mergePersonData>[1] = {
-        email: entry.email,
-      };
+      try {
+        const personData: Parameters<typeof mergePersonData>[1] = {
+          email: entry.email,
+        };
 
-      const fieldsWritten = await mergePersonData(entry.personId, personData);
-      enriched++;
-      verified++;
+        const fieldsWritten = await mergePersonData(entry.personId, personData);
+        enriched++;
+        verified++;
 
-      // Run normalizers inline
-      const updatedPerson = await prisma.person.findUnique({ where: { id: entry.personId } });
-      if (updatedPerson?.jobTitle) {
-        try {
-          const titleResult = await classifyJobTitle(updatedPerson.jobTitle);
-          if (titleResult) {
-            const existing = updatedPerson.enrichmentData
-              ? (() => { try { return JSON.parse(updatedPerson.enrichmentData) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
-              : {};
-            await prisma.person.update({
-              where: { id: entry.personId },
-              data: {
-                jobTitle: titleResult.canonical,
-                enrichmentData: JSON.stringify({ ...existing, seniority: titleResult.seniority }),
-              },
-            });
+        // Run normalizers inline
+        const updatedPerson = await prisma.person.findUnique({ where: { id: entry.personId } });
+        if (updatedPerson?.jobTitle) {
+          try {
+            const titleResult = await classifyJobTitle(updatedPerson.jobTitle);
+            if (titleResult) {
+              const existing = updatedPerson.enrichmentData
+                ? (() => { try { return JSON.parse(updatedPerson.enrichmentData) as Record<string, unknown>; } catch { return {} as Record<string, unknown>; } })()
+                : {};
+              await prisma.person.update({
+                where: { id: entry.personId },
+                data: {
+                  jobTitle: titleResult.canonical,
+                  enrichmentData: JSON.stringify({ ...existing, seniority: titleResult.seniority }),
+                },
+              });
+            }
+          } catch (err) {
+            console.warn(`[waterfall-batch] classifyJobTitle failed for ${entry.personId}:`, err);
           }
-        } catch (err) {
-          console.warn(`[waterfall-batch] classifyJobTitle failed for ${entry.personId}:`, err);
         }
-      }
 
-      if (updatedPerson?.company && fieldsWritten.includes("company")) {
-        try {
-          const normalizedName = await classifyCompanyName(updatedPerson.company);
-          if (normalizedName) {
-            await prisma.person.update({
-              where: { id: entry.personId },
-              data: { company: normalizedName },
-            });
+        if (updatedPerson?.company && fieldsWritten.includes("company")) {
+          try {
+            const normalizedName = await classifyCompanyName(updatedPerson.company);
+            if (normalizedName) {
+              await prisma.person.update({
+                where: { id: entry.personId },
+                data: { company: normalizedName },
+              });
+            }
+          } catch (err) {
+            console.warn(`[waterfall-batch] classifyCompanyName failed for ${entry.personId}:`, err);
           }
-        } catch (err) {
-          console.warn(`[waterfall-batch] classifyCompanyName failed for ${entry.personId}:`, err);
         }
+      } catch (err) {
+        // Catch merge failures (e.g. unique constraint on email) so one failure
+        // doesn't crash the entire batch — remaining people still get processed.
+        console.error(`[waterfall-batch] Failed to merge email ${entry.email} for ${entry.personId}:`, err);
+        failed++;
       }
     }
   }
