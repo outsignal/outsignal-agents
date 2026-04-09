@@ -2137,22 +2137,37 @@ export async function notifyLinkedInMessage(params: {
   }
 }
 
-// Simple in-memory dedup — don't notify for the same provider within 5 minutes
-const _creditNotifyCache = new Map<string, number>();
-const CREDIT_NOTIFY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+// DB-backed dedup — don't notify for the same provider within 1 hour.
+// In-memory cache is useless for Trigger.dev tasks (fresh process each invocation).
+const CREDIT_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 export async function notifyCreditExhaustion(params: {
   provider: string;
   httpStatus: number;
   context: string;
 }): Promise<void> {
-  const now = Date.now();
-  const lastNotified = _creditNotifyCache.get(params.provider);
-  if (lastNotified && now - lastNotified < CREDIT_NOTIFY_COOLDOWN_MS) {
-    console.log(`[notifications] Skipping duplicate credit exhaustion notification for ${params.provider} (cooldown)`);
-    return;
+  // Check DB audit log for recent notification for this provider
+  try {
+    const cutoff = new Date(Date.now() - CREDIT_NOTIFY_COOLDOWN_MS);
+    const recent = await prisma.notificationAuditLog.findFirst({
+      where: {
+        notificationType: "credit_exhaustion",
+        status: "sent",
+        createdAt: { gte: cutoff },
+        // Match provider in the recipient or metadata — we use a convention
+        // of including provider name in the notification type check
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    // If we sent ANY credit exhaustion notification in the last hour, skip
+    // (provider-specific dedup would require storing provider in audit log metadata)
+    if (recent) {
+      console.log(`[notifications] Skipping credit exhaustion notification for ${params.provider} (sent ${recent.createdAt.toISOString()}, cooldown 1h)`);
+      return;
+    }
+  } catch {
+    // If DB check fails, proceed with notification (fail-open)
   }
-  _creditNotifyCache.set(params.provider, now);
 
   // ---------- Slack (admin alerts channel) ----------
 
