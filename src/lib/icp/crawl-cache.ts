@@ -123,6 +123,17 @@ async function getCrawlMarkdownInner(
     return null;
   }
 
+  // Sanitise: strip null bytes (0x00) and other control chars that PostgreSQL
+  // UTF-8 text columns reject with error 22021. Some crawled websites return
+  // binary content, corrupted HTML, or PDF-served pages whose extracted text
+  // contains literal \0 characters. Writing those to Company.crawlMarkdown
+  // crashes the whole scoring run for the affected batch. Strip them here
+  // once, so both the update and upsert paths below are safe.
+  //
+  // Strips: NUL (0x00), plus other C0 control chars except tab/newline/CR
+  // which are legitimate whitespace and safe for Postgres text columns.
+  markdown = markdown.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+
   // Store result in Company model
   if (company) {
     await prisma.company.update({
