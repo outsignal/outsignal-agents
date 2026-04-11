@@ -110,12 +110,25 @@ Return a score from 0-100 and 1-3 sentence reasoning. Set confidence based on da
 - "low": Only 1 signal type or very sparse data`;
 }
 
+export interface ScorePersonIcpOptions {
+  /** Bypass the crawl cache and re-scrape the company homepage */
+  forceRecrawl?: boolean;
+  /**
+   * When false, scores returned with confidence="low" are NOT persisted
+   * to PersonWorkspace. The caller still receives the result but the DB
+   * remains untouched so the lead can be re-scored later once upstream
+   * data quality improves. Defaults to true (existing behaviour).
+   */
+  persistLowConfidence?: boolean;
+}
+
 /**
  * Score a person's ICP fit for a given workspace.
  *
  * @param personId - Person record ID
  * @param workspaceSlug - Workspace slug (e.g. "rise")
- * @param forceRecrawl - Force re-scraping the company homepage (bypass crawl cache)
+ * @param forceRecrawl - Force re-scraping (legacy positional arg; prefer options)
+ * @param options - Scoring options including confidence persistence gate
  * @returns ICP score result with 0-100 score, reasoning, and confidence
  * @throws If workspace has no icpCriteriaPrompt configured
  */
@@ -123,7 +136,10 @@ export async function scorePersonIcp(
   personId: string,
   workspaceSlug: string,
   forceRecrawl?: boolean,
-): Promise<IcpScoreResult> {
+  options?: ScorePersonIcpOptions,
+): Promise<IcpScoreResult & { persisted: boolean }> {
+  const persistLowConfidence = options?.persistLowConfidence ?? true;
+  const effectiveForceRecrawl = options?.forceRecrawl ?? forceRecrawl ?? false;
   // 1. Fetch the person with their workspace membership
   const person = await prisma.person.findUniqueOrThrow({
     where: { id: personId },
@@ -148,7 +164,7 @@ export async function scorePersonIcp(
 
   // 4. Get company homepage markdown (from cache or Firecrawl)
   const websiteMarkdown = person.companyDomain
-    ? await getCrawlMarkdown(person.companyDomain, forceRecrawl)
+    ? await getCrawlMarkdown(person.companyDomain, effectiveForceRecrawl)
     : null;
 
   // 5. Fetch company record for enrichment data (headcount, industry, etc.)
@@ -178,11 +194,13 @@ export async function scorePersonIcp(
     websiteMarkdown,
   });
 
-  // 7. Call Claude Haiku via generateObject
+  // 7. Call Claude Haiku via generateObject — pinned to temperature: 0
+  //    for deterministic scoring on identical input.
   let result: IcpScoreResult;
   try {
     const { object } = await generateObject({
       model: anthropic("claude-haiku-4-5-20251001"),
+      temperature: 0,
       schema: IcpScoreSchema,
       system: workspace.icpCriteriaPrompt,
       prompt: scoringPrompt,
@@ -198,24 +216,31 @@ export async function scorePersonIcp(
     );
   }
 
-  // 8. Persist score on PersonWorkspace (workspace-scoped, not Person)
-  await prisma.personWorkspace.update({
-    where: {
-      personId_workspace: {
-        personId,
-        workspace: workspaceSlug,
-      },
-    },
-    data: {
-      icpScore: result.score,
-      icpReasoning: result.reasoning,
-      icpConfidence: result.confidence,
-      icpScoredAt: new Date(),
-    },
-  });
+  // 8. Persist score on PersonWorkspace — but skip persistence for
+  //    low-confidence results when the caller opts out. This preserves
+  //    the null icpScore so the lead gets retried once upstream data
+  //    (crawl content, title, company info) improves.
+  const shouldPersist = persistLowConfidence || result.confidence !== "low";
 
-  // 9. Return the result
-  return result;
+  if (shouldPersist) {
+    await prisma.personWorkspace.update({
+      where: {
+        personId_workspace: {
+          personId,
+          workspace: workspaceSlug,
+        },
+      },
+      data: {
+        icpScore: result.score,
+        icpReasoning: result.reasoning,
+        icpConfidence: result.confidence,
+        icpScoredAt: new Date(),
+      },
+    });
+  }
+
+  // 9. Return the result with persistence flag
+  return { ...result, persisted: shouldPersist };
 }
 
 /**
