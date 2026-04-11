@@ -764,6 +764,9 @@ export const leadsTools = {
         discoverySource: "prospeo",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
+        // rawResponses: parallel array of the same raw response object so the
+        // full Prospeo blob (and embedded sourceId) survives staging (BL-027).
+        rawResponses: passed.map(() => result.rawResponse),
       });
       return {
         source: "prospeo",
@@ -882,6 +885,9 @@ export const leadsTools = {
         discoverySource: "aiark",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
+        // rawResponses: parallel array of the same raw response object so the
+        // full AI Ark blob (and embedded sourceId) survives staging (BL-027).
+        rawResponses: passed.map(() => result.rawResponse),
       });
       return {
         source: "aiark",
@@ -1007,6 +1013,9 @@ export const leadsTools = {
         discoverySource: "apify-leads-finder",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
+        // rawResponses: parallel array of the same raw response object so the
+        // full Apify blob survives staging for debugging/audit (BL-027).
+        rawResponses: passed.map(() => result.rawResponse),
       });
       return {
         source: "apify-leads-finder",
@@ -1139,6 +1148,9 @@ export const leadsTools = {
         workspaceSlug: params.workspaceSlug,
         searchQuery: params.url,
         discoveryRunId: params.discoveryRunId,
+        // rawResponses: parallel array of the same raw response object so the
+        // Firecrawl blob survives staging for debugging/audit (BL-027).
+        rawResponses: passed.map(() => result.rawResponse),
       });
       return {
         source: "firecrawl",
