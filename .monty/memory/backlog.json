@@ -106,10 +106,10 @@
       "type": "bug",
       "severity": "critical",
       "priority": 2,
-      "status": "open",
+      "status": "done",
       "createdAt": "2026-04-09T12:30:00.000Z",
-      "updatedAt": "2026-04-11T17:10:00Z",
-      "notes": "RECURRING BUG — same pattern as yesterday's BL-004.\n\nMonty queued 39 enrichment jobs for the 3,532 placeholder-cleanup people (Lime + YoopKnows). The Trigger.dev enrichment-processor task processed 1 job (31 people, status=complete) then PAUSED the remaining 19 visible jobs (each 100 people, all status=paused). Zero jobs currently running.\n\nAll 20 jobs created today at 09:32-09:33 UTC have workspaceSlug=null — they're not tagged to Lime or YoopKnows specifically.\n\nThis blocks:\n- Lime E2 and E3 email campaigns (350 people need real emails before re-adding to lists)\n- YoopKnows E2 campaign (1,678 people need real emails)\n- Any future enrichment work\n\nInvestigate: (1) Why does the processor pause after 1 job? Rate limit? Error? Concurrency issue? (2) Check Trigger.dev logs for the enrichment-processor task. (3) The jobs have workspaceSlug=null — is the processor filtering by workspace and skipping null? (4) Is there a batch/concurrency limit that causes auto-pause? (5) Yesterday's BL-004 had the same pattern — paused at 140/400. This is the same root cause.\n\nFix required: The enrichment processor must process ALL queued jobs sequentially without pausing. If a job fails, log the error and move to the next job — don't pause the entire queue.\n\n---\nUPDATE 2026-04-11: Not re-verified this session. The BL-027 rawResponse fix addressed a different root cause (stale working-tree fix had been sitting uncommitted since session 50, only Serper Maps call site made it into git). Since enrichment processor issues may have been related, this needs explicit re-verification before closing. Next step: queue a small test enrichment job post-BL-027 commit and watch for stalls. Priority bumped to P2 since we haven't observed stalling in active use since the fix landed."
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "RECURRING BUG — same pattern as yesterday's BL-004.\n\nMonty queued 39 enrichment jobs for the 3,532 placeholder-cleanup people (Lime + YoopKnows). The Trigger.dev enrichment-processor task processed 1 job (31 people, status=complete) then PAUSED the remaining 19 visible jobs (each 100 people, all status=paused). Zero jobs currently running.\n\nAll 20 jobs created today at 09:32-09:33 UTC have workspaceSlug=null — they're not tagged to Lime or YoopKnows specifically.\n\nThis blocks:\n- Lime E2 and E3 email campaigns (350 people need real emails before re-adding to lists)\n- YoopKnows E2 campaign (1,678 people need real emails)\n- Any future enrichment work\n\nInvestigate: (1) Why does the processor pause after 1 job? Rate limit? Error? Concurrency issue? (2) Check Trigger.dev logs for the enrichment-processor task. (3) The jobs have workspaceSlug=null — is the processor filtering by workspace and skipping null? (4) Is there a batch/concurrency limit that causes auto-pause? (5) Yesterday's BL-004 had the same pattern — paused at 140/400. This is the same root cause.\n\nFix required: The enrichment processor must process ALL queued jobs sequentially without pausing. If a job fails, log the error and move to the next job — don't pause the entire queue.\n\n---\nUPDATE 2026-04-11: Not re-verified this session. The BL-027 rawResponse fix addressed a different root cause (stale working-tree fix had been sitting uncommitted since session 50, only Serper Maps call site made it into git). Since enrichment processor issues may have been related, this needs explicit re-verification before closing. Next step: queue a small test enrichment job post-BL-027 commit and watch for stalls. Priority bumped to P2 since we haven't observed stalling in active use since the fix landed.\n\nVERIFIED FIXED (2026-04-10): Post-deploy runs on 2026-04-09 16:24–18:00 UTC processed 31 enrichment jobs across 1210-solutions, lime-recruitment, yoopknows — all 31 complete, 4,357/4,357 entities processed, zero paused. Root cause was workspaceSlug=null on job creation (not processor logic). Pre-deploy broken window had 37 cancelled jobs all with workspaceSlug=null. Bulk mode + fallback to individual processing in queue.ts works correctly. (Recovered from stash@{0} 2026-04-11.) Closed."
     },
     {
       "id": "BL-011",
@@ -297,6 +297,83 @@
       "createdAt": "2026-04-11T19:00:00Z",
       "updatedAt": "2026-04-11T19:00:00Z",
       "notes": "PROBLEM: .git/hooks/pre-commit hardcodes /Users/jjay/.local/bin/trufflehog as the path to the secret scanner. Any teammate (or any new machine setup) that installs the hook via docs/dev-setup.md will hit 'command not found' on their first commit because trufflehog lives elsewhere on their machine.\n\nDISCOVERED: 2026-04-11 when the pre-commit typecheck hook (F10 / batch 1 item A) was added on top of the existing trufflehog gate. The hardcoded path pre-dated this work and wasn't introduced by it, but the new hook installation docs surfaced the issue.\n\nFIX: In .git/hooks/pre-commit, swap the hardcoded path for a command lookup:\n\n  TRUFFLEHOG_BIN=\"$(command -v trufflehog 2>/dev/null || true)\"\n  if [ -z \"$TRUFFLEHOG_BIN\" ]; then\n    echo \"[pre-commit] trufflehog not found on PATH — skipping secret scan\"\n  else\n    \"$TRUFFLEHOG_BIN\" git file://. ...\n  fi\n\nThis gracefully skips the scan if trufflehog isn't installed (prints a warning rather than blocking the commit). Anyone with it installed gets the scan automatically regardless of where it lives on their machine.\n\nEFFORT: 2 minutes. Single-file edit.\n\nPRIORITY: P3. Not Monday-blocking. Not currently biting anyone because only one machine uses this repo. File it now so it doesn't evaporate."
+    },
+    {
+      "id": "BL-031",
+      "title": "Evaluate runner.ts architecture after 2026-04-11 API-path scoring shift",
+      "type": "improvement",
+      "severity": null,
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "ARCHITECTURE REVIEW, NOT A FIX TICKET. runner.ts currently imports from @ai-sdk/anthropic and uses generateText() directly for all specialist agent calls. On 2026-04-11 ICP scoring was moved to the Anthropic API path deliberately (determinism > Max plan quota). Question: is the API path the right architecture for specialist agents too, or is there a case for moving some back to CLI spawn?\n\nHISTORICAL CONTEXT: The stash BL-025 (recovered from stash@{0} 2026-04-11) originally framed the API path as a CRITICAL bug to rewrite back to CLI spawn. That framing is now STALE because the 2026-04-11 scoring shift made the API path a deliberate architectural choice. BL-025 assumed Max plan quota optimisation was the priority; the 2026-04-11 decision inverted that in favour of determinism.\n\nVALID OUTCOMES:\n(a) Decided API path is fine for specialists too — close this ticket, no follow-up.\n(b) Decided to rewrite some specialists back to CLI spawn — file a follow-up fix ticket with the specific agents and reasoning.\n(c) Hybrid — e.g. ICP scoring on API, Nova creative agents on CLI for better memory-context ergonomics.\n\nSCOPE: ~1 hour investigation producing a short decision doc at docs/architecture/runner-path-decision-2026-04-11.md. Review: token costs per agent category, determinism needs per agent, session-pooling needs, AgentRun audit trail compatibility.\n\nDO NOT ship implementation work in this ticket — the ticket IS the decision doc. Any follow-up implementation goes in a separate ticket."
+    },
+    {
+      "id": "BL-032",
+      "title": "Smoke-test 6 dormant specialist agent wrappers (zero 30-day runs)",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "DISCOVERY TICKET, NOT FIX-EVERYTHING. AgentRun DB query on 2026-04-11 confirmed 6 specialist wrappers have ZERO invocations in the last 30 days: deliverability, onboarding, intelligence, monty-dev, monty-qa, monty-security. Writer has 40 runs, leads has 34, campaign/research/orchestrator have a few each. The dormant wrappers will likely fail validation on first real invocation (classic v10-era rot pattern — schema drift, tool renames, prompt path changes, memory-file moves all accumulate silently when agents aren't exercised).\n\nSCOPE: ONE invocation per wrapper with mocked inputs. Use the minimum task content required to reach the first tool call or return path. Record outcome.\n\nFOR EACH WRAPPER, CLASSIFY AS:\n(a) HEALTHY → ticket done for that wrapper, no further action.\n(b) CONCRETE BREAKAGE → file a follow-up fix ticket with the specific error, file, and minimal reproduction.\n(c) GENUINELY OBSOLETE → delete the wrapper + tests + doc references, note in this ticket's closure.\n\nKEEP TIGHTLY SCOPED. Do not attempt to fix breakage inside this ticket — that dilutes the classification signal. Each breakage gets its own ticket with its own priority. Total effort for the discovery phase: ~2 hours."
+    },
+    {
+      "id": "BL-033",
+      "title": "Reply suggestion pipeline: investigate 2-day gap in writer-via-trigger-task runs",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "AgentRun DB query on 2026-04-11 shows writer agent via trigger-task (source: trigger/generate-suggestion.ts) last ran 2026-04-09, 2 days ago. Writer has 40 runs/30d via this path so the cadence is normally 1-2/day. Gap of 2 days is atypical.\n\nCUSTOMER IMPACT: This is customer-facing. If reply suggestion is silently broken, customers are missing AI reply suggestions in their inbox UI. Silent failure on a customer-facing feature is high enough to investigate even at P3.\n\nDIAGNOSTIC SCOPE:\n1. Check Trigger.dev dashboard — is generate-suggestion.ts still scheduled and executing? Any errors in the task logs?\n2. Cross-reference Reply table — are new reply rows being inserted in the 2-day window? If there are NO new replies to process, the gap is benign.\n3. If there are new replies but the task isn't firing, check the task's trigger condition (queue subscription, cron, or event source).\n\nFOUR ROOT-CAUSE POSSIBILITIES:\n(a) No replies to process (benign) — close ticket.\n(b) Task paused in Trigger.dev dashboard — unpause, note why it was paused.\n(c) Task erroring silently — file separate fix ticket with the concrete error.\n(d) Something else (queue backlog, subscription broken, etc.) — file separate fix ticket.\n\nOUTCOME: Close if benign, OR file a separate fix ticket with concrete breakage identified. Do NOT attempt to fix inside this ticket — the ticket IS the diagnosis."
+    },
+    {
+      "id": "BL-034",
+      "title": "LinkedIn sequence A/B variant support — variantKey on CampaignSequenceRule + LinkedInAction",
+      "type": "feature",
+      "severity": null,
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "Platform gap blocking proper A/B on LinkedIn sequence steps. Writer emits multiple variants at the same position (e.g. BlankTag C1 had 6 at position 2), but evaluateSequenceRules() in src/lib/linkedin/sequencing.ts fires ALL matching rules — no variant concept. Decision 2026-04-10: keep writer as-is, build platform feature. BlankTag C1 shipping via sibling-campaign workaround this session as first customer. Full scope in memory/linkedin-ab-variants.md.\n\nSCOPE:\n1. Add variantKey String? + variantWeight Int @default(1) to CampaignSequenceRule and LinkedInAction. Composite unique (workspaceSlug, campaignName, position, variantKey).\n2. evaluateSequenceRules() groups by position, picks one variant per lead via deterministic hash (hash(personId + campaignName + position) % sum(weights)). Tag emitted LinkedInAction with winning variantKey.\n3. HARD UNKNOWN — spike first: link Reply → LinkedInAction for per-variant attribution. Today Reply attributes to sequenceStep (int), not specific action. Reply-matching uses LinkedInConversation not action history. Without this, variant tag is unattributable. Biggest risk in estimate; spike before committing timeline.\n4. Extend src/app/api/analytics/campaigns/[id]/steps/route.ts to group by (sequenceStep, variantKey).\n5. Update writer schema + prompt to emit variantKey/variantWeight and CAP AT 3 VARIANTS per position (sample-size reality — 6 is too many).\n6. Migration path for existing in-flight campaigns (specifically BlankTag C1's 3 sibling clones created via workaround — migrate to single parent with variants on C2, not C1).\n\nFIRST CUSTOMER: BlankTag C1 (cmmwei70q0007zxgpvyhwwmua) shipping as sibling workaround this session. C2 should use the real feature once shipped.\n\nCURRENT WORKAROUND: BlankTag C1 sibling-clone deploy (2026-04-10) — 3 clone campaigns 2C/2D/2E sharding the 468-lead pool into 3x156 non-overlapping slices, each serving one variant. See .nova/memory/blanktag/campaigns.md for deploy record. This workaround has ~94 days runway (31 days per clone at 5 connect/day for sender James) before the pool exhausts. Real feature must ship before then.\n\nHARD UNKNOWN — spike first: link Reply → LinkedInAction for per-variant attribution. Today Reply attributes to sequenceStep (int), not specific action. Biggest risk in estimate; spike before committing timeline.\n\nMONTY: NOT YET TRIGGERED. User has explicitly deferred kicking off the phase. Orchestrator should not act on this until user gives explicit go-ahead. DO NOT auto-triage. (Recovered from stash@{0} 2026-04-11.)"
+    },
+    {
+      "id": "BL-035",
+      "title": "Harden AI Ark export webhook handler — schema validation + failure logging",
+      "type": "improvement",
+      "severity": "low",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "Derived from session 50 deploy verification investigation (2026-04-10).\n\nThe new webhook at src/app/api/webhooks/aiark/export/route.ts is defensively written — extractPeople() tries 5 known payload shapes and mapExportPerson() probes nested structures safely. It won't crash on unknown payloads. However, three long-term maintainability risks remain:\n\n1. SILENT SHAPE DRIFT: if AI Ark changes their export payload structure, the handler will silently produce zero results with no visible error. All 5 extraction paths would just return empty arrays. Add a loud warning log when all extraction paths fail AND payload is non-empty.\n\n2. MISSING runId HANDLING: when runId is absent, the handler logs a warning and returns 200 OK without persisting anything. This prevents webhook retry loops (correct) but makes debugging impossible. Consider persisting the raw payload to a debug table (or S3/local file) for manual inspection.\n\n3. NO SCHEMA VALIDATION: once AI Ark provides an official export payload spec (or we log the first real webhook call), add Zod schema validation against the expected shape. Current implementation is bottom-up probing — switch to top-down validation with a typed payload.\n\nLow priority, non-blocking. Revisit after the first real AI Ark export run confirms the actual payload shape. (Recovered from stash@{0} 2026-04-11.)"
+    },
+    {
+      "id": "BL-036",
+      "title": "Terminal entry script for Nova orchestrator (scripts/nova.ts)",
+      "type": "feature",
+      "severity": null,
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "Current Nova invocation path is the web chat UI only. For PM-led flows and debugging, a terminal entry script would be vastly more ergonomic. Pattern already exists for Monty (scripts/monty.ts — interactive REPL with `[monty] >` prompt).\n\nSCOPE:\n1. scripts/nova.ts — interactive REPL with `[nova] >` prompt.\n2. Loads workspace context from CWD or --slug flag.\n3. Invokes orchestrator via runAgent() with orchestratorConfig (same path as web chat).\n4. Streams specialist responses to stdout with agent-name prefix.\n5. Persists conversation history across REPL turns (same as web chat session model).\n6. Supports special commands: /switch <slug>, /history, /exit.\n\nDEPENDS ON BL-031 OUTCOME: If BL-031 architecture review concludes the runner needs a CLI path, this unblocks and can ship as originally scoped (including session reuse / --resume flows). If BL-031 concludes API path is fine, this needs re-scoping to work against the API path (no session reuse, no --resume, but still interactive). Either way, terminal ergonomics are the primary goal.\n\nNOTE: Earlier agent session on 2026-04-11 confirmed scripts/nova.ts does not currently exist — no blocked half-implementation to reconcile. (Recovered from stash@{0} 2026-04-11.)"
+    },
+    {
+      "id": "BL-037",
+      "title": "Apify Leads Finder bypassing BounceBan verification",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-11T19:15:00Z",
+      "updatedAt": "2026-04-11T19:15:00Z",
+      "notes": "Extracted from stash BL-017 source-first enrichment investigation (session 50, 2026-04-09/10).\n\nBUG: Apify Leads Finder (src/lib/discovery/adapters/apify-leads-finder.ts) returns emails claimed as 'verified' by Apify but does NOT run them through BounceBan verification before marking as valid. Every other discovery source in the waterfall runs through BounceBan — Apify is the exception.\n\nEVIDENCE: No verification code in apify-leads-finder.ts. We have no idea what Apify's verification standard is.\n\nRISK: Unverified emails bounce, damaging sender reputation. This silently degrades deliverability across any campaign that uses Apify-sourced leads. The Leads Finder is one of the core discovery sources so this affects a meaningful share of outbound volume.\n\nFIX: Add BounceBan verification step to the Apify Leads Finder flow, same standard as every other source. All Apify Leads Finder emails must go through BounceBan before being marked as valid.\n\nSCOPE: Small — single-file change in apify-leads-finder.ts plus a unit test covering the new verification call path. Should integrate with the existing BounceBan client in src/lib/verification/bounceban.ts (no new adapter code).\n\n(Extracted from stash BL-017 investigation during 2026-04-11 stash recovery.)"
     }
   ]
 }
