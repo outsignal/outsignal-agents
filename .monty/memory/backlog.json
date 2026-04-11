@@ -286,6 +286,17 @@
       "createdAt": "2026-04-11T18:45:00Z",
       "updatedAt": "2026-04-11T18:45:00Z",
       "notes": "PROBLEM: ~5.5% of Reply rows have campaign_id = null even though the underlying ScheduledEmail that triggered them has a known campaign. The Reply resolver already fetches ScheduledEmail.campaign_id as part of the sequenceStep resolution (sharing the same EmailBison call), but doesn't currently use it as a fallback when the top-level campaign_id is missing.\n\nDISCOVERED: 2026-04-11 during the BL-028 reply attribution fix. The agent working on BL-028 left this as an explicit follow-up because it was outside the 5-file scope of that change.\n\nFIX: In the Reply upsert code (wherever BL-028 landed the sequenceStep fix — commits 917bfb2e or nearby on fix/bl-028-reply-attribution or main), add a simple fallback:\n  campaign_id: reply.campaign_id ?? scheduledEmail?.campaign_id ?? null\n\nThis requires the ScheduledEmail resolver result to be threaded into the campaign_id field assignment, which the resolver already has available (confirmed by the BL-028 agent).\n\nIMPACT:\n- Fixes the 5.5% attribution gap for future replies\n- For historical gap rows, running backfill-all-replies.ts after the fix would heal them in-place the same way BL-028 handles sequenceStep healing\n\nEFFORT: Small. Single-file change plus a test.\n\nPRIORITY: P2. Not data-corruption, just attribution noise. Ship next week alongside BL-028 follow-up work.\n\nBLOCKED BY: BL-028 merging to main (already done locally per merge commit 416b8a40, not pushed)."
+    },
+    {
+      "id": "BL-030",
+      "title": "Pre-commit hook: replace hardcoded trufflehog path with command -v lookup",
+      "type": "chore",
+      "severity": "low",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-11T19:00:00Z",
+      "updatedAt": "2026-04-11T19:00:00Z",
+      "notes": "PROBLEM: .git/hooks/pre-commit hardcodes /Users/jjay/.local/bin/trufflehog as the path to the secret scanner. Any teammate (or any new machine setup) that installs the hook via docs/dev-setup.md will hit 'command not found' on their first commit because trufflehog lives elsewhere on their machine.\n\nDISCOVERED: 2026-04-11 when the pre-commit typecheck hook (F10 / batch 1 item A) was added on top of the existing trufflehog gate. The hardcoded path pre-dated this work and wasn't introduced by it, but the new hook installation docs surfaced the issue.\n\nFIX: In .git/hooks/pre-commit, swap the hardcoded path for a command lookup:\n\n  TRUFFLEHOG_BIN=\"$(command -v trufflehog 2>/dev/null || true)\"\n  if [ -z \"$TRUFFLEHOG_BIN\" ]; then\n    echo \"[pre-commit] trufflehog not found on PATH — skipping secret scan\"\n  else\n    \"$TRUFFLEHOG_BIN\" git file://. ...\n  fi\n\nThis gracefully skips the scan if trufflehog isn't installed (prints a warning rather than blocking the commit). Anyone with it installed gets the scan automatically regardless of where it lives on their machine.\n\nEFFORT: 2 minutes. Single-file edit.\n\nPRIORITY: P3. Not Monday-blocking. Not currently biting anyone because only one machine uses this repo. File it now so it doesn't evaporate."
     }
   ]
 }
