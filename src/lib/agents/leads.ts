@@ -1068,6 +1068,9 @@ export const leadsTools = {
           discoverySource: "serper-maps",
           workspaceSlug: params.workspaceSlug,
           searchQuery: params.query,
+          // rawResponses: parallel array sharing the same raw results blob so
+          // the Google Maps payload survives staging for debugging/audit (BL-027).
+          rawResponses: companyPassed.map(() => ({ results })),
         });
         return {
           source: "serper-maps",
