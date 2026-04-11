@@ -2,6 +2,10 @@ import { schedules } from "@trigger.dev/sdk";
 import { PrismaClient } from "@prisma/client";
 import { getAllWorkspaces, getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import {
+  createSequenceStepCache,
+  resolveSequenceStepOrder,
+} from "@/lib/emailbison/resolve-step";
 import type { Reply } from "@/lib/emailbison/types";
 import { notifyReply, notifyLinkedInMessage } from "@/lib/notifications";
 import { bumpPriority, enqueueAction } from "@/lib/linkedin/queue";
@@ -37,26 +41,30 @@ export const pollRepliesTask = schedules.task({
       activeWs.map(async (ws) => {
         try {
           const config = await getWorkspaceBySlug(ws.slug);
-          if (!config) return { ws, replies: [] as Reply[], senderEmailSet: new Set<string>() };
+          if (!config) return { ws, replies: [] as Reply[], senderEmailSet: new Set<string>(), client: null as EmailBisonClient | null };
           const client = new EmailBisonClient(config.apiToken);
           const [replies, senderEmails] = await Promise.all([
             client.getRecentReplies(1),
             client.getSenderEmails(),
           ]);
           const senderEmailSet = new Set(senderEmails.map((s) => s.email.toLowerCase()));
-          return { ws, replies, senderEmailSet };
+          return { ws, replies, senderEmailSet, client };
         } catch (err) {
           console.error(`[poll-replies] Failed to fetch replies for ${ws.slug}:`, err);
-          return { ws, replies: [] as Reply[], senderEmailSet: new Set<string>(), fetchError: true };
+          return { ws, replies: [] as Reply[], senderEmailSet: new Set<string>(), client: null as EmailBisonClient | null, fetchError: true };
         }
       }),
     );
 
     const results: { workspace: string; processed: number; skipped: number; errors: number }[] = [];
 
-    for (const { ws, replies, senderEmailSet, fetchError } of wsReplies as Array<{ ws: typeof activeWs[0]; replies: Reply[]; senderEmailSet: Set<string>; fetchError?: boolean }>) {
+    for (const { ws, replies, senderEmailSet, client, fetchError } of wsReplies as Array<{ ws: typeof activeWs[0]; replies: Reply[]; senderEmailSet: Set<string>; client: EmailBisonClient | null; fetchError?: boolean }>) {
       const wsResult = { workspace: ws.slug, processed: 0, skipped: 0, errors: fetchError ? 1 : 0 };
       results.push(wsResult);
+
+      // Per-workspace per-run cache of sequence steps, keyed by EB campaign_id.
+      // Scoped to this workspace's inner loop so stale steps can't leak across runs.
+      const stepCache = createSequenceStepCache();
 
       const recent = replies.filter((r) => new Date(r.date_received) >= cutoff);
 
@@ -198,6 +206,20 @@ export const pollRepliesTask = schedules.task({
                 // Person lookup failure — non-blocking
               }
 
+              // Resolve sequence step order via EmailBison two-step lookup.
+              // The /replies list endpoint omits the nested scheduled_email
+              // object that the webhook path uses, so we recover the step
+              // position via getScheduledEmail + getSequenceSteps. Fails to
+              // null on any error — persistence must not be blocked.
+              let sequenceStep: number | null = null;
+              if (client) {
+                sequenceStep = await resolveSequenceStepOrder(
+                  client,
+                  reply.scheduled_email_id,
+                  stepCache,
+                );
+              }
+
               const replyRecord = await prisma.reply.upsert({
                 where: { emailBisonReplyId: reply.id },
                 create: {
@@ -210,7 +232,7 @@ export const pollRepliesTask = schedules.task({
                   emailBisonReplyId: reply.id,
                   campaignId: outsignalCampaignId,
                   campaignName: outsignalCampaignName,
-                  sequenceStep: null, // polled replies don't have sequence_step_order
+                  sequenceStep,
                   outboundSubject,
                   outboundBody,
                   source: "poll",
@@ -233,6 +255,8 @@ export const pollRepliesTask = schedules.task({
                   interested: reply.interested ?? undefined,
                   emailBisonParentId: reply.parent_id ?? undefined,
                   ebSenderEmailId: reply.sender_email_id ?? undefined,
+                  // Heal existing rows that were persisted before BL-028 landed.
+                  sequenceStep: sequenceStep ?? undefined,
                 },
               });
 

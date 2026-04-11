@@ -15,6 +15,10 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { EmailBisonClient } from "../src/lib/emailbison/client";
+import {
+  createSequenceStepCache,
+  resolveSequenceStepOrder,
+} from "../src/lib/emailbison/resolve-step";
 
 const prisma = new PrismaClient();
 
@@ -98,9 +102,14 @@ async function main() {
 
     console.log(`\n[${ws.slug}] Fetching ALL replies from EmailBison...`);
 
+    const client = new EmailBisonClient(ws.apiToken!);
+    // Per-workspace per-run cache for sequence steps. Reused across every
+    // reply in this workspace's loop so we only fetch each campaign's step
+    // list once, protecting the EB API from unnecessary load.
+    const stepCache = createSequenceStepCache();
+
     let replies: Awaited<ReturnType<EmailBisonClient["getReplies"]>>;
     try {
-      const client = new EmailBisonClient(ws.apiToken!);
       replies = await client.getReplies();
       wsResult.fetched = replies.length;
       console.log(`[${ws.slug}] Fetched ${replies.length} replies total`);
@@ -113,7 +122,6 @@ async function main() {
     // Build sender email set for this workspace (for cross-workspace dedup check)
     let senderEmailSet = new Set<string>();
     try {
-      const client = new EmailBisonClient(ws.apiToken!);
       const senderEmails = await client.getSenderEmails();
       senderEmailSet = new Set(senderEmails.map((s) => s.email.toLowerCase()));
     } catch {
@@ -188,6 +196,18 @@ async function main() {
           // Non-blocking
         }
 
+        // Resolve sequence step order via EmailBison two-step lookup.
+        // Mirrors the fix applied to trigger/poll-replies.ts: fetch the
+        // scheduled email to recover its sequence_step_id, then map it
+        // through the campaign's sequence-steps to get the 1-indexed
+        // position. Non-throwing — failures fall back to null and the
+        // reply persists without step attribution.
+        const sequenceStep = await resolveSequenceStepOrder(
+          client,
+          reply.scheduled_email_id,
+          stepCache,
+        );
+
         // Upsert reply — same field mapping as poll-replies
         const direction =
           reply.folder === "Sent" || reply.type === "Outgoing Email"
@@ -211,7 +231,7 @@ async function main() {
             emailBisonReplyId: reply.id,
             campaignId: outsignalCampaignId,
             campaignName: outsignalCampaignName,
-            sequenceStep: null,
+            sequenceStep,
             outboundSubject,
             outboundBody,
             source: "backfill",
@@ -235,6 +255,9 @@ async function main() {
             campaignId: outsignalCampaignId ?? undefined,
             campaignName: outsignalCampaignName ?? undefined,
             personId: personId ?? undefined,
+            // Heal null sequenceStep on existing rows (upsert previously
+            // only wrote this field in the create branch — see BL-028 notes).
+            sequenceStep: sequenceStep ?? undefined,
           },
         });
 

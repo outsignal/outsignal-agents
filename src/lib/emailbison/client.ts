@@ -3,6 +3,7 @@ import type {
   Campaign,
   Lead,
   Reply,
+  ScheduledEmail,
   SenderEmail,
   Tag,
   SequenceStep,
@@ -396,6 +397,21 @@ export class EmailBisonClient {
     const res = await this.request<{ data: Reply }>(`/replies/${replyId}`, {
       revalidate: 0,
     });
+    return res.data;
+  }
+
+  /**
+   * Fetch a scheduled email by ID. Used to recover sequence_step_id for
+   * replies returned by the flat /replies list endpoint (which omits the
+   * nested scheduled_email object present in webhook payloads).
+   *
+   * Endpoint: GET /scheduled-emails/{id}
+   */
+  async getScheduledEmail(id: number): Promise<ScheduledEmail> {
+    const res = await this.request<{ data: ScheduledEmail }>(
+      `/scheduled-emails/${id}`,
+      { revalidate: 0 },
+    );
     return res.data;
   }
 

@@ -152,6 +152,17 @@ export interface SequenceStep {
   delay_days?: number;
 }
 
+/**
+ * Response shape for GET /api/scheduled-emails/{id}.
+ * Only fields we need — the EB endpoint returns more but these are the ones
+ * used by the reply attribution resolver.
+ */
+export interface ScheduledEmail {
+  id: number;
+  campaign_id: number;
+  sequence_step_id: number;
+}
+
 export interface CreateCampaignParams {
   name: string;
   type?: 'outbound' | 'inbound';
