@@ -51,6 +51,7 @@ config({ path: ".env.local" });
 import { runWithHarness } from "./_cli-harness";
 import { PrismaClient } from "@prisma/client";
 import { scorePersonIcp } from "@/lib/icp/scorer";
+import { checkBudget } from "@/lib/rate-limits/budget-gate";
 
 const prisma = new PrismaClient();
 
@@ -138,6 +139,13 @@ async function scoreOne(
 
 async function main(): Promise<unknown> {
   const args = parseArgs();
+
+  // Budget gate: check token budget before starting scoring
+  const budget = await checkBudget("score-all-unscored");
+  if (!budget.allow) {
+    console.error(`[budget-gate] Scoring blocked: ${budget.reason}`);
+    process.exit(1);
+  }
 
   // Get the list of unscored PersonWorkspace rows.
   const where: { icpScore: null; workspace?: string } = { icpScore: null };

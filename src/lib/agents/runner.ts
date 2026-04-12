@@ -1,6 +1,7 @@
 import { generateText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/db";
+import { checkBudget } from "@/lib/rate-limits/budget-gate";
 import type { AgentConfig, AgentRunResult, ToolCallStep } from "./types";
 import { loadMemoryContext } from "./memory";
 
@@ -51,6 +52,12 @@ export async function runAgent<TOutput = unknown>(
     const systemPrompt = memoryContext
       ? `${config.systemPrompt}\n\n${memoryContext}`
       : config.systemPrompt;
+
+    // Budget gate: check token budget before calling the API
+    const budget = await checkBudget(config.name || "agent");
+    if (!budget.allow) {
+      throw new Error(`[budget-gate] ${config.name} blocked: ${budget.reason}`);
+    }
 
     const result = await generateText({
       model: anthropic(config.model),

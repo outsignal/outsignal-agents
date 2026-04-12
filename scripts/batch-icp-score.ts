@@ -9,6 +9,7 @@
 import { PrismaClient } from "@prisma/client";
 import { scorePersonIcp, scorePersonIcpBatch } from "../src/lib/icp/scorer";
 import { prefetchDomains } from "../src/lib/icp/crawl-cache";
+import { checkBudget } from "../src/lib/rate-limits/budget-gate";
 
 const prisma = new PrismaClient();
 
@@ -43,6 +44,13 @@ async function main() {
   }
 
   console.log(`Mode: ${batch ? `batch (size=${batchSize})` : `individual (concurrency=${concurrency})`}`);
+
+  // Budget gate: check token budget before starting scoring
+  const budget = await checkBudget("batch-icp-score");
+  if (!budget.allow) {
+    console.error(`[budget-gate] Batch scoring blocked: ${budget.reason}`);
+    process.exit(1);
+  }
 
   // Get all person IDs in the target list
   const listPeople = await prisma.targetListPerson.findMany({

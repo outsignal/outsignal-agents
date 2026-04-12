@@ -29,6 +29,7 @@ config({ path: ".env.local" });
 import { runWithHarness } from "./_cli-harness";
 import { PrismaClient } from "@prisma/client";
 import { spawn } from "child_process";
+import { checkBudget } from "@/lib/rate-limits/budget-gate";
 
 const prisma = new PrismaClient();
 
@@ -147,6 +148,12 @@ async function main(): Promise<unknown> {
 
   const results: Array<{ workspace: string; exitCode: number | null; durationSec: number }> = [];
   for (const w of args.then) {
+    // Budget gate: check before each workspace scoring
+    const budget = await checkBudget(`chain-scoring:${w}`);
+    if (!budget.allow) {
+      console.error(`[budget-gate] Scoring for ${w} blocked: ${budget.reason}`);
+      process.exit(1);
+    }
     const result = await runScoringForWorkspace(w, args.apply, args.concurrency);
     results.push(result);
     if (result.exitCode !== 0) {
