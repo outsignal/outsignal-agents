@@ -1095,13 +1095,7 @@ export class Worker {
         }
 
         case "withdraw_connection":
-          // Noop — actual LinkedIn withdrawal requires Voyager API (not yet implemented).
-          // Mark as COMPLETE so the lifecycle hooks in markComplete fire correctly
-          // (scheduling retry after withdrawal, decrementing pending count, etc).
-          console.log(
-            `[Worker] withdraw_connection: noop (Voyager API not implemented) — marking complete to progress lifecycle for action ${action.id}`,
-          );
-          result = { success: true, details: { noop: true, reason: "Voyager API not implemented" } };
+          result = await client.withdrawConnection(profileUrl);
           break;
 
         default:

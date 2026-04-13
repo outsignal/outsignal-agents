@@ -33,6 +33,14 @@ export interface ActionResult {
   details?: Record<string, unknown>;
 }
 
+export interface SentInvitation {
+  entityUrn: string;      // urn:li:fsd_invitation:123456
+  invitationId: string;   // numeric part: 123456
+  sharedSecret: string;
+  toMemberId: string;     // target member URN or ID
+  sentTime: number;       // epoch ms
+}
+
 export interface VoyagerConversation {
   entityUrn: string;                       // LinkedIn's full entityUrn for the conversation
   conversationId: string;                  // Extracted ID portion (after last colon in entityUrn)
@@ -1492,6 +1500,315 @@ export class VoyagerClient {
     } catch (err) {
       console.error("[VoyagerClient] parseMessages error:", err);
       return [];
+    }
+  }
+
+  // ─── Invitation Withdrawal ──────────────────────────────────────────────────
+
+  /**
+   * Fetch sent connection invitations from LinkedIn.
+   *
+   * GETs /relationships/sentInvitationViewsV2 with pagination support.
+   * Parses the normalized response to extract invitation details needed
+   * for withdrawal (invitationId, sharedSecret).
+   */
+  async getSentInvitations(start = 0, count = 100): Promise<SentInvitation[]> {
+    try {
+      const response = await this.request(
+        `/relationships/sentInvitationViewsV2?start=${start}&count=${count}&invitationType=CONNECTION&q=invitationType`
+      );
+
+      if (
+        response.url.includes("/checkpoint/") ||
+        response.url.includes("/challenge/")
+      ) {
+        console.warn("[VoyagerClient] getSentInvitations: checkpoint detected");
+        return [];
+      }
+
+      const data = (await response.json()) as Record<string, unknown>;
+
+      // LinkedIn returns normalized format: included[] contains invitation entities
+      const included = (data.included ?? []) as Array<Record<string, unknown>>;
+
+      // Also try data.data?.elements or data.data?.["*elements"] for direct element list
+      const dataInner = data.data as Record<string, unknown> | undefined;
+      const elementUrns =
+        (dataInner?.["*elements"] as string[] | undefined) ??
+        (dataInner?.elements as string[] | undefined) ??
+        [];
+
+      // Build entity map for lookups
+      const entityMap = new Map<string, Record<string, unknown>>();
+      for (const item of included) {
+        const urn = item.entityUrn as string | undefined;
+        if (urn) entityMap.set(urn, item);
+      }
+
+      const invitations: SentInvitation[] = [];
+
+      // Strategy 1: Parse from element URNs pointing into entityMap
+      if (elementUrns.length > 0) {
+        for (const urn of elementUrns) {
+          const entity = entityMap.get(urn);
+          if (!entity) continue;
+          const parsed = this.parseInvitationEntity(entity, entityMap);
+          if (parsed) invitations.push(parsed);
+        }
+      }
+
+      // Strategy 2: Scan included[] for invitation-typed entities
+      if (invitations.length === 0) {
+        for (const item of included) {
+          const type = item.$type as string | undefined;
+          const urn = item.entityUrn as string | undefined;
+          if (
+            urn &&
+            (urn.includes("fsd_invitation") ||
+              type?.includes("Invitation") ||
+              type?.includes("SentInvitationView"))
+          ) {
+            const parsed = this.parseInvitationEntity(item, entityMap);
+            if (parsed) invitations.push(parsed);
+          }
+        }
+      }
+
+      console.log(
+        `[VoyagerClient] getSentInvitations: parsed ${invitations.length} invitations (start=${start}, count=${count})`
+      );
+      return invitations;
+    } catch (err) {
+      if (err instanceof VoyagerError) {
+        console.error(
+          `[VoyagerClient] getSentInvitations failed: HTTP ${err.status}`
+        );
+      } else {
+        console.error("[VoyagerClient] getSentInvitations error:", err);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Parse a single invitation entity from the normalized response.
+   * Defensively handles multiple response shapes.
+   */
+  private parseInvitationEntity(
+    entity: Record<string, unknown>,
+    entityMap: Map<string, Record<string, unknown>>
+  ): SentInvitation | null {
+    // entityUrn: "urn:li:fsd_invitation:123456" or nested in invitation ref
+    let entityUrn = entity.entityUrn as string | undefined;
+
+    // Some responses nest the invitation under a "*invitation" pointer
+    const invitationRef = entity["*invitation"] as string | undefined;
+    if (invitationRef && entityMap.has(invitationRef)) {
+      const nested = entityMap.get(invitationRef)!;
+      entityUrn = entityUrn ?? (nested.entityUrn as string | undefined);
+      // Merge nested fields for parsing
+      entity = { ...nested, ...entity };
+    }
+
+    if (!entityUrn) return null;
+
+    // Extract numeric invitation ID from URN
+    const idMatch = entityUrn.match(/fsd_invitation:(\d+)/);
+    const invitationId = idMatch?.[1] ?? "";
+    if (!invitationId) return null;
+
+    // sharedSecret — may be at top level or nested
+    const sharedSecret =
+      (entity.sharedSecret as string | undefined) ??
+      (entity.invitationSharedSecret as string | undefined) ??
+      "";
+
+    // toMemberId — from invitee, toMember, or toMemberId fields
+    let toMemberId = (entity.toMemberId as string | undefined) ?? "";
+    if (!toMemberId) {
+      const invitee = entity.invitee as Record<string, unknown> | undefined;
+      const inviteeUnion = invitee?.inviteeUnion as Record<string, unknown> | undefined;
+      const memberProfile = inviteeUnion?.memberProfile as string | undefined;
+      if (memberProfile) {
+        // "urn:li:fsd_profile:ACoAAA..." -> extract the ID
+        toMemberId = memberProfile.split(":").pop() ?? "";
+      }
+    }
+    if (!toMemberId) {
+      const toMemberUrn = entity["*toMember"] as string | undefined;
+      if (toMemberUrn) {
+        toMemberId = toMemberUrn.split(":").pop() ?? "";
+      }
+    }
+
+    // sentTime — epoch ms
+    const sentTime =
+      (entity.sentTime as number | undefined) ??
+      (entity.sentAt as number | undefined) ??
+      (entity.createdAt as number | undefined) ??
+      0;
+
+    return {
+      entityUrn,
+      invitationId,
+      sharedSecret,
+      toMemberId,
+      sentTime,
+    };
+  }
+
+  /**
+   * Withdraw a specific sent invitation by ID and shared secret.
+   *
+   * Tries the primary REST endpoint first, then the Dash variant if the
+   * primary returns 404.
+   */
+  async withdrawInvitation(
+    invitationId: string,
+    sharedSecret: string
+  ): Promise<ActionResult> {
+    const body = {
+      invitationId,
+      invitationSharedSecret: sharedSecret,
+      isGenericInvitation: false,
+    };
+
+    try {
+      // Primary endpoint
+      await this.request(
+        `/relationships/invitations/${invitationId}?action=withdraw`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          extraHeaders: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log(
+        `[VoyagerClient] withdrawInvitation: success (id=${invitationId})`
+      );
+      return { success: true, details: { invitationId } };
+    } catch (err) {
+      // If primary returns 404, try the Dash variant
+      if (err instanceof VoyagerError && err.status === 404) {
+        console.log(
+          `[VoyagerClient] withdrawInvitation: primary 404, trying Dash variant`
+        );
+        try {
+          const dashUrn = encodeURIComponent(
+            `urn:li:fsd_invitation:${invitationId}`
+          );
+          await this.request(
+            `/voyagerRelationshipsDashInvitations/${dashUrn}?action=withdraw`,
+            {
+              method: "POST",
+              body: JSON.stringify(body),
+              extraHeaders: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          console.log(
+            `[VoyagerClient] withdrawInvitation: Dash variant success (id=${invitationId})`
+          );
+          return { success: true, details: { invitationId, endpoint: "dash" } };
+        } catch (dashErr) {
+          return this.handleError(dashErr);
+        }
+      }
+
+      return this.handleError(err);
+    }
+  }
+
+  /**
+   * Withdraw a pending connection request for a given LinkedIn profile URL.
+   *
+   * Orchestrator method: fetches sent invitations, finds the matching one,
+   * and calls withdrawInvitation(). Handles pagination (up to 500 invitations).
+   */
+  async withdrawConnection(profileUrl: string): Promise<ActionResult> {
+    try {
+      const profileId = this.extractProfileId(profileUrl);
+      if (!profileId) {
+        return { success: false, error: "invalid_profile_url" };
+      }
+
+      // View profile to get memberUrn for matching
+      const profileResult = await this.viewProfile(profileUrl);
+      const memberUrn = profileResult.success
+        ? (profileResult.details?.memberUrn as string | undefined)
+        : undefined;
+
+      // Fetch sent invitations with pagination (up to 500)
+      const allInvitations: SentInvitation[] = [];
+      const PAGE_SIZE = 100;
+      const MAX_PAGES = 5;
+
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const batch = await this.getSentInvitations(
+          page * PAGE_SIZE,
+          PAGE_SIZE
+        );
+        allInvitations.push(...batch);
+
+        // Stop if we got fewer than requested (no more pages)
+        if (batch.length < PAGE_SIZE) break;
+
+        // Small delay between pagination requests
+        await randomDelay(500, 1000);
+      }
+
+      console.log(
+        `[VoyagerClient] withdrawConnection: fetched ${allInvitations.length} total invitations, looking for profileId=${profileId} / memberUrn=${memberUrn ?? "unknown"}`
+      );
+
+      // Find matching invitation by memberUrn or profileId
+      const match = allInvitations.find((inv) => {
+        // Match by memberUrn (most reliable)
+        if (memberUrn && inv.toMemberId) {
+          if (
+            inv.toMemberId === memberUrn ||
+            inv.toMemberId.includes(memberUrn)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!match) {
+        console.log(
+          `[VoyagerClient] withdrawConnection: invitation not found for ${profileId}`
+        );
+        return {
+          success: true,
+          details: {
+            noop: true,
+            reason:
+              "invitation not found (may already be withdrawn or accepted)",
+            profileId,
+            invitationsChecked: allInvitations.length,
+          },
+        };
+      }
+
+      console.log(
+        `[VoyagerClient] withdrawConnection: found invitation ${match.invitationId} for ${profileId}`
+      );
+
+      // Add delay before withdrawal to mimic human behavior
+      await randomDelay();
+
+      return await this.withdrawInvitation(
+        match.invitationId,
+        match.sharedSecret
+      );
+    } catch (err) {
+      return this.handleError(err);
     }
   }
 

@@ -227,7 +227,7 @@ export async function markRunning(actionId: string): Promise<void> {
  *
  * Post-completion hooks:
  * - connection_request/connect: increment Sender.pendingConnectionCount
- * - withdraw_connection (withdrawal_pre_retry): schedule retry after 48h cooldown
+ * - withdraw_connection (withdrawal_pre_retry): schedule retry after 21-day cooldown
  * - withdraw_connection (withdrawal_final): decrement pending count
  */
 export async function markComplete(actionId: string, result?: string): Promise<void> {
@@ -287,9 +287,9 @@ export async function markComplete(actionId: string, result?: string): Promise<v
           data: { status: "withdrawn" },
         });
 
-        // Schedule retry after 48h cooldown
-        const COOLDOWN_MS = 48 * 60 * 60 * 1000;
-        const retryTime = new Date(Date.now() + COOLDOWN_MS);
+        // Schedule retry after 21-day cooldown (LinkedIn re-invite restriction)
+        const WITHDRAWAL_COOLDOWN_MS = 21 * 24 * 60 * 60 * 1000;
+        const retryTime = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
 
         await enqueueAction({
           senderId: action.senderId,
