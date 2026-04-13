@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   enqueueAction,
+  getNextBatch,
   markComplete,
   markFailed,
   cancelAction,
@@ -10,9 +11,17 @@ import {
   recoverStuckActions,
 } from "@/lib/linkedin/queue";
 
+// Mock the rate-limiter module
+vi.mock("@/lib/linkedin/rate-limiter", () => ({
+  checkBudget: vi.fn().mockResolvedValue({ allowed: true, remaining: 10 }),
+  checkCircuitBreaker: vi.fn().mockResolvedValue({ tripped: false, consecutiveFailures: 0 }),
+}));
+
 describe("enqueueAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: no dedup match
+    (prisma.linkedInAction.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
   });
 
   it("creates a pending action with default priority 5", async () => {
@@ -229,7 +238,7 @@ describe("bumpPriority", () => {
         personId: "person-1",
         workspaceSlug: "rise",
         status: "pending",
-        actionType: "connect",
+        actionType: { in: ["connect", "connection_request"] },
       },
       data: {
         priority: 1,
@@ -286,5 +295,129 @@ describe("recoverStuckActions", () => {
         result: JSON.stringify({ error: "Worker crash recovery" }),
       },
     });
+  });
+});
+
+describe("getNextBatch — type-fair allocation", () => {
+  const makeAction = (id: string, actionType: string, priority: number = 5) => ({
+    id,
+    personId: `person-${id}`,
+    actionType,
+    messageBody: null,
+    priority,
+    workspaceSlug: "test",
+    campaignName: null,
+    linkedInConversationId: null,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("allocates batch slots to both connection_requests and profile_views", async () => {
+    // Simulate: 10 connection_requests and 10 profile_views pending
+    const connections = Array.from({ length: 10 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    const views = Array.from({ length: 10 }, (_, i) =>
+      makeAction(`view-${i}`, "profile_view"),
+    );
+
+    // Mock findMany to return the right actions based on actionType filter
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: { actionType?: { in: string[] } } }) => {
+        const types = args.where?.actionType?.in ?? [];
+        if (types.includes("connect") || types.includes("connection_request")) {
+          return Promise.resolve(connections);
+        }
+        if (types.includes("profile_view") || types.includes("check_connection")) {
+          return Promise.resolve(views);
+        }
+        if (types.includes("message")) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+
+    const batch = await getNextBatch("sender-1", 10);
+
+    // Both types should be present
+    const connectionCount = batch.filter(
+      (a) => a.actionType === "connection_request" || a.actionType === "connect",
+    ).length;
+    const viewCount = batch.filter(
+      (a) => a.actionType === "profile_view" || a.actionType === "check_connection",
+    ).length;
+
+    expect(connectionCount).toBeGreaterThan(0);
+    expect(viewCount).toBeGreaterThan(0);
+    expect(batch.length).toBeLessThanOrEqual(10);
+  });
+
+  it("connection_requests are not starved when many profile_views are pending", async () => {
+    // Simulate the starvation scenario: 200 profile_views, 5 connection_requests
+    const connections = Array.from({ length: 5 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    const views = Array.from({ length: 200 }, (_, i) =>
+      makeAction(`view-${i}`, "profile_view"),
+    );
+
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: { actionType?: { in: string[] } } }) => {
+        const types = args.where?.actionType?.in ?? [];
+        if (types.includes("connect") || types.includes("connection_request")) {
+          return Promise.resolve(connections);
+        }
+        if (types.includes("profile_view") || types.includes("check_connection")) {
+          return Promise.resolve(views);
+        }
+        if (types.includes("message")) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+
+    const batch = await getNextBatch("sender-1", 10);
+
+    // Connection requests MUST appear in the batch
+    const connectionCount = batch.filter(
+      (a) => a.actionType === "connection_request",
+    ).length;
+
+    expect(connectionCount).toBeGreaterThanOrEqual(1);
+    // All 5 connections should be included (within the 50% allocation of 5 slots)
+    expect(connectionCount).toBe(5);
+  });
+
+  it("fills remaining slots with other action types when one type has no pending actions", async () => {
+    // No connection requests pending, only profile views
+    const views = Array.from({ length: 20 }, (_, i) =>
+      makeAction(`view-${i}`, "profile_view"),
+    );
+
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: { actionType?: { in: string[] } } }) => {
+        const types = args.where?.actionType?.in ?? [];
+        if (types.includes("connect") || types.includes("connection_request")) {
+          return Promise.resolve([]); // no connections pending
+        }
+        if (types.includes("profile_view") || types.includes("check_connection")) {
+          return Promise.resolve(views);
+        }
+        if (types.includes("message")) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+
+    const batch = await getNextBatch("sender-1", 10);
+
+    // With no connections or messages, views should backfill to use all available slots
+    expect(batch.length).toBe(10);
+    expect(batch.every((a) => a.actionType === "profile_view")).toBe(true);
   });
 });

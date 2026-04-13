@@ -77,8 +77,18 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
 }
 
 /**
+ * Action type groups for fair batch allocation.
+ * Connection requests are the most valuable (initiate relationship) and must
+ * never be starved by profile views filling the batch first.
+ */
+const CONNECTION_TYPES: LinkedInActionType[] = ["connect", "connection_request"];
+const VIEW_TYPES: LinkedInActionType[] = ["profile_view", "check_connection"];
+const MESSAGE_TYPES: LinkedInActionType[] = ["message"];
+
+/**
  * Get the next batch of ready actions for a sender, respecting:
- * - Priority ordering (lower number = higher priority)
+ * - Type-fair allocation (connection requests guaranteed batch slots)
+ * - Priority ordering within each type (lower number = higher priority)
  * - scheduledFor <= now
  * - Daily rate limits per action type
  *
@@ -106,40 +116,112 @@ export async function getNextBatch(
 
   const now = new Date();
 
-  // Get all ready actions for this sender
-  const actions = await prisma.linkedInAction.findMany({
-    where: {
-      senderId,
-      status: "pending",
-      scheduledFor: { lte: now },
-    },
-    orderBy: [
-      { priority: "asc" }, // P1 first
-      { scheduledFor: "asc" }, // oldest first within same priority
-    ],
-    take: limit * 2, // fetch extra to account for budget filtering
-    select: {
-      id: true,
-      personId: true,
-      actionType: true,
-      messageBody: true,
-      priority: true,
-      workspaceSlug: true,
-      campaignName: true,
-      linkedInConversationId: true,
-    },
-  });
+  const baseWhere = {
+    senderId,
+    status: "pending" as const,
+    scheduledFor: { lte: now },
+  };
 
-  // Filter by budget availability per action type
-  const result: typeof actions = [];
-  for (const action of actions) {
-    if (result.length >= limit) break;
+  const orderBy = [
+    { priority: "asc" as const },
+    { scheduledFor: "asc" as const },
+  ];
 
-    const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
-    if (budget.allowed) {
-      result.push(action);
+  const selectFields = {
+    id: true,
+    personId: true,
+    actionType: true,
+    messageBody: true,
+    priority: true,
+    workspaceSlug: true,
+    campaignName: true,
+    linkedInConversationId: true,
+  };
+
+  // Fair allocation: each type group gets a guaranteed share of slots.
+  // Connection requests get 50%, views get 30%, messages get 20%.
+  const connectionSlots = Math.ceil(limit * 0.5);
+  const viewSlots = Math.ceil(limit * 0.3);
+  const messageSlots = Math.max(1, limit - connectionSlots - viewSlots);
+
+  // Query each type group separately to prevent starvation
+  const [connectionActions, viewActions, messageActions] = await Promise.all([
+    prisma.linkedInAction.findMany({
+      where: { ...baseWhere, actionType: { in: CONNECTION_TYPES } },
+      orderBy,
+      take: connectionSlots * 2, // fetch extra for budget filtering
+      select: selectFields,
+    }),
+    prisma.linkedInAction.findMany({
+      where: { ...baseWhere, actionType: { in: VIEW_TYPES } },
+      orderBy,
+      take: viewSlots * 2,
+      select: selectFields,
+    }),
+    prisma.linkedInAction.findMany({
+      where: { ...baseWhere, actionType: { in: MESSAGE_TYPES } },
+      orderBy,
+      take: messageSlots * 2,
+      select: selectFields,
+    }),
+  ]);
+
+  // Budget-filter each group up to its slot allocation
+  const filterByBudget = async (
+    actions: typeof connectionActions,
+    maxSlots: number,
+  ) => {
+    const filtered: typeof actions = [];
+    for (const action of actions) {
+      if (filtered.length >= maxSlots) break;
+      const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
+      if (budget.allowed) {
+        filtered.push(action);
+      }
+    }
+    return filtered;
+  };
+
+  const filteredConnections = await filterByBudget(connectionActions, connectionSlots);
+  const filteredViews = await filterByBudget(viewActions, viewSlots);
+  const filteredMessages = await filterByBudget(messageActions, messageSlots);
+
+  // Merge results. If one group used fewer than its allocation, redistribute
+  // remaining slots to other groups (connections first, then views, then messages).
+  const used = filteredConnections.length + filteredViews.length + filteredMessages.length;
+  let remainingSlots = limit - used;
+
+  // Backfill from groups that had more pending actions than their initial allocation
+  const backfillSources = [
+    { actions: connectionActions, filtered: filteredConnections },
+    { actions: viewActions, filtered: filteredViews },
+    { actions: messageActions, filtered: filteredMessages },
+  ];
+
+  const backfilled: typeof connectionActions = [];
+  for (const source of backfillSources) {
+    if (remainingSlots <= 0) break;
+    // Skip actions already included
+    const included = new Set(source.filtered.map((a) => a.id));
+    for (const action of source.actions) {
+      if (remainingSlots <= 0) break;
+      if (included.has(action.id)) continue;
+      const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
+      if (budget.allowed) {
+        backfilled.push(action);
+        included.add(action.id);
+        remainingSlots--;
+      }
     }
   }
+
+  const result = [...filteredConnections, ...filteredViews, ...filteredMessages, ...backfilled];
+
+  // Sort merged result by priority then scheduledFor for consistent ordering
+  result.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return 0; // scheduledFor ordering preserved within each group
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return result as any;
