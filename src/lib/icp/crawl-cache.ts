@@ -1,6 +1,6 @@
 /**
  * Crawl cache — caches homepage scrapes on the Company record.
- * Tries a free fetch + HTML-to-text first, falls back to Firecrawl if available.
+ * Cascade: free fetch → LinkedIn company page → Firecrawl (last resort, costs credits).
  * Checks Company.crawledAt before scraping. Cache is permanent
  * (no TTL) — use force_recrawl parameter to refresh.
  *
@@ -105,26 +105,23 @@ async function getCrawlMarkdownInner(
       clearTimeout(timeout);
     }
   } catch (fetchErr) {
-    // --- Fall back to Firecrawl if available ---
-    if (process.env.FIRECRAWL_API_KEY) {
-      console.log(`[crawl-cache] ${domain}: free fetch failed, trying Firecrawl`);
-      try {
-        const result = await scrapeUrl(`https://${domain}`);
-        markdown = result.markdown.slice(0, MAX_MARKDOWN_LENGTH);
-      } catch (firecrawlErr) {
-        console.error(`[crawl-cache] ${domain}: Firecrawl also failed:`, firecrawlErr);
-      }
-    } else {
-      console.log(`[crawl-cache] ${domain}: free fetch failed, no Firecrawl key`);
-    }
+    console.log(`[crawl-cache] ${domain}: free fetch failed`);
   }
 
-  // --- LinkedIn company page fallback ---
-  // When both free fetch and Firecrawl fail, try scraping the company's
-  // LinkedIn page. LinkedIn company pages contain useful info (description,
-  // industry, headcount, specialties) that helps ICP scoring.
+  // --- LinkedIn company page fallback (free, no credits) ---
   if (!markdown) {
     markdown = await tryLinkedInCompanyFallback(domain, company);
+  }
+
+  // --- Firecrawl as last resort (costs credits) ---
+  if (!markdown && process.env.FIRECRAWL_API_KEY) {
+    console.log(`[crawl-cache] ${domain}: trying Firecrawl (last resort)`);
+    try {
+      const result = await scrapeUrl(`https://${domain}`);
+      markdown = result.markdown.slice(0, MAX_MARKDOWN_LENGTH);
+    } catch (firecrawlErr) {
+      console.error(`[crawl-cache] ${domain}: Firecrawl also failed:`, firecrawlErr);
+    }
   }
 
   if (!markdown) {
