@@ -256,6 +256,7 @@ export async function POST(request: NextRequest) {
                     scheduledFor: actionScheduledFor,
                     campaignName: outsignalCampaign.name,
                     sequenceStepRef: action.sequenceStepRef,
+                    variantKey: action.variantKey ?? undefined,
                   });
 
                   // Forward-chain: schedule a profile_view before connect actions

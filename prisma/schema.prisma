@@ -989,6 +989,7 @@ model LinkedInAction {
   emailBisonLeadId String? // EmailBison lead ID for sender resolution
   sequenceStepRef  String? // Which sequence step triggered this
   parentActionId   String? // ID of the action this was chained from (null = primary action)
+  variantKey       String? // Which A/B variant was chosen for this action (from CampaignSequenceRule.variantKey)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1068,8 +1069,15 @@ model CampaignSequenceRule {
   elseDelayMinutes    Int?
 
   position  Int // Order in the sequence
+
+  // A/B variant support: multiple rules at the same position with different variantKeys
+  // represent message variants. evaluateSequenceRules() picks one per person deterministically.
+  variantKey    String? // Identifies which variant this rule belongs to (e.g. "A", "B", "C")
+  variantWeight Int     @default(1) // Relative weight for variant selection (higher = more likely)
+
   createdAt DateTime @default(now())
 
+  @@unique([workspaceSlug, campaignName, position, variantKey])
   @@index([workspaceSlug, campaignName])
 }
 

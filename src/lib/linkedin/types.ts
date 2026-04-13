@@ -38,6 +38,7 @@ export interface EnqueueActionParams {
   sequenceStepRef?: string;
   parentActionId?: string; // Links chained actions for observability (null = primary action)
   linkedInConversationId?: string; // Alternative routing when personId is null
+  variantKey?: string; // Which A/B variant was chosen (from CampaignSequenceRule.variantKey)
 }
 
 export interface ActionBudget {

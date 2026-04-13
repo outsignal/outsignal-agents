@@ -26,6 +26,7 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
     sequenceStepRef,
     parentActionId,
     linkedInConversationId,
+    variantKey,
   } = params;
 
   // Cross-campaign dedup: skip if this person already has an active or recently
@@ -70,6 +71,7 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
       sequenceStepRef: sequenceStepRef ?? null,
       parentActionId: parentActionId ?? null,
       linkedInConversationId: linkedInConversationId ?? null,
+      variantKey: variantKey ?? null,
     },
   });
 

@@ -70,6 +70,50 @@ export function buildTemplateContext(
   };
 }
 
+// ─── Variant Selection ──────────────────────────────────────────────────────
+
+/**
+ * Simple string hash (djb2) that returns a positive integer.
+ * Used for deterministic variant selection: same person always gets the same variant.
+ */
+function djb2Hash(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0; // unsigned 32-bit
+  }
+  return hash;
+}
+
+/**
+ * Given a set of rules at the same position (variants), pick one deterministically
+ * based on personId + campaignName + position. Uses weighted selection so
+ * variantWeight controls traffic split.
+ *
+ * Returns the chosen rule, or undefined if rules is empty.
+ */
+function pickVariant<T extends { variantKey: string | null; variantWeight: number }>(
+  rules: T[],
+  personId: string,
+  campaignName: string,
+  position: number,
+): T | undefined {
+  if (rules.length === 0) return undefined;
+  if (rules.length === 1) return rules[0];
+
+  const totalWeight = rules.reduce((sum, r) => sum + r.variantWeight, 0);
+  const hashValue = djb2Hash(`${personId}:${campaignName}:${position}`);
+  const bucket = hashValue % totalWeight;
+
+  let cumulative = 0;
+  for (const rule of rules) {
+    cumulative += rule.variantWeight;
+    if (bucket < cumulative) return rule;
+  }
+
+  // Fallback (should not reach here, but safety net)
+  return rules[0];
+}
+
 // ─── Sequence Rule Evaluation ─────────────────────────────────────────────────
 
 export interface SequenceActionDescriptor {
@@ -77,6 +121,7 @@ export interface SequenceActionDescriptor {
   messageBody: string | null;
   delayMinutes: number;
   sequenceStepRef: string;
+  variantKey: string | null;
 }
 
 export interface EvaluateSequenceRulesParams {
@@ -199,39 +244,71 @@ export async function evaluateSequenceRules(
     console.warn("[sequencing] Failed to look up lastEmailMonth:", err);
   }
 
+  // 2. Group rules by position to handle A/B variants.
+  //    At each position, if multiple rules exist with different variantKeys,
+  //    pick ONE deterministically per person (same person always gets same variant).
+  //    Rules without a variantKey (legacy) are treated as standalone (no grouping).
+  const rulesByPosition = new Map<number, typeof rules>();
   for (const rule of rules) {
-    // 2. Evaluate condition (supports both legacy requireConnected and new conditionType)
-    const conditionPassed = await evaluateCondition(rule, personId, workspaceSlug);
+    const group = rulesByPosition.get(rule.position) ?? [];
+    group.push(rule);
+    rulesByPosition.set(rule.position, group);
+  }
 
-    // 3. Build template context
-    const context = buildTemplateContext(person, emailContext, { lastEmailMonth });
+  // Process each position group
+  for (const [, positionRules] of rulesByPosition) {
+    const variantRules = positionRules.filter((r) => r.variantKey !== null);
+    const nonVariantRules = positionRules.filter((r) => r.variantKey === null);
 
-    if (conditionPassed) {
-      // Main path — condition passes, use primary action
-      const messageBody = rule.messageTemplate
-        ? compileTemplate(rule.messageTemplate, context)
-        : null;
+    // If variant rules exist at this position, pick ONE via deterministic hash.
+    // Non-variant rules always fire (backward compatible with existing campaigns).
+    const rulesToEvaluate: typeof rules = [...nonVariantRules];
 
-      descriptors.push({
-        actionType: rule.actionType,
-        messageBody,
-        delayMinutes: rule.delayMinutes,
-        sequenceStepRef: `rule_${rule.id}`,
-      });
-    } else if (rule.elseActionType) {
-      // Else path — condition failed, use alternative action
-      const messageBody = rule.elseMessageTemplate
-        ? compileTemplate(rule.elseMessageTemplate, context)
-        : null;
-
-      descriptors.push({
-        actionType: rule.elseActionType,
-        messageBody,
-        delayMinutes: rule.elseDelayMinutes ?? rule.delayMinutes,
-        sequenceStepRef: `rule_${rule.id}_else`,
-      });
+    if (variantRules.length > 0) {
+      const chosen = pickVariant(
+        variantRules,
+        personId,
+        campaignName,
+        positionRules[0].position,
+      );
+      if (chosen) {
+        rulesToEvaluate.push(chosen);
+      }
     }
-    // If condition fails and no else-path, skip (same as current behavior)
+
+    for (const rule of rulesToEvaluate) {
+      // 3. Evaluate condition (supports both legacy requireConnected and new conditionType)
+      const conditionPassed = await evaluateCondition(rule, personId, workspaceSlug);
+
+      // 4. Build template context
+      const context = buildTemplateContext(person, emailContext, { lastEmailMonth });
+
+      if (conditionPassed) {
+        const messageBody = rule.messageTemplate
+          ? compileTemplate(rule.messageTemplate, context)
+          : null;
+
+        descriptors.push({
+          actionType: rule.actionType,
+          messageBody,
+          delayMinutes: rule.delayMinutes,
+          sequenceStepRef: `rule_${rule.id}`,
+          variantKey: rule.variantKey,
+        });
+      } else if (rule.elseActionType) {
+        const messageBody = rule.elseMessageTemplate
+          ? compileTemplate(rule.elseMessageTemplate, context)
+          : null;
+
+        descriptors.push({
+          actionType: rule.elseActionType,
+          messageBody,
+          delayMinutes: rule.elseDelayMinutes ?? rule.delayMinutes,
+          sequenceStepRef: `rule_${rule.id}_else`,
+          variantKey: rule.variantKey,
+        });
+      }
+    }
   }
 
   return descriptors;
@@ -261,6 +338,9 @@ export interface LinkedInSequenceStep {
   elseActionType?: string;
   elseMessageTemplate?: string;
   elseDelayHours?: number;
+  // A/B variant fields
+  variantKey?: string;     // e.g. "A", "B", "C" — multiple steps at same position with different keys
+  variantWeight?: number;  // Relative weight for traffic split (default 1 = equal)
 }
 
 export interface CreateSequenceRulesParams {
@@ -305,6 +385,8 @@ export async function createSequenceRulesForCampaign(
     elseMessageTemplate: step.elseMessageTemplate ?? null,
     elseDelayMinutes: step.elseDelayHours != null ? step.elseDelayHours * 60 : null,
     position: step.position,
+    variantKey: step.variantKey ?? null,
+    variantWeight: step.variantWeight ?? 1,
   }));
 
   await prisma.campaignSequenceRule.createMany({ data });

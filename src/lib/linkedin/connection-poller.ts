@@ -286,6 +286,7 @@ export async function processConnectionCheckResult(
             scheduledFor,
             campaignName: campaignAction.campaignName,
             sequenceStepRef: descriptor.sequenceStepRef,
+            variantKey: descriptor.variantKey ?? undefined,
           });
         }
       }
