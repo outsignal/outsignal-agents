@@ -36,10 +36,13 @@ copy the block below into your own `.git/hooks/pre-commit`:
 set -e
 
 # ---- Gate 1: trufflehog secret scan ----
-/Users/jjay/.local/bin/trufflehog git file://. --since-commit HEAD --only-verified --fail 2>/dev/null
-if [ $? -ne 0 ]; then
-  echo "ERROR: trufflehog detected secrets in staged changes. Commit blocked."
-  exit 1
+TRUFFLEHOG=$(command -v trufflehog 2>/dev/null || echo "")
+if [ -n "$TRUFFLEHOG" ]; then
+  "$TRUFFLEHOG" git file://. --since-commit HEAD --only-verified --fail 2>/dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: trufflehog detected secrets in staged changes. Commit blocked."
+    exit 1
+  fi
 fi
 
 # ---- Gate 2: TypeScript typecheck ----
@@ -64,9 +67,8 @@ After creating the file, make it executable:
 chmod +x .git/hooks/pre-commit
 ```
 
-The trufflehog path above is hardcoded to `/Users/jjay/.local/bin/trufflehog`.
-If you run a different trufflehog binary, adjust the path or install
-trufflehog at the same location.
+The hook auto-detects trufflehog via `command -v`. If trufflehog is not
+installed or not on PATH, the secret scan gate is skipped silently.
 
 ### Emergency bypass
 

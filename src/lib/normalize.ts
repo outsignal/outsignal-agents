@@ -71,15 +71,67 @@ const CSUITE_ACRONYMS = new Set([
 const VP_PATTERN = /^vp\b/i;
 
 /**
+ * Known plural suffixes for job title words that should be singularised.
+ * Maps the plural ending to the singular form suffix.
+ * Only strips trailing 's' when the resulting singular is a known title word.
+ */
+const PLURAL_TITLE_WORDS = new Set([
+  "managers",
+  "directors",
+  "engineers",
+  "consultants",
+  "analysts",
+  "supervisors",
+  "coordinators",
+  "specialists",
+  "officers",
+  "executives",
+  "administrators",
+  "architects",
+  "designers",
+  "developers",
+  "advisors",
+  "assistants",
+  "associates",
+  "leads",
+  "partners",
+  "recruiters",
+  "strategists",
+  "planners",
+  "controllers",
+  "inspectors",
+  "operators",
+  "technicians",
+]);
+
+/**
+ * Singularise plural job title words.
+ * "Warehouse Managers" -> "Warehouse Manager"
+ * "Sales Directors" -> "Sales Director"
+ * Only acts on known plural patterns to avoid false positives.
+ */
+export function singulariseJobTitle(title: string): string {
+  if (!title) return title;
+  return title.replace(/\b\w+s\b/gi, (word) => {
+    if (PLURAL_TITLE_WORDS.has(word.toLowerCase())) {
+      // Preserve original casing of the word minus the trailing 's'
+      return word.slice(0, -1);
+    }
+    return word;
+  });
+}
+
+/**
  * Normalise a job title to consistent casing.
  *
+ * - Singularises plural title words: "Warehouse Managers" -> "Warehouse Manager"
  * - C-suite acronyms: "cto" -> "CTO"
  * - VP prefix: "vp of sales" -> "VP of Sales"
  * - Title case otherwise: "head of marketing" -> "Head of Marketing"
  * - Preserves existing mixed case: "DevOps Engineer" stays as-is
  */
 export function normalizeJobTitle(title: string): string {
-  const trimmed = title.trim();
+  const trimmed = singulariseJobTitle(title.trim());
   if (!trimmed) return trimmed;
 
   // Check for C-suite acronyms (exact match after lowering)

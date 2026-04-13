@@ -19,6 +19,7 @@ import { scoreStagedPersonIcpBatch } from "@/lib/icp/scorer";
 import type { StagedPersonBatchInput } from "@/lib/icp/scorer";
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
 import { getExclusionDomains, getExclusionEmails, extractDomain } from "@/lib/exclusions";
+import { normalizeJobTitle } from "@/lib/normalize";
 
 // ---------------------------------------------------------------------------
 // Safety net: placeholder email domains that must never enter the Person table.
@@ -414,6 +415,18 @@ export async function deduplicateAndPromote(
         `This should never occur in production. Check for stale dist/ files.`
       );
       record.email = null;
+    }
+  }
+
+  // --- BL-018: Normalise plural job titles ---
+  // Discovery sources sometimes produce plural titles like "Warehouse Managers".
+  // Normalise to singular form before promotion to Person table.
+  for (const record of staged) {
+    if (record.jobTitle) {
+      const normalised = normalizeJobTitle(record.jobTitle);
+      if (normalised !== record.jobTitle) {
+        record.jobTitle = normalised;
+      }
     }
   }
 

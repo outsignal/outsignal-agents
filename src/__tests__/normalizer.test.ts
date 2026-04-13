@@ -15,7 +15,7 @@ import { classifyIndustry } from "@/lib/normalizer/industry";
 import { classifyCompanyName } from "@/lib/normalizer/company";
 import { classifyJobTitle } from "@/lib/normalizer/job-title";
 import { CANONICAL_VERTICALS, SENIORITY_LEVELS } from "@/lib/normalizer/vocabulary";
-import { normalizeJobTitle, normalizeLocation, normalizeIndustry } from "@/lib/normalize";
+import { normalizeJobTitle, normalizeLocation, normalizeIndustry, singulariseJobTitle } from "@/lib/normalize";
 
 const mockGenerateObject = generateObject as ReturnType<typeof vi.fn>;
 
@@ -213,6 +213,41 @@ describe("normalizeJobTitle", () => {
   it("returns empty string for empty input", () => {
     expect(normalizeJobTitle("")).toBe("");
     expect(normalizeJobTitle("  ")).toBe("");
+  });
+
+  it("singularises plural job title words (BL-018)", () => {
+    expect(normalizeJobTitle("Warehouse Managers")).toBe("Warehouse Manager");
+    expect(normalizeJobTitle("Sales Directors")).toBe("Sales Director");
+    expect(normalizeJobTitle("Software Engineers")).toBe("Software Engineer");
+    expect(normalizeJobTitle("HR Consultants")).toBe("HR Consultant");
+    expect(normalizeJobTitle("Business Analysts")).toBe("Business Analyst");
+    expect(normalizeJobTitle("Operations Supervisors")).toBe("Operations Supervisor");
+    expect(normalizeJobTitle("Project Coordinators")).toBe("Project Coordinator");
+    expect(normalizeJobTitle("Marketing Specialists")).toBe("Marketing Specialist");
+    expect(normalizeJobTitle("Chief Officers")).toBe("Chief Officer");
+    expect(normalizeJobTitle("Account Executives")).toBe("Account Executive");
+  });
+
+  it("does not singularise non-title words ending in s", () => {
+    expect(normalizeJobTitle("Sales Manager")).toBe("Sales Manager");
+    expect(normalizeJobTitle("Business Manager")).toBe("Business Manager");
+    expect(normalizeJobTitle("Operations Manager")).toBe("Operations Manager");
+  });
+});
+
+describe("singulariseJobTitle", () => {
+  it("strips trailing s from known plural title words", () => {
+    expect(singulariseJobTitle("Warehouse Managers")).toBe("Warehouse Manager");
+    expect(singulariseJobTitle("Directors")).toBe("Director");
+  });
+
+  it("preserves non-plural words", () => {
+    expect(singulariseJobTitle("Sales Manager")).toBe("Sales Manager");
+    expect(singulariseJobTitle("CTO")).toBe("CTO");
+  });
+
+  it("handles empty/null input", () => {
+    expect(singulariseJobTitle("")).toBe("");
   });
 });
 

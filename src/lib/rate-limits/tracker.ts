@@ -185,6 +185,85 @@ function getBudgetLimit(): number {
 }
 
 /**
+ * Get a snapshot of Claude Code token usage for a custom time window.
+ * Unlike getBudgetSnapshot, this does NOT use the in-memory cache and
+ * accepts a configurable window in hours.
+ */
+export async function getUsageSnapshot(
+  windowHours: number,
+  dir?: string,
+): Promise<BudgetSnapshot> {
+  const targetDir = dir || JSONL_DIR;
+  const now = Date.now();
+  const windowStart = new Date(now - windowHours * 60 * 60 * 1000);
+
+  // Scan files modified within windowHours + 1h buffer
+  const fileAgeCutoff = Date.now() - (windowHours + 1) * 60 * 60 * 1000;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(targetDir);
+  } catch {
+    return {
+      totalWeight: 0,
+      windowHours,
+      percentageUsed: 0,
+      bySession: {},
+      recordCount: 0,
+      oldestRecord: null,
+      newestRecord: null,
+    };
+  }
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".jsonl")) continue;
+    const fullPath = path.join(targetDir, entry);
+    try {
+      const stat = fs.statSync(fullPath);
+      if (stat.mtimeMs >= fileAgeCutoff) {
+        files.push(fullPath);
+      }
+    } catch {
+      // skip
+    }
+  }
+
+  const mergedSessions: Record<string, number> = {};
+  let totalRecords = 0;
+  let globalOldest: Date | null = null;
+  let globalNewest: Date | null = null;
+
+  for (const file of files) {
+    const { bySession, recordCount, oldest, newest } = await parseJsonlFile(
+      file,
+      windowStart,
+    );
+    for (const [sid, weight] of Object.entries(bySession)) {
+      mergedSessions[sid] = (mergedSessions[sid] || 0) + weight;
+    }
+    totalRecords += recordCount;
+    if (oldest && (!globalOldest || oldest < globalOldest)) globalOldest = oldest;
+    if (newest && (!globalNewest || newest > globalNewest)) globalNewest = newest;
+  }
+
+  const totalWeight = Object.values(mergedSessions).reduce(
+    (sum, w) => sum + w,
+    0,
+  );
+  const budgetLimit = getBudgetLimit();
+
+  return {
+    totalWeight,
+    windowHours,
+    percentageUsed: (totalWeight / budgetLimit) * 100,
+    bySession: mergedSessions,
+    recordCount: totalRecords,
+    oldestRecord: globalOldest,
+    newestRecord: globalNewest,
+  };
+}
+
+/**
  * Get a snapshot of Claude Code token budget usage for the current
  * 5-hour rolling window.
  */
