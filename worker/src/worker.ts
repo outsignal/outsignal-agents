@@ -41,7 +41,7 @@ interface SenderConfig {
 interface ActionItem {
   id: string;
   personId: string;
-  actionType: "connect" | "connection_request" | "message" | "profile_view" | "check_connection";
+  actionType: "connect" | "connection_request" | "message" | "profile_view" | "check_connection" | "withdraw_connection";
   messageBody: string | null;
   priority: number;
   linkedinUrl: string | null;
@@ -89,6 +89,10 @@ export class Worker {
   private lastConnectionPoll: Map<string, number> = new Map();
   /** Next connection poll interval per workspace (jittered). */
   private nextConnectionPollInterval: Map<string, number> = new Map();
+  /** Last date (YYYY-MM-DD) daily planning was run per workspace. */
+  private lastPlanDate: Map<string, string> = new Map();
+  /** Last date (YYYY-MM-DD) mid-day top-up was run per workspace. */
+  private lastTopupDate: Map<string, string> = new Map();
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -284,6 +288,45 @@ export class Worker {
       console.log(`[Worker] Outside business hours. Waiting ${waitMin} minutes.`);
       await sleep(Math.min(waitMs, 30 * 60_000)); // Cap at 30 min to re-check
       return;
+    }
+
+    // Daily planning — run once per calendar day per workspace (+ mid-day top-up)
+    const today = new Date().toISOString().slice(0, 10);
+    for (const slug of slugs) {
+      if (!this.running) break;
+
+      const lastPlan = this.lastPlanDate.get(slug);
+      if (lastPlan !== today) {
+        console.log(`[Worker] Running daily plan for ${slug}...`);
+        try {
+          const result = await this.api.planDay(slug);
+          console.log(
+            `[Worker] Planned ${result.planned} actions for ${slug} across ${result.campaigns.length} campaign(s)`,
+          );
+          this.lastPlanDate.set(slug, today);
+        } catch (err) {
+          console.error(`[Worker] Daily plan failed for ${slug}:`, err);
+        }
+      }
+
+      // Mid-day top-up for signal campaign leads added mid-day
+      if (new Date().getUTCHours() >= 13) {
+        const lastTopup = this.lastTopupDate.get(slug);
+        if (lastTopup !== today) {
+          console.log(`[Worker] Running mid-day top-up for ${slug}...`);
+          try {
+            const result = await this.api.planDay(slug);
+            if (result.planned > 0) {
+              console.log(
+                `[Worker] Mid-day top-up: ${result.planned} new actions for ${slug}`,
+              );
+            }
+            this.lastTopupDate.set(slug, today);
+          } catch (err) {
+            console.error(`[Worker] Mid-day top-up failed for ${slug}:`, err);
+          }
+        }
+      }
     }
 
     // Process each workspace
@@ -1050,6 +1093,16 @@ export class Worker {
           };
           break;
         }
+
+        case "withdraw_connection":
+          // Placeholder — actual LinkedIn withdrawal requires Voyager API research (separate PR).
+          // Mark as failed so it doesn't block the queue. The system degrades gracefully:
+          // if withdrawal fails, the retry logic still fires after timeout.
+          console.warn(
+            `[Worker] withdraw_connection not yet implemented in worker — marking as failed for action ${action.id}`,
+          );
+          result = { success: false, error: "withdraw_connection not yet implemented in worker" };
+          break;
 
         default:
           result = { success: false, error: `Unknown action type: ${action.actionType}` };

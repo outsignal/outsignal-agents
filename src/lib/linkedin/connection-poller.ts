@@ -124,12 +124,22 @@ export async function pollConnectionAccepts(workspaceSlug: string): Promise<Poll
         personId: conn.personId,
         workspaceSlug: conn.sender.workspaceSlug,
         sequenceStepRef: "connection_retry",
-        actionType: { in: ["connect", "connection_request"] },
       },
     });
 
     if (retryAction) {
-      // Already retried once — mark as permanently failed
+      // Already retried once — this is the second timeout (day 31).
+      // Enqueue final withdrawal then mark as permanently failed.
+      await enqueueAction({
+        senderId: conn.senderId,
+        personId: conn.personId,
+        workspaceSlug: conn.sender.workspaceSlug,
+        actionType: "withdraw_connection",
+        priority: 2,
+        scheduledFor: new Date(),
+        sequenceStepRef: "withdrawal_final",
+      });
+
       await prisma.linkedInConnection.update({
         where: { id: conn.id },
         data: { status: "failed" },
@@ -147,27 +157,30 @@ export async function pollConnectionAccepts(workspaceSlug: string): Promise<Poll
 
       result.failed++;
     } else {
-      // First timeout — check if cooldown period has passed before retrying
-      const timeoutTime = new Date(
-        conn.requestSentAt.getTime() + timeoutDays * 24 * 60 * 60 * 1000,
-      );
-      const cooldownEndTime = new Date(
-        timeoutTime.getTime() + WITHDRAWAL_COOLDOWN_HOURS * 60 * 60 * 1000,
-      );
+      // First timeout (day 14) — enqueue withdrawal; do NOT directly retry.
+      // The withdrawal completion callback will schedule the retry after cooldown.
+      const withdrawalExists = await prisma.linkedInAction.findFirst({
+        where: {
+          personId: conn.personId,
+          workspaceSlug: conn.sender.workspaceSlug,
+          sequenceStepRef: "withdrawal_pre_retry",
+          status: { in: ["pending", "running"] },
+        },
+      });
 
-      if (now >= cooldownEndTime) {
-        // Cooldown passed — enqueue a retry connection request
+      if (!withdrawalExists) {
         await enqueueAction({
           senderId: conn.senderId,
           personId: conn.personId,
           workspaceSlug: conn.sender.workspaceSlug,
-          actionType: "connect",
+          actionType: "withdraw_connection",
+          priority: 2,
           scheduledFor: new Date(),
-          sequenceStepRef: "connection_retry",
+          sequenceStepRef: "withdrawal_pre_retry",
         });
         result.timedOut++;
       }
-      // If cooldown not yet passed: skip, will be processed next poll cycle
+      // If withdrawal already pending/running: skip, callback will handle retry
     }
   }
 
@@ -196,6 +209,15 @@ export async function processConnectionCheckResult(
     await prisma.linkedInConnection.update({
       where: { id: connectionId },
       data: { status: "connected", connectedAt: new Date() },
+    });
+
+    // Decrement pending connection count (this connection is no longer pending)
+    await prisma.sender.update({
+      where: { id: conn.senderId },
+      data: {
+        pendingConnectionCount: { decrement: 1 },
+        pendingCountUpdatedAt: new Date(),
+      },
     });
 
     // Increment connectionsAccepted counter for today
