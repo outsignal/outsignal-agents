@@ -14,6 +14,20 @@ interface ActionItem {
   linkedinUrl: string | null;
 }
 
+interface PlanResult {
+  planned: number;
+  campaigns: Array<{
+    name: string;
+    planned: number;
+    remaining: number;
+  }>;
+  senders: Array<{
+    name: string;
+    budgetUsed: number;
+    budgetRemaining: number;
+  }>;
+}
+
 interface SenderItem {
   id: string;
   workspaceSlug: string;
@@ -334,5 +348,17 @@ export class ApiClient {
       "/api/linkedin/actions/recover",
       { method: "POST" },
     );
+  }
+
+  /**
+   * Run daily planning for a workspace (pull model).
+   * Creates LinkedIn actions for unstarted people across active campaigns,
+   * spread across business hours with per-sender budget awareness.
+   */
+  async planDay(workspaceSlug: string): Promise<PlanResult> {
+    return this.request<PlanResult>("/api/linkedin/plan", {
+      method: "POST",
+      body: JSON.stringify({ workspaceSlug }),
+    });
   }
 }

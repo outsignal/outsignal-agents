@@ -7,9 +7,6 @@
  */
 
 import { prisma } from "@/lib/db";
-import { chainActions } from "@/lib/linkedin/chain";
-import { applyTimingJitter } from "@/lib/linkedin/jitter";
-import { assignSenderForPerson } from "@/lib/linkedin/sender";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { getCampaign } from "@/lib/campaigns/operations";
 import {
@@ -46,11 +43,11 @@ export class LinkedInAdapter implements ChannelAdapter {
   readonly channel = CHANNEL_TYPES.LINKEDIN;
 
   // ---------------------------------------------------------------------------
-  // deploy — full LinkedIn channel deploy (moved from deploy.ts in Phase 73)
+  // deploy — LinkedIn channel deploy (pull model: no action creation at deploy)
   // ---------------------------------------------------------------------------
 
   async deploy(params: DeployParams): Promise<void> {
-    const { deployId, campaignId, workspaceSlug, channels } = params;
+    const { deployId, campaignId, workspaceSlug } = params;
 
     // Mark linkedin channel as running
     await prisma.campaignDeploy.update({
@@ -63,11 +60,6 @@ export class LinkedInAdapter implements ChannelAdapter {
       if (!campaign?.targetListId) {
         throw new Error("Campaign has no target list");
       }
-
-      const leads = await prisma.targetListPerson.findMany({
-        where: { listId: campaign.targetListId },
-        include: { person: true },
-      });
 
       const linkedinSequence = (campaign.linkedinSequence ?? []) as LinkedInSequenceStep[];
 
@@ -88,9 +80,9 @@ export class LinkedInAdapter implements ChannelAdapter {
 
       // ── Connection gate split ────────────────────────────────────────────
       // Split the sequence at the connect step. Pre-connect steps (profile_view,
-      // connect) are scheduled immediately via chainActions. Post-connect steps
-      // (follow-up messages) become CampaignSequenceRules triggered by
-      // connection_accepted — they are NOT pre-scheduled.
+      // connect) are no longer scheduled here. Post-connect steps (follow-up
+      // messages) become CampaignSequenceRules triggered by connection_accepted.
+      // Pre-connect actions are now created by the daily planner (pull model).
       const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
 
       // Ensure profile_view is the first step (industry standard warm-up)
@@ -98,62 +90,14 @@ export class LinkedInAdapter implements ChannelAdapter {
         sorted.unshift({ position: 0, type: "profile_view", delayDays: 0 });
       }
 
-      const connectIndex = sorted.findLastIndex((step) => step.type === "connect" || step.type === "connection_request");
+      const connectIndex = sorted.findLastIndex(
+        (step) => step.type === "connect" || step.type === "connection_request",
+      );
 
-      const preConnectSteps = connectIndex >= 0
-        ? sorted.slice(0, connectIndex + 1)
-        : sorted; // No connect step — all steps are pre-connect
-      const postConnectSteps = connectIndex >= 0
-        ? sorted.slice(connectIndex + 1)
-        : []; // No connect step — no post-connect steps
-
-      let linkedinStepCount = 0;
-      const STAGGER_BASE_MS = 15 * 60 * 1000; // 15 minutes between leads (jittered +-20%)
-
-      for (let i = 0; i < leads.length; i++) {
-        const person = leads[i].person;
-
-        if (!person.linkedinUrl) {
-          // No LinkedIn URL — skip silently
-          continue;
-        }
-
-        // Assign sender — mode depends on whether email channel is also being deployed
-        const sender = await assignSenderForPerson(workspaceSlug, {
-          mode: channels.includes("email") ? "email_linkedin" : "linkedin_only",
-        });
-
-        if (!sender) {
-          console.warn(
-            `[deploy] No active sender available for workspace ${workspaceSlug} — skipping lead ${person.email}`,
-          );
-          continue;
-        }
-
-        // Stagger: lead i fires at i * ~15 minutes (jittered 12-18 min) from now
-        const scheduledFor = new Date(Date.now() + i * applyTimingJitter(STAGGER_BASE_MS));
-
-        // Schedule ONLY pre-connect steps (profile_view + connect) via chainActions
-        const actionIds = await chainActions({
-          senderId: sender.id,
-          personId: person.id,
-          workspaceSlug,
-          sequence: preConnectSteps.map((step) => ({
-            position: step.position,
-            type: step.type,
-            body: step.body,
-            delayDays: step.delayDays,
-          })),
-          baseScheduledFor: scheduledFor,
-          priority: 5,
-          campaignName: campaign.name,
-        });
-
-        console.log(
-          `[deploy] Split sequence: ${preConnectSteps.length} pre-connect, ${postConnectSteps.length} post-connect rules for ${person.email}`,
-        );
-        linkedinStepCount++;
-      }
+      const postConnectSteps =
+        connectIndex >= 0
+          ? sorted.slice(connectIndex + 1)
+          : []; // No connect step — no post-connect steps
 
       // Create CampaignSequenceRules for post-connect follow-up messages.
       // These fire when connection_accepted is detected by the connection-poller.
@@ -173,14 +117,27 @@ export class LinkedInAdapter implements ChannelAdapter {
         linkedinSequence: postConnectRules,
       });
 
+      // Count target list leads for step count reporting
+      const leadCount = await prisma.targetListPerson.count({
+        where: { listId: campaign.targetListId },
+      });
+
+      // Mark deploy complete — NO action creation.
+      // Pre-connect actions (profile_view + connection_request) are now created
+      // by the daily planner (POST /api/linkedin/plan) via the pull model.
       await prisma.campaignDeploy.update({
         where: { id: deployId },
         data: {
           linkedinStatus: "complete",
-          linkedinStepCount,
+          linkedinStepCount: leadCount,
           linkedinError: null,
         },
       });
+
+      console.log(
+        `[deploy] Campaign "${campaign.name}" deployed with pull model — ${leadCount} leads, ` +
+          `${postConnectRules.length} post-connect rules. Actions will be created by daily planner.`,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await prisma.campaignDeploy.update({
