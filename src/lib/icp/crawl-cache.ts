@@ -119,6 +119,14 @@ async function getCrawlMarkdownInner(
     }
   }
 
+  // --- LinkedIn company page fallback ---
+  // When both free fetch and Firecrawl fail, try scraping the company's
+  // LinkedIn page. LinkedIn company pages contain useful info (description,
+  // industry, headcount, specialties) that helps ICP scoring.
+  if (!markdown) {
+    markdown = await tryLinkedInCompanyFallback(domain, company);
+  }
+
   if (!markdown) {
     return null;
   }
@@ -160,6 +168,163 @@ async function getCrawlMarkdownInner(
   }
 
   return markdown;
+}
+
+/**
+ * Derive a LinkedIn company URL slug from a domain or company name.
+ * Examples: "acme.com" -> "acme", "Widget Inc" -> "widget-inc"
+ */
+function deriveLinkedInSlug(domain: string, companyName?: string | null): string {
+  // Prefer company name if it's more descriptive than the domain
+  const base = companyName && companyName !== domain
+    ? companyName
+    : domain.replace(/\.(com|co\.uk|io|ai|org|net|co|app|dev)$/i, '');
+  return base
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
+ * Try fetching the LinkedIn company page as a fallback when website crawl fails.
+ * Uses a browser-like User-Agent. Returns extracted text or null on failure.
+ */
+async function tryLinkedInCompanyFallback(
+  domain: string,
+  company: { name: string; linkedinUrl?: string | null } | null,
+): Promise<string | null> {
+  // Determine LinkedIn URL: use stored linkedinUrl, or construct from slug
+  let linkedinUrl = company?.linkedinUrl ?? null;
+  if (!linkedinUrl) {
+    const slug = deriveLinkedInSlug(domain, company?.name);
+    if (!slug) return null;
+    linkedinUrl = `https://www.linkedin.com/company/${slug}`;
+  }
+
+  // Normalise: ensure it's the /about page for richer content
+  const aboutUrl = linkedinUrl.replace(/\/+$/, '') + '/about';
+
+  console.log(`[crawl-cache] ${domain}: trying LinkedIn fallback: ${aboutUrl}`);
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(aboutUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+
+      if (!res.ok) {
+        console.log(`[crawl-cache] ${domain}: LinkedIn fallback HTTP ${res.status}`);
+        return null;
+      }
+
+      const html = await res.text();
+      const text = htmlToText(html);
+
+      // LinkedIn pages return minimal useful content when not logged in
+      // but still include company description, industry, and size in meta tags
+      // and structured data. Extract what we can.
+      const enriched = extractLinkedInMeta(html, text);
+
+      if (!enriched || enriched.length < 50) {
+        console.log(`[crawl-cache] ${domain}: LinkedIn fallback returned too little content (${enriched?.length ?? 0} chars)`);
+        return null;
+      }
+
+      const markdown = enriched.slice(0, MAX_MARKDOWN_LENGTH);
+      console.log(`[crawl-cache] ${domain}: LinkedIn fallback OK (${markdown.length} chars)`);
+      return markdown;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err) {
+    console.log(`[crawl-cache] ${domain}: LinkedIn fallback failed:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Extract structured company info from LinkedIn HTML.
+ * LinkedIn embeds useful metadata in og: tags, JSON-LD, and specific
+ * HTML patterns even for unauthenticated views.
+ */
+function extractLinkedInMeta(html: string, plainText: string): string {
+  const parts: string[] = [];
+
+  // Extract og:title (company name)
+  const ogTitle = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i)?.[1]
+    ?? html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:title"/i)?.[1];
+  if (ogTitle) parts.push(`Company: ${decodeEntities(ogTitle)}`);
+
+  // Extract og:description or meta description
+  const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i)?.[1]
+    ?? html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:description"/i)?.[1]
+    ?? html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i)?.[1]
+    ?? html.match(/<meta[^>]*content="([^"]+)"[^>]*name="description"/i)?.[1];
+  if (ogDesc) parts.push(`Description: ${decodeEntities(ogDesc)}`);
+
+  // Extract JSON-LD structured data (LinkedIn often includes Organization schema)
+  const jsonLdMatches = html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+  for (const match of jsonLdMatches) {
+    try {
+      const data = JSON.parse(match[1]);
+      const org = Array.isArray(data)
+        ? data.find((d: Record<string, unknown>) => d['@type'] === 'Organization')
+        : data['@type'] === 'Organization' ? data : null;
+      if (org) {
+        if (org.description) parts.push(`About: ${org.description}`);
+        if (org.numberOfEmployees?.value) parts.push(`Employees: ${org.numberOfEmployees.value}`);
+        if (org.industry) parts.push(`Industry: ${org.industry}`);
+        if (org.address?.addressLocality) parts.push(`Location: ${org.address.addressLocality}`);
+        if (org.url) parts.push(`Website: ${org.url}`);
+      }
+    } catch {
+      // Invalid JSON-LD, skip
+    }
+  }
+
+  // Add the plain text body (filtered) as additional context
+  // Filter out LinkedIn boilerplate (sign-in prompts, cookie notices, etc.)
+  const filteredText = plainText
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (trimmed.length < 10) return false;
+      // Filter LinkedIn boilerplate
+      if (/sign in|sign up|join now|forgot password|cookie|privacy policy|user agreement/i.test(trimmed)) return false;
+      if (/agree to linkedin|by clicking/i.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
+
+  if (filteredText.length > 100) {
+    parts.push(`\n--- Page Content ---\n${filteredText}`);
+  }
+
+  return parts.join('\n');
+}
+
+/** Decode basic HTML entities. */
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
 }
 
 /**
