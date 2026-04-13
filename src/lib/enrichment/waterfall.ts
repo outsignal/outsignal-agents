@@ -846,6 +846,13 @@ export async function enrichEmailBatch(
     }
   }
 
+  // NOTE: AI Ark source-first emails are added to foundEmails and verified via
+  // the shared BounceBan bulk step (Step 4), not inline. People with foundEmails
+  // entries are skipped by downstream providers via the `stillNeedEmail` filter
+  // (line: needEmail.filter(p => !foundEmails.get(p.personId))), not via
+  // shouldEnrich() dedup gate. The shouldEnrich() call in Prospeo/FindyMail/Kitt
+  // steps provides a secondary dedup layer against prior enrichment runs.
+
   // -------------------------------------------------------------------------
   // Step 1: Prospeo bulk for all eligible people (generic — no person_id)
   // -------------------------------------------------------------------------

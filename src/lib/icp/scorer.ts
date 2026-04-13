@@ -679,3 +679,181 @@ export async function scorePersonIcpBatch(
 
   return { scored, failed, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// Staged person batch scoring (pre-promotion — BL-038 fix)
+// ---------------------------------------------------------------------------
+
+/**
+ * Input for batch scoring staged DiscoveredPerson records.
+ * Extends StagedPersonInput with a discoveredPersonId for result lookup.
+ */
+export interface StagedPersonBatchInput extends StagedPersonInput {
+  discoveredPersonId: string;
+}
+
+/**
+ * Score multiple staged DiscoveredPerson records' ICP fit in batches.
+ *
+ * Uses Claude Code CLI (`claude -p`) instead of the Anthropic API to avoid
+ * API credit costs. Mirrors the pattern of scorePersonIcpBatch() but works
+ * with raw DiscoveredPerson fields (no Person/PersonWorkspace required).
+ *
+ * @param inputs - Array of staged person inputs with discoveredPersonId
+ * @param workspaceSlug - Workspace slug to fetch icpCriteriaPrompt
+ * @param options - batchSize (default 15)
+ * @returns Map of discoveredPersonId → IcpScoreResult
+ */
+export async function scoreStagedPersonIcpBatch(
+  inputs: StagedPersonBatchInput[],
+  workspaceSlug: string,
+  options?: { batchSize?: number },
+): Promise<Map<string, IcpScoreResult>> {
+  const { execSync } = await import("child_process");
+  const { writeFileSync, unlinkSync } = await import("fs");
+  const { randomUUID } = await import("crypto");
+  const { tmpdir } = await import("os");
+  const { join } = await import("path");
+
+  const batchSize = options?.batchSize ?? 15;
+  const results = new Map<string, IcpScoreResult>();
+
+  if (inputs.length === 0) {
+    return results;
+  }
+
+  // 1. Fetch workspace (for icpCriteriaPrompt) — same for all people
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { slug: workspaceSlug },
+  });
+
+  if (!workspace.icpCriteriaPrompt?.trim()) {
+    throw new Error(
+      `No ICP criteria prompt configured for workspace '${workspaceSlug}'.`,
+    );
+  }
+
+  // 2. Collect unique domains and prefetch crawl markdown + company records
+  const uniqueDomains = [
+    ...new Set(
+      inputs
+        .map((i) => i.companyDomain)
+        .filter((d): d is string => !!d),
+    ),
+  ];
+
+  const websiteMap = new Map<string, string | null>();
+  await Promise.all(
+    uniqueDomains.map(async (domain) => {
+      const md = await getCrawlMarkdown(domain);
+      websiteMap.set(domain, md);
+    }),
+  );
+
+  const companies = await prisma.company.findMany({
+    where: { domain: { in: uniqueDomains } },
+  });
+  const companyMap = new Map(companies.map((c) => [c.domain, c]));
+
+  // 3. Chunk into batches and process via Claude Code CLI
+  for (let i = 0; i < inputs.length; i += batchSize) {
+    const batch = inputs.slice(i, i + batchSize);
+
+    const entries: string[] = [];
+    for (const input of batch) {
+      const company = input.companyDomain
+        ? companyMap.get(input.companyDomain) ?? null
+        : null;
+      const websiteMarkdown = input.companyDomain
+        ? websiteMap.get(input.companyDomain) ?? null
+        : null;
+
+      entries.push(
+        buildBatchPersonEntry({
+          personId: input.discoveredPersonId,
+          person: {
+            firstName: input.firstName,
+            lastName: input.lastName,
+            jobTitle: input.jobTitle,
+            company: input.company,
+            vertical: null, // DiscoveredPerson doesn't have vertical
+            location: input.location,
+            enrichmentData: null, // not enriched yet
+          },
+          company: company
+            ? {
+                headcount: company.headcount,
+                industry: company.industry,
+                description: company.description,
+                yearFounded: company.yearFounded,
+              }
+            : null,
+          websiteMarkdown,
+        }),
+      );
+    }
+
+    const fullPrompt = [
+      "You are an ICP (Ideal Customer Profile) scoring expert. Score each person below against these criteria:\n",
+      workspace.icpCriteriaPrompt,
+      "\n\nFor each person, return a JSON array where each element has:",
+      "- personId: the ID shown for that person",
+      "- score: 0-100 ICP fit score",
+      '- reasoning: 1-3 sentences explaining the score',
+      '- confidence: "high", "medium", or "low"',
+      "\nReturn ONLY the JSON array, no other text.\n",
+      entries.map((e) => `---\n${e}`).join("\n\n"),
+      "\n\nSet confidence based on data completeness:",
+      '- "high": Person data + company data + website all available',
+      '- "medium": 2 out of 3 signal types available',
+      '- "low": Only 1 signal type or very sparse data',
+    ].join("\n");
+
+    const promptPath = join(tmpdir(), `icp-staged-batch-${randomUUID()}.txt`);
+
+    try {
+      writeFileSync(promptPath, fullPrompt, "utf-8");
+
+      const output = execSync(
+        `npx -y @anthropic-ai/claude-code -p "$(cat '${promptPath}')" --output-format json --model claude-haiku-4-5`,
+        {
+          encoding: "utf-8",
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 120_000,
+        },
+      ).trim();
+
+      const parsed = parseCliJsonArray(output);
+
+      if (!Array.isArray(parsed)) {
+        throw new Error(
+          `Expected JSON array from Claude Code, got ${typeof parsed}`,
+        );
+      }
+
+      for (const entry of parsed) {
+        const validated = BatchIcpScoreSchema.element.safeParse(entry);
+        if (validated.success) {
+          results.set(validated.data.personId, {
+            score: validated.data.score,
+            reasoning: validated.data.reasoning,
+            confidence: validated.data.confidence,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(
+        `[icp-scorer] Staged batch scoring via CLI failed for ${batch.length} people: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Fail-open: batch failed, results Map won't have entries for these people
+    } finally {
+      try {
+        unlinkSync(promptPath);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+  }
+
+  return results;
+}

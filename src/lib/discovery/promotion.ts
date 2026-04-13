@@ -15,7 +15,8 @@
 
 import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
-import { scoreStagedPersonIcp } from "@/lib/icp/scorer";
+import { scoreStagedPersonIcpBatch } from "@/lib/icp/scorer";
+import type { StagedPersonBatchInput } from "@/lib/icp/scorer";
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
 
 // ---------------------------------------------------------------------------
@@ -508,14 +509,69 @@ export async function deduplicateAndPromote(
   // Pre-load all potential matches in 3 batch queries
   const dedupMaps = await buildDedupMaps(staged);
 
+  // --- Pre-filter: identify non-duplicate, non-discarded candidates for ICP scoring ---
+  // First pass: find which records need ICP scoring (non-duplicate, has email or LinkedIn)
+  const candidatesForScoring: Array<{ index: number; dp: StagedRecord }> = [];
+  const duplicateIndices = new Set<number>();
+  const discardedIndices = new Set<number>();
+
+  for (let i = 0; i < staged.length; i++) {
+    if (skipIndices.has(i)) continue;
+    const dp = staged[i];
+
+    if (!dp.email && !dp.linkedinUrl) {
+      discardedIndices.add(i);
+      continue;
+    }
+
+    const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps);
+    if (existingPersonId) {
+      duplicateIndices.add(i);
+      continue;
+    }
+
+    candidatesForScoring.push({ index: i, dp });
+  }
+
+  // --- Batch ICP scoring (BL-038 fix: batch instead of sequential) ---
+  // Score all non-duplicate candidates in one batch call before the promotion loop.
+  // Fail-open: if batch scoring throws, scoreMap stays empty and all candidates promote.
+  const scoreMap = new Map<string, { score: number; reasoning: string; confidence: "high" | "medium" | "low" }>();
+  if (icpScoringEnabled && candidatesForScoring.length > 0) {
+    try {
+      const batchInputs: StagedPersonBatchInput[] = candidatesForScoring.map(({ dp }) => ({
+        discoveredPersonId: dp.id,
+        firstName: dp.firstName,
+        lastName: dp.lastName,
+        jobTitle: dp.jobTitle,
+        company: dp.company,
+        companyDomain: dp.companyDomain,
+        location: dp.location,
+      }));
+
+      const batchResults = await scoreStagedPersonIcpBatch(batchInputs, workspaceSlug);
+      for (const [id, result] of batchResults) {
+        scoreMap.set(id, result);
+      }
+      console.log(
+        `[promotion] Batch ICP scored ${scoreMap.size}/${candidatesForScoring.length} candidates`,
+      );
+    } catch (err) {
+      // Fail-open: batch scoring error should not block promotion
+      console.warn(
+        `[promotion] Batch ICP scoring failed — promoting all candidates without scores:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // --- Main promotion loop ---
   for (let i = 0; i < staged.length; i++) {
     if (skipIndices.has(i)) continue; // already handled as intra-batch dupe
     const dp = staged[i];
 
-    // Discard people with neither email nor LinkedIn URL — they cannot be
-    // enriched or matched to any profile. People with LinkedIn URL but no
-    // email will be promoted and enriched asynchronously via EnrichmentJob.
-    if (!dp.email && !dp.linkedinUrl) {
+    // Discard people with neither email nor LinkedIn URL
+    if (discardedIndices.has(i)) {
       await prisma.discoveredPerson.update({
         where: { id: dp.id },
         data: { status: "discarded" },
@@ -524,10 +580,9 @@ export async function deduplicateAndPromote(
       continue;
     }
 
-    const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps);
-
-    if (existingPersonId) {
-      // Duplicate — mark as duplicate, set personId, do NOT set promotedAt (free for quota)
+    // Duplicate check (already resolved above)
+    if (duplicateIndices.has(i)) {
+      const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps)!;
       await prisma.discoveredPerson.update({
         where: { id: dp.id },
         data: {
@@ -547,67 +602,52 @@ export async function deduplicateAndPromote(
             : dp.email ?? dp.id;
         duplicateNames.push(displayName);
       }
-    } else {
-      // --- ICP scoring gate (BL-038) ---
-      // Score before promotion to avoid wasting enrichment credits on low-fit leads.
-      // Fail-open: if scoring throws, promote anyway (API error should not block pipeline).
-      if (icpScoringEnabled) {
-        try {
-          const scoreResult = await scoreStagedPersonIcp(
-            {
-              firstName: dp.firstName,
-              lastName: dp.lastName,
-              jobTitle: dp.jobTitle,
-              company: dp.company,
-              companyDomain: dp.companyDomain,
-              location: dp.location,
-            },
-            workspaceSlug,
-          );
+      continue;
+    }
 
-          // Persist score on DiscoveredPerson regardless of pass/fail
+    // --- ICP scoring gate (BL-038) ---
+    // Scores were pre-computed in batch above. Look up from scoreMap.
+    // Fail-open: if score not found (batch failed for this person), promote anyway.
+    if (icpScoringEnabled) {
+      const scoreResult = scoreMap.get(dp.id);
+      if (scoreResult) {
+        // Persist score on DiscoveredPerson regardless of pass/fail
+        await prisma.discoveredPerson.update({
+          where: { id: dp.id },
+          data: {
+            icpScore: scoreResult.score,
+            icpReasoning: scoreResult.reasoning,
+            icpConfidence: scoreResult.confidence,
+          },
+        });
+
+        if (scoreResult.score < icpThreshold) {
+          // Below threshold — reject without promotion (saves enrichment credits)
           await prisma.discoveredPerson.update({
             where: { id: dp.id },
-            data: {
-              icpScore: scoreResult.score,
-              icpReasoning: scoreResult.reasoning,
-              icpConfidence: scoreResult.confidence,
-            },
+            data: { status: "scored_rejected" },
           });
-
-          if (scoreResult.score < icpThreshold) {
-            // Below threshold — reject without promotion (saves enrichment credits)
-            await prisma.discoveredPerson.update({
-              where: { id: dp.id },
-              data: { status: "scored_rejected" },
-            });
-            scoredRejectedCount++;
-            continue;
-          }
-        } catch (err) {
-          // Fail-open: scoring error should not block promotion
-          console.warn(
-            `[promotion] ICP scoring failed for DiscoveredPerson ${dp.id} — promoting anyway:`,
-            err instanceof Error ? err.message : String(err),
-          );
+          scoredRejectedCount++;
+          continue;
         }
       }
-
-      // Not a duplicate (and passed ICP gate if enabled) — promote to Person table
-      const person = await promoteToPerson(dp, workspaceSlug);
-
-      // Update DiscoveredPerson record with promotion details
-      await prisma.discoveredPerson.update({
-        where: { id: dp.id },
-        data: {
-          status: "promoted",
-          personId: person.id,
-          promotedAt: now,
-        },
-      });
-
-      promotedIds.push(person.id);
+      // If scoreResult is undefined, fail-open: promote without score
     }
+
+    // Not a duplicate (and passed ICP gate if enabled) — promote to Person table
+    const person = await promoteToPerson(dp, workspaceSlug);
+
+    // Update DiscoveredPerson record with promotion details
+    await prisma.discoveredPerson.update({
+      where: { id: dp.id },
+      data: {
+        status: "promoted",
+        personId: person.id,
+        promotedAt: now,
+      },
+    });
+
+    promotedIds.push(person.id);
   }
 
   if (discardedCount > 0) {

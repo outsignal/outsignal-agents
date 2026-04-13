@@ -109,13 +109,22 @@ export async function bulkEnrichByAiArkId(
       }
 
       const data = (await response.json()) as ExportSingleResponse;
-      const email = data.email ?? data.profile?.email ?? null;
+      let email = data.email ?? data.profile?.email ?? null;
+
+      // Runtime validation: guard against non-string fields from unexpected API shapes
+      if (email && typeof email !== "string") email = null;
+      let firstName: string | undefined = data.profile?.first_name ?? undefined;
+      if (firstName && typeof firstName !== "string") firstName = undefined;
+      let lastName: string | undefined = data.profile?.last_name ?? undefined;
+      if (lastName && typeof lastName !== "string") lastName = undefined;
+      let jobTitle: string | undefined = data.profile?.title ?? undefined;
+      if (jobTitle && typeof jobTitle !== "string") jobTitle = undefined;
 
       results.set(personId, {
         email: email || null,
-        firstName: data.profile?.first_name ?? undefined,
-        lastName: data.profile?.last_name ?? undefined,
-        jobTitle: data.profile?.title ?? undefined,
+        firstName,
+        lastName,
+        jobTitle,
         source: "aiark",
         rawResponse: data,
         costUsd: email ? AIARK_EXPORT_CREDIT_COST : 0,
