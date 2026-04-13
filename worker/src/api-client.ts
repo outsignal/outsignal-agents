@@ -324,4 +324,15 @@ export class ApiClient {
       },
     );
   }
+
+  /**
+   * Trigger stuck-action recovery on the server.
+   * Resets actions stuck in "running" status back to "pending" or "failed".
+   */
+  async recoverStuckActions(): Promise<{ recovered: number }> {
+    return this.request<{ recovered: number }>(
+      "/api/linkedin/actions/recover",
+      { method: "POST" },
+    );
+  }
 }

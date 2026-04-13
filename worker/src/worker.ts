@@ -82,6 +82,9 @@ export class Worker {
   /** Timestamp of last expired-session recovery attempt. */
   private lastRecoveryAttempt = 0;
   private static readonly RECOVERY_INTERVAL_MS = 10 * 60 * 1000;
+  /** Timestamp of last stuck-action recovery attempt. */
+  private lastStuckRecoveryAt = 0;
+  private static readonly STUCK_RECOVERY_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
   /** Timestamp of last connection polling run per workspace. */
   private lastConnectionPoll: Map<string, number> = new Map();
   /** Next connection poll interval per workspace (jittered). */
@@ -228,6 +231,30 @@ export class Worker {
   }
 
   /**
+   * Recover actions stuck in "running" status (from worker crashes).
+   * Calls POST /api/linkedin/actions/recover, throttled to every 60 minutes.
+   */
+  private async recoverStuckActions(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastStuckRecoveryAt < Worker.STUCK_RECOVERY_INTERVAL_MS) {
+      return;
+    }
+    this.lastStuckRecoveryAt = now;
+
+    console.log("[Worker] Running stuck-action recovery...");
+    try {
+      const result = await this.api.recoverStuckActions();
+      if (result.recovered > 0) {
+        console.log(`[Worker] Recovered ${result.recovered} stuck action(s)`);
+      } else {
+        console.log("[Worker] No stuck actions found");
+      }
+    } catch (err) {
+      console.error("[Worker] Stuck-action recovery failed:", err);
+    }
+  }
+
+  /**
    * Single tick — process all senders.
    */
   private async tick(): Promise<void> {
@@ -246,6 +273,9 @@ export class Worker {
 
     // Recover expired sessions — runs 24/7, throttled to every 10 minutes
     await this.recoverExpiredSessions(slugs);
+
+    // Recover stuck actions — throttled to every 60 minutes
+    await this.recoverStuckActions();
 
     // Check business hours (default schedule) — actions only during business hours
     if (!isWithinBusinessHours()) {
@@ -634,7 +664,7 @@ export class Worker {
     // Get next batch of actions
     let actions: ActionItem[];
     try {
-      actions = await this.api.getNextActions(sender.id, 2);
+      actions = await this.api.getNextActions(sender.id, 5);
     } catch (error) {
       console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
       return;
