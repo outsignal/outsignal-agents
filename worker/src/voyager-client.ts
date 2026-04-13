@@ -1583,9 +1583,14 @@ export class VoyagerClient {
         console.error(
           `[VoyagerClient] getSentInvitations failed: HTTP ${err.status}`
         );
+        // Propagate rate-limit and auth errors so the worker can handle them
+        if (err.status === 429 || err.status === 403) {
+          throw err;
+        }
       } else {
         console.error("[VoyagerClient] getSentInvitations error:", err);
       }
+      // Only swallow genuinely ambiguous errors (unexpected shapes, parsing failures)
       return [];
     }
   }
@@ -1667,6 +1672,10 @@ export class VoyagerClient {
     invitationId: string,
     sharedSecret: string
   ): Promise<ActionResult> {
+    if (!sharedSecret) {
+      return { success: false, error: "missing_shared_secret" };
+    }
+
     const body = {
       invitationId,
       invitationSharedSecret: sharedSecret,
@@ -1743,6 +1752,18 @@ export class VoyagerClient {
         ? (profileResult.details?.memberUrn as string | undefined)
         : undefined;
 
+      // If viewProfile failed and we have no memberUrn, we cannot reliably
+      // match the invitation. Return failure instead of a misleading noop.
+      if (!memberUrn) {
+        console.warn(
+          `[VoyagerClient] withdrawConnection: viewProfile failed for ${profileId}, cannot resolve memberUrn`
+        );
+        return {
+          success: false,
+          error: "Failed to resolve memberUrn for withdrawal",
+        };
+      }
+
       // Fetch sent invitations with pagination (up to 500)
       const allInvitations: SentInvitation[] = [];
       const PAGE_SIZE = 100;
@@ -1763,20 +1784,26 @@ export class VoyagerClient {
       }
 
       console.log(
-        `[VoyagerClient] withdrawConnection: fetched ${allInvitations.length} total invitations, looking for profileId=${profileId} / memberUrn=${memberUrn ?? "unknown"}`
+        `[VoyagerClient] withdrawConnection: fetched ${allInvitations.length} total invitations, looking for profileId=${profileId} / memberUrn=${memberUrn}`
       );
 
-      // Find matching invitation by memberUrn or profileId
+      // Find matching invitation by memberUrn (most reliable) or profileId slug fallback
       const match = allInvitations.find((inv) => {
+        if (!inv.toMemberId) return false;
+
         // Match by memberUrn (most reliable)
-        if (memberUrn && inv.toMemberId) {
-          if (
-            inv.toMemberId === memberUrn ||
-            inv.toMemberId.includes(memberUrn)
-          ) {
-            return true;
-          }
+        if (
+          inv.toMemberId === memberUrn ||
+          inv.toMemberId.includes(memberUrn)
+        ) {
+          return true;
         }
+
+        // Fallback: match by profileId slug (e.g. toMemberId contains the profileId string)
+        if (profileId && inv.toMemberId.includes(profileId)) {
+          return true;
+        }
+
         return false;
       });
 

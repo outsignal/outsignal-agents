@@ -90,6 +90,12 @@ export const ACTION_TYPE_TO_LIMIT_FIELD: Record<string, string> = {
   check_connection: "dailyProfileViewLimit",
 };
 
+/** Days to wait after withdrawal before retrying (LinkedIn re-invite restriction) */
+export const WITHDRAWAL_COOLDOWN_DAYS = 21;
+
+/** Withdrawal cooldown in milliseconds (derived from WITHDRAWAL_COOLDOWN_DAYS) */
+export const WITHDRAWAL_COOLDOWN_MS = WITHDRAWAL_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+
 // LinkedIn Voyager API response types (mirrored from worker/src/voyager-client.ts)
 // These MUST match the worker's interfaces exactly.
 export interface VoyagerConversation {

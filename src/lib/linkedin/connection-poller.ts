@@ -19,9 +19,6 @@ import { evaluateSequenceRules } from "./sequencing";
 /** Fallback timeout days — used when no campaign is found for a connection */
 const DEFAULT_CONNECTION_TIMEOUT_DAYS = 14;
 
-/** Days to wait after withdrawal before retrying (LinkedIn re-invite restriction) */
-const WITHDRAWAL_COOLDOWN_DAYS = 21;
-
 /**
  * Hard cutoff for live-checking pending connections.
  * All pending connections within this window are eligible for live API checks.

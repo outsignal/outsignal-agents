@@ -6,6 +6,7 @@
  * ready actions in priority order, respecting the sender's daily budget.
  */
 import { prisma } from "@/lib/db";
+import { WITHDRAWAL_COOLDOWN_MS } from "./types";
 import type { EnqueueActionParams, LinkedInActionType } from "./types";
 import { checkBudget, checkCircuitBreaker } from "./rate-limiter";
 
@@ -270,7 +271,7 @@ export async function markComplete(actionId: string, result?: string): Promise<v
 
       if (stillPending > 0) {
         // Withdrawal before retry: update connection status, decrement pending count,
-        // then schedule a retry connection_request after 48h cooldown.
+        // then schedule a retry connection_request after 21-day cooldown.
         await prisma.$executeRaw`
           UPDATE "Sender"
           SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
@@ -288,7 +289,6 @@ export async function markComplete(actionId: string, result?: string): Promise<v
         });
 
         // Schedule retry after 21-day cooldown (LinkedIn re-invite restriction)
-        const WITHDRAWAL_COOLDOWN_MS = 21 * 24 * 60 * 60 * 1000;
         const retryTime = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
 
         await enqueueAction({
