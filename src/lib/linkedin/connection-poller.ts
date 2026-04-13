@@ -212,13 +212,13 @@ export async function processConnectionCheckResult(
     });
 
     // Decrement pending connection count (this connection is no longer pending)
-    await prisma.sender.update({
-      where: { id: conn.senderId },
-      data: {
-        pendingConnectionCount: { decrement: 1 },
-        pendingCountUpdatedAt: new Date(),
-      },
-    });
+    // Use GREATEST to prevent going negative in race conditions
+    await prisma.$executeRaw`
+      UPDATE "Sender"
+      SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
+          "pendingCountUpdatedAt" = NOW()
+      WHERE "id" = ${conn.senderId}
+    `;
 
     // Increment connectionsAccepted counter for today
     const today = new Date();

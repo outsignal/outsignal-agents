@@ -1095,13 +1095,13 @@ export class Worker {
         }
 
         case "withdraw_connection":
-          // Placeholder — actual LinkedIn withdrawal requires Voyager API research (separate PR).
-          // Mark as failed so it doesn't block the queue. The system degrades gracefully:
-          // if withdrawal fails, the retry logic still fires after timeout.
-          console.warn(
-            `[Worker] withdraw_connection not yet implemented in worker — marking as failed for action ${action.id}`,
+          // Noop — actual LinkedIn withdrawal requires Voyager API (not yet implemented).
+          // Mark as COMPLETE so the lifecycle hooks in markComplete fire correctly
+          // (scheduling retry after withdrawal, decrementing pending count, etc).
+          console.log(
+            `[Worker] withdraw_connection: noop (Voyager API not implemented) — marking complete to progress lifecycle for action ${action.id}`,
           );
-          result = { success: false, error: "withdraw_connection not yet implemented in worker" };
+          result = { success: true, details: { noop: true, reason: "Voyager API not implemented" } };
           break;
 
         default:

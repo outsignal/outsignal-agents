@@ -150,7 +150,10 @@ export async function POST(request: NextRequest) {
 
       if (preConnectSteps.length === 0) continue;
 
-      // Count unstarted people using NOT EXISTS pattern
+      // Count unstarted people using NOT EXISTS pattern.
+      // Include profile_view in the exclusion list (not just connect/connection_request)
+      // because profile_view is created first in the chain — this prevents double-planning
+      // on worker restart (where in-memory lastPlanDate is lost).
       const unstartedCount = await prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*) as count
         FROM "TargetListPerson" tlp
@@ -162,7 +165,7 @@ export async function POST(request: NextRequest) {
             WHERE la."personId" = tlp."personId"
               AND la."workspaceSlug" = ${workspaceSlug}
               AND la."campaignName" = ${campaign.name}
-              AND la."actionType" IN ('connect', 'connection_request')
+              AND la."actionType" IN ('profile_view', 'connect', 'connection_request')
               AND la."status" NOT IN ('cancelled', 'expired')
           )
       `;
@@ -250,20 +253,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Business hours: 8AM-6PM London (10h = 600 minutes)
-    const businessStartLondon = new Date(
-      new Date(
-        `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T08:00:00`,
-      ).toLocaleString("en-US", { timeZone: "Europe/London" }),
-    );
-
-    // Use a simpler approach: get the UTC offset for London today
-    // and calculate business hour start/end in UTC
+    // Get the UTC offset for London today and calculate business hour start in UTC
     const londonOffset = getTimezoneOffsetMs("Europe/London", now);
     const businessStartUtc = new Date(
       Date.UTC(year, month - 1, day, 8, 0, 0) - londonOffset,
-    );
-    const businessEndUtc = new Date(
-      Date.UTC(year, month - 1, day, 18, 0, 0) - londonOffset,
     );
 
     for (const cu of campaignUnstarted) {
@@ -278,6 +271,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Fetch unstarted people (limited to share)
+      // Same profile_view inclusion for idempotency (see count query above)
       const unstartedPeople = await prisma.$queryRaw<
         Array<{ personId: string }>
       >`
@@ -291,7 +285,7 @@ export async function POST(request: NextRequest) {
             WHERE la."personId" = tlp."personId"
               AND la."workspaceSlug" = ${workspaceSlug}
               AND la."campaignName" = ${cu.campaign.name}
-              AND la."actionType" IN ('connect', 'connection_request')
+              AND la."actionType" IN ('profile_view', 'connect', 'connection_request')
               AND la."status" NOT IN ('cancelled', 'expired')
           )
         ORDER BY tlp."addedAt" ASC

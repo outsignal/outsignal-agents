@@ -1,3 +1,6 @@
+// WARNING: Run this script ONLY when the Railway worker is stopped.
+// In-flight operations may race with the count reset.
+
 /**
  * Bootstrap pending connection counts.
  *

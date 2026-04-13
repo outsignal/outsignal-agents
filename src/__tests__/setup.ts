@@ -75,6 +75,7 @@ vi.mock("@/lib/db", () => ({
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn(),
     },
     linkedInDailyUsage: {
       findUnique: vi.fn(),
@@ -84,9 +85,12 @@ vi.mock("@/lib/db", () => ({
     linkedInConnection: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
       count: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
     },
     campaignSequenceRule: {
       findMany: vi.fn(),
@@ -119,5 +123,6 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       count: vi.fn(),
     },
+    $executeRaw: vi.fn(),
   },
 }));

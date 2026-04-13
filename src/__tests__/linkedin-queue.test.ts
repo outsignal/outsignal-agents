@@ -122,6 +122,14 @@ describe("markComplete", () => {
   });
 
   it("updates action status to complete with timestamp", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      actionType: "profile_view",
+      senderId: "sender-1",
+      personId: "person-1",
+      workspaceSlug: "rise",
+      sequenceStepRef: null,
+    });
     (prisma.linkedInAction.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
     await markComplete("action-1", '{"success":true}');
@@ -132,6 +140,29 @@ describe("markComplete", () => {
         status: "complete",
         completedAt: expect.any(Date),
         result: '{"success":true}',
+      },
+    });
+  });
+
+  it("increments pending count on connection_request completion", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      actionType: "connection_request",
+      senderId: "sender-1",
+      personId: "person-1",
+      workspaceSlug: "rise",
+      sequenceStepRef: null,
+    });
+    (prisma.linkedInAction.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await markComplete("action-1");
+
+    expect(prisma.sender.update).toHaveBeenCalledWith({
+      where: { id: "sender-1" },
+      data: {
+        pendingConnectionCount: { increment: 1 },
+        pendingCountUpdatedAt: expect.any(Date),
       },
     });
   });
@@ -493,5 +524,26 @@ describe("getNextBatch — independent per-type budgets", () => {
     expect(batch[0].priority).toBe(1); // connection_request (priority 1)
     expect(batch[1].priority).toBe(3); // message (priority 3)
     expect(batch[2].priority).toBe(5); // profile_view (priority 5)
+  });
+
+  it("includes withdraw_connection actions in their own pool", async () => {
+    // Set up findMany to return withdrawal actions for the WITHDRAWAL_TYPES query
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: { actionType?: { in: string[] } } }) => {
+        const types = args.where?.actionType?.in ?? [];
+        if (types.includes("withdraw_connection")) {
+          return Promise.resolve([
+            makeAction("withdraw-0", "withdraw_connection", 2),
+            makeAction("withdraw-1", "withdraw_connection", 2),
+          ]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    expect(batch.length).toBe(2);
+    expect(batch.every((a) => a.actionType === "withdraw_connection")).toBe(true);
   });
 });

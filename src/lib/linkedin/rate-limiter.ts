@@ -169,14 +169,23 @@ export async function checkBudget(
     }
   }
 
+  // Pre-fetch total sent count for acceptance rate gates (used by Gate 4 and budget reduction)
+  // Hoisted to avoid duplicate queries.
+  let totalSentConnections: number | null = null;
+  if (
+    (actionType === "connect" || actionType === "connection_request") &&
+    sender.acceptanceRate !== null
+  ) {
+    totalSentConnections = await prisma.linkedInConnection.count({
+      where: { senderId, status: { not: "none" } },
+    });
+  }
+
   // Gate 4: Acceptance rate gate (connect/connection_request only, 50+ requests required)
   if (actionType === "connect" || actionType === "connection_request") {
     if (sender.acceptanceRate !== null && sender.acceptanceRate < 0.10) {
-      const totalSent = await prisma.linkedInConnection.count({
-        where: { senderId, status: { not: "none" } },
-      });
-      if (totalSent >= 50) {
-        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate BLOCKING (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate, ${totalSent} total sent)`);
+      if (totalSentConnections !== null && totalSentConnections >= 50) {
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate BLOCKING (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate, ${totalSentConnections} total sent)`);
         return { allowed: false, remaining: 0, reason: `Acceptance rate too low (${(sender.acceptanceRate * 100).toFixed(1)}%)` };
       }
     }
@@ -230,18 +239,13 @@ export async function checkBudget(
     }
 
     // Apply acceptance rate budget reduction (15-25% warning only logged, 10-15% reduces by 30%)
-    if (sender.acceptanceRate !== null) {
-      const totalSent = await prisma.linkedInConnection.count({
-        where: { senderId, status: { not: "none" } },
-      });
-      if (totalSent >= 50) {
-        if (sender.acceptanceRate >= 0.10 && sender.acceptanceRate < 0.15) {
-          const before = effectiveLimit;
-          effectiveLimit = Math.floor(effectiveLimit * 0.7);
-          console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate reducing budget from ${before} to ${effectiveLimit} (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate)`);
-        } else if (sender.acceptanceRate >= 0.15 && sender.acceptanceRate < 0.25) {
-          console.log(`[rate-limiter] Sender ${senderId}: acceptance rate warning — ${(sender.acceptanceRate * 100).toFixed(1)}% (between 15-25%)`);
-        }
+    if (sender.acceptanceRate !== null && totalSentConnections !== null && totalSentConnections >= 50) {
+      if (sender.acceptanceRate >= 0.10 && sender.acceptanceRate < 0.15) {
+        const before = effectiveLimit;
+        effectiveLimit = Math.floor(effectiveLimit * 0.7);
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate reducing budget from ${before} to ${effectiveLimit} (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate)`);
+      } else if (sender.acceptanceRate >= 0.15 && sender.acceptanceRate < 0.25) {
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate warning — ${(sender.acceptanceRate * 100).toFixed(1)}% (between 15-25%)`);
       }
     }
   }

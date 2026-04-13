@@ -87,6 +87,7 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
 const CONNECTION_TYPES: LinkedInActionType[] = ["connect", "connection_request"];
 const VIEW_TYPES: LinkedInActionType[] = ["profile_view", "check_connection"];
 const MESSAGE_TYPES: LinkedInActionType[] = ["message"];
+const WITHDRAWAL_TYPES: LinkedInActionType[] = ["withdraw_connection"];
 
 /**
  * Get the next batch of ready actions for a sender, respecting:
@@ -144,7 +145,7 @@ export async function getNextBatch(
   };
 
   // Query each type group independently — they don't compete for the same pool
-  const [connectionActions, viewActions, messageActions] = await Promise.all([
+  const [connectionActions, viewActions, messageActions, withdrawalActions] = await Promise.all([
     prisma.linkedInAction.findMany({
       where: { ...baseWhere, actionType: { in: CONNECTION_TYPES } },
       orderBy,
@@ -159,6 +160,12 @@ export async function getNextBatch(
     }),
     prisma.linkedInAction.findMany({
       where: { ...baseWhere, actionType: { in: MESSAGE_TYPES } },
+      orderBy,
+      take: perTypeLimit * 2,
+      select: selectFields,
+    }),
+    prisma.linkedInAction.findMany({
+      where: { ...baseWhere, actionType: { in: WITHDRAWAL_TYPES } },
       orderBy,
       take: perTypeLimit * 2,
       select: selectFields,
@@ -181,14 +188,15 @@ export async function getNextBatch(
     return filtered;
   };
 
-  const [filteredConnections, filteredViews, filteredMessages] = await Promise.all([
+  const [filteredConnections, filteredViews, filteredMessages, filteredWithdrawals] = await Promise.all([
     filterByBudget(connectionActions, perTypeLimit),
     filterByBudget(viewActions, perTypeLimit),
     filterByBudget(messageActions, perTypeLimit),
+    filterByBudget(withdrawalActions, perTypeLimit),
   ]);
 
   // Merge all approved actions — no shared pool, no redistribution needed
-  const result = [...filteredConnections, ...filteredViews, ...filteredMessages];
+  const result = [...filteredConnections, ...filteredViews, ...filteredMessages, ...filteredWithdrawals];
 
   // Sort by priority for execution order
   result.sort((a, b) => {
@@ -250,69 +258,79 @@ export async function markComplete(actionId: string, result?: string): Promise<v
   // Post-completion hook: withdrawal lifecycle callbacks
   if (action.actionType === "withdraw_connection") {
     if (action.sequenceStepRef === "withdrawal_pre_retry") {
-      // Withdrawal before retry: update connection status, decrement pending count,
-      // then schedule a retry connection_request after 48h cooldown.
-      await prisma.sender.update({
-        where: { id: action.senderId },
-        data: {
-          pendingConnectionCount: { decrement: 1 },
-          pendingCountUpdatedAt: new Date(),
-        },
-      });
-
-      await prisma.linkedInConnection.updateMany({
+      // Guard: only decrement pending count if the connection is still "pending".
+      // If the poller already moved it to "connected", it handled the decrement.
+      const stillPending = await prisma.linkedInConnection.count({
         where: {
           senderId: action.senderId,
           personId: action.personId!,
           status: "pending",
         },
-        data: { status: "withdrawn" },
       });
 
-      // Schedule retry after 48h cooldown
-      const COOLDOWN_MS = 48 * 60 * 60 * 1000;
-      const retryTime = new Date(Date.now() + COOLDOWN_MS);
+      if (stillPending > 0) {
+        // Withdrawal before retry: update connection status, decrement pending count,
+        // then schedule a retry connection_request after 48h cooldown.
+        await prisma.$executeRaw`
+          UPDATE "Sender"
+          SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
+              "pendingCountUpdatedAt" = NOW()
+          WHERE "id" = ${action.senderId}
+        `;
 
-      await enqueueAction({
-        senderId: action.senderId,
-        personId: action.personId!,
-        workspaceSlug: action.workspaceSlug,
-        actionType: "connection_request",
-        priority: 5,
-        scheduledFor: retryTime,
-        sequenceStepRef: "connection_retry",
-      });
+        await prisma.linkedInConnection.updateMany({
+          where: {
+            senderId: action.senderId,
+            personId: action.personId!,
+            status: "pending",
+          },
+          data: { status: "withdrawn" },
+        });
 
-      // Reset connection to pending with new requestSentAt for the retry
-      await prisma.linkedInConnection.updateMany({
-        where: {
+        // Schedule retry after 48h cooldown
+        const COOLDOWN_MS = 48 * 60 * 60 * 1000;
+        const retryTime = new Date(Date.now() + COOLDOWN_MS);
+
+        await enqueueAction({
           senderId: action.senderId,
           personId: action.personId!,
-          status: "withdrawn",
-        },
-        data: {
-          status: "pending",
-          requestSentAt: retryTime,
-        },
-      });
+          workspaceSlug: action.workspaceSlug,
+          actionType: "connection_request",
+          priority: 5,
+          scheduledFor: retryTime,
+          sequenceStepRef: "connection_retry",
+        });
 
-      // Increment pending count for the retry
-      await prisma.sender.update({
-        where: { id: action.senderId },
-        data: {
-          pendingConnectionCount: { increment: 1 },
-          pendingCountUpdatedAt: new Date(),
-        },
-      });
+        // Reset connection to pending with new requestSentAt for the retry
+        await prisma.linkedInConnection.updateMany({
+          where: {
+            senderId: action.senderId,
+            personId: action.personId!,
+            status: "withdrawn",
+          },
+          data: {
+            status: "pending",
+            requestSentAt: retryTime,
+          },
+        });
+
+        // Increment pending count for the retry
+        await prisma.sender.update({
+          where: { id: action.senderId },
+          data: {
+            pendingConnectionCount: { increment: 1 },
+            pendingCountUpdatedAt: new Date(),
+          },
+        });
+      }
     } else if (action.sequenceStepRef === "withdrawal_final") {
-      // Final withdrawal: decrement pending count and mark connection as failed
-      await prisma.sender.update({
-        where: { id: action.senderId },
-        data: {
-          pendingConnectionCount: { decrement: 1 },
-          pendingCountUpdatedAt: new Date(),
-        },
-      });
+      // Final withdrawal: decrement pending count (with floor guard) and mark connection as failed
+      await prisma.$executeRaw`
+        UPDATE "Sender"
+        SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
+            "pendingCountUpdatedAt" = NOW()
+        WHERE "id" = ${action.senderId}
+      `;
 
       // Mark connection as failed (the poller already set it to "failed",
       // but if it's still pending for some reason, update it)
