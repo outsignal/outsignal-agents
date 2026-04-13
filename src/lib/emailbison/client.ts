@@ -557,6 +557,56 @@ export class EmailBisonClient {
     });
   }
 
+  /**
+   * Check if a domain is blacklisted in EmailBison.
+   * GET /api/blacklisted-domains/{domain}
+   * Returns the blacklisted domain data, or null if not blacklisted.
+   */
+  async getBlacklistedDomain(domain: string): Promise<{ id: number; domain: string; created_at: string; updated_at: string } | null> {
+    try {
+      const res = await this.request<{ data: { id: number; domain: string; created_at: string; updated_at: string } }>(
+        `/blacklisted-domains/${encodeURIComponent(domain)}`,
+        { revalidate: 0 },
+      );
+      return res.data ?? null;
+    } catch (err) {
+      if (err instanceof EmailBisonApiError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Check if an email is blacklisted in EmailBison.
+   * GET /api/blacklisted-emails/{email}
+   * Returns the blacklisted email data, or null if not blacklisted.
+   */
+  async getBlacklistedEmail(email: string): Promise<{ id: number; email: string; created_at: string; updated_at: string } | null> {
+    try {
+      const res = await this.request<{ data: { id: number; email: string; created_at: string; updated_at: string } }>(
+        `/blacklisted-emails/${encodeURIComponent(email)}`,
+        { revalidate: 0 },
+      );
+      return res.data ?? null;
+    } catch (err) {
+      if (err instanceof EmailBisonApiError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Add a domain to the EmailBison blacklist directly.
+   * POST /api/blacklisted-domains
+   * Unlike addToBlacklist(leadId, 'domain'), this blacklists a domain
+   * without needing an existing lead ID.
+   */
+  async blacklistDomain(domain: string): Promise<void> {
+    await this.request<unknown>('/blacklisted-domains', {
+      method: 'POST',
+      body: JSON.stringify({ domain }),
+      revalidate: 0,
+    });
+  }
+
   async deleteLead(leadId: number): Promise<void> {
     await this.request<unknown>(`/leads/${leadId}`, {
       method: 'DELETE',

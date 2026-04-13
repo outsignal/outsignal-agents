@@ -20,6 +20,7 @@ config({ path: ".env.local" });
 import fs from "node:fs";
 import { prisma } from "@/lib/db";
 import { normalizeDomain, invalidateCache } from "@/lib/exclusions";
+import { EmailBisonClient } from "@/lib/emailbison/client";
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -30,12 +31,14 @@ function parseArgs(): {
   file: string;
   reason: string | null;
   dryRun: boolean;
+  syncEb: boolean;
 } {
   const args = process.argv.slice(2);
   let slug = "";
   let file = "";
   let reason: string | null = null;
   let dryRun = false;
+  let syncEb = true;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -51,17 +54,23 @@ function parseArgs(): {
       case "--dry-run":
         dryRun = true;
         break;
+      case "--sync-eb":
+        syncEb = (args[++i] ?? "true") !== "false";
+        break;
+      case "--no-sync-eb":
+        syncEb = false;
+        break;
     }
   }
 
   if (!slug || !file) {
     console.error(
-      "Usage: npx tsx scripts/cli/exclusion-upload.ts --slug <workspace> --file <csv-path> [--reason <text>] [--dry-run]",
+      "Usage: npx tsx scripts/cli/exclusion-upload.ts --slug <workspace> --file <csv-path> [--reason <text>] [--dry-run] [--no-sync-eb]",
     );
     process.exit(1);
   }
 
-  return { slug, file, reason, dryRun };
+  return { slug, file, reason, dryRun, syncEb };
 }
 
 // ---------------------------------------------------------------------------
@@ -99,12 +108,12 @@ function parseCsv(content: string): CsvRow[] {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const { slug, file, reason, dryRun } = parseArgs();
+  const { slug, file, reason, dryRun, syncEb } = parseArgs();
 
   // Validate workspace exists
   const workspace = await prisma.workspace.findUnique({
     where: { slug },
-    select: { slug: true },
+    select: { slug: true, apiToken: true },
   });
   if (!workspace) {
     console.error(`Workspace "${slug}" not found.`);
@@ -198,6 +207,39 @@ async function main(): Promise<void> {
   // Invalidate cache so pipeline enforcement picks up new entries
   invalidateCache(slug);
 
+  // Sync to EmailBison blacklist (defence in depth)
+  let ebSynced = 0;
+  let ebAlreadyExists = 0;
+  let ebFailed = 0;
+  let ebSkipped = false;
+
+  if (syncEb && !dryRun && seenDomains.size > 0) {
+    if (!workspace.apiToken) {
+      console.warn("\n[EB Sync] Workspace has no apiToken — skipping EmailBison blacklist sync.");
+      ebSkipped = true;
+    } else {
+      const eb = new EmailBisonClient(workspace.apiToken);
+      console.log(`\n[EB Sync] Syncing ${seenDomains.size} domains to EmailBison blacklist...`);
+
+      for (const domain of seenDomains) {
+        try {
+          const existing = await eb.getBlacklistedDomain(domain);
+          if (existing) {
+            ebAlreadyExists++;
+            continue;
+          }
+          await eb.blacklistDomain(domain);
+          ebSynced++;
+        } catch (err) {
+          ebFailed++;
+          console.warn(`  [EB Sync] FAILED to blacklist "${domain}": ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      console.log(`[EB Sync] Done: ${ebSynced} synced, ${ebAlreadyExists} already existed, ${ebFailed} failed.`);
+    }
+  }
+
   // Report
   console.log("\n--- Exclusion Upload Report ---");
   console.log(`  Workspace: ${slug}`);
@@ -208,6 +250,17 @@ async function main(): Promise<void> {
   console.log(`  Skipped:   ${skipped}`);
   console.log(`  Invalid:   ${invalid}`);
   console.log(`  Total:     ${rows.length}`);
+
+  if (syncEb && !dryRun) {
+    console.log("\n--- EmailBison Blacklist Sync ---");
+    if (ebSkipped) {
+      console.log("  Status:    SKIPPED (no apiToken)");
+    } else {
+      console.log(`  Synced:    ${ebSynced}`);
+      console.log(`  Existing:  ${ebAlreadyExists}`);
+      console.log(`  Failed:    ${ebFailed}`);
+    }
+  }
 }
 
 main()
