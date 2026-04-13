@@ -297,7 +297,7 @@ export class EmailAdapter implements ChannelAdapter {
         workspaceSlug: ref.workspaceSlug,
         campaignName: ref.campaignName,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { receivedAt: "desc" },
     });
 
     return replies.map((reply) => ({
@@ -308,7 +308,7 @@ export class EmailAdapter implements ChannelAdapter {
       personEmail: reply.senderEmail,
       personName: reply.senderName ?? undefined,
       detail: reply.subject ?? undefined,
-      performedAt: reply.createdAt,
+      performedAt: reply.receivedAt,
       campaignName: reply.campaignName ?? undefined,
     }));
   }
