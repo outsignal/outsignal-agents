@@ -4,8 +4,9 @@ import { getNextBatch } from "@/lib/linkedin/queue";
 import { prisma } from "@/lib/db";
 
 /**
- * GET /api/linkedin/actions/next?senderId=X&limit=10
+ * GET /api/linkedin/actions/next?senderId=X&limit=5
  * Returns the next batch of ready actions for a sender.
+ * The limit parameter is PER ACTION TYPE (connections, views, messages each get up to limit).
  * Marks them as "running" so they won't be picked up by another worker.
  * Includes the person's linkedinUrl so the worker knows where to navigate.
  */
