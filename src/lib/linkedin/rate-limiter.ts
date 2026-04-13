@@ -160,7 +160,29 @@ export async function checkBudget(
     return { allowed: true, remaining: Infinity };
   }
 
-  // P1 connection actions bypass daily budget (capped at P1_DAILY_CAP/day)
+  // Gate 3: Pending connection count gate (connect/connection_request only)
+  if (actionType === "connect" || actionType === "connection_request") {
+    const pendingCount = sender.pendingConnectionCount ?? 0;
+    if (pendingCount >= 2500) {
+      console.log(`[rate-limiter] Sender ${senderId}: pending count gate BLOCKING (${pendingCount} pending connections)`);
+      return { allowed: false, remaining: 0, reason: "Pending connection cap (2500+)" };
+    }
+  }
+
+  // Gate 4: Acceptance rate gate (connect/connection_request only, 50+ requests required)
+  if (actionType === "connect" || actionType === "connection_request") {
+    if (sender.acceptanceRate !== null && sender.acceptanceRate < 0.10) {
+      const totalSent = await prisma.linkedInConnection.count({
+        where: { senderId, status: { not: "none" } },
+      });
+      if (totalSent >= 50) {
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate BLOCKING (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate, ${totalSent} total sent)`);
+        return { allowed: false, remaining: 0, reason: `Acceptance rate too low (${(sender.acceptanceRate * 100).toFixed(1)}%)` };
+      }
+    }
+  }
+
+  // Gate 5: P1 connection actions bypass daily budget (capped at P1_DAILY_CAP/day)
   if (
     priority === 1 &&
     (actionType === "connect" || actionType === "connection_request")
@@ -181,6 +203,7 @@ export async function checkBudget(
     // P1 cap exceeded — fall through to normal budget check
   }
 
+  // Gate 6: Daily budget check
   const usage = await getOrCreateDailyUsage(senderId);
 
   const limitField = ACTION_TYPE_TO_LIMIT_FIELD[actionType];
@@ -191,16 +214,46 @@ export async function checkBudget(
   }
 
   const baseLimit = (sender as Record<string, unknown>)[limitField] as number;
-  const jitteredLimit = applyJitter(baseLimit, senderId);
-  const used = (usage as Record<string, unknown>)[usageField] as number;
+  let effectiveLimit = applyJitter(baseLimit, senderId);
 
-  const remaining = Math.max(0, jitteredLimit - used);
+  // Apply pending count budget reduction (connect/connection_request only)
+  if (actionType === "connect" || actionType === "connection_request") {
+    const pendingCount = sender.pendingConnectionCount ?? 0;
+    if (pendingCount >= 2000) {
+      const before = effectiveLimit;
+      effectiveLimit = Math.min(effectiveLimit, 3);
+      console.log(`[rate-limiter] Sender ${senderId}: pending count gate reducing budget from ${before} to ${effectiveLimit} (${pendingCount} pending connections)`);
+    } else if (pendingCount >= 1500) {
+      const before = effectiveLimit;
+      effectiveLimit = Math.floor(effectiveLimit / 2);
+      console.log(`[rate-limiter] Sender ${senderId}: pending count gate reducing budget from ${before} to ${effectiveLimit} (${pendingCount} pending connections)`);
+    }
+
+    // Apply acceptance rate budget reduction (15-25% warning only logged, 10-15% reduces by 30%)
+    if (sender.acceptanceRate !== null) {
+      const totalSent = await prisma.linkedInConnection.count({
+        where: { senderId, status: { not: "none" } },
+      });
+      if (totalSent >= 50) {
+        if (sender.acceptanceRate >= 0.10 && sender.acceptanceRate < 0.15) {
+          const before = effectiveLimit;
+          effectiveLimit = Math.floor(effectiveLimit * 0.7);
+          console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate reducing budget from ${before} to ${effectiveLimit} (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate)`);
+        } else if (sender.acceptanceRate >= 0.15 && sender.acceptanceRate < 0.25) {
+          console.log(`[rate-limiter] Sender ${senderId}: acceptance rate warning — ${(sender.acceptanceRate * 100).toFixed(1)}% (between 15-25%)`);
+        }
+      }
+    }
+  }
+
+  const used = (usage as Record<string, unknown>)[usageField] as number;
+  const remaining = Math.max(0, effectiveLimit - used);
 
   if (remaining <= 0) {
     return {
       allowed: false,
       remaining: 0,
-      reason: `Daily ${actionType} limit reached (${used}/${jitteredLimit})`,
+      reason: `Daily ${actionType} limit reached (${used}/${effectiveLimit})`,
     };
   }
 
