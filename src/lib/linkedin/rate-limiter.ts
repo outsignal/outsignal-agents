@@ -11,8 +11,8 @@ import { ACTION_TYPE_TO_LIMIT_FIELD, ACTION_TYPE_TO_USAGE_FIELD } from "./types"
 /** Circuit breaker threshold — trip after this many consecutive failures */
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 
-/** Priority 1 budget reservation — hold back this fraction of daily connections for warm leads */
-const PRIORITY_RESERVE_FRACTION = 0.2;
+/** Maximum P1 connection actions per sender per day before falling through to normal budget */
+const P1_DAILY_CAP = 5;
 
 /** Daily volume randomisation — actual limit = base ± this fraction */
 const VOLUME_JITTER_FRACTION = 0.2;
@@ -135,7 +135,7 @@ async function getOrCreateDailyUsage(senderId: string) {
 
 /**
  * Check if a sender has budget remaining for a given action type.
- * Accounts for priority reservation on connection budget.
+ * P1 connection actions bypass the daily budget entirely (capped at P1_DAILY_CAP per sender per day).
  */
 export async function checkBudget(
   senderId: string,
@@ -155,6 +155,32 @@ export async function checkBudget(
     return { allowed: false, remaining: 0, reason: `Account health: ${sender.healthStatus}` };
   }
 
+  // Withdrawals are unlimited — always allowed (no daily budget gate)
+  if (actionType === "withdraw_connection") {
+    return { allowed: true, remaining: Infinity };
+  }
+
+  // P1 connection actions bypass daily budget (capped at P1_DAILY_CAP/day)
+  if (
+    priority === 1 &&
+    (actionType === "connect" || actionType === "connection_request")
+  ) {
+    const today = todayUTC();
+    const p1CompletedToday = await prisma.linkedInAction.count({
+      where: {
+        senderId,
+        priority: 1,
+        status: "complete",
+        completedAt: { gte: today },
+      },
+    });
+
+    if (p1CompletedToday < P1_DAILY_CAP) {
+      return { allowed: true, remaining: P1_DAILY_CAP - p1CompletedToday };
+    }
+    // P1 cap exceeded — fall through to normal budget check
+  }
+
   const usage = await getOrCreateDailyUsage(senderId);
 
   const limitField = ACTION_TYPE_TO_LIMIT_FIELD[actionType];
@@ -168,21 +194,13 @@ export async function checkBudget(
   const jitteredLimit = applyJitter(baseLimit, senderId);
   const used = (usage as Record<string, unknown>)[usageField] as number;
 
-  let effectiveLimit = jitteredLimit;
-
-  // For connections, reserve a portion for priority 1 actions
-  if ((actionType === "connect" || actionType === "connection_request") && priority > 1) {
-    const reserved = Math.ceil(jitteredLimit * PRIORITY_RESERVE_FRACTION);
-    effectiveLimit = jitteredLimit - reserved;
-  }
-
-  const remaining = Math.max(0, effectiveLimit - used);
+  const remaining = Math.max(0, jitteredLimit - used);
 
   if (remaining <= 0) {
     return {
       allowed: false,
       remaining: 0,
-      reason: `Daily ${actionType} limit reached (${used}/${effectiveLimit})`,
+      reason: `Daily ${actionType} limit reached (${used}/${jitteredLimit})`,
     };
   }
 

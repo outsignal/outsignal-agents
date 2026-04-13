@@ -907,6 +907,10 @@ model Sender {
   lastKeepaliveAt    DateTime? // timestamp of last successful keepalive ping
   sessionConnectedAt DateTime? // when the current session was first established
 
+  // Pending connection tracking (pull-model v1)
+  pendingConnectionCount Int       @default(0)
+  pendingCountUpdatedAt  DateTime?
+
   // Rate limits (account-level, adjusted by warm-up)
   dailyConnectionLimit  Int @default(5)
   dailyMessageLimit     Int @default(10)
@@ -980,7 +984,7 @@ model LinkedInAction {
   linkedInConversationId String? // LinkedInConversation.id — used to resolve profileUrl when personId is null
 
   // Action details
-  actionType  String  // "connect" | "message" | "profile_view" | "check_connection"
+  actionType  String  // "connect" | "message" | "profile_view" | "check_connection" | "withdraw_connection"
   messageBody String? // For message actions (template-substituted at enqueue time)
 
   // Scheduling & priority
@@ -1015,6 +1019,7 @@ model LinkedInAction {
   @@index([personId])
   @@index([priority, scheduledFor])
   @@index([workspaceSlug])
+  @@index([personId, workspaceSlug, campaignName, actionType, status]) // Pull-model: unstarted person lookup
 }
 
 model LinkedInDailyUsage {
@@ -1026,6 +1031,10 @@ model LinkedInDailyUsage {
   messagesSent        Int @default(0)
   profileViews        Int @default(0)
   connectionsAccepted Int @default(0)
+
+  // Pull-model v1: P1 connection and withdrawal tracking
+  p1ConnectionsSent   Int @default(0)
+  withdrawalsSent     Int @default(0)
 
   // Health signals captured during the day
   captchaDetected   Boolean @default(false)
@@ -1208,6 +1217,7 @@ model ClientTask {
   title     String
   status    String   @default("todo") // todo | in_progress | complete
   order     Int      @default(0)
+  assignee  String   @default("pm")  // "pm" | "nova" | "monty" | "client"
   dueDate   DateTime?
   notes     String?
 

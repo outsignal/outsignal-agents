@@ -1,4 +1,4 @@
-export type LinkedInActionType = "connect" | "connection_request" | "message" | "profile_view" | "check_connection";
+export type LinkedInActionType = "connect" | "connection_request" | "message" | "profile_view" | "check_connection" | "withdraw_connection";
 
 export type LinkedInActionStatus =
   | "pending"
@@ -21,7 +21,7 @@ export type SessionStatus = "not_setup" | "active" | "expired";
 
 export type LinkedInTier = "free" | "premium";
 
-export type ConnectionStatus = "none" | "pending" | "connected" | "failed" | "expired";
+export type ConnectionStatus = "none" | "pending" | "connected" | "failed" | "expired" | "withdrawn";
 
 export type CampaignMode = "email" | "linkedin" | "email_linkedin";
 
@@ -78,6 +78,7 @@ export const ACTION_TYPE_TO_USAGE_FIELD: Record<string, string> = {
   message: "messagesSent",
   profile_view: "profileViews",
   check_connection: "profileViews", // counts as a profile view
+  withdraw_connection: "withdrawalsSent", // tracked separately, not budget-gated
 };
 
 // Maps action types to their daily limit field on Sender
