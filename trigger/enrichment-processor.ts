@@ -47,6 +47,27 @@ export const enrichmentProcessorTask = schedules.task({
     ) => {
       if (job.entityType === "person") {
         const person = await prisma.person.findUniqueOrThrow({ where: { id: entityId } });
+
+        // Load PersonWorkspace to get sourceId for source-first enrichment (BL-040)
+        let sourceId: string | undefined;
+        if (job.workspaceSlug) {
+          const pw = await prisma.personWorkspace.findUnique({
+            where: {
+              personId_workspace: {
+                personId: entityId,
+                workspace: job.workspaceSlug,
+              },
+            },
+            select: { sourceId: true },
+          });
+          sourceId = pw?.sourceId ?? undefined;
+        }
+
+        // Derive discoverySource from Person.source field
+        const discoverySource = person.source?.startsWith("discovery-")
+          ? person.source.replace("discovery-", "")
+          : undefined;
+
         await enrichEmail(
           entityId,
           {
@@ -55,6 +76,8 @@ export const enrichmentProcessorTask = schedules.task({
             lastName: person.lastName ?? undefined,
             companyName: person.company ?? undefined,
             companyDomain: person.companyDomain ?? undefined,
+            sourceId,
+            discoverySource,
           },
           breaker,
           job.workspaceSlug ?? undefined,

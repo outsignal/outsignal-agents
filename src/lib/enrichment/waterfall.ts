@@ -179,6 +179,65 @@ export async function enrichEmail(
   workspaceSlug?: string,
 ): Promise<void> {
   // ---------------------------------------------------------------------------
+  // AI Ark source-first: direct export/single by stored AI Ark person ID (BL-040)
+  // ---------------------------------------------------------------------------
+  // If this person was discovered via AI Ark search and we have their AI Ark ID,
+  // try a direct lookup first — higher hit rate than generic enrichment.
+  if (input.discoverySource === "aiark" && input.sourceId) {
+    const aiarkSfFailures = breaker.consecutiveFailures.get("aiark") ?? 0;
+    if (aiarkSfFailures < CIRCUIT_BREAKER_THRESHOLD) {
+      const capHit = await checkDailyCap();
+      if (capHit) throw new Error("DAILY_CAP_HIT");
+
+      try {
+        const aiarkSfResults = await bulkEnrichByAiArkId([
+          { personId, aiarkPersonId: input.sourceId },
+        ]);
+        const sfResult = aiarkSfResults.get(personId);
+
+        if (sfResult) {
+          if (sfResult.costUsd > 0) {
+            await incrementDailySpend("aiark", sfResult.costUsd);
+          }
+          await recordEnrichment({
+            entityId: personId,
+            entityType: "person",
+            provider: "aiark",
+            status: "success",
+            fieldsWritten: sfResult.email ? ["email"] : [],
+            costUsd: sfResult.costUsd,
+            rawResponse: sfResult.rawResponse,
+            workspaceSlug,
+          });
+          breaker.consecutiveFailures.set("aiark", 0);
+
+          if (sfResult.email) {
+            // Verify before accepting
+            const verified = await verifyFoundEmail(sfResult.email, personId);
+            if (verified) {
+              await mergePersonData(personId, { email: sfResult.email });
+              return; // source-first success — waterfall done
+            }
+            console.warn(`[waterfall] AI Ark source-first email ${sfResult.email} failed verification for person ${personId} — continuing waterfall`);
+          }
+        }
+      } catch (err) {
+        if (isCreditExhaustion(err)) {
+          await notifyCreditExhaustion({
+            provider: (err as CreditExhaustionError).provider,
+            httpStatus: (err as CreditExhaustionError).httpStatus,
+            context: `enrichment waterfall (aiark source-first) for person ${personId} — skipping, continuing waterfall`,
+          });
+          console.warn(`[waterfall] AI Ark source-first credit exhaustion for ${personId} — continuing waterfall`);
+        } else {
+          breaker.consecutiveFailures.set("aiark", (breaker.consecutiveFailures.get("aiark") ?? 0) + 1);
+          console.warn(`[waterfall] AI Ark source-first error for ${personId}:`, err);
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // AI Ark person data enrichment (fills jobTitle, company, location, etc.)
   // ---------------------------------------------------------------------------
   // Runs BEFORE email providers because it enriches person fields that can
@@ -551,6 +610,7 @@ export async function enrichEmail(
 // ---------------------------------------------------------------------------
 
 import { bulkEnrichPerson, bulkEnrichByPersonId } from "./providers/prospeo";
+import { bulkEnrichByAiArkId } from "./providers/aiark-source-first";
 import { bulkFindEmail } from "./providers/findymail";
 import { bulkVerifyEmails } from "@/lib/verification/bounceban";
 import { findEmail as kittFindEmail } from "@/lib/verification/kitt";
@@ -679,11 +739,15 @@ export async function enrichEmailBatch(
   // Prospeo emails are NOT pre-verified — they go through BounceBan below.
   // -------------------------------------------------------------------------
   const prospeoSourced: Array<{ personId: string; prospeoPersonId: string }> = [];
+  const aiarkSourced: Array<{ personId: string; aiarkPersonId: string }> = [];
 
   for (const person of needEmail) {
     if (!person.sourceId) continue;
     if (person.discoverySource === "prospeo") {
       prospeoSourced.push({ personId: person.personId, prospeoPersonId: person.sourceId });
+    } else if (person.discoverySource === "aiark") {
+      // AI Ark search-sourced people: use stored sourceId for direct lookup
+      aiarkSourced.push({ personId: person.personId, aiarkPersonId: person.sourceId });
     }
     // AI Ark export people already have emails populated — no source-first needed
   }
@@ -730,6 +794,53 @@ export async function enrichEmailBatch(
         } else {
           breaker.consecutiveFailures.set("prospeo", (breaker.consecutiveFailures.get("prospeo") ?? 0) + 1);
           console.error(`[waterfall-batch] Prospeo source-first error:`, err);
+        }
+      }
+    }
+  }
+
+  // --- AI Ark source-first: direct lookup by AI Ark person ID (BL-040) ---
+  if (aiarkSourced.length > 0) {
+    const aiarkFailures0 = breaker.consecutiveFailures.get("aiark") ?? 0;
+    if (aiarkFailures0 < CIRCUIT_BREAKER_THRESHOLD) {
+      if (await checkDailyCap()) throw new Error("DAILY_CAP_HIT");
+
+      try {
+        console.log(`[waterfall-batch] AI Ark source-first (person_id): ${aiarkSourced.length} people`);
+        const aiarkResults = await bulkEnrichByAiArkId(aiarkSourced);
+
+        for (const [personId, result] of aiarkResults) {
+          addCost("aiark", result.costUsd);
+          if (result.costUsd > 0) {
+            await incrementDailySpend("aiark", result.costUsd);
+          }
+          await recordEnrichment({
+            entityId: personId,
+            entityType: "person",
+            provider: "aiark",
+            status: "success",
+            fieldsWritten: result.email ? ["email"] : [],
+            costUsd: result.costUsd,
+            rawResponse: result.rawResponse,
+            workspaceSlug,
+          });
+
+          if (result.email) {
+            foundEmails.set(personId, result.email.trim() || null);
+          }
+        }
+        breaker.consecutiveFailures.set("aiark", 0);
+      } catch (err) {
+        if (isCreditExhaustion(err)) {
+          await notifyCreditExhaustion({
+            provider: (err as CreditExhaustionError).provider,
+            httpStatus: (err as CreditExhaustionError).httpStatus,
+            context: `batch enrichment (aiark source-first person_id) — falling through to generic waterfall`,
+          });
+          console.warn(`[waterfall-batch] AI Ark source-first credit exhaustion — falling through`);
+        } else {
+          breaker.consecutiveFailures.set("aiark", (breaker.consecutiveFailures.get("aiark") ?? 0) + 1);
+          console.error(`[waterfall-batch] AI Ark source-first error:`, err);
         }
       }
     }

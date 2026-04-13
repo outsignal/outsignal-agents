@@ -67,6 +67,10 @@ export interface EmailAdapterInput {
   lastName?: string;
   companyName?: string;
   companyDomain?: string;
+  /** Discovery platform source ID (Prospeo person_id, AI Ark person id) for source-first enrichment */
+  sourceId?: string;
+  /** Which discovery platform found this person: 'prospeo', 'aiark', etc. */
+  discoverySource?: string;
 }
 
 /** Email provider adapter — takes person info, returns email (or null). */
