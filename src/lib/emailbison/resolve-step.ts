@@ -14,6 +14,16 @@ export function createSequenceStepCache(): SequenceStepCache {
 }
 
 /**
+ * Result from resolving a scheduled email's sequence step and campaign.
+ */
+export interface ResolvedScheduledEmail {
+  /** 1-indexed step position, or null if unresolved */
+  sequenceStep: number | null;
+  /** EmailBison campaign_id from the scheduled email, or null if unresolved */
+  ebCampaignId: number | null;
+}
+
+/**
  * Resolve the 1-indexed sequence step position (`order`) for a reply given
  * its EmailBison `scheduled_email_id`. Mirrors the webhook path at
  * src/app/api/webhooks/emailbison/route.ts:346 which reads
@@ -37,14 +47,32 @@ export async function resolveSequenceStepOrder(
   scheduledEmailId: number | null | undefined,
   stepCache: SequenceStepCache,
 ): Promise<number | null> {
-  if (scheduledEmailId == null) return null;
+  const result = await resolveScheduledEmail(client, scheduledEmailId, stepCache);
+  return result.sequenceStep;
+}
+
+/**
+ * Resolve both the sequence step position and the EB campaign_id from a
+ * scheduled email. Used by poll-replies to recover campaign attribution
+ * when the reply's top-level campaign_id is null (BL-029).
+ *
+ * Same non-throwing guarantees as resolveSequenceStepOrder.
+ */
+export async function resolveScheduledEmail(
+  client: EmailBisonClient,
+  scheduledEmailId: number | null | undefined,
+  stepCache: SequenceStepCache,
+): Promise<ResolvedScheduledEmail> {
+  if (scheduledEmailId == null) return { sequenceStep: null, ebCampaignId: null };
 
   try {
     const scheduled = await client.getScheduledEmail(scheduledEmailId);
     const campaignId = scheduled.campaign_id;
     const stepId = scheduled.sequence_step_id;
 
-    if (!campaignId || !stepId) return null;
+    if (!campaignId || !stepId) {
+      return { sequenceStep: null, ebCampaignId: campaignId ?? null };
+    }
 
     let stepsPromise = stepCache.get(campaignId);
     if (!stepsPromise) {
@@ -54,12 +82,12 @@ export async function resolveSequenceStepOrder(
 
     const steps = await stepsPromise;
     const match = steps.find((s) => s.id === stepId);
-    return match?.position ?? null;
+    return { sequenceStep: match?.position ?? null, ebCampaignId: campaignId };
   } catch (err) {
     console.warn(
       `[resolve-step] Failed to resolve sequence step for scheduled_email_id=${scheduledEmailId}:`,
       err instanceof Error ? err.message : String(err),
     );
-    return null;
+    return { sequenceStep: null, ebCampaignId: null };
   }
 }

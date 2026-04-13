@@ -1,10 +1,10 @@
-import { schedules } from "@trigger.dev/sdk";
+import { schedules, tasks } from "@trigger.dev/sdk";
 import { PrismaClient } from "@prisma/client";
 import { getAllWorkspaces, getWorkspaceBySlug } from "@/lib/workspaces";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import {
   createSequenceStepCache,
-  resolveSequenceStepOrder,
+  resolveScheduledEmail,
 } from "@/lib/emailbison/resolve-step";
 import type { Reply } from "@/lib/emailbison/types";
 import { notifyReply, notifyLinkedInMessage } from "@/lib/notifications";
@@ -161,16 +161,40 @@ export const pollRepliesTask = schedules.task({
             try {
               const replyBodyText = reply.text_body ?? stripHtml(reply.html_body ?? "");
 
+              // Resolve sequence step order + EB campaign_id via EmailBison
+              // two-step lookup. The /replies list endpoint omits the nested
+              // scheduled_email object that the webhook path uses, so we
+              // recover both values via getScheduledEmail + getSequenceSteps.
+              // The ebCampaignId is used as a fallback when the reply's
+              // top-level campaign_id is null (BL-029). Fails to null on any
+              // error — persistence must not be blocked.
+              let sequenceStep: number | null = null;
+              let ebFallbackCampaignId: number | null = null;
+              if (client) {
+                const resolved = await resolveScheduledEmail(
+                  client,
+                  reply.scheduled_email_id,
+                  stepCache,
+                );
+                sequenceStep = resolved.sequenceStep;
+                ebFallbackCampaignId = resolved.ebCampaignId;
+              }
+
               // Look up outbound email snapshot
               let outboundSubject: string | null = null;
               let outboundBody: string | null = null;
               let outsignalCampaignId: string | null = null;
               let outsignalCampaignName: string | null = null;
 
-              if (reply.campaign_id) {
+              // BL-029: Use reply.campaign_id first, fall back to the EB
+              // campaign_id recovered from the ScheduledEmail lookup when the
+              // reply's top-level campaign_id is null (~5.5% of replies).
+              const effectiveEbCampaignId = reply.campaign_id ?? ebFallbackCampaignId;
+
+              if (effectiveEbCampaignId) {
                 try {
                   const campaign = await prisma.campaign.findFirst({
-                    where: { emailBisonCampaignId: reply.campaign_id },
+                    where: { emailBisonCampaignId: effectiveEbCampaignId },
                     select: { id: true, name: true, emailSequence: true },
                   });
                   if (campaign) {
@@ -204,20 +228,6 @@ export const pollRepliesTask = schedules.task({
                 personId = person?.id ?? null;
               } catch {
                 // Person lookup failure — non-blocking
-              }
-
-              // Resolve sequence step order via EmailBison two-step lookup.
-              // The /replies list endpoint omits the nested scheduled_email
-              // object that the webhook path uses, so we recover the step
-              // position via getScheduledEmail + getSequenceSteps. Fails to
-              // null on any error — persistence must not be blocked.
-              let sequenceStep: number | null = null;
-              if (client) {
-                sequenceStep = await resolveSequenceStepOrder(
-                  client,
-                  reply.scheduled_email_id,
-                  stepCache,
-                );
               }
 
               const replyRecord = await prisma.reply.upsert({
@@ -263,6 +273,7 @@ export const pollRepliesTask = schedules.task({
               replyRecordId = replyRecord.id;
 
               // Classify inline
+              let classifiedIntent: string | null = null;
               try {
                 const classification = await classifyReply({
                   subject: replyRecord.subject,
@@ -271,6 +282,7 @@ export const pollRepliesTask = schedules.task({
                   outboundSubject: replyRecord.outboundSubject,
                   outboundBody: replyRecord.outboundBody,
                 });
+                classifiedIntent = classification.intent;
                 await prisma.reply.update({
                   where: { id: replyRecord.id },
                   data: {
@@ -283,6 +295,31 @@ export const pollRepliesTask = schedules.task({
                 });
               } catch (classErr) {
                 console.error("[poll-replies] Classification failed, will retry:", classErr);
+              }
+
+              // BL-033: Trigger AI reply suggestion after classification.
+              // Mirrors the webhook path's generate-suggestion trigger in
+              // process-reply.ts. Skip non-actionable intents and replies
+              // without body text.
+              const skipSuggestionIntents = ["out_of_office", "auto_reply", "unsubscribe", "not_relevant"];
+              const hasBody = !!(replyRecord.bodyText);
+              const isSkippedIntent = classifiedIntent && skipSuggestionIntents.includes(classifiedIntent);
+
+              if (hasBody && !isSkippedIntent) {
+                try {
+                  await tasks.trigger("generate-suggestion", {
+                    replyId: replyRecord.id,
+                    workspaceSlug: ws.slug,
+                  });
+                  console.log(`[poll-replies] Triggered generate-suggestion for reply ${replyRecord.id}`);
+                } catch (suggErr) {
+                  console.error("[poll-replies] Failed to trigger generate-suggestion:", suggErr);
+                  // Non-blocking — reply is saved, suggestion will be missing
+                }
+              } else if (isSkippedIntent) {
+                console.log(
+                  `[poll-replies] Skipped generate-suggestion for reply ${replyRecord.id} — non-actionable intent: ${classifiedIntent}`,
+                );
               }
             } catch (replyErr) {
               console.error("[poll-replies] Reply persistence error:", replyErr);
