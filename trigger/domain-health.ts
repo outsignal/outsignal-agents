@@ -39,6 +39,7 @@ import type {
 import { captureAllWorkspaces } from "@/lib/domain-health/snapshots";
 import { syncDomainsToEmailGuard } from "@/lib/emailguard/sync";
 import { emailguard } from "@/lib/emailguard/client";
+import { syncSendersForAllWorkspaces } from "@/lib/emailbison/sync-senders";
 
 // PrismaClient at module scope — not inside run()
 const prisma = new PrismaClient();
@@ -703,7 +704,22 @@ export const domainHealthTask = schedules.task({
     const timestamp = new Date().toISOString();
     console.log(`${LOG_PREFIX} Starting domain health check at ${timestamp}`);
 
-    // 0. Sync domains to EmailGuard (if token configured)
+    // 0a. Sync EmailBison senders to Sender table (ensures all inboxes are registered before domain collection)
+    try {
+      const senderSyncResult = await syncSendersForAllWorkspaces();
+      console.log(
+        `${LOG_PREFIX} Sender sync: ${senderSyncResult.workspaces} workspaces, ${senderSyncResult.created} created, ${senderSyncResult.synced} synced, ${senderSyncResult.skipped} skipped, ${senderSyncResult.errors.length} errors`
+      );
+      if (senderSyncResult.errors.length > 0) {
+        console.warn(`${LOG_PREFIX} Sender sync errors:`, senderSyncResult.errors);
+      }
+    } catch (err) {
+      console.error(
+        `${LOG_PREFIX} Sender sync failed (continuing with health checks): ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    // 0b. Sync domains to EmailGuard (if token configured)
     if (process.env.EMAILGUARD_API_TOKEN) {
       try {
         const syncResult = await syncDomainsToEmailGuard();
