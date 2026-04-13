@@ -607,6 +607,15 @@ export class EmailBisonClient {
     });
   }
 
+  /**
+   * List all blacklisted domains.
+   * GET /api/blacklisted-domains
+   * Auto-paginates using meta.last_page.
+   */
+  async listBlacklistedDomains(): Promise<Array<{ id: number; domain: string; created_at: string }>> {
+    return this.getAllPages<{ id: number; domain: string; created_at: string }>('/blacklisted-domains');
+  }
+
   async deleteLead(leadId: number): Promise<void> {
     await this.request<unknown>(`/leads/${leadId}`, {
       method: 'DELETE',

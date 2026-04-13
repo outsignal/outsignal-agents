@@ -13,6 +13,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { EmailBisonClient } from "@/lib/emailbison/client";
 
 // ---------------------------------------------------------------------------
 // Domain normalisation
@@ -130,4 +131,101 @@ export async function isExcluded(
  */
 export function invalidateCache(workspaceSlug: string): void {
   cache.delete(workspaceSlug);
+}
+
+// ---------------------------------------------------------------------------
+// Bi-directional EmailBison blacklist sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Bi-directional sync between ExclusionEntry table and EmailBison blacklists.
+ *
+ * 1. Pull EB blacklisted domains -> upsert into ExclusionEntry (reason: "Synced from EmailBison blacklist")
+ * 2. Push ExclusionEntry domains -> add to EB blacklist if missing
+ */
+export async function syncExclusionsWithEmailBison(
+  workspaceSlug: string,
+): Promise<{
+  pulledFromEB: number;
+  pushedToEB: number;
+  alreadySynced: number;
+}> {
+  // Load workspace API token
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    select: { apiToken: true },
+  });
+
+  if (!workspace?.apiToken) {
+    console.log(`[exclusion-sync] Skipping ${workspaceSlug} — no API token`);
+    return { pulledFromEB: 0, pushedToEB: 0, alreadySynced: 0 };
+  }
+
+  const client = new EmailBisonClient(workspace.apiToken);
+
+  // 1. Pull EB blacklisted domains
+  const ebDomains = await client.listBlacklistedDomains();
+  const ebDomainSet = new Set(ebDomains.map((d) => d.domain.toLowerCase()));
+
+  // 2. Load existing exclusion domains from DB
+  const existingEntries = await prisma.exclusionEntry.findMany({
+    where: { workspaceSlug },
+    select: { domain: true },
+  });
+  const existingDomainSet = new Set(existingEntries.map((e) => e.domain));
+
+  let pulledFromEB = 0;
+  let pushedToEB = 0;
+  let alreadySynced = 0;
+
+  // Pull: EB -> ExclusionEntry
+  for (const ebDomain of ebDomainSet) {
+    const normalized = normalizeDomain(ebDomain);
+    if (!normalized) continue;
+
+    if (existingDomainSet.has(normalized)) {
+      alreadySynced++;
+      continue;
+    }
+
+    await prisma.exclusionEntry.upsert({
+      where: {
+        workspaceSlug_domain: { workspaceSlug, domain: normalized },
+      },
+      update: {},
+      create: {
+        workspaceSlug,
+        domain: normalized,
+        reason: "Synced from EmailBison blacklist",
+      },
+    });
+    pulledFromEB++;
+  }
+
+  // Push: ExclusionEntry -> EB
+  for (const domain of existingDomainSet) {
+    if (ebDomainSet.has(domain)) continue;
+
+    try {
+      await client.blacklistDomain(domain);
+      pushedToEB++;
+    } catch (err) {
+      // Log but don't fail the whole sync for a single domain
+      console.warn(
+        `[exclusion-sync] Failed to push domain ${domain} to EB for ${workspaceSlug}:`,
+        err,
+      );
+    }
+  }
+
+  // Invalidate cache so subsequent lookups see newly pulled domains
+  if (pulledFromEB > 0) {
+    invalidateCache(workspaceSlug);
+  }
+
+  console.log(
+    `[exclusion-sync] ${workspaceSlug}: pulled=${pulledFromEB}, pushed=${pushedToEB}, alreadySynced=${alreadySynced}`,
+  );
+
+  return { pulledFromEB, pushedToEB, alreadySynced };
 }

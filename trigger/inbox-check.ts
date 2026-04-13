@@ -6,6 +6,8 @@ import { runSenderHealthCheck } from "@/lib/linkedin/health-check";
 import { notifySenderHealth, sendSenderHealthDigest } from "@/lib/notifications";
 import { refreshStaleSessions } from "@/lib/linkedin/session-refresh";
 import { runSyncSenders } from "./sync-senders";
+import { syncExclusionsWithEmailBison } from "@/lib/exclusions";
+import { prisma } from "@/lib/db";
 
 export const inboxCheckTask = schedules.task({
   id: "inbox-check",
@@ -165,6 +167,39 @@ export const inboxCheckTask = schedules.task({
     console.log("[inbox-check] Running sync-senders...");
     const syncResult = await runSyncSenders();
 
+    // -----------------------------------------------------------------------
+    // Step 4: Sync exclusions with EmailBison blacklists
+    // -----------------------------------------------------------------------
+    console.log("[inbox-check] Step 4: Exclusion sync with EmailBison");
+
+    const workspacesWithTokens = await prisma.workspace.findMany({
+      where: { apiToken: { not: null } },
+      select: { slug: true },
+    });
+
+    const exclusionSyncResults: Array<{
+      workspace: string;
+      pulledFromEB: number;
+      pushedToEB: number;
+      alreadySynced: number;
+    }> = [];
+
+    for (const ws of workspacesWithTokens) {
+      try {
+        const result = await syncExclusionsWithEmailBison(ws.slug);
+        exclusionSyncResults.push({ workspace: ws.slug, ...result });
+      } catch (err) {
+        console.error(`[inbox-check] Exclusion sync failed for ${ws.slug}:`, err);
+      }
+    }
+
+    const totalPulled = exclusionSyncResults.reduce((s, r) => s + r.pulledFromEB, 0);
+    const totalPushed = exclusionSyncResults.reduce((s, r) => s + r.pushedToEB, 0);
+
+    console.log(
+      `[inbox-check] Step 4 complete: ${exclusionSyncResults.length} workspace(s), ${totalPulled} pulled, ${totalPushed} pushed`,
+    );
+
     return {
       checked: changes.length,
       workspacesWithChanges: changes.map((c) => ({
@@ -185,6 +220,11 @@ export const inboxCheckTask = schedules.task({
         created: syncResult.created,
         skipped: syncResult.skipped,
         errors: syncResult.errors.length,
+      },
+      exclusionSync: {
+        workspaces: exclusionSyncResults.length,
+        totalPulled,
+        totalPushed,
       },
     };
   },
