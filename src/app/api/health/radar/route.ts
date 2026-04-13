@@ -9,6 +9,7 @@ import {
   type CrossTeamEntry,
 } from "@/lib/agents/memory";
 import type { ProviderBalance } from "@/lib/credits/provider-balances";
+import { runPostLaunchCheck, type PostLaunchCheckResult } from "@/lib/monitoring/post-launch-check";
 
 export const maxDuration = 30;
 
@@ -528,12 +529,18 @@ export async function GET(request: NextRequest) {
     }),
   );
 
-  // Await the blacklist check (DB), credit balances (DB), cross-team updates, and freshness in parallel
-  const [blacklistCheck, creditResult, crossTeamUpdates, cronFreshness] = await Promise.all([
+  // Await the blacklist check (DB), credit balances (DB), cross-team updates, freshness, and post-launch check in parallel
+  const [blacklistCheck, creditResult, crossTeamUpdates, cronFreshness, postLaunchResult] = await Promise.all([
     blacklistCheckPromise,
     creditCheckPromise,
     getCrossTeamUpdates(),
     getCronFreshness(),
+    runPostLaunchCheck().catch((err): PostLaunchCheckResult => ({
+      checkedAt: new Date().toISOString(),
+      campaignsChecked: 0,
+      flagged: [],
+      errors: [`Post-launch check failed: ${err instanceof Error ? err.message : String(err)}`],
+    })),
   ]);
 
   const creditWarnings = creditResult.providers.filter((b) => b.status === "warning");
@@ -549,5 +556,11 @@ export async function GET(request: NextRequest) {
     },
     cronFreshness,
     crossTeam: crossTeamUpdates,
+    postLaunchVerification: {
+      status: postLaunchResult.flagged.length > 0 ? "alert" : postLaunchResult.errors.length > 0 ? "degraded" : "ok",
+      campaignsChecked: postLaunchResult.campaignsChecked,
+      flaggedCampaigns: postLaunchResult.flagged,
+      errors: postLaunchResult.errors.length > 0 ? postLaunchResult.errors : undefined,
+    },
   });
 }

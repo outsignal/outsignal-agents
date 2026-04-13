@@ -24,6 +24,13 @@ interface ClientTaskCardProps {
 
 type TaskStatus = "todo" | "in_progress" | "complete";
 
+const ASSIGNEE_STYLES: Record<string, { label: string; className: string }> = {
+  pm: { label: "PM", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  nova: { label: "Nova", className: "bg-purple-500/15 text-purple-600 dark:text-purple-400" },
+  monty: { label: "Monty", className: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
+  client: { label: "Client", className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+};
+
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
 const NEXT_STATUS: Record<TaskStatus, TaskStatus> = {
@@ -218,6 +225,23 @@ export function ClientTaskCard({
                   <AlertTriangle className="h-3 w-3 mr-0.5" />
                   Blocked
                 </Badge>
+              )}
+
+              {task.recurring && (
+                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-sky-500/15 text-sky-600 dark:text-sky-400">
+                  {task.recurring === "weekly" ? "Weekly" : "Monthly"}
+                </span>
+              )}
+
+              {task.assignee && ASSIGNEE_STYLES[task.assignee] && (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
+                    ASSIGNEE_STYLES[task.assignee].className,
+                  )}
+                >
+                  {ASSIGNEE_STYLES[task.assignee].label}
+                </span>
               )}
             </div>
           </div>

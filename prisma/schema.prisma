@@ -1221,6 +1221,11 @@ model ClientTask {
   dueDate   DateTime?
   notes     String?
 
+  // Recurring schedule: null = one-shot, "weekly" | "monthly"
+  recurring    String?
+  // Day of week (0=Sun, 5=Fri) for weekly, day of month (1-31, -1=last working day) for monthly
+  recurringDay Int?
+
   // Dependencies — JSON array of ClientTask IDs this task is blocked by
   blockedBy String?
 

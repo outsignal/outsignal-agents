@@ -4,7 +4,7 @@ import { verifySlackChannel } from "@/lib/notification-guard";
 import { audited } from "@/lib/notification-audit";
 
 interface NotifyParams {
-  type: "onboard" | "provisioning" | "agent" | "system" | "error" | "approval" | "proposal" | "overdue_invoice_alert" | "unpaid_renewal_alert";
+  type: "onboard" | "provisioning" | "agent" | "system" | "error" | "approval" | "proposal" | "overdue_invoice_alert" | "unpaid_renewal_alert" | "stale_draft_alert";
   severity?: "info" | "warning" | "error";
   title: string;
   message?: string;

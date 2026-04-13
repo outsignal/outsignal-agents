@@ -1,6 +1,7 @@
 import { schedules } from "@trigger.dev/sdk";
 import { generateDueInvoices, alertUnpaidBeforeRenewal } from "@/lib/invoices/generator";
 import { markAndNotifyOverdueInvoices } from "@/lib/invoices/overdue";
+import { ensureRecurringTasksCurrent } from "@/lib/clients/operations";
 
 export const invoiceProcessorTask = schedules.task({
   id: "invoice-processor",
@@ -32,6 +33,12 @@ export const invoiceProcessorTask = schedules.task({
       console.log(`[${timestamp}] [invoice-processor] Unpaid renewal alerts: ${unpaidAlertCount} sent`);
     }
 
+    // Catch-up: ensure all recurring tasks have a pending sibling
+    const recurringCreated = await ensureRecurringTasksCurrent();
+    if (recurringCreated > 0) {
+      console.log(`[${timestamp}] [invoice-processor] Recurring tasks: ${recurringCreated} new occurrences created`);
+    }
+
     console.log(`[${timestamp}] [invoice-processor] Complete`);
 
     return {
@@ -39,6 +46,7 @@ export const invoiceProcessorTask = schedules.task({
       invoicesSkipped: invoiceGenResult.skipped,
       overdueInvoices: overdueCount,
       unpaidRenewalAlerts: unpaidAlertCount,
+      recurringTasksCreated: recurringCreated,
     };
   },
 });

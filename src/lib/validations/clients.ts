@@ -34,7 +34,7 @@ export const updateClientSchema = z.object({
 
 // POST /api/clients/[id]/populate
 export const populateClientTasksSchema = z.object({
-  templateType: z.enum(["email", "email_linkedin", "scale"]).optional(),
+  templateType: z.enum(["email", "email_linkedin", "linkedin", "consultancy"]).optional(),
 });
 
 // POST /api/clients/[id]/tasks
@@ -42,6 +42,9 @@ export const addTaskSchema = z.object({
   stage: z.string().min(1, "stage is required"),
   title: z.string().min(1, "title is required"),
   dueDate: z.string().optional(),
+  assignee: z.string().optional(),
+  recurring: z.string().optional(),
+  recurringDay: z.number().optional(),
 });
 
 // PATCH /api/clients/[id]/tasks/[taskId]
@@ -50,6 +53,7 @@ export const updateTaskSchema = z.object({
   status: z.string().optional(),
   dueDate: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  assignee: z.string().optional(),
 });
 
 // PATCH /api/clients/[id]/tasks/[taskId]/subtasks/[subtaskId]

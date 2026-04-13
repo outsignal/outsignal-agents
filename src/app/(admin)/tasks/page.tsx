@@ -20,6 +20,7 @@ export default async function TasksPage() {
     title: t.title,
     stage: t.stage,
     status: t.status,
+    assignee: t.assignee,
     dueDate: t.dueDate ? t.dueDate.toISOString() : null,
     notes: t.notes,
     client: t.client,

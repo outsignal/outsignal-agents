@@ -71,9 +71,12 @@ export interface ClientTaskDetail {
   title: string;
   status: string;
   order: number;
+  assignee: string;
   dueDate: Date | null;
   notes: string | null;
   blockedBy: string[];
+  recurring: string | null;
+  recurringDay: number | null;
   subtasks: { id: string; title: string; status: string; order: number }[];
   subtaskProgress: { total: number; completed: number };
 }
@@ -191,9 +194,12 @@ function formatTaskDetail(
     title: string;
     status: string;
     order: number;
+    assignee: string;
     dueDate: Date | null;
     notes: string | null;
     blockedBy: string | null;
+    recurring: string | null;
+    recurringDay: number | null;
     subtasks: { id: string; title: string; status: string; order: number }[];
   },
 ): ClientTaskDetail {
@@ -206,9 +212,12 @@ function formatTaskDetail(
     title: raw.title,
     status: raw.status,
     order: raw.order,
+    assignee: raw.assignee,
     dueDate: raw.dueDate,
     notes: raw.notes,
     blockedBy: parseBlockedBy(raw.blockedBy),
+    recurring: raw.recurring,
+    recurringDay: raw.recurringDay,
     subtasks: sortedSubtasks.map((s) => ({
       id: s.id,
       title: s.title,
@@ -249,9 +258,12 @@ function formatClientDetail(
       title: string;
       status: string;
       order: number;
+      assignee: string;
       dueDate: Date | null;
       notes: string | null;
       blockedBy: string | null;
+      recurring: string | null;
+      recurringDay: number | null;
       subtasks: { id: string; title: string; status: string; order: number }[];
     }[];
   },
@@ -590,7 +602,7 @@ export async function deleteClient(id: string): Promise<void> {
  * blockedByIndices to actual task IDs.
  *
  * @param clientId - Client ID to populate
- * @param templateType - Template to use ("email", "email_linkedin", or "scale")
+ * @param templateType - Template to use ("email", "email_linkedin", "linkedin", or "consultancy")
  * @throws If template type is invalid or client not found
  */
 export async function populateClientTasks(
@@ -618,8 +630,11 @@ export async function populateClientTasks(
         stage: template.stage,
         title: template.title,
         order: template.order,
+        assignee: template.assignee ?? "pm",
         status: "todo",
         dueDate,
+        recurring: template.recurring ?? null,
+        recurringDay: template.recurringDay ?? null,
         subtasks: {
           create: template.subtasks.map((sub) => ({
             title: sub.title,
@@ -673,9 +688,47 @@ export async function updateTaskStatus(
   taskId: string,
   status: string,
 ): Promise<ClientTaskDetail> {
-  const task = await prisma.clientTask.update({
+  // If completing, fetch current state to check recurring
+  let existingTask: { recurring: string | null; recurringDay: number | null; status: string; clientId: string; stage: string; title: string; assignee: string } | null = null;
+  if (status === "complete") {
+    existingTask = await prisma.clientTask.findUnique({
+      where: { id: taskId },
+      select: { recurring: true, recurringDay: true, status: true, clientId: true, stage: true, title: true, assignee: true },
+    });
+  }
+
+  // Atomic check-and-update: only transition if not already complete (prevents race condition)
+  if (status === "complete") {
+    const result = await prisma.clientTask.updateMany({
+      where: { id: taskId, status: { not: "complete" } },
+      data: { status },
+    });
+
+    // If count is 0, another request already completed this task — skip recurrence creation
+    if (
+      result.count > 0 &&
+      existingTask &&
+      existingTask.recurring
+    ) {
+      await createNextRecurrence({
+        clientId: existingTask.clientId,
+        stage: existingTask.stage,
+        title: existingTask.title,
+        assignee: existingTask.assignee,
+        recurring: existingTask.recurring,
+        recurringDay: existingTask.recurringDay,
+      });
+    }
+  } else {
+    await prisma.clientTask.update({
+      where: { id: taskId },
+      data: { status },
+    });
+  }
+
+  // Re-fetch the task with subtasks for the response
+  const task = await prisma.clientTask.findUniqueOrThrow({
     where: { id: taskId },
-    data: { status },
     include: {
       subtasks: {
         select: {
@@ -744,10 +797,40 @@ export async function updateSubtaskStatus(
     parentStatus = "todo";
   }
 
-  await prisma.clientTask.update({
+  // Fetch the parent task's current status and recurring info before updating
+  const parentTask = await prisma.clientTask.findUnique({
     where: { id: subtask.taskId },
-    data: { status: parentStatus },
+    select: { status: true, recurring: true, recurringDay: true, clientId: true, stage: true, title: true, assignee: true },
   });
+
+  // Atomic check-and-update for completion: prevents duplicate recurrence creation
+  if (parentStatus === "complete") {
+    const result = await prisma.clientTask.updateMany({
+      where: { id: subtask.taskId, status: { not: "complete" } },
+      data: { status: parentStatus },
+    });
+
+    // Only create recurrence if we were the one to transition it (count > 0)
+    if (
+      result.count > 0 &&
+      parentTask &&
+      parentTask.recurring
+    ) {
+      await createNextRecurrence({
+        clientId: parentTask.clientId,
+        stage: parentTask.stage,
+        title: parentTask.title,
+        assignee: parentTask.assignee,
+        recurring: parentTask.recurring,
+        recurringDay: parentTask.recurringDay,
+      });
+    }
+  } else {
+    await prisma.clientTask.update({
+      where: { id: subtask.taskId },
+      data: { status: parentStatus },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -766,7 +849,7 @@ export async function updateSubtaskStatus(
  */
 export async function addTask(
   clientId: string,
-  params: { stage: string; title: string; dueDate?: Date },
+  params: { stage: string; title: string; dueDate?: Date; assignee?: string; recurring?: string; recurringDay?: number },
 ): Promise<ClientTaskDetail> {
   // Verify client exists
   const client = await prisma.client.findUnique({
@@ -793,8 +876,11 @@ export async function addTask(
       stage: params.stage,
       title: params.title,
       order: nextOrder,
+      assignee: params.assignee ?? "pm",
       dueDate: params.dueDate ?? null,
       status: "todo",
+      recurring: params.recurring ?? null,
+      recurringDay: params.recurringDay ?? null,
     },
     include: {
       subtasks: {
@@ -819,6 +905,8 @@ export async function addTask(
  * Update task fields (title, dueDate, notes, status).
  *
  * Only provided fields are updated.
+ * If the task is recurring and status changes to "complete", a new occurrence
+ * is automatically created with the next due date.
  *
  * @param taskId - ClientTask ID
  * @param params - Fields to update
@@ -827,17 +915,56 @@ export async function addTask(
  */
 export async function updateTask(
   taskId: string,
-  params: { title?: string; dueDate?: Date | null; notes?: string; status?: string },
+  params: { title?: string; dueDate?: Date | null; notes?: string; status?: string; assignee?: string },
 ): Promise<ClientTaskDetail> {
+  // If status is changing to "complete", fetch full task first to check recurring
+  let existingTask: { recurring: string | null; recurringDay: number | null; status: string; clientId: string; stage: string; title: string; assignee: string } | null = null;
+  if (params.status === "complete") {
+    existingTask = await prisma.clientTask.findUnique({
+      where: { id: taskId },
+      select: { recurring: true, recurringDay: true, status: true, clientId: true, stage: true, title: true, assignee: true },
+    });
+  }
+
   const data: Record<string, unknown> = {};
   if (params.title !== undefined) data.title = params.title;
   if (params.dueDate !== undefined) data.dueDate = params.dueDate;
   if (params.notes !== undefined) data.notes = params.notes;
   if (params.status !== undefined) data.status = params.status;
+  if (params.assignee !== undefined) data.assignee = params.assignee;
 
-  const task = await prisma.clientTask.update({
+  // Atomic check-and-update for completion: prevents duplicate recurrence creation
+  if (params.status === "complete") {
+    const result = await prisma.clientTask.updateMany({
+      where: { id: taskId, status: { not: "complete" } },
+      data,
+    });
+
+    // Only create recurrence if we were the one to transition it (count > 0)
+    if (
+      result.count > 0 &&
+      existingTask &&
+      existingTask.recurring
+    ) {
+      await createNextRecurrence({
+        clientId: existingTask.clientId,
+        stage: existingTask.stage,
+        title: existingTask.title,
+        assignee: existingTask.assignee,
+        recurring: existingTask.recurring,
+        recurringDay: existingTask.recurringDay,
+      });
+    }
+  } else {
+    await prisma.clientTask.update({
+      where: { id: taskId },
+      data,
+    });
+  }
+
+  // Re-fetch the task with subtasks for the response
+  const task = await prisma.clientTask.findUniqueOrThrow({
     where: { id: taskId },
-    data,
     include: {
       subtasks: {
         select: {
@@ -851,6 +978,171 @@ export async function updateTask(
   });
 
   return formatTaskDetail(task);
+}
+
+// ---------------------------------------------------------------------------
+// Recurring task helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Calculate the next due date for a recurring task.
+ *
+ * - Weekly: next occurrence of the specified weekday (0=Sun .. 6=Sat) from today
+ * - Monthly with day 1-31: that day in the next month (clamped to month length)
+ * - Monthly with day -1: last working day (Mon-Fri) of the next month
+ */
+export function calculateNextDueDate(recurring: string, recurringDay: number | null): Date {
+  const now = new Date();
+
+  if (recurring === "weekly") {
+    const targetDay = recurringDay ?? 5; // default Friday
+    const currentDay = now.getDay();
+    let daysUntil = targetDay - currentDay;
+    if (daysUntil <= 0) daysUntil += 7; // always next week minimum
+    const next = new Date(now);
+    next.setDate(next.getDate() + daysUntil);
+    next.setHours(9, 0, 0, 0); // 9am
+    return next;
+  }
+
+  if (recurring === "monthly") {
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    if (recurringDay === -1) {
+      // Last working day of next month
+      const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0);
+      // Walk backwards from last day to find Mon-Fri
+      while (lastDay.getDay() === 0 || lastDay.getDay() === 6) {
+        lastDay.setDate(lastDay.getDate() - 1);
+      }
+      lastDay.setHours(9, 0, 0, 0);
+      return lastDay;
+    }
+
+    // Specific day of month (clamped to month length)
+    const day = recurringDay ?? 1;
+    const daysInNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    const clampedDay = Math.min(day, daysInNextMonth);
+    const result = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), clampedDay, 9, 0, 0, 0);
+    return result;
+  }
+
+  // Fallback: 7 days from now
+  const fallback = new Date(now);
+  fallback.setDate(fallback.getDate() + 7);
+  fallback.setHours(9, 0, 0, 0);
+  return fallback;
+}
+
+/**
+ * Create the next occurrence of a recurring task.
+ *
+ * The new task gets status "todo" and a dueDate set to the next occurrence.
+ * Subtasks are NOT copied.
+ */
+export async function createNextRecurrence(task: {
+  clientId: string;
+  stage: string;
+  title: string;
+  assignee: string;
+  recurring: string;
+  recurringDay: number | null;
+}): Promise<void> {
+  const dueDate = calculateNextDueDate(task.recurring, task.recurringDay);
+
+  // Find the max order in this stage for this client
+  const maxOrderTask = await prisma.clientTask.findFirst({
+    where: { clientId: task.clientId, stage: task.stage },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  const nextOrder = (maxOrderTask?.order ?? -1) + 1;
+
+  await prisma.clientTask.create({
+    data: {
+      clientId: task.clientId,
+      stage: task.stage,
+      title: task.title,
+      assignee: task.assignee,
+      recurring: task.recurring,
+      recurringDay: task.recurringDay,
+      status: "todo",
+      dueDate,
+      order: nextOrder,
+    },
+  });
+}
+
+/**
+ * Ensure all recurring tasks have a pending (todo/in_progress) sibling.
+ *
+ * Finds all completed recurring tasks where no pending task with the same
+ * title exists for the same client. Creates the next occurrence for each.
+ *
+ * This is a catch-up function for cases where the auto-creation didn't fire
+ * (e.g. task completed directly in the DB).
+ *
+ * @returns Number of new tasks created
+ */
+export async function ensureRecurringTasksCurrent(): Promise<number> {
+  // Find all recurring tasks that are complete
+  const completedRecurring = await prisma.clientTask.findMany({
+    where: {
+      recurring: { not: null },
+      status: "complete",
+    },
+    select: {
+      id: true,
+      clientId: true,
+      stage: true,
+      title: true,
+      assignee: true,
+      recurring: true,
+      recurringDay: true,
+    },
+  });
+
+  if (completedRecurring.length === 0) return 0;
+
+  // Group by clientId+title to check for pending siblings
+  const keys = new Set(completedRecurring.map((t) => `${t.clientId}::${t.title}`));
+
+  // Find all pending (todo/in_progress) recurring tasks with matching clientId+title
+  const pendingTasks = await prisma.clientTask.findMany({
+    where: {
+      recurring: { not: null },
+      status: { in: ["todo", "in_progress"] },
+    },
+    select: {
+      clientId: true,
+      title: true,
+    },
+  });
+
+  const pendingKeys = new Set(pendingTasks.map((t) => `${t.clientId}::${t.title}`));
+
+  // Find keys that have completed but no pending sibling
+  let created = 0;
+  const processedKeys = new Set<string>();
+
+  for (const task of completedRecurring) {
+    const key = `${task.clientId}::${task.title}`;
+    if (pendingKeys.has(key)) continue; // already has a pending sibling
+    if (processedKeys.has(key)) continue; // already created one this run
+    processedKeys.add(key);
+
+    await createNextRecurrence({
+      clientId: task.clientId,
+      stage: task.stage,
+      title: task.title,
+      assignee: task.assignee,
+      recurring: task.recurring!,
+      recurringDay: task.recurringDay,
+    });
+    created++;
+  }
+
+  return created;
 }
 
 // ---------------------------------------------------------------------------

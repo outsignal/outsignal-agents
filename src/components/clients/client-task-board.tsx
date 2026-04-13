@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Plus } from "lucide-react";
+import { Eye, EyeOff, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,12 +26,14 @@ function StageColumn({
   tasks,
   clientId,
   onTaskUpdate,
+  hideCompleted,
 }: {
   stage: string;
   label: string;
   tasks: ClientTaskDetail[];
   clientId: string;
   onTaskUpdate: () => void;
+  hideCompleted: boolean;
 }) {
   const [addingTask, setAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -41,6 +43,10 @@ function StageColumn({
   const totalCount = tasks.length;
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const visibleTasks = hideCompleted
+    ? tasks.filter((t) => t.status !== "complete")
+    : tasks;
 
   async function handleAddTask() {
     if (!newTaskTitle.trim() || submitting) return;
@@ -99,7 +105,7 @@ function StageColumn({
 
       {/* Task cards */}
       <div className="space-y-2 flex-1">
-        {tasks.map((task) => (
+        {visibleTasks.map((task) => (
           <ClientTaskCard
             key={task.id}
             task={task}
@@ -108,9 +114,9 @@ function StageColumn({
           />
         ))}
 
-        {tasks.length === 0 && (
+        {visibleTasks.length === 0 && (
           <p className="text-xs text-muted-foreground/60 text-center py-4">
-            No tasks yet
+            {tasks.length > 0 ? "All tasks complete" : "No tasks yet"}
           </p>
         )}
       </div>
@@ -168,6 +174,8 @@ export function ClientTaskBoard({
   clientId,
   onTaskUpdate,
 }: ClientTaskBoardProps) {
+  const [hideCompleted, setHideCompleted] = useState(true);
+
   // Group tasks by stage
   const tasksByStage = useCallback(() => {
     const grouped: Record<string, ClientTaskDetail[]> = {};
@@ -184,6 +192,28 @@ export function ClientTaskBoard({
 
   return (
     <>
+      {/* Toggle bar */}
+      <div className="flex justify-end mb-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setHideCompleted((prev) => !prev)}
+          className="text-xs text-muted-foreground hover:text-foreground gap-1.5"
+        >
+          {hideCompleted ? (
+            <>
+              <Eye className="h-3.5 w-3.5" />
+              Show completed
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-3.5 w-3.5" />
+              Hide completed
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* Desktop: 4-column grid (xl) / 2-column (lg) */}
       <div className="hidden lg:grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
         {STAGES.map((stage) => (
@@ -197,6 +227,7 @@ export function ClientTaskBoard({
               tasks={tasksByStage[stage.value] ?? []}
               clientId={clientId}
               onTaskUpdate={onTaskUpdate}
+              hideCompleted={hideCompleted}
             />
           </div>
         ))}
@@ -231,6 +262,7 @@ export function ClientTaskBoard({
                   tasks={tasksByStage[stage.value] ?? []}
                   clientId={clientId}
                   onTaskUpdate={onTaskUpdate}
+                  hideCompleted={hideCompleted}
                 />
               </div>
             </TabsContent>

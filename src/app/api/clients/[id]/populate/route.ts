@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { populateClientTasks, getClient } from "@/lib/clients/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { populateClientTasksSchema } from "@/lib/validations/clients";
+import type { TemplateType } from "@/lib/clients/task-templates";
 
 // POST /api/clients/[id]/populate — populate tasks from template
-// Body: { templateType?: "email" | "email_linkedin" | "scale" }
+// Body: { templateType?: "email" | "email_linkedin" | "linkedin" | "consultancy" }
 // If no templateType provided, uses client's campaignType
 export async function POST(
   request: NextRequest,
@@ -39,11 +40,14 @@ export async function POST(
     if (!result.success) {
       return NextResponse.json({ error: "Validation failed", details: result.error.flatten().fieldErrors }, { status: 400 });
     }
-    const templateType = result.data.templateType || "email";
+    const templateType = result.data.templateType || (client.campaignType as TemplateType) || "email";
 
-    const tasks = await populateClientTasks(id, templateType);
+    await populateClientTasks(id, templateType);
 
-    return NextResponse.json({ tasks }, { status: 201 });
+    // Re-fetch the client to get the populated tasks
+    const updated = await getClient(id);
+
+    return NextResponse.json({ tasks: updated?.tasks ?? [] }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/clients/[id]/populate] Error:", err);
     return NextResponse.json(

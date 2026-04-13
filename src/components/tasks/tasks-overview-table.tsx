@@ -39,6 +39,7 @@ interface Task {
   title: string;
   stage: string;
   status: string;
+  assignee: string;
   dueDate: string | null;
   notes: string | null;
   client: TaskClient;
@@ -77,6 +78,20 @@ const STATUS_VARIANTS: Record<string, "secondary" | "warning" | "success"> = {
   complete: "success",
 };
 
+const ASSIGNEE_LABELS: Record<string, string> = {
+  pm: "PM",
+  nova: "Nova",
+  monty: "Monty",
+  client: "Client",
+};
+
+const ASSIGNEE_VARIANTS: Record<string, "info" | "purple" | "warning" | "success"> = {
+  pm: "info",
+  nova: "purple",
+  monty: "warning",
+  client: "success",
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function isOverdue(task: Task): boolean {
@@ -101,6 +116,7 @@ export function TasksOverviewTable({ tasks }: TasksOverviewTableProps) {
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [overdueOnly, setOverdueOnly] = useState(false);
 
   // Unique client names for filter dropdown
@@ -120,10 +136,11 @@ export function TasksOverviewTable({ tasks }: TasksOverviewTableProps) {
       if (stageFilter !== "all" && t.stage !== stageFilter) return false;
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
       if (clientFilter !== "all" && t.client.id !== clientFilter) return false;
+      if (assigneeFilter !== "all" && t.assignee !== assigneeFilter) return false;
       if (overdueOnly && !isOverdue(t)) return false;
       return true;
     });
-  }, [tasks, stageFilter, statusFilter, clientFilter, overdueOnly]);
+  }, [tasks, stageFilter, statusFilter, clientFilter, assigneeFilter, overdueOnly]);
 
   // KPI counts (from filtered set)
   const counts = useMemo(() => {
@@ -217,6 +234,19 @@ export function TasksOverviewTable({ tasks }: TasksOverviewTableProps) {
           </SelectContent>
         </Select>
 
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Assignee" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Assignees</SelectItem>
+            <SelectItem value="pm">PM</SelectItem>
+            <SelectItem value="nova">Nova</SelectItem>
+            <SelectItem value="monty">Monty</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
+          </SelectContent>
+        </Select>
+
         <Button
           variant={overdueOnly ? "destructive" : "outline"}
           size="sm"
@@ -246,6 +276,7 @@ export function TasksOverviewTable({ tasks }: TasksOverviewTableProps) {
                 <TableHead>Task</TableHead>
                 <TableHead>Stage</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Assignee</TableHead>
                 <TableHead>Due Date</TableHead>
                 <TableHead>Subtasks</TableHead>
               </TableRow>
@@ -296,6 +327,16 @@ export function TasksOverviewTable({ tasks }: TasksOverviewTableProps) {
                         size="xs"
                       >
                         {STATUS_LABELS[task.status] ?? task.status}
+                      </Badge>
+                    </TableCell>
+
+                    {/* Assignee */}
+                    <TableCell>
+                      <Badge
+                        variant={ASSIGNEE_VARIANTS[task.assignee] ?? "secondary"}
+                        size="xs"
+                      >
+                        {ASSIGNEE_LABELS[task.assignee] ?? task.assignee}
                       </Badge>
                     </TableCell>
 
