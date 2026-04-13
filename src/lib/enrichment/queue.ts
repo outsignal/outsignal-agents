@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/db";
 import { isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import { notifyCreditExhaustion } from "@/lib/notifications";
+import { getExclusionDomains } from "@/lib/exclusions";
 import type { EntityType, Provider } from "./types";
 
 export interface EnqueueJobParams {
@@ -38,15 +39,48 @@ export async function enqueueJob(params: EnqueueJobParams): Promise<string> {
     throw new Error("Cannot enqueue job with empty entityIds");
   }
 
+  // --- Exclusion list gate (BL-046: defence-in-depth) ---
+  // Filter out people whose companyDomain matches the workspace exclusion list.
+  // Promotion should catch most excluded people, but this is a secondary gate
+  // to prevent wasting enrichment credits on excluded companies.
+  let filteredIds = entityIds;
+  if (workspaceSlug && entityType === "person") {
+    const exclusionDomains = await getExclusionDomains(workspaceSlug);
+    if (exclusionDomains.size > 0) {
+      const people = await prisma.person.findMany({
+        where: { id: { in: entityIds } },
+        select: { id: true, companyDomain: true },
+      });
+      const excludedIds = new Set<string>();
+      for (const person of people) {
+        if (person.companyDomain) {
+          const normalized = person.companyDomain.toLowerCase().replace(/^www\./, "");
+          if (exclusionDomains.has(normalized)) {
+            excludedIds.add(person.id);
+          }
+        }
+      }
+      if (excludedIds.size > 0) {
+        filteredIds = entityIds.filter((id) => !excludedIds.has(id));
+        console.log(
+          `[enrichment-queue] Excluded ${excludedIds.size} people matching exclusion list (workspace: ${workspaceSlug})`,
+        );
+        if (filteredIds.length === 0) {
+          throw new Error("Cannot enqueue job with empty entityIds (all excluded)");
+        }
+      }
+    }
+  }
+
   const job = await prisma.enrichmentJob.create({
     data: {
       entityType,
       provider,
       status: "pending",
-      totalCount: entityIds.length,
+      totalCount: filteredIds.length,
       processedCount: 0,
       chunkSize,
-      entityIds: JSON.stringify(entityIds),
+      entityIds: JSON.stringify(filteredIds),
       workspaceSlug: workspaceSlug ?? null,
     },
   });

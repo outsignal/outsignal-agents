@@ -18,6 +18,7 @@ import { enqueueJob } from "@/lib/enrichment/queue";
 import { scoreStagedPersonIcpBatch } from "@/lib/icp/scorer";
 import type { StagedPersonBatchInput } from "@/lib/icp/scorer";
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
+import { getExclusionDomains, extractDomain } from "@/lib/exclusions";
 
 // ---------------------------------------------------------------------------
 // Safety net: placeholder email domains that must never enter the Person table.
@@ -48,6 +49,8 @@ export interface PromotionResult {
   discarded: number;
   /** Number of DiscoveredPerson records rejected by ICP scoring (below threshold) */
   scoredRejected: number;
+  /** Number of DiscoveredPerson records excluded via workspace exclusion list */
+  excluded: number;
   /** Up to 5 sample names of duplicate records (for display) */
   duplicateNames: string[];
   /** Person IDs of newly promoted leads */
@@ -414,6 +417,60 @@ export async function deduplicateAndPromote(
     }
   }
 
+  // --- Exclusion list gate (BL-046) ---
+  // Remove any DiscoveredPerson whose companyDomain or email domain matches
+  // the workspace exclusion list. Mark them status='excluded' and skip.
+  const exclusionDomains = await getExclusionDomains(workspaceSlug);
+  let excludedCount = 0;
+
+  if (exclusionDomains.size > 0) {
+    const excludedIndices = new Set<number>();
+    for (let i = 0; i < staged.length; i++) {
+      const dp = staged[i];
+      let excluded = false;
+
+      // Check companyDomain
+      if (dp.companyDomain) {
+        const normalizedCompanyDomain = dp.companyDomain.toLowerCase().replace(/^www\./, "");
+        if (exclusionDomains.has(normalizedCompanyDomain)) {
+          excluded = true;
+        }
+      }
+
+      // Check email domain
+      if (!excluded && dp.email) {
+        const emailDomain = extractDomain(dp.email);
+        if (emailDomain && exclusionDomains.has(emailDomain)) {
+          excluded = true;
+        }
+      }
+
+      if (excluded) {
+        excludedIndices.add(i);
+      }
+    }
+
+    // Batch-update excluded records
+    if (excludedIndices.size > 0) {
+      const excludedIds = Array.from(excludedIndices).map((i) => staged[i].id);
+      await prisma.discoveredPerson.updateMany({
+        where: { id: { in: excludedIds } },
+        data: { status: "excluded" },
+      });
+
+      // Remove excluded records from the staged array (process in reverse to maintain indices)
+      const sortedIndices = Array.from(excludedIndices).sort((a, b) => b - a);
+      for (const idx of sortedIndices) {
+        staged.splice(idx, 1);
+      }
+
+      excludedCount = excludedIds.length;
+      console.log(
+        `[promotion] Excluded ${excludedCount} people matching exclusion list`,
+      );
+    }
+  }
+
   // --- Pre-fetch domains for ICP scoring (avoids thundering herd on crawl cache) ---
   if (icpScoringEnabled) {
     const domains = staged.map((dp) => dp.companyDomain);
@@ -673,6 +730,7 @@ export async function deduplicateAndPromote(
     duplicates: duplicatePersonIds.length,
     discarded: discardedCount,
     scoredRejected: scoredRejectedCount,
+    excluded: excludedCount,
     duplicateNames,
     promotedIds,
     enrichmentJobId,

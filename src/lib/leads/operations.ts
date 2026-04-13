@@ -19,6 +19,7 @@ import { getListExportReadiness } from "@/lib/export/verification-gate";
 import { getClientForWorkspace } from "@/lib/workspaces";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
 import { validatePeopleForChannel } from "@/lib/validation/channel-gate";
+import { getExclusionDomains } from "@/lib/exclusions";
 import type { TargetList, Person, Workspace } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -357,6 +358,46 @@ export async function addPeopleToList(
     return { added: 0, alreadyInList: 0 };
   }
 
+  // --- Exclusion list gate (BL-046: defence-in-depth) ---
+  // Filter out people whose companyDomain matches the workspace exclusion list.
+  // Look up the list's workspace to get the exclusion domains.
+  const targetList = await prisma.targetList.findUnique({
+    where: { id: listId },
+    select: { workspaceSlug: true },
+  });
+  let excludedFromListCount = 0;
+  let activePersonIds = personIds;
+
+  if (targetList) {
+    const exclusionDomains = await getExclusionDomains(targetList.workspaceSlug);
+    if (exclusionDomains.size > 0) {
+      const people = await prisma.person.findMany({
+        where: { id: { in: personIds } },
+        select: { id: true, companyDomain: true },
+      });
+      const excludedIds = new Set<string>();
+      for (const person of people) {
+        if (person.companyDomain) {
+          const normalized = person.companyDomain.toLowerCase().replace(/^www\./, "");
+          if (exclusionDomains.has(normalized)) {
+            excludedIds.add(person.id);
+          }
+        }
+      }
+      if (excludedIds.size > 0) {
+        activePersonIds = personIds.filter((id) => !excludedIds.has(id));
+        excludedFromListCount = excludedIds.size;
+        console.info(
+          `[addPeopleToList] list=${listId} exclusion-filter: ${excludedIds.size} people excluded`,
+        );
+      }
+    }
+  }
+
+  if (activePersonIds.length === 0) {
+    return { added: 0, alreadyInList: 0, rejected: excludedFromListCount, rejectionSummary: `${excludedFromListCount}x excluded (exclusion list)` };
+  }
+
   // --- Channel validation gate ---
   // Check if the list is linked to a campaign (a campaign may link to a list
   // via targetListId). If so, we need to validate each person against the
@@ -366,7 +407,7 @@ export async function addPeopleToList(
     select: { channels: true },
   });
 
-  let validPersonIds = personIds;
+  let validPersonIds = activePersonIds;
   let rejectedCount = 0;
   let rejectionSummary: string | undefined;
 
@@ -383,7 +424,7 @@ export async function addPeopleToList(
 
     // Fetch the person data required for validation in a single query.
     const people = await prisma.person.findMany({
-      where: { id: { in: personIds } },
+      where: { id: { in: activePersonIds } },
       select: { id: true, email: true, linkedinUrl: true },
     });
 
@@ -430,6 +471,9 @@ export async function addPeopleToList(
       );
     }
   }
+
+  // Merge exclusion rejections into the overall count
+  rejectedCount += excludedFromListCount;
 
   if (validPersonIds.length === 0) {
     return { added: 0, alreadyInList: 0, rejected: rejectedCount, rejectionSummary };
