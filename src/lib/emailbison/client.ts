@@ -616,6 +616,27 @@ export class EmailBisonClient {
     return this.getAllPages<{ id: number; domain: string; created_at: string }>('/blacklisted-domains');
   }
 
+  /**
+   * List all blacklisted emails.
+   * GET /api/blacklisted-emails
+   * Auto-paginates using meta.last_page.
+   */
+  async listBlacklistedEmails(): Promise<Array<{ id: number; email: string; created_at: string }>> {
+    return this.getAllPages<{ id: number; email: string; created_at: string }>('/blacklisted-emails');
+  }
+
+  /**
+   * Add an email to the EmailBison blacklist directly.
+   * POST /api/blacklisted-emails
+   */
+  async blacklistEmail(email: string): Promise<void> {
+    await this.request<unknown>('/blacklisted-emails', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+      revalidate: 0,
+    });
+  }
+
   async deleteLead(leadId: number): Promise<void> {
     await this.request<unknown>(`/leads/${leadId}`, {
       method: 'DELETE',

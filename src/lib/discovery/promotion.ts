@@ -18,7 +18,7 @@ import { enqueueJob } from "@/lib/enrichment/queue";
 import { scoreStagedPersonIcpBatch } from "@/lib/icp/scorer";
 import type { StagedPersonBatchInput } from "@/lib/icp/scorer";
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
-import { getExclusionDomains, extractDomain } from "@/lib/exclusions";
+import { getExclusionDomains, getExclusionEmails, extractDomain } from "@/lib/exclusions";
 
 // ---------------------------------------------------------------------------
 // Safety net: placeholder email domains that must never enter the Person table.
@@ -419,17 +419,19 @@ export async function deduplicateAndPromote(
 
   // --- Exclusion list gate (BL-046) ---
   // Remove any DiscoveredPerson whose companyDomain or email domain matches
-  // the workspace exclusion list. Mark them status='excluded' and skip.
+  // the workspace exclusion list, OR whose exact email matches the email
+  // exclusion list. Mark them status='excluded' and skip.
   const exclusionDomains = await getExclusionDomains(workspaceSlug);
+  const exclusionEmails = await getExclusionEmails(workspaceSlug);
   let excludedCount = 0;
 
-  if (exclusionDomains.size > 0) {
+  if (exclusionDomains.size > 0 || exclusionEmails.size > 0) {
     const excludedIndices = new Set<number>();
     for (let i = 0; i < staged.length; i++) {
       const dp = staged[i];
       let excluded = false;
 
-      // Check companyDomain
+      // Check companyDomain against domain exclusions
       if (dp.companyDomain) {
         const normalizedCompanyDomain = dp.companyDomain.toLowerCase().replace(/^www\./, "");
         if (exclusionDomains.has(normalizedCompanyDomain)) {
@@ -437,10 +439,17 @@ export async function deduplicateAndPromote(
         }
       }
 
-      // Check email domain
+      // Check email domain against domain exclusions
       if (!excluded && dp.email) {
         const emailDomain = extractDomain(dp.email);
         if (emailDomain && exclusionDomains.has(emailDomain)) {
+          excluded = true;
+        }
+      }
+
+      // Check exact email against email exclusions
+      if (!excluded && dp.email && exclusionEmails.size > 0) {
+        if (exclusionEmails.has(dp.email.toLowerCase())) {
           excluded = true;
         }
       }

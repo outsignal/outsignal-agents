@@ -24,6 +24,19 @@ model ExclusionEntry {
   @@index([workspaceSlug])
 }
 
+model ExclusionEmail {
+  id            String   @id @default(cuid())
+  workspaceSlug String
+  email         String
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceSlug], references: [slug], onDelete: Cascade)
+
+  @@unique([workspaceSlug, email])
+  @@index([workspaceSlug])
+}
+
 model Workspace {
   id       String  @id @default(cuid())
   slug     String  @unique
@@ -122,6 +135,7 @@ model Workspace {
   senders               Sender[]
   campaigns             Campaign[]
   exclusionEntries      ExclusionEntry[]
+  exclusionEmails       ExclusionEmail[]
   supportConversations  SupportConversation[]
   members               Member[]
 }

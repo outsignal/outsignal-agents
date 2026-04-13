@@ -11,6 +11,9 @@ vi.mock("@/lib/db", () => ({
     exclusionEntry: {
       findMany: vi.fn(),
     },
+    exclusionEmail: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -19,6 +22,8 @@ import {
   extractDomain,
   isExcluded,
   getExclusionDomains,
+  getExclusionEmails,
+  isEmailExcluded,
   invalidateCache,
 } from "@/lib/exclusions";
 import { prisma } from "@/lib/db";
@@ -194,5 +199,92 @@ describe("getExclusionDomains", () => {
 
     const domains = await getExclusionDomains("test-workspace");
     expect(domains.size).toBe(0);
+  });
+});
+
+describe("getExclusionEmails", () => {
+  beforeEach(() => {
+    invalidateCache("test-workspace");
+    vi.clearAllMocks();
+  });
+
+  it("returns a Set of lowercase emails", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([
+      { id: "1", workspaceSlug: "test-workspace", email: "Boss@Example.COM", reason: null, createdAt: new Date() },
+      { id: "2", workspaceSlug: "test-workspace", email: "ceo@acme.com", reason: null, createdAt: new Date() },
+    ]);
+
+    const emails = await getExclusionEmails("test-workspace");
+    expect(emails).toBeInstanceOf(Set);
+    expect(emails.size).toBe(2);
+    expect(emails.has("boss@example.com")).toBe(true);
+    expect(emails.has("ceo@acme.com")).toBe(true);
+  });
+
+  it("returns empty Set when no email exclusions exist", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([]);
+
+    const emails = await getExclusionEmails("test-workspace");
+    expect(emails.size).toBe(0);
+  });
+
+  it("caches results across calls", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([
+      { id: "1", workspaceSlug: "test-workspace", email: "cached@example.com", reason: null, createdAt: new Date() },
+    ]);
+
+    await getExclusionEmails("test-workspace");
+    await getExclusionEmails("test-workspace");
+
+    expect(prisma.exclusionEmail.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("respects cache invalidation", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([]);
+
+    await getExclusionEmails("test-workspace");
+    invalidateCache("test-workspace");
+    await getExclusionEmails("test-workspace");
+
+    expect(prisma.exclusionEmail.findMany).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("isEmailExcluded", () => {
+  beforeEach(() => {
+    invalidateCache("test-workspace");
+    vi.clearAllMocks();
+  });
+
+  it("returns true for an excluded email", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([
+      { id: "1", workspaceSlug: "test-workspace", email: "blocked@example.com", reason: null, createdAt: new Date() },
+    ]);
+
+    expect(await isEmailExcluded("test-workspace", "blocked@example.com")).toBe(true);
+  });
+
+  it("returns false for a non-excluded email", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([
+      { id: "1", workspaceSlug: "test-workspace", email: "blocked@example.com", reason: null, createdAt: new Date() },
+    ]);
+
+    expect(await isEmailExcluded("test-workspace", "allowed@example.com")).toBe(false);
+  });
+
+  it("normalizes email to lowercase before checking", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([
+      { id: "1", workspaceSlug: "test-workspace", email: "blocked@example.com", reason: null, createdAt: new Date() },
+    ]);
+
+    expect(await isEmailExcluded("test-workspace", "BLOCKED@EXAMPLE.COM")).toBe(true);
+    expect(await isEmailExcluded("test-workspace", "  Blocked@Example.com  ")).toBe(true);
+  });
+
+  it("returns false for invalid email strings", async () => {
+    vi.mocked(prisma.exclusionEmail.findMany).mockResolvedValue([]);
+
+    expect(await isEmailExcluded("test-workspace", "notanemail")).toBe(false);
+    expect(await isEmailExcluded("test-workspace", "")).toBe(false);
   });
 });

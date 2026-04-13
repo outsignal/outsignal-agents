@@ -182,6 +182,9 @@ export const inboxCheckTask = schedules.task({
       pulledFromEB: number;
       pushedToEB: number;
       alreadySynced: number;
+      emailsPulledFromEB: number;
+      emailsPushedToEB: number;
+      emailsAlreadySynced: number;
     }> = [];
 
     for (const ws of workspacesWithTokens) {
@@ -195,9 +198,11 @@ export const inboxCheckTask = schedules.task({
 
     const totalPulled = exclusionSyncResults.reduce((s, r) => s + r.pulledFromEB, 0);
     const totalPushed = exclusionSyncResults.reduce((s, r) => s + r.pushedToEB, 0);
+    const totalEmailsPulled = exclusionSyncResults.reduce((s, r) => s + r.emailsPulledFromEB, 0);
+    const totalEmailsPushed = exclusionSyncResults.reduce((s, r) => s + r.emailsPushedToEB, 0);
 
     console.log(
-      `[inbox-check] Step 4 complete: ${exclusionSyncResults.length} workspace(s), ${totalPulled} pulled, ${totalPushed} pushed`,
+      `[inbox-check] Step 4 complete: ${exclusionSyncResults.length} workspace(s), domains: ${totalPulled} pulled/${totalPushed} pushed, emails: ${totalEmailsPulled} pulled/${totalEmailsPushed} pushed`,
     );
 
     return {

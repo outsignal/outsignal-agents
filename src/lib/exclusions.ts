@@ -78,8 +78,14 @@ interface CacheEntry {
   expiresAt: number;
 }
 
+interface EmailCacheEntry {
+  emails: Set<string>;
+  expiresAt: number;
+}
+
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const cache = new Map<string, CacheEntry>();
+const emailCache = new Map<string, EmailCacheEntry>();
 
 /**
  * Load exclusion domains for a workspace as a Set for O(1) lookups.
@@ -126,11 +132,60 @@ export async function isExcluded(
 }
 
 /**
- * Invalidate the cached exclusion domains for a workspace.
+ * Invalidate the cached exclusion domains and emails for a workspace.
  * Called after uploading new exclusions so subsequent checks see the update.
  */
 export function invalidateCache(workspaceSlug: string): void {
   cache.delete(workspaceSlug);
+  emailCache.delete(workspaceSlug);
+}
+
+// ---------------------------------------------------------------------------
+// Cached email lookups
+// ---------------------------------------------------------------------------
+
+/**
+ * Load exclusion emails for a workspace as a Set for O(1) lookups.
+ * Results are cached for 5 minutes to avoid repeated DB queries during
+ * batch operations.
+ */
+export async function getExclusionEmails(
+  workspaceSlug: string,
+): Promise<Set<string>> {
+  const now = Date.now();
+  const cached = emailCache.get(workspaceSlug);
+  if (cached && cached.expiresAt > now) {
+    return cached.emails;
+  }
+
+  const entries = await prisma.exclusionEmail.findMany({
+    where: { workspaceSlug },
+    select: { email: true },
+  });
+
+  const emails = new Set(entries.map((e) => e.email.toLowerCase()));
+
+  emailCache.set(workspaceSlug, {
+    emails,
+    expiresAt: now + CACHE_TTL_MS,
+  });
+
+  return emails;
+}
+
+/**
+ * Check if an email address is excluded for a workspace.
+ * Normalizes the input email (lowercase) before checking.
+ */
+export async function isEmailExcluded(
+  workspaceSlug: string,
+  email: string,
+): Promise<boolean> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) return false;
+
+  const excludedEmails = await getExclusionEmails(workspaceSlug);
+  return excludedEmails.has(normalized);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +204,9 @@ export async function syncExclusionsWithEmailBison(
   pulledFromEB: number;
   pushedToEB: number;
   alreadySynced: number;
+  emailsPulledFromEB: number;
+  emailsPushedToEB: number;
+  emailsAlreadySynced: number;
 }> {
   // Load workspace API token
   const workspace = await prisma.workspace.findUnique({
@@ -158,7 +216,7 @@ export async function syncExclusionsWithEmailBison(
 
   if (!workspace?.apiToken) {
     console.log(`[exclusion-sync] Skipping ${workspaceSlug} — no API token`);
-    return { pulledFromEB: 0, pushedToEB: 0, alreadySynced: 0 };
+    return { pulledFromEB: 0, pushedToEB: 0, alreadySynced: 0, emailsPulledFromEB: 0, emailsPushedToEB: 0, emailsAlreadySynced: 0 };
   }
 
   const client = new EmailBisonClient(workspace.apiToken);
@@ -218,14 +276,64 @@ export async function syncExclusionsWithEmailBison(
     }
   }
 
-  // Invalidate cache so subsequent lookups see newly pulled domains
-  if (pulledFromEB > 0) {
+  // --- Email blacklist sync ---
+  const ebEmails = await client.listBlacklistedEmails();
+  const ebEmailSet = new Set(ebEmails.map((e) => e.email.toLowerCase()));
+
+  const existingEmailEntries = await prisma.exclusionEmail.findMany({
+    where: { workspaceSlug },
+    select: { email: true },
+  });
+  const existingEmailSet = new Set(existingEmailEntries.map((e) => e.email.toLowerCase()));
+
+  let emailsPulledFromEB = 0;
+  let emailsPushedToEB = 0;
+  let emailsAlreadySynced = 0;
+
+  // Pull: EB -> ExclusionEmail
+  for (const ebEmail of ebEmailSet) {
+    if (existingEmailSet.has(ebEmail)) {
+      emailsAlreadySynced++;
+      continue;
+    }
+
+    await prisma.exclusionEmail.upsert({
+      where: {
+        workspaceSlug_email: { workspaceSlug, email: ebEmail },
+      },
+      update: {},
+      create: {
+        workspaceSlug,
+        email: ebEmail,
+        reason: "Synced from EmailBison blacklist",
+      },
+    });
+    emailsPulledFromEB++;
+  }
+
+  // Push: ExclusionEmail -> EB
+  for (const email of existingEmailSet) {
+    if (ebEmailSet.has(email)) continue;
+
+    try {
+      await client.blacklistEmail(email);
+      emailsPushedToEB++;
+    } catch (err) {
+      console.warn(
+        `[exclusion-sync] Failed to push email ${email} to EB for ${workspaceSlug}:`,
+        err,
+      );
+    }
+  }
+
+  // Invalidate cache so subsequent lookups see newly pulled domains/emails
+  if (pulledFromEB > 0 || emailsPulledFromEB > 0) {
     invalidateCache(workspaceSlug);
   }
 
   console.log(
-    `[exclusion-sync] ${workspaceSlug}: pulled=${pulledFromEB}, pushed=${pushedToEB}, alreadySynced=${alreadySynced}`,
+    `[exclusion-sync] ${workspaceSlug}: domains pulled=${pulledFromEB}, pushed=${pushedToEB}, alreadySynced=${alreadySynced}; emails pulled=${emailsPulledFromEB}, pushed=${emailsPushedToEB}, alreadySynced=${emailsAlreadySynced}`,
   );
 
-  return { pulledFromEB, pushedToEB, alreadySynced };
+  return { pulledFromEB, pushedToEB, alreadySynced, emailsPulledFromEB, emailsPushedToEB, emailsAlreadySynced };
 }

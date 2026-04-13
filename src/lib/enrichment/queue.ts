@@ -9,7 +9,7 @@
 import { prisma } from "@/lib/db";
 import { isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import { notifyCreditExhaustion } from "@/lib/notifications";
-import { getExclusionDomains } from "@/lib/exclusions";
+import { getExclusionDomains, getExclusionEmails } from "@/lib/exclusions";
 import type { EntityType, Provider } from "./types";
 
 export interface EnqueueJobParams {
@@ -46,16 +46,25 @@ export async function enqueueJob(params: EnqueueJobParams): Promise<string> {
   let filteredIds = entityIds;
   if (workspaceSlug && entityType === "person") {
     const exclusionDomains = await getExclusionDomains(workspaceSlug);
-    if (exclusionDomains.size > 0) {
+    const exclusionEmails = await getExclusionEmails(workspaceSlug);
+    if (exclusionDomains.size > 0 || exclusionEmails.size > 0) {
       const people = await prisma.person.findMany({
         where: { id: { in: entityIds } },
-        select: { id: true, companyDomain: true },
+        select: { id: true, companyDomain: true, email: true },
       });
       const excludedIds = new Set<string>();
       for (const person of people) {
+        // Check domain exclusion
         if (person.companyDomain) {
           const normalized = person.companyDomain.toLowerCase().replace(/^www\./, "");
           if (exclusionDomains.has(normalized)) {
+            excludedIds.add(person.id);
+            continue;
+          }
+        }
+        // Check email exclusion
+        if (person.email && exclusionEmails.size > 0) {
+          if (exclusionEmails.has(person.email.toLowerCase())) {
             excludedIds.add(person.id);
           }
         }

@@ -19,7 +19,7 @@ import { getListExportReadiness } from "@/lib/export/verification-gate";
 import { getClientForWorkspace } from "@/lib/workspaces";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
 import { validatePeopleForChannel } from "@/lib/validation/channel-gate";
-import { getExclusionDomains } from "@/lib/exclusions";
+import { getExclusionDomains, getExclusionEmails } from "@/lib/exclusions";
 import type { TargetList, Person, Workspace } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -370,16 +370,25 @@ export async function addPeopleToList(
 
   if (targetList) {
     const exclusionDomains = await getExclusionDomains(targetList.workspaceSlug);
-    if (exclusionDomains.size > 0) {
+    const exclusionEmails = await getExclusionEmails(targetList.workspaceSlug);
+    if (exclusionDomains.size > 0 || exclusionEmails.size > 0) {
       const people = await prisma.person.findMany({
         where: { id: { in: personIds } },
-        select: { id: true, companyDomain: true },
+        select: { id: true, companyDomain: true, email: true },
       });
       const excludedIds = new Set<string>();
       for (const person of people) {
+        // Check domain exclusion
         if (person.companyDomain) {
           const normalized = person.companyDomain.toLowerCase().replace(/^www\./, "");
           if (exclusionDomains.has(normalized)) {
+            excludedIds.add(person.id);
+            continue;
+          }
+        }
+        // Check email exclusion
+        if (person.email && exclusionEmails.size > 0) {
+          if (exclusionEmails.has(person.email.toLowerCase())) {
             excludedIds.add(person.id);
           }
         }
