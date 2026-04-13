@@ -708,7 +708,7 @@ export const domainHealthTask = schedules.task({
     try {
       const senderSyncResult = await syncSendersForAllWorkspaces();
       console.log(
-        `${LOG_PREFIX} Sender sync: ${senderSyncResult.workspaces} workspaces, ${senderSyncResult.created} created, ${senderSyncResult.synced} synced, ${senderSyncResult.skipped} skipped, ${senderSyncResult.errors.length} errors`
+        `${LOG_PREFIX} Sender sync: ${senderSyncResult.workspaces} workspaces, ${senderSyncResult.created} created, ${senderSyncResult.synced} synced, ${senderSyncResult.deactivated} deactivated, ${senderSyncResult.skipped} skipped, ${senderSyncResult.errors.length} errors`
       );
       if (senderSyncResult.errors.length > 0) {
         console.warn(`${LOG_PREFIX} Sender sync errors:`, senderSyncResult.errors);

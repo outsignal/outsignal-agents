@@ -5,6 +5,7 @@ export interface SyncSendersResult {
   workspaces: number;
   synced: number;
   created: number;
+  deactivated: number;
   skipped: number;
   errors: string[];
 }
@@ -14,18 +15,24 @@ export interface SyncSendersResult {
  * Sender records with emailAddress + emailBisonSenderId.
  *
  * Matching priority:
- * 0. Match by emailBisonSenderId (most reliable — survives email/name changes)
- * 1. Match by emailAddress (exact) within workspace
- * 2. Match by name within workspace (only if name is unique — skips duplicates)
+ * 1. Match by emailBisonSenderId (most reliable — survives email/name changes)
+ * 2. Match by emailAddress (exact) within workspace
  * 3. Create new Sender record if no match found
  *
- * LinkedIn-only senders (not present in EmailBison) are unaffected.
+ * Name matching is intentionally excluded — one person (e.g. "Lucy Marshall")
+ * can have many inboxes across different domains. Each inbox = 1 Sender record.
+ *
+ * After syncing, any Sender with an emailBisonSenderId that no longer exists
+ * in the EB API response is deactivated (status='deactivated').
+ *
+ * LinkedIn-only senders (no emailBisonSenderId) are unaffected.
  */
 export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> {
   const result: SyncSendersResult = {
     workspaces: 0,
     synced: 0,
     created: 0,
+    deactivated: 0,
     skipped: 0,
     errors: [],
   };
@@ -64,9 +71,11 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
           emailBisonSenderId: true,
           emailSenderName: true,
           channel: true,
+          status: true,
         },
       });
 
+      // Build lookup maps
       const byEbId = new Map<number, (typeof existingSenders)[0]>();
       const byEmail = new Map<string, (typeof existingSenders)[0]>();
       for (const s of existingSenders) {
@@ -74,36 +83,30 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
         if (s.emailAddress) byEmail.set(s.emailAddress.toLowerCase(), s);
       }
 
+      // Track all EB inbox IDs seen from the API for stale detection
+      const liveEbIds = new Set<number>();
+
       // Helper: determine updated channel when adding email capability to an existing sender
       const mergedChannel = (existing: (typeof existingSenders)[0]) =>
         existing.channel === "linkedin" ? "both" : existing.channel;
 
-      // Only add to byName if the name is unique in this workspace
-      const nameCounts = new Map<string, number>();
-      for (const s of existingSenders) {
-        const key = s.name.toLowerCase();
-        nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
-      }
-      const byName = new Map<string, (typeof existingSenders)[0]>();
-      for (const s of existingSenders) {
-        const key = s.name.toLowerCase();
-        if (nameCounts.get(key) === 1) {
-          byName.set(key, s);
-        }
-      }
+      let workspaceCreated = 0;
+      let workspaceSynced = 0;
+      let workspaceUnchanged = 0;
 
       for (const senderEmail of senderEmails) {
+        liveEbIds.add(senderEmail.id);
         const emailKey = senderEmail.email.toLowerCase();
-        const nameKey = (senderEmail.name ?? senderEmail.email).toLowerCase();
 
-        // Priority 0: match by emailBisonSenderId (most reliable)
+        // Priority 1: match by emailBisonSenderId (most reliable)
         const matchedByEbId = byEbId.get(senderEmail.id);
         if (matchedByEbId) {
           const newChannel = mergedChannel(matchedByEbId);
           const needsUpdate =
             matchedByEbId.emailAddress?.toLowerCase() !== emailKey ||
             (senderEmail.name && matchedByEbId.emailSenderName !== senderEmail.name) ||
-            matchedByEbId.channel !== newChannel;
+            matchedByEbId.channel !== newChannel ||
+            matchedByEbId.status === "deactivated";
 
           if (needsUpdate) {
             await prisma.sender.update({
@@ -112,24 +115,28 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
                 emailAddress: senderEmail.email,
                 channel: newChannel,
                 ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
+                // Reactivate if it was previously deactivated but now exists in EB again
+                ...(matchedByEbId.status === "deactivated" ? { status: "active" } : {}),
               },
             });
-            console.log(`[sync-senders] ${slug}: updated inbox by EB ID ${senderEmail.id} — ${senderEmail.email}`);
+            console.log(`[sync-senders] ${slug}: updated sender by EB ID ${senderEmail.id} -- ${senderEmail.email}`);
+            workspaceSynced++;
           } else {
-            console.log(`[sync-senders] ${slug}: no changes needed for inbox — ${senderEmail.email}`);
+            workspaceUnchanged++;
           }
           result.synced++;
           continue;
         }
 
-        // Priority 1: match by email address
+        // Priority 2: match by email address
         const matchedByEmail = byEmail.get(emailKey);
         if (matchedByEmail) {
           const newChannel = mergedChannel(matchedByEmail);
           const needsUpdate =
             matchedByEmail.emailBisonSenderId !== senderEmail.id ||
             (senderEmail.name && matchedByEmail.emailSenderName !== senderEmail.name) ||
-            matchedByEmail.channel !== newChannel;
+            matchedByEmail.channel !== newChannel ||
+            matchedByEmail.status === "deactivated";
 
           if (needsUpdate) {
             await prisma.sender.update({
@@ -138,53 +145,19 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
                 emailBisonSenderId: senderEmail.id,
                 channel: newChannel,
                 ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
+                ...(matchedByEmail.status === "deactivated" ? { status: "active" } : {}),
               },
             });
-            console.log(`[sync-senders] ${slug}: updated inbox by email — ${senderEmail.email}`);
+            console.log(`[sync-senders] ${slug}: updated sender by email -- ${senderEmail.email}`);
+            workspaceSynced++;
           } else {
-            console.log(`[sync-senders] ${slug}: no changes needed for inbox — ${senderEmail.email}`);
+            workspaceUnchanged++;
           }
           result.synced++;
           continue;
         }
 
-        // Priority 2: match by name (only if unique in workspace)
-        const matchedByName = byName.get(nameKey);
-        if (matchedByName) {
-          // Guard: do not merge email data into a linkedin-only sender — create a new email record instead
-          if (matchedByName.channel === "linkedin") {
-            await prisma.sender.create({
-              data: {
-                workspaceSlug: slug,
-                name: senderEmail.name ?? senderEmail.email,
-                emailAddress: senderEmail.email,
-                emailBisonSenderId: senderEmail.id,
-                channel: "email",
-                ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
-                status: "active",
-              },
-            });
-            console.log(`[sync-senders] ${slug}: name-matched sender is linkedin-only, created separate email inbox — ${senderEmail.email}`);
-            result.created++;
-            continue;
-          }
-
-          const newChannel = mergedChannel(matchedByName);
-          await prisma.sender.update({
-            where: { id: matchedByName.id },
-            data: {
-              emailAddress: senderEmail.email,
-              emailBisonSenderId: senderEmail.id,
-              channel: newChannel,
-              ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
-            },
-          });
-          console.log(`[sync-senders] ${slug}: matched inbox by name and set email — ${senderEmail.email}`);
-          result.synced++;
-          continue;
-        }
-
-        // Priority 3: create new Sender record
+        // No match -- create new Sender record (one per EB inbox)
         await prisma.sender.create({
           data: {
             workspaceSlug: slug,
@@ -196,9 +169,38 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
             status: "active",
           },
         });
-        console.log(`[sync-senders] ${slug}: created new inbox — ${senderEmail.email}`);
+        console.log(`[sync-senders] ${slug}: created new sender -- ${senderEmail.email}`);
+        workspaceCreated++;
         result.created++;
       }
+
+      // Stale sender cleanup: deactivate senders whose EB inbox no longer exists
+      const staleSenders = existingSenders.filter(
+        (s) =>
+          s.emailBisonSenderId !== null &&
+          s.emailBisonSenderId !== undefined &&
+          !liveEbIds.has(s.emailBisonSenderId) &&
+          s.status !== "deactivated",
+      );
+
+      if (staleSenders.length > 0) {
+        await prisma.sender.updateMany({
+          where: { id: { in: staleSenders.map((s) => s.id) } },
+          data: { status: "deactivated" },
+        });
+
+        for (const stale of staleSenders) {
+          console.warn(
+            `[sync-senders] ${slug}: deactivated stale sender -- ${stale.emailAddress ?? stale.name} (EB ID ${stale.emailBisonSenderId} no longer exists)`,
+          );
+        }
+
+        result.deactivated += staleSenders.length;
+      }
+
+      console.log(
+        `[sync-senders] ${slug}: ${workspaceCreated} created, ${workspaceSynced} updated, ${workspaceUnchanged} unchanged, ${staleSenders.length} deactivated`,
+      );
     } catch (error) {
       const msg = `${slug}: ${error instanceof Error ? error.message : String(error)}`;
       console.error(`[sync-senders] Error processing workspace ${slug}:`, error);
@@ -207,7 +209,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
   }
 
   console.log(
-    `[sync-senders] Done: ${result.workspaces} workspaces, ${result.synced} synced, ${result.created} created, ${result.skipped} skipped, ${result.errors.length} errors`,
+    `[sync-senders] Done: ${result.workspaces} workspaces, ${result.synced} synced, ${result.created} created, ${result.deactivated} deactivated, ${result.skipped} skipped, ${result.errors.length} errors`,
   );
 
   return result;

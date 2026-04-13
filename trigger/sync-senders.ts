@@ -10,7 +10,7 @@ export async function runSyncSenders() {
   const result = await syncSendersForAllWorkspaces();
 
   console.log(
-    `[sync-senders] Complete: ${result.workspaces} workspaces, ${result.synced} synced, ${result.created} created, ${result.skipped} skipped, ${result.errors.length} errors`,
+    `[sync-senders] Complete: ${result.workspaces} workspaces, ${result.synced} synced, ${result.created} created, ${result.deactivated} deactivated, ${result.skipped} skipped, ${result.errors.length} errors`,
   );
 
   if (result.errors.length > 0) {
