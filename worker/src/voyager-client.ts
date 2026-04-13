@@ -17,6 +17,33 @@
 import { socksDispatcher } from "fetch-socks";
 import { ProxyAgent } from "undici";
 
+/**
+ * Supported invitation URN type prefixes.
+ * LinkedIn uses several URN formats for invitation entities:
+ *   - fsd_invitation  (most common, Feed-Side-Data namespace)
+ *   - fs_relInvitation (Relationships namespace, seen in newer API responses)
+ *   - invitation       (plain, legacy format)
+ *
+ * Both the Strategy 2 filter and parseInvitationEntity derive from this list
+ * so adding a new prefix automatically propagates everywhere.
+ */
+export const INVITATION_URN_PREFIXES = ["fsd_invitation", "fs_relInvitation", "invitation"] as const;
+
+/**
+ * Regex to extract the numeric invitation ID from any supported URN format.
+ * Matches: urn:li:fsd_invitation:12345, urn:li:fs_relInvitation:67890, urn:li:invitation:11111
+ */
+export const INVITATION_URN_RE = new RegExp(`(?:${INVITATION_URN_PREFIXES.join("|")}):(\\d+)`);
+
+/**
+ * Extract the numeric invitation ID from an entity URN string.
+ * Returns null if the URN doesn't match any known invitation format.
+ */
+export function parseInvitationId(entityUrn: string): string | null {
+  const match = entityUrn.match(INVITATION_URN_RE);
+  return match?.[1] ?? null;
+}
+
 // NOTE: This ConnectionStatus matches worker/src/linkedin-browser.ts, NOT
 // src/lib/linkedin/types.ts. The shared server type uses different values
 // (none/failed/expired). VoyagerClient only runs in the worker context.
@@ -34,8 +61,8 @@ export interface ActionResult {
 }
 
 export interface SentInvitation {
-  entityUrn: string;      // urn:li:fsd_invitation:123456
-  invitationId: string;   // numeric part: 123456
+  entityUrn: string;      // urn:li:fsd_invitation:123456, urn:li:fs_relInvitation:67890, or urn:li:invitation:11111
+  invitationId: string;   // numeric part extracted from any supported URN format
   sharedSecret: string;
   toMemberId: string;     // target member URN or ID
   sentTime: number;       // epoch ms
@@ -1564,7 +1591,7 @@ export class VoyagerClient {
           const urn = item.entityUrn as string | undefined;
           if (
             urn &&
-            (urn.includes("fsd_invitation") || urn.includes("fs_relInvitation") || urn.includes("invitation:") ||
+            (INVITATION_URN_PREFIXES.some(p => urn.includes(p)) ||
               type?.includes("Invitation") ||
               type?.includes("SentInvitationView"))
           ) {
@@ -1597,13 +1624,15 @@ export class VoyagerClient {
 
   /**
    * Parse a single invitation entity from the normalized response.
-   * Defensively handles multiple response shapes.
+   * Defensively handles multiple response shapes and all three URN formats
+   * (fsd_invitation, fs_relInvitation, invitation).
    */
   private parseInvitationEntity(
     entity: Record<string, unknown>,
     entityMap: Map<string, Record<string, unknown>>
   ): SentInvitation | null {
-    // entityUrn: "urn:li:fsd_invitation:123456" or nested in invitation ref
+    // entityUrn: "urn:li:fsd_invitation:123456", "urn:li:fs_relInvitation:67890",
+    // or "urn:li:invitation:11111" — may also be nested in invitation ref
     let entityUrn = entity.entityUrn as string | undefined;
 
     // Some responses nest the invitation under a "*invitation" pointer
@@ -1617,9 +1646,8 @@ export class VoyagerClient {
 
     if (!entityUrn) return null;
 
-    // Extract numeric invitation ID from URN
-    const idMatch = entityUrn.match(/(?:fsd_invitation|fs_relInvitation|invitation):(\d+)/);
-    const invitationId = idMatch?.[1] ?? "";
+    // Extract numeric invitation ID from URN using shared regex
+    const invitationId = parseInvitationId(entityUrn);
     if (!invitationId) return null;
 
     // sharedSecret — may be at top level or nested
@@ -1707,8 +1735,9 @@ export class VoyagerClient {
           `[VoyagerClient] withdrawInvitation: primary 404, trying Dash variant`
         );
         try {
+          const urnValid = entityUrn && INVITATION_URN_RE.test(entityUrn);
           const dashUrn = encodeURIComponent(
-            entityUrn ?? `urn:li:fsd_invitation:${invitationId}`
+            urnValid ? entityUrn : `urn:li:fsd_invitation:${invitationId}`
           );
           await this.request(
             `/voyagerRelationshipsDashInvitations/${dashUrn}?action=withdraw`,

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { markComplete } from "@/lib/linkedin/queue";
 import { WITHDRAWAL_COOLDOWN_MS } from "@/lib/linkedin/types";
+import {
+  INVITATION_URN_PREFIXES,
+  INVITATION_URN_RE,
+  parseInvitationId,
+} from "../../worker/src/voyager-client";
 
 // Mock the rate-limiter module (required by queue.ts)
 vi.mock("@/lib/linkedin/rate-limiter", () => ({
@@ -229,5 +234,41 @@ describe("withdrawConnection matching logic", () => {
 
     const match = findMatch(invitations, "ACoAABCD1234", "john-doe");
     expect(match).toBeUndefined();
+  });
+});
+
+describe("INVITATION_URN_RE and parseInvitationId", () => {
+  it("parses fsd_invitation URN (regression)", () => {
+    expect(parseInvitationId("urn:li:fsd_invitation:12345")).toBe("12345");
+  });
+
+  it("parses fs_relInvitation URN", () => {
+    expect(parseInvitationId("urn:li:fs_relInvitation:67890")).toBe("67890");
+  });
+
+  it("parses plain invitation URN", () => {
+    expect(parseInvitationId("urn:li:invitation:11111")).toBe("11111");
+  });
+
+  it("returns null for unknown URN format", () => {
+    expect(parseInvitationId("urn:li:fsd_groupInvitation:99999")).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(parseInvitationId("")).toBeNull();
+  });
+
+  it("INVITATION_URN_RE matches all three formats", () => {
+    expect(INVITATION_URN_RE.test("urn:li:fsd_invitation:100")).toBe(true);
+    expect(INVITATION_URN_RE.test("urn:li:fs_relInvitation:200")).toBe(true);
+    expect(INVITATION_URN_RE.test("urn:li:invitation:300")).toBe(true);
+    expect(INVITATION_URN_RE.test("urn:li:fsd_groupInvitation:400")).toBe(false);
+  });
+
+  it("INVITATION_URN_PREFIXES contains exactly three entries", () => {
+    expect(INVITATION_URN_PREFIXES).toHaveLength(3);
+    expect(INVITATION_URN_PREFIXES).toContain("fsd_invitation");
+    expect(INVITATION_URN_PREFIXES).toContain("fs_relInvitation");
+    expect(INVITATION_URN_PREFIXES).toContain("invitation");
   });
 });
