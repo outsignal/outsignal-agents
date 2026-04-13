@@ -14,8 +14,22 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { z } from "zod";
 
 export const maxDuration = 60;
+
+// ---------------------------------------------------------------------------
+// Zod schema for incoming webhook payload (BL-035)
+// AI Ark export payloads are loosely structured, so we validate the outer
+// envelope and let extractPeople/mapExportPerson handle inner shapes.
+// ---------------------------------------------------------------------------
+
+const WebhookPayloadSchema = z.union([
+  // Direct array of people
+  z.array(z.record(z.string(), z.unknown())),
+  // Object with a people array under various keys
+  z.object({}).passthrough(),
+]);
 
 /**
  * Extract an array of people from the webhook payload.
@@ -122,15 +136,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing runId" }, { status: 400 });
   }
 
+  let rawBody: string;
+  try {
+    rawBody = await req.text();
+  } catch {
+    console.error("[aiark-export-webhook] Failed to read request body");
+    return NextResponse.json({ error: "Failed to read body" }, { status: 400 });
+  }
+
   let payload: unknown;
   try {
-    payload = await req.json();
+    payload = JSON.parse(rawBody);
   } catch {
-    console.error("[aiark-export-webhook] Failed to parse JSON body");
+    console.error(
+      "[aiark-export-webhook] Failed to parse JSON body. Raw body (first 2000 chars):",
+      rawBody.slice(0, 2000),
+    );
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Log full payload for debugging (schema is not fully documented)
+  // Validate payload structure via Zod (BL-035)
+  const parseResult = WebhookPayloadSchema.safeParse(payload);
+  if (!parseResult.success) {
+    console.error(
+      "[aiark-export-webhook] Payload validation failed for runId:",
+      runId,
+      "errors:",
+      parseResult.error.issues,
+      "raw body (first 2000 chars):",
+      rawBody.slice(0, 2000),
+    );
+    return NextResponse.json(
+      { error: "Invalid payload structure", details: parseResult.error.issues },
+      { status: 400 },
+    );
+  }
+
+  // Log payload shape for debugging (schema is not fully documented)
   console.log(
     "[aiark-export-webhook] Received payload for runId:",
     runId,
