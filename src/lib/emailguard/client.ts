@@ -107,8 +107,25 @@ export class EmailGuardClient {
   // ---------------------------------------------------------------------------
 
   async listDomains(): Promise<Domain[]> {
-    const res = await this.request<EmailGuardListResponse<Domain>>("/domains");
-    return res.data;
+    const allData: Domain[] = [];
+    let page = 1;
+
+    const first = await this.request<EmailGuardListResponse<Domain>>(
+      `/domains?page=${page}`,
+    );
+    allData.push(...first.data);
+
+    // Auto-paginate if the API returns pagination metadata
+    const lastPage = first.meta?.last_page ?? 1;
+    while (page < lastPage) {
+      page++;
+      const res = await this.request<EmailGuardListResponse<Domain>>(
+        `/domains?page=${page}`,
+      );
+      allData.push(...res.data);
+    }
+
+    return allData;
   }
 
   async createDomain(domainName: string): Promise<Domain> {

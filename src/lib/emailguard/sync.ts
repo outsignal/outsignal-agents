@@ -6,7 +6,7 @@
  */
 
 import { PrismaClient } from "@prisma/client";
-import { emailguard } from "@/lib/emailguard/client";
+import { emailguard, EmailGuardApiError } from "@/lib/emailguard/client";
 
 const prisma = new PrismaClient();
 
@@ -70,9 +70,43 @@ export async function syncDomainsToEmailGuard(): Promise<SyncResult> {
 
       result.registered++;
     } catch (err) {
-      const msg = `${domain}: ${err instanceof Error ? err.message : String(err)}`;
-      console.error(`[emailguard-sync] Failed to register domain: ${msg}`);
-      result.failed.push(msg);
+      // 422 "already been taken" means the domain exists in EmailGuard
+      // but wasn't in our initial listing (race condition or pagination issue).
+      // Look it up and store the UUID instead of treating it as a failure.
+      if (
+        err instanceof EmailGuardApiError &&
+        err.status === 422 &&
+        err.body.includes("already been taken")
+      ) {
+        console.log(
+          `[emailguard-sync] Domain ${domain} already exists in EmailGuard, looking up UUID...`,
+        );
+        try {
+          const allDomains = await emailguard.listDomains();
+          const match = allDomains.find(
+            (d) => d.name.toLowerCase() === domain.toLowerCase(),
+          );
+          if (match) {
+            await storeEmailGuardUuid(domain, match.uuid);
+            result.alreadyExists++;
+            console.log(
+              `[emailguard-sync] Resolved UUID for ${domain}: ${match.uuid}`,
+            );
+          } else {
+            const msg = `${domain}: 422 but domain not found in listing`;
+            console.error(`[emailguard-sync] ${msg}`);
+            result.failed.push(msg);
+          }
+        } catch (lookupErr) {
+          const msg = `${domain}: 422 recovery failed: ${lookupErr instanceof Error ? lookupErr.message : String(lookupErr)}`;
+          console.error(`[emailguard-sync] ${msg}`);
+          result.failed.push(msg);
+        }
+      } else {
+        const msg = `${domain}: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`[emailguard-sync] Failed to register domain: ${msg}`);
+        result.failed.push(msg);
+      }
     }
   }
 
