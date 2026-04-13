@@ -42,9 +42,9 @@ vi.mock("@/lib/enrichment/queue", () => ({
 }));
 
 // --- ICP scorer mock ---
-const scoreStagedPersonIcpMock = vi.fn();
+const scoreStagedPersonIcpBatchMock = vi.fn();
 vi.mock("@/lib/icp/scorer", () => ({
-  scoreStagedPersonIcp: (...args: unknown[]) => scoreStagedPersonIcpMock(...args),
+  scoreStagedPersonIcpBatch: (...args: unknown[]) => scoreStagedPersonIcpBatchMock(...args),
 }));
 
 // --- Crawl cache prefetch mock ---
@@ -105,7 +105,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     expect(result.promoted).toBe(1);
     expect(result.scoredRejected).toBe(0);
-    expect(scoreStagedPersonIcpMock).not.toHaveBeenCalled();
+    expect(scoreStagedPersonIcpBatchMock).not.toHaveBeenCalled();
   });
 
   it("scores and promotes when score >= threshold", async () => {
@@ -117,17 +117,15 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
-    scoreStagedPersonIcpMock.mockResolvedValue({
-      score: 75,
-      reasoning: "Good fit",
-      confidence: "high",
-    });
+    scoreStagedPersonIcpBatchMock.mockResolvedValue(
+      new Map([["dp-1", { score: 75, reasoning: "Good fit", confidence: "high" }]]),
+    );
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
 
     expect(result.promoted).toBe(1);
     expect(result.scoredRejected).toBe(0);
-    expect(scoreStagedPersonIcpMock).toHaveBeenCalledTimes(1);
+    expect(scoreStagedPersonIcpBatchMock).toHaveBeenCalledTimes(1);
 
     // Verify score was persisted on DiscoveredPerson
     const updateCalls = discoveredPersonUpdateMock.mock.calls;
@@ -146,11 +144,9 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
-    scoreStagedPersonIcpMock.mockResolvedValue({
-      score: 25,
-      reasoning: "Poor fit",
-      confidence: "medium",
-    });
+    scoreStagedPersonIcpBatchMock.mockResolvedValue(
+      new Map([["dp-1", { score: 25, reasoning: "Poor fit", confidence: "medium" }]]),
+    );
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
 
@@ -174,11 +170,9 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
-    scoreStagedPersonIcpMock.mockResolvedValue({
-      score: 39, // just below default threshold of 40
-      reasoning: "Below threshold",
-      confidence: "medium",
-    });
+    scoreStagedPersonIcpBatchMock.mockResolvedValue(
+      new Map([["dp-1", { score: 39, reasoning: "Below threshold", confidence: "medium" }]]),
+    );
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
 
@@ -195,7 +189,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
-    scoreStagedPersonIcpMock.mockRejectedValue(new Error("API rate limit"));
+    scoreStagedPersonIcpBatchMock.mockRejectedValue(new Error("API rate limit"));
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
 
@@ -216,11 +210,12 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
       makeStagedRecord({ id: "dp-2", companyDomain: "beta.com", email: "jane@beta.com" }),
     ]);
 
-    scoreStagedPersonIcpMock.mockResolvedValue({
-      score: 80,
-      reasoning: "Good fit",
-      confidence: "high",
-    });
+    scoreStagedPersonIcpBatchMock.mockResolvedValue(
+      new Map([
+        ["dp-1", { score: 80, reasoning: "Good fit", confidence: "high" as const }],
+        ["dp-2", { score: 80, reasoning: "Good fit", confidence: "high" as const }],
+      ]),
+    );
 
     await deduplicateAndPromote("test", ["run-1"]);
 
