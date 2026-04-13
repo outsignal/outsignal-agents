@@ -232,9 +232,11 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
 
     const costUsd = people.length * this.estimatedCostPerResult;
 
-    // Leads Finder returns verified emails from the actor — keep those.
-    // No additional enrichment waterfall here. People without emails will be
-    // enriched asynchronously via the EnrichmentJob queue after promotion.
+    // Leads Finder returns emails claimed as "verified" by Apify, but these
+    // are NOT verified by BounceBan (our verification provider). All emails
+    // go through BounceBan verification during the enrichment waterfall after
+    // promotion. People without emails will also be enriched asynchronously
+    // via the EnrichmentJob queue after promotion.
 
     return {
       people,

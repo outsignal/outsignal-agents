@@ -179,6 +179,36 @@ export async function enrichEmail(
   workspaceSlug?: string,
 ): Promise<void> {
   // ---------------------------------------------------------------------------
+  // BL-037: Verify pre-existing emails (e.g. from Apify Leads Finder)
+  //
+  // If the person already has an email from discovery (e.g. Apify Leads Finder
+  // returns "verified" emails), we must run it through BounceBan verification
+  // before accepting it. The only exception is AI Ark export-sourced emails,
+  // which are pre-verified by BounceBan on AI Ark's side.
+  //
+  // This handles the single-person code path. The batch path
+  // (enrichEmailBatch) already handles this via the alreadyHaveEmail list.
+  // ---------------------------------------------------------------------------
+  const existingPerson = await prisma.person.findUnique({
+    where: { id: personId },
+    select: { email: true, source: true },
+  });
+
+  if (existingPerson?.email && input.discoverySource !== "aiark-export") {
+    const isVerified = await verifyFoundEmail(existingPerson.email, personId);
+    if (isVerified) {
+      console.log(`[waterfall] Pre-existing email ${existingPerson.email} verified for person ${personId} — done`);
+      return; // verified valid — no further enrichment needed
+    }
+    // Verification failed — null out the unverified email and continue with waterfall
+    console.warn(`[waterfall] Pre-existing email ${existingPerson.email} failed verification for person ${personId} — nulling out and continuing waterfall`);
+    await prisma.person.update({
+      where: { id: personId },
+      data: { email: null },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // AI Ark source-first: direct export/single by stored AI Ark person ID (BL-040)
   // ---------------------------------------------------------------------------
   // If this person was discovered via AI Ark search and we have their AI Ark ID,
