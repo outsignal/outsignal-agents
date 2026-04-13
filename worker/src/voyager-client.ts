@@ -1564,7 +1564,7 @@ export class VoyagerClient {
           const urn = item.entityUrn as string | undefined;
           if (
             urn &&
-            (urn.includes("fsd_invitation") ||
+            (urn.includes("fsd_invitation") || urn.includes("fs_relInvitation") || urn.includes("invitation:") ||
               type?.includes("Invitation") ||
               type?.includes("SentInvitationView"))
           ) {
@@ -1618,7 +1618,7 @@ export class VoyagerClient {
     if (!entityUrn) return null;
 
     // Extract numeric invitation ID from URN
-    const idMatch = entityUrn.match(/fsd_invitation:(\d+)/);
+    const idMatch = entityUrn.match(/(?:fsd_invitation|fs_relInvitation|invitation):(\d+)/);
     const invitationId = idMatch?.[1] ?? "";
     if (!invitationId) return null;
 
@@ -1670,7 +1670,8 @@ export class VoyagerClient {
    */
   async withdrawInvitation(
     invitationId: string,
-    sharedSecret: string
+    sharedSecret: string,
+    entityUrn?: string
   ): Promise<ActionResult> {
     if (!sharedSecret) {
       return { success: false, error: "missing_shared_secret" };
@@ -1707,7 +1708,7 @@ export class VoyagerClient {
         );
         try {
           const dashUrn = encodeURIComponent(
-            `urn:li:fsd_invitation:${invitationId}`
+            entityUrn ?? `urn:li:fsd_invitation:${invitationId}`
           );
           await this.request(
             `/voyagerRelationshipsDashInvitations/${dashUrn}?action=withdraw`,
@@ -1832,7 +1833,8 @@ export class VoyagerClient {
 
       return await this.withdrawInvitation(
         match.invitationId,
-        match.sharedSecret
+        match.sharedSecret,
+        match.entityUrn
       );
     } catch (err) {
       return this.handleError(err);
