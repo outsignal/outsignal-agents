@@ -15,6 +15,8 @@
 
 import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
+import { scoreStagedPersonIcp } from "@/lib/icp/scorer";
+import { prefetchDomains } from "@/lib/icp/crawl-cache";
 
 // ---------------------------------------------------------------------------
 // Safety net: placeholder email domains that must never enter the Person table.
@@ -43,6 +45,8 @@ export interface PromotionResult {
   duplicates: number;
   /** Number of DiscoveredPerson records discarded (no valid email) */
   discarded: number;
+  /** Number of DiscoveredPerson records rejected by ICP scoring (below threshold) */
+  scoredRejected: number;
   /** Up to 5 sample names of duplicate records (for display) */
   duplicateNames: string[];
   /** Person IDs of newly promoted leads */
@@ -357,10 +361,20 @@ async function triggerEnrichmentForPeople(
  * @param runIds - Discovery run IDs to process (filters staged records)
  * @returns PromotionResult with counts, sample duplicate names, promoted IDs, and job ID
  */
+/** Default ICP score threshold when workspace has icpCriteriaPrompt but no explicit threshold */
+const DEFAULT_ICP_THRESHOLD = 40;
+
 export async function deduplicateAndPromote(
   workspaceSlug: string,
   runIds: string[]
 ): Promise<PromotionResult> {
+  // Fetch workspace config for ICP scoring gate
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { slug: workspaceSlug },
+  });
+  const icpScoringEnabled = !!workspace.icpCriteriaPrompt?.trim();
+  const icpThreshold = workspace.icpScoreThreshold ?? DEFAULT_ICP_THRESHOLD;
+
   // Fetch all staged records for these run IDs
   const staged = await prisma.discoveredPerson.findMany({
     where: {
@@ -399,10 +413,20 @@ export async function deduplicateAndPromote(
     }
   }
 
+  // --- Pre-fetch domains for ICP scoring (avoids thundering herd on crawl cache) ---
+  if (icpScoringEnabled) {
+    const domains = staged.map((dp) => dp.companyDomain);
+    const prefetchResult = await prefetchDomains(domains);
+    console.log(
+      `[promotion] Pre-fetched domains for ICP scoring: ${prefetchResult.cached} cached, ${prefetchResult.crawled} crawled, ${prefetchResult.failed} failed`,
+    );
+  }
+
   const promotedIds: string[] = [];
   const duplicatePersonIds: string[] = [];
   const duplicateNames: string[] = [];
   let discardedCount = 0;
+  let scoredRejectedCount = 0;
   const now = new Date();
 
   // --- Intra-batch dedup (cross-source within the same discovery run) ---
@@ -524,7 +548,52 @@ export async function deduplicateAndPromote(
         duplicateNames.push(displayName);
       }
     } else {
-      // Not a duplicate — promote to Person table
+      // --- ICP scoring gate (BL-038) ---
+      // Score before promotion to avoid wasting enrichment credits on low-fit leads.
+      // Fail-open: if scoring throws, promote anyway (API error should not block pipeline).
+      if (icpScoringEnabled) {
+        try {
+          const scoreResult = await scoreStagedPersonIcp(
+            {
+              firstName: dp.firstName,
+              lastName: dp.lastName,
+              jobTitle: dp.jobTitle,
+              company: dp.company,
+              companyDomain: dp.companyDomain,
+              location: dp.location,
+            },
+            workspaceSlug,
+          );
+
+          // Persist score on DiscoveredPerson regardless of pass/fail
+          await prisma.discoveredPerson.update({
+            where: { id: dp.id },
+            data: {
+              icpScore: scoreResult.score,
+              icpReasoning: scoreResult.reasoning,
+              icpConfidence: scoreResult.confidence,
+            },
+          });
+
+          if (scoreResult.score < icpThreshold) {
+            // Below threshold — reject without promotion (saves enrichment credits)
+            await prisma.discoveredPerson.update({
+              where: { id: dp.id },
+              data: { status: "scored_rejected" },
+            });
+            scoredRejectedCount++;
+            continue;
+          }
+        } catch (err) {
+          // Fail-open: scoring error should not block promotion
+          console.warn(
+            `[promotion] ICP scoring failed for DiscoveredPerson ${dp.id} — promoting anyway:`,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+
+      // Not a duplicate (and passed ICP gate if enabled) — promote to Person table
       const person = await promoteToPerson(dp, workspaceSlug);
 
       // Update DiscoveredPerson record with promotion details
@@ -547,6 +616,12 @@ export async function deduplicateAndPromote(
     );
   }
 
+  if (scoredRejectedCount > 0) {
+    console.log(
+      `[promotion] ICP-rejected ${scoredRejectedCount} people below score threshold (${icpThreshold})`,
+    );
+  }
+
   // Enqueue enrichment for all newly promoted leads
   const enrichmentJobId = await triggerEnrichmentForPeople(
     promotedIds,
@@ -557,6 +632,7 @@ export async function deduplicateAndPromote(
     promoted: promotedIds.length,
     duplicates: duplicatePersonIds.length,
     discarded: discardedCount,
+    scoredRejected: scoredRejectedCount,
     duplicateNames,
     promotedIds,
     enrichmentJobId,
