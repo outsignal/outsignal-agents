@@ -80,6 +80,7 @@ model Workspace {
 
   // AI prompt overrides (managed via MCP tools)
   icpCriteriaPrompt    String?  // e.g. "Our ICP is SaaS companies, 50-200 employees in UK"
+  icpScoreThreshold    Int?     // Minimum ICP score for promotion (default 40 if null)
   normalizationPrompt  String?  // e.g. "Classify 'promo products' as 'Branded Merchandise'"
   outreachTonePrompt   String?  // e.g. "Professional but friendly"
 
@@ -233,6 +234,11 @@ model DiscoveredPerson {
   // Promotion linkage (soft reference — no FK constraint)
   personId        String?  // Set when promoted or marked duplicate
   promotedAt      DateTime? // Used for quota window queries
+
+  // ICP scoring (pre-promotion gate — BL-038)
+  icpScore        Int?      // 0-100 ICP fit score, set before promotion
+  icpReasoning    String?   // 1-3 sentence explanation of score
+  icpConfidence   String?   // "high" | "medium" | "low"
 
   // Batch tracking
   discoveryRunId  String?  // Groups records from the same discovery batch

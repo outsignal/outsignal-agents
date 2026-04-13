@@ -110,6 +110,98 @@ Return a score from 0-100 and 1-3 sentence reasoning. Set confidence based on da
 - "low": Only 1 signal type or very sparse data`;
 }
 
+// ---------------------------------------------------------------------------
+// Staged person scoring (pre-promotion — BL-038)
+// ---------------------------------------------------------------------------
+
+/**
+ * Input shape matching DiscoveredPerson fields for pre-promotion scoring.
+ * Does NOT require a Person or PersonWorkspace to exist.
+ */
+export interface StagedPersonInput {
+  firstName: string | null;
+  lastName: string | null;
+  jobTitle: string | null;
+  company: string | null;
+  companyDomain: string | null;
+  location: string | null;
+}
+
+/**
+ * Score a staged DiscoveredPerson's ICP fit BEFORE promotion.
+ *
+ * Unlike scorePersonIcp(), this does NOT require the person to exist in the
+ * Person table — it works with raw DiscoveredPerson fields. The caller is
+ * responsible for persisting the score on DiscoveredPerson.
+ *
+ * @param input - DiscoveredPerson-shaped fields
+ * @param workspaceSlug - Workspace slug to fetch icpCriteriaPrompt
+ * @returns ICP score result (score, reasoning, confidence) — NOT persisted
+ * @throws If workspace has no icpCriteriaPrompt configured
+ */
+export async function scoreStagedPersonIcp(
+  input: StagedPersonInput,
+  workspaceSlug: string,
+): Promise<IcpScoreResult> {
+  // 1. Fetch workspace for ICP criteria
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { slug: workspaceSlug },
+  });
+
+  if (!workspace.icpCriteriaPrompt?.trim()) {
+    throw new Error(
+      `No ICP criteria prompt configured for workspace '${workspaceSlug}'.`,
+    );
+  }
+
+  // 2. Get company homepage markdown (from cache or crawl)
+  const websiteMarkdown = input.companyDomain
+    ? await getCrawlMarkdown(input.companyDomain)
+    : null;
+
+  // 3. Fetch company record if exists
+  const company = input.companyDomain
+    ? await prisma.company.findUnique({ where: { domain: input.companyDomain } })
+    : null;
+
+  // 4. Build scoring prompt — map DiscoveredPerson fields to person parameter
+  const scoringPrompt = buildScoringPrompt({
+    person: {
+      firstName: input.firstName,
+      lastName: input.lastName,
+      jobTitle: input.jobTitle,
+      company: input.company,
+      vertical: null, // DiscoveredPerson doesn't have vertical
+      location: input.location,
+      enrichmentData: null, // not enriched yet
+    },
+    company: company
+      ? {
+          headcount: company.headcount,
+          industry: company.industry,
+          description: company.description,
+          yearFounded: company.yearFounded,
+        }
+      : null,
+    websiteMarkdown,
+  });
+
+  // 5. Call Claude Haiku via generateObject — pinned to temperature: 0
+  const { object } = await generateObject({
+    model: anthropic("claude-haiku-4-5-20251001"),
+    temperature: 0,
+    schema: IcpScoreSchema,
+    system: workspace.icpCriteriaPrompt,
+    prompt: scoringPrompt,
+  });
+
+  return {
+    score: object.score,
+    reasoning: object.reasoning,
+    confidence: object.confidence,
+  };
+}
+
 export interface ScorePersonIcpOptions {
   /** Bypass the crawl cache and re-scrape the company homepage */
   forceRecrawl?: boolean;
