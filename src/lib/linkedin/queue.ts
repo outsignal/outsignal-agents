@@ -77,9 +77,10 @@ export async function enqueueAction(params: EnqueueActionParams): Promise<string
 }
 
 /**
- * Action type groups for fair batch allocation.
- * Connection requests are the most valuable (initiate relationship) and must
- * never be starved by profile views filling the batch first.
+ * Action type groups — each group has its OWN independent daily budget.
+ * profile_view/check_connection: 10-50/day (prerequisite actions)
+ * connect/connection_request: 5-20/day (actual outreach)
+ * message: separate daily limit (follow-ups after accept)
  */
 const CONNECTION_TYPES: LinkedInActionType[] = ["connect", "connection_request"];
 const VIEW_TYPES: LinkedInActionType[] = ["profile_view", "check_connection"];
@@ -87,16 +88,18 @@ const MESSAGE_TYPES: LinkedInActionType[] = ["message"];
 
 /**
  * Get the next batch of ready actions for a sender, respecting:
- * - Type-fair allocation (connection requests guaranteed batch slots)
+ * - Independent per-type budgets (each type has its own daily limit via checkBudget)
+ * - Per-type cap per poll cycle to avoid executing too many in one burst
  * - Priority ordering within each type (lower number = higher priority)
  * - scheduledFor <= now
- * - Daily rate limits per action type
  *
- * Returns actions grouped and ordered by priority, then scheduledFor.
+ * The perTypeLimit controls how many of each type to return per poll cycle
+ * (e.g. 5 means up to 5 connections + 5 views + 5 messages = 15 total).
+ * The worker polls frequently, so we process a reasonable chunk each cycle.
  */
 export async function getNextBatch(
   senderId: string,
-  limit: number = 10,
+  perTypeLimit: number = 5,
 ): Promise<Array<{
   id: string;
   personId: string | null;
@@ -138,42 +141,36 @@ export async function getNextBatch(
     linkedInConversationId: true,
   };
 
-  // Fair allocation: each type group gets a guaranteed share of slots.
-  // Connection requests get 50%, views get 30%, messages get 20%.
-  const connectionSlots = Math.ceil(limit * 0.5);
-  const viewSlots = Math.ceil(limit * 0.3);
-  const messageSlots = Math.max(1, limit - connectionSlots - viewSlots);
-
-  // Query each type group separately to prevent starvation
+  // Query each type group independently — they don't compete for the same pool
   const [connectionActions, viewActions, messageActions] = await Promise.all([
     prisma.linkedInAction.findMany({
       where: { ...baseWhere, actionType: { in: CONNECTION_TYPES } },
       orderBy,
-      take: connectionSlots * 2, // fetch extra for budget filtering
+      take: perTypeLimit * 2, // fetch extra for budget filtering
       select: selectFields,
     }),
     prisma.linkedInAction.findMany({
       where: { ...baseWhere, actionType: { in: VIEW_TYPES } },
       orderBy,
-      take: viewSlots * 2,
+      take: perTypeLimit * 2,
       select: selectFields,
     }),
     prisma.linkedInAction.findMany({
       where: { ...baseWhere, actionType: { in: MESSAGE_TYPES } },
       orderBy,
-      take: messageSlots * 2,
+      take: perTypeLimit * 2,
       select: selectFields,
     }),
   ]);
 
-  // Budget-filter each group up to its slot allocation
+  // Budget-filter each group independently against its own daily limit
   const filterByBudget = async (
     actions: typeof connectionActions,
-    maxSlots: number,
+    limit: number,
   ) => {
     const filtered: typeof actions = [];
     for (const action of actions) {
-      if (filtered.length >= maxSlots) break;
+      if (filtered.length >= limit) break;
       const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
       if (budget.allowed) {
         filtered.push(action);
@@ -182,45 +179,19 @@ export async function getNextBatch(
     return filtered;
   };
 
-  const filteredConnections = await filterByBudget(connectionActions, connectionSlots);
-  const filteredViews = await filterByBudget(viewActions, viewSlots);
-  const filteredMessages = await filterByBudget(messageActions, messageSlots);
+  const [filteredConnections, filteredViews, filteredMessages] = await Promise.all([
+    filterByBudget(connectionActions, perTypeLimit),
+    filterByBudget(viewActions, perTypeLimit),
+    filterByBudget(messageActions, perTypeLimit),
+  ]);
 
-  // Merge results. If one group used fewer than its allocation, redistribute
-  // remaining slots to other groups (connections first, then views, then messages).
-  const used = filteredConnections.length + filteredViews.length + filteredMessages.length;
-  let remainingSlots = limit - used;
+  // Merge all approved actions — no shared pool, no redistribution needed
+  const result = [...filteredConnections, ...filteredViews, ...filteredMessages];
 
-  // Backfill from groups that had more pending actions than their initial allocation
-  const backfillSources = [
-    { actions: connectionActions, filtered: filteredConnections },
-    { actions: viewActions, filtered: filteredViews },
-    { actions: messageActions, filtered: filteredMessages },
-  ];
-
-  const backfilled: typeof connectionActions = [];
-  for (const source of backfillSources) {
-    if (remainingSlots <= 0) break;
-    // Skip actions already included
-    const included = new Set(source.filtered.map((a) => a.id));
-    for (const action of source.actions) {
-      if (remainingSlots <= 0) break;
-      if (included.has(action.id)) continue;
-      const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
-      if (budget.allowed) {
-        backfilled.push(action);
-        included.add(action.id);
-        remainingSlots--;
-      }
-    }
-  }
-
-  const result = [...filteredConnections, ...filteredViews, ...filteredMessages, ...backfilled];
-
-  // Sort merged result by priority then scheduledFor for consistent ordering
+  // Sort by priority for execution order
   result.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;
-    return 0; // scheduledFor ordering preserved within each group
+    return 0;
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -10,12 +10,15 @@ import {
   bumpPriority,
   recoverStuckActions,
 } from "@/lib/linkedin/queue";
+import { checkBudget } from "@/lib/linkedin/rate-limiter";
 
 // Mock the rate-limiter module
 vi.mock("@/lib/linkedin/rate-limiter", () => ({
   checkBudget: vi.fn().mockResolvedValue({ allowed: true, remaining: 10 }),
   checkCircuitBreaker: vi.fn().mockResolvedValue({ tripped: false, consecutiveFailures: 0 }),
 }));
+
+const mockCheckBudget = vi.mocked(checkBudget);
 
 describe("enqueueAction", () => {
   beforeEach(() => {
@@ -298,7 +301,8 @@ describe("recoverStuckActions", () => {
   });
 });
 
-describe("getNextBatch — type-fair allocation", () => {
+describe("getNextBatch — independent per-type budgets", () => {
+
   const makeAction = (id: string, actionType: string, priority: number = 5) => ({
     id,
     personId: `person-${id}`,
@@ -310,20 +314,11 @@ describe("getNextBatch — type-fair allocation", () => {
     linkedInConversationId: null,
   });
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("allocates batch slots to both connection_requests and profile_views", async () => {
-    // Simulate: 10 connection_requests and 10 profile_views pending
-    const connections = Array.from({ length: 10 }, (_, i) =>
-      makeAction(`conn-${i}`, "connection_request"),
-    );
-    const views = Array.from({ length: 10 }, (_, i) =>
-      makeAction(`view-${i}`, "profile_view"),
-    );
-
-    // Mock findMany to return the right actions based on actionType filter
+  const mockFindMany = (
+    connections: ReturnType<typeof makeAction>[],
+    views: ReturnType<typeof makeAction>[],
+    messages: ReturnType<typeof makeAction>[] = [],
+  ) => {
     (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
       (args: { where: { actionType?: { in: string[] } } }) => {
         const types = args.where?.actionType?.in ?? [];
@@ -334,29 +329,124 @@ describe("getNextBatch — type-fair allocation", () => {
           return Promise.resolve(views);
         }
         if (types.includes("message")) {
-          return Promise.resolve([]);
+          return Promise.resolve(messages);
         }
         return Promise.resolve([]);
       },
     );
+  };
 
-    const batch = await getNextBatch("sender-1", 10);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Restore default budget mock after clearAllMocks wipes implementations
+    mockCheckBudget.mockResolvedValue({ allowed: true, remaining: 10 });
+  });
 
-    // Both types should be present
+  it("returns actions from all types independently up to per-type limit", async () => {
+    const connections = Array.from({ length: 10 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    const views = Array.from({ length: 10 }, (_, i) =>
+      makeAction(`view-${i}`, "profile_view"),
+    );
+    const messages = Array.from({ length: 10 }, (_, i) =>
+      makeAction(`msg-${i}`, "message"),
+    );
+
+    mockFindMany(connections, views, messages);
+
+    // perTypeLimit = 5: up to 5 of each type
+    const batch = await getNextBatch("sender-1", 5);
+
     const connectionCount = batch.filter(
       (a) => a.actionType === "connection_request" || a.actionType === "connect",
     ).length;
     const viewCount = batch.filter(
       (a) => a.actionType === "profile_view" || a.actionType === "check_connection",
     ).length;
+    const messageCount = batch.filter((a) => a.actionType === "message").length;
 
-    expect(connectionCount).toBeGreaterThan(0);
-    expect(viewCount).toBeGreaterThan(0);
-    expect(batch.length).toBeLessThanOrEqual(10);
+    expect(connectionCount).toBe(5);
+    expect(viewCount).toBe(5);
+    expect(messageCount).toBe(5);
+    // Total = 15 (5 per type, 3 types)
+    expect(batch.length).toBe(15);
+  });
+
+  it("each type gets its own budget check independently", async () => {
+    const connections = Array.from({ length: 3 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    const views = Array.from({ length: 3 }, (_, i) =>
+      makeAction(`view-${i}`, "profile_view"),
+    );
+    const messages = Array.from({ length: 3 }, (_, i) =>
+      makeAction(`msg-${i}`, "message"),
+    );
+
+    mockFindMany(connections, views, messages);
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    // checkBudget should be called for each action across all 3 groups (9 total)
+    expect(mockCheckBudget).toHaveBeenCalledTimes(9);
+    // Verify it was called with the correct action types
+    const callArgs = mockCheckBudget.mock.calls;
+    const connectionBudgetCalls = callArgs.filter(
+      (args) => args[1] === "connection_request",
+    );
+    const viewBudgetCalls = callArgs.filter(
+      (args) => args[1] === "profile_view",
+    );
+    const messageBudgetCalls = callArgs.filter(
+      (args) => args[1] === "message",
+    );
+    expect(connectionBudgetCalls.length).toBe(3);
+    expect(viewBudgetCalls.length).toBe(3);
+    expect(messageBudgetCalls.length).toBe(3);
+  });
+
+  it("returns empty for a type when its budget is exhausted without affecting other types", async () => {
+    const connections = Array.from({ length: 5 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    const views = Array.from({ length: 5 }, (_, i) =>
+      makeAction(`view-${i}`, "profile_view"),
+    );
+    const messages = Array.from({ length: 5 }, (_, i) =>
+      makeAction(`msg-${i}`, "message"),
+    );
+
+    mockFindMany(connections, views, messages);
+
+    // Connection budget exhausted, views and messages still allowed
+    mockCheckBudget.mockImplementation(
+      (_senderId: string, actionType: string) => {
+        if (actionType === "connection_request") {
+          return Promise.resolve({ allowed: false, remaining: 0, reason: "Daily connection limit reached" });
+        }
+        return Promise.resolve({ allowed: true, remaining: 10 });
+      },
+    );
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    const connectionCount = batch.filter(
+      (a) => a.actionType === "connection_request",
+    ).length;
+    const viewCount = batch.filter(
+      (a) => a.actionType === "profile_view",
+    ).length;
+    const messageCount = batch.filter((a) => a.actionType === "message").length;
+
+    // Connections blocked, but views and messages unaffected
+    expect(connectionCount).toBe(0);
+    expect(viewCount).toBe(5);
+    expect(messageCount).toBe(5);
+    expect(batch.length).toBe(10);
   });
 
   it("connection_requests are not starved when many profile_views are pending", async () => {
-    // Simulate the starvation scenario: 200 profile_views, 5 connection_requests
     const connections = Array.from({ length: 5 }, (_, i) =>
       makeAction(`conn-${i}`, "connection_request"),
     );
@@ -364,60 +454,44 @@ describe("getNextBatch — type-fair allocation", () => {
       makeAction(`view-${i}`, "profile_view"),
     );
 
-    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
-      (args: { where: { actionType?: { in: string[] } } }) => {
-        const types = args.where?.actionType?.in ?? [];
-        if (types.includes("connect") || types.includes("connection_request")) {
-          return Promise.resolve(connections);
-        }
-        if (types.includes("profile_view") || types.includes("check_connection")) {
-          return Promise.resolve(views);
-        }
-        if (types.includes("message")) {
-          return Promise.resolve([]);
-        }
-        return Promise.resolve([]);
-      },
-    );
+    mockFindMany(connections, views);
 
-    const batch = await getNextBatch("sender-1", 10);
+    const batch = await getNextBatch("sender-1", 5);
 
-    // Connection requests MUST appear in the batch
     const connectionCount = batch.filter(
       (a) => a.actionType === "connection_request",
     ).length;
 
-    expect(connectionCount).toBeGreaterThanOrEqual(1);
-    // All 5 connections should be included (within the 50% allocation of 5 slots)
+    // All 5 connections included — views don't compete with them
     expect(connectionCount).toBe(5);
   });
 
-  it("fills remaining slots with other action types when one type has no pending actions", async () => {
-    // No connection requests pending, only profile views
-    const views = Array.from({ length: 20 }, (_, i) =>
+  it("returns only available actions when fewer than perTypeLimit exist", async () => {
+    // Only 2 views pending, no connections or messages
+    const views = Array.from({ length: 2 }, (_, i) =>
       makeAction(`view-${i}`, "profile_view"),
     );
 
-    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
-      (args: { where: { actionType?: { in: string[] } } }) => {
-        const types = args.where?.actionType?.in ?? [];
-        if (types.includes("connect") || types.includes("connection_request")) {
-          return Promise.resolve([]); // no connections pending
-        }
-        if (types.includes("profile_view") || types.includes("check_connection")) {
-          return Promise.resolve(views);
-        }
-        if (types.includes("message")) {
-          return Promise.resolve([]);
-        }
-        return Promise.resolve([]);
-      },
-    );
+    mockFindMany([], views, []);
 
-    const batch = await getNextBatch("sender-1", 10);
+    const batch = await getNextBatch("sender-1", 5);
 
-    // With no connections or messages, views should backfill to use all available slots
-    expect(batch.length).toBe(10);
+    expect(batch.length).toBe(2);
     expect(batch.every((a) => a.actionType === "profile_view")).toBe(true);
+  });
+
+  it("sorts merged results by priority", async () => {
+    const connections = [makeAction("conn-0", "connection_request", 1)];
+    const views = [makeAction("view-0", "profile_view", 5)];
+    const messages = [makeAction("msg-0", "message", 3)];
+
+    mockFindMany(connections, views, messages);
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    expect(batch.length).toBe(3);
+    expect(batch[0].priority).toBe(1); // connection_request (priority 1)
+    expect(batch[1].priority).toBe(3); // message (priority 3)
+    expect(batch[2].priority).toBe(5); // profile_view (priority 5)
   });
 });

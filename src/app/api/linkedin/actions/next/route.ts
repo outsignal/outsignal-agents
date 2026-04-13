@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const senderId = request.nextUrl.searchParams.get("senderId");
-    const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? "10", 10);
+    const perTypeLimit = parseInt(request.nextUrl.searchParams.get("limit") ?? "5", 10);
 
     if (!senderId) {
       return NextResponse.json({ error: "senderId is required" }, { status: 400 });
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       data: { lastPolledAt: new Date() },
     });
 
-    const actions = await getNextBatch(senderId, limit);
+    const actions = await getNextBatch(senderId, perTypeLimit);
 
     if (actions.length === 0) {
       // Check if there are pending actions — if so, budget or circuit breaker is blocking
