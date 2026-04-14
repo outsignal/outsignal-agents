@@ -1,5 +1,5 @@
 -- Per-bucket alert dedup timestamps on InboxStatusSnapshot.
--- See trigger/inbox-check.ts for the 24h dedup window usage. `newNew`
+-- See trigger/inbox-check.ts for the 24h dedup window usage. `new`
 -- alerts fire immediately (regression signal) so lastNewAlertAt is written
 -- but never gates firing; the other four timestamps gate re-alerts at 24h.
 -- AlterTable

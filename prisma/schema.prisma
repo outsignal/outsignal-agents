@@ -435,7 +435,7 @@ model InboxStatusSnapshot {
   updatedAt          DateTime @updatedAt
 
   // Per-bucket alert dedup timestamps. We fire ops alerts at most once per
-  // 24h per bucket to avoid Slack flooding (Finding Blocker 2.3). `newNew`
+  // 24h per bucket to avoid Slack flooding (Finding Blocker 2.3). `new`
   // alerts are the only exception — those always fire immediately because
   // they indicate a genuine regression that needs investigation. The other
   // buckets (critical >7d, persistent 3-7d, stale provisioning) represent

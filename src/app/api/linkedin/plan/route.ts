@@ -166,6 +166,15 @@ export async function POST(request: NextRequest) {
       | { acquired: false }
       | { acquired: true; prePlanned: CampaignPlan[] };
 
+    // Timeout tuning (QA Finding 1): default Prisma interactive-tx timeout
+    // is 5s, which is too tight for this transaction. Inside the lock we run
+    // O(N) JOIN queries against TargetListPerson + Lead + LinkedInAction per
+    // active campaign (1 count + 1 fetch = 2 queries each). With 5-10 active
+    // campaigns on a busy Neon connection, 5s can be exceeded — a rollback
+    // here releases the advisory lock prematurely and lets a concurrent
+    // planDay race through. 30s is safely under Vercel's 60s route timeout
+    // but generous enough for 20+ sequential queries. maxWait stays at 5s
+    // so callers fail fast if Neon is already saturated.
     const lockOutcome = await prisma.$transaction(
       async (tx): Promise<LockResult> => {
         const acquired = await tx.$queryRaw<[{ acquired: boolean }]>`
@@ -306,6 +315,7 @@ export async function POST(request: NextRequest) {
 
         return { acquired: true, prePlanned };
       },
+      { timeout: 30_000, maxWait: 5_000 },
     );
 
     if (!lockOutcome.acquired) {
