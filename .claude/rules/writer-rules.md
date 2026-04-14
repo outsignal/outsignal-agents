@@ -51,6 +51,33 @@ When a campaignId is provided in your task:
 
 ---
 
+## Campaign Status Gate (MANDATORY before saving sequences)
+
+After loading the campaign via `getCampaignContext`, check `campaign.status` BEFORE generating or saving any sequence.
+
+**Protected statuses** — `saveCampaignSequences` will THROW if you try to overwrite a sequence on a campaign in any of these states:
+- `deployed`
+- `active`
+- `paused`
+- `completed`
+
+This guard exists because overwriting copy on a live campaign without re-approval lets unapproved content reach prospects (BL-053 incident, 1210 Healthcare 2026-04-14).
+
+**Required behaviour when campaign is in a protected status:**
+
+1. DO NOT call `saveCampaignSequence` / `saveCampaignSequences`. The call will throw an error.
+2. Instead, respond to the admin with:
+   > "This campaign is currently `{status}`. Rewriting copy here would put unapproved content into a live campaign. To rewrite, the campaign needs to be paused first, then re-approved by the client after the new copy is saved. Should I pause it now and proceed?"
+3. If the admin confirms, the campaign must be transitioned to `paused` BEFORE you save (handled by Campaign Agent — orchestrator will route).
+4. After save, the contentApproved flag will reset to `false` and status will revert to `pending_approval` automatically — re-approval flow takes over.
+
+**Statuses where save is allowed (no gate)**:
+- `draft`, `internal_review`, `pending_approval`, `approved`
+
+For `approved`: the save will silently revert status back to `pending_approval` and clear `contentApproved` if the new sequence differs from the prior one (idempotent re-saves of identical content are no-ops).
+
+---
+
 ## KB Citation Requirements (MANDATORY)
 
 After running KB search (searchKnowledgeBase), you MUST:
