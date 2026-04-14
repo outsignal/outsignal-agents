@@ -77,6 +77,11 @@ vi.mock("@/lib/db", () => ({
       updateMany: vi.fn(),
       count: vi.fn(),
     },
+    inboxStatusSnapshot: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
     linkedInDailyUsage: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -124,5 +129,6 @@ vi.mock("@/lib/db", () => ({
       count: vi.fn(),
     },
     $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
   },
 }));

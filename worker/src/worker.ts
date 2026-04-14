@@ -404,10 +404,25 @@ export class Worker {
     // with its own session, action queue, and rate limits. The intra-sender
     // spread-delay sleep remains (LinkedIn safety), so this is the right level
     // to parallelise: one sender's hour-long backlog must not stall its peers.
+    //
+    // Per-sender timeout (Finding 5.3): wrap each processSender in a 10-min
+    // race so a single hung sender (network stall, deadlocked Voyager, etc.)
+    // can't stall the whole workspace tick. The stuck-running sweeper
+    // (Trigger.dev) will eventually clean up the orphaned action row.
+    const PER_SENDER_TIMEOUT_MS = 10 * 60 * 1000;
     await Promise.all(
       activeSenders.map((sender) => {
         if (!this.running) return Promise.resolve();
-        return this.processSender(sender).catch((err) => {
+        const senderWork = this.processSender(sender);
+        const timeout = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            console.error(
+              `[Worker] processSender timed out after ${PER_SENDER_TIMEOUT_MS / 60000}min for ${sender.name} — abandoning this tick`,
+            );
+            resolve();
+          }, PER_SENDER_TIMEOUT_MS);
+        });
+        return Promise.race([senderWork, timeout]).catch((err) => {
           console.error(`[Worker] processSender failed for ${sender.name}:`, err);
         });
       }),

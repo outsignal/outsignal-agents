@@ -9,6 +9,7 @@ import {
   cancelActionsForPerson,
   bumpPriority,
   recoverStuckActions,
+  sweepStuckRunningActions,
 } from "@/lib/linkedin/queue";
 import { checkBudget } from "@/lib/linkedin/rate-limiter";
 
@@ -329,6 +330,117 @@ describe("recoverStuckActions", () => {
         result: JSON.stringify({ error: "Worker crash recovery" }),
       },
     });
+  });
+});
+
+describe("sweepStuckRunningActions (Blocker 5.4 / Finding 5.5)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sweeps a row that has been running > 30min and resets to pending when retries remain", async () => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "stuck-1",
+        attempts: 1,
+        maxAttempts: 3,
+        result: null,
+        lastAttemptAt: oneHourAgo,
+      },
+    ]);
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const { swept, ids } = await sweepStuckRunningActions(30);
+
+    expect(swept).toBe(1);
+    expect(ids).toEqual(["stuck-1"]);
+    // Mirrors recoverStuckActions semantics: retries remain → pending,
+    // not failed.
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "stuck-1", status: "running" },
+        data: expect.objectContaining({ status: "pending" }),
+      }),
+    );
+  });
+
+  it("hard-fails only when retries are exhausted", async () => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "exhausted-1",
+        attempts: 3,
+        maxAttempts: 3,
+        result: null,
+        lastAttemptAt: oneHourAgo,
+      },
+    ]);
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    await sweepStuckRunningActions(30);
+
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "exhausted-1", status: "running" },
+        data: expect.objectContaining({ status: "failed" }),
+      }),
+    );
+  });
+
+  it("sweeps a row whose lastAttemptAt is null (malformed running row)", async () => {
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "null-attempt",
+        attempts: 0,
+        maxAttempts: 3,
+        result: null,
+        lastAttemptAt: null,
+      },
+    ]);
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const { swept, ids } = await sweepStuckRunningActions(30);
+
+    expect(swept).toBe(1);
+    expect(ids).toEqual(["null-attempt"]);
+    // The actual findMany filter must include lastAttemptAt: null
+    const findManyCall = (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(findManyCall.where.OR).toContainEqual({ lastAttemptAt: null });
+  });
+
+  it("does NOT clobber a row whose status flipped between read and write (race guard)", async () => {
+    // Simulate the race: findMany returns a "running" row, but by the
+    // time the update runs the row has flipped to "complete". The guard
+    // is the `status: "running"` clause on updateMany — Prisma reports
+    // count=0 when no rows match the combined predicate, so we must
+    // exclude that id from the swept list.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "raced-row",
+        attempts: 1,
+        maxAttempts: 3,
+        result: null,
+        lastAttemptAt: oneHourAgo,
+      },
+    ]);
+    // Worker flipped it to complete already → no row matches the
+    // status='running' guard, so the update reports count=0.
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 0,
+    });
+
+    const { swept, ids } = await sweepStuckRunningActions(30);
+
+    expect(swept).toBe(0);
+    expect(ids).toEqual([]);
   });
 });
 

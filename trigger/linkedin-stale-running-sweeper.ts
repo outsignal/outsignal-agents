@@ -26,7 +26,12 @@ const THRESHOLD_MINUTES = 30;
 export const linkedinStaleRunningSweeperTask = schedules.task({
   id: "linkedin-stale-running-sweeper",
   cron: "*/15 * * * *", // every 15 minutes UTC
-  maxDuration: 60, // pure DB read + bulk update
+  // concurrencyLimit=1 (Finding 5.7): sweepStuckRunningActions now does a
+  // per-row UPDATE, so on a workspace with thousands of stuck rows a single
+  // run can take >60s. Bump maxDuration to 120s and prevent the next cron
+  // tick from racing the previous one if it overruns.
+  maxDuration: 120,
+  queue: { concurrencyLimit: 1 },
   retry: {
     maxAttempts: 2,
     factor: 2,

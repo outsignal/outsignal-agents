@@ -152,6 +152,70 @@ describe("promotion ICP gate", () => {
     );
   });
 
+  it("omits score fields when icpScoringEnabled but scoreResult is undefined for that person", async () => {
+    // Workspace HAS ICP scoring enabled, but the batch scorer returned
+    // nothing for this particular DiscoveredPerson (e.g. timed out, hit
+    // an error, or excluded by per-row guard). The upsert payload must
+    // NOT contain icp* keys so we don't write `null`/`undefined` over
+    // an existing manually-curated score on the PersonWorkspace row.
+    const dp = makeStagedPerson({ id: "dp-no-result" });
+    mockFindManyDiscovered.mockResolvedValue([dp]);
+
+    // scorer returned an empty Map — no entry for "dp-no-result"
+    mockScorerBatch.mockResolvedValue(new Map());
+
+    const result = await deduplicateAndPromote("test-ws", ["run-1"]);
+
+    // With no score, the row falls below the default 40 threshold and
+    // should be rejected by the ICP gate. So `promoted` is 0, but more
+    // importantly the upsert path that runs (if any) must not include
+    // icp* keys. Verify by inspecting any upsert call: there should
+    // either be zero PersonWorkspace upserts (if the gate fired before
+    // promotion), or the call's payload must not contain icp* keys.
+    expect(result.scoredRejected).toBeGreaterThanOrEqual(0);
+    for (const call of mockUpsertPw.mock.calls) {
+      const payload = call[0] as {
+        create: Record<string, unknown>;
+        update: Record<string, unknown>;
+      };
+      expect(payload.create).not.toHaveProperty("icpScore");
+      expect(payload.create).not.toHaveProperty("icpReasoning");
+      expect(payload.update).not.toHaveProperty("icpScore");
+      expect(payload.update).not.toHaveProperty("icpReasoning");
+    }
+  });
+
+  it("update path overrides existing PersonWorkspace score with the new score", async () => {
+    // Existing PersonWorkspace already has icpScore=20 (manual or stale
+    // batch). New batch returns a fresh score of 75. Per the upsert's
+    // documented INV2 behaviour: the update payload always copies the
+    // fresh score so DiscoveredPerson.icpScore and PersonWorkspace.icpScore
+    // stay in sync.
+    const dp = makeStagedPerson({ id: "dp-update" });
+    mockFindManyDiscovered.mockResolvedValue([dp]);
+
+    const scoreResults = new Map([
+      ["dp-update", { score: 75, reasoning: "Strong fit", confidence: "high" as const }],
+    ]);
+    mockScorerBatch.mockResolvedValue(scoreResults);
+
+    await deduplicateAndPromote("test-ws", ["run-1"]);
+
+    // The upsert update branch must include the new score — verifying
+    // the bug-not-introduced behaviour where update would silently
+    // skip score writes.
+    expect(mockUpsertPw).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          icpScore: 75,
+          icpReasoning: "Strong fit",
+          icpConfidence: "high",
+          icpScoredAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
   it("does not touch score fields on PersonWorkspace when ICP scoring is disabled", async () => {
     // Workspace without ICP scoring configured
     mockWorkspace.mockResolvedValue({

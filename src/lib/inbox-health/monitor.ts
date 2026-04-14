@@ -59,12 +59,25 @@ export interface InboxStatusChange {
   hasCritical: boolean;
 }
 
-/** Thresholds (days) — kept as constants so tests and alerts agree. */
+/**
+ * Thresholds (days) — kept as constants so tests and alerts agree.
+ *
+ * Bucketing is applied in this order, first match wins:
+ *   - staleProvisioning: neverConnected === true (regardless of age)
+ *   - criticalDisconnections: ageDays >= CRITICAL_MIN_DAYS_INCLUSIVE (7)
+ *   - persistentDisconnections: ageDays >= PERSISTENT_MIN_DAYS (3)
+ *   - newDisconnections: ageDays <= NEW_MAX_DAYS (1) AND previously connected
+ *   - recentDisconnections: everything else (1 < ageDays < 3, or ageDays<=1
+ *       with a prior disconnected status — i.e. transitional)
+ *
+ * Inclusive semantics at the boundaries matter: an inbox with ageDays === 7
+ * is critical (not persistent). This was Finding 2.2 — the previous `>`
+ * comparison let 7-day-old disconnects slip into the persistent bucket.
+ */
 export const AGE_THRESHOLDS = {
   NEW_MAX_DAYS: 1,
   PERSISTENT_MIN_DAYS: 3,
-  PERSISTENT_MAX_DAYS: 7,
-  CRITICAL_MIN_DAYS: 7,
+  CRITICAL_MIN_DAYS_INCLUSIVE: 7,
 } as const;
 
 export async function checkAllWorkspaces(): Promise<InboxStatusChange[]> {
@@ -92,35 +105,49 @@ export async function checkAllWorkspaces(): Promise<InboxStatusChange[]> {
 /**
  * Parse the `disconnectedEmails` snapshot JSON. Supports two shapes:
  *
- * 1. Legacy: `string[]` of email addresses (pre-age-tracking). For these
- *    we have no age information, so we treat them as newly observed on
- *    this run.
- * 2. Current: `{ email, firstDisconnectedAt }[]` — persisted age info.
+ * 1. Legacy: `string[]` of email addresses (pre-age-tracking). We have no
+ *    per-email age info, so we use the previous snapshot's `checkedAt`
+ *    as the synthesised `firstDisconnectedAt`. That preserves at least
+ *    the snapshot's own age — if the legacy snapshot is 14 days old the
+ *    inbox gets ageDays=14 on first run after deploy, not ageDays=0.
+ *    Only if no `previousCheckedAt` is available do we fall back to now()
+ *    (first-ever run, impossible without a snapshot anyway).
+ * 2. Current: `{ email, firstDisconnectedAt }[]` — persisted age info is
+ *    used verbatim.
+ *
+ * Keys are lowercased for case-insensitive matching with EmailBison
+ * responses (which can return mixed-case addresses).
  */
 function parseDisconnectedEmailsJson(
   raw: string | null | undefined,
+  previousCheckedAt?: Date | null,
 ): Record<string, string> {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return {};
 
+    // Legacy fallback: prefer the previous snapshot's checkedAt so we
+    // preserve age across the shape migration. Blocker 2.1 fix.
+    const legacyFallback =
+      previousCheckedAt instanceof Date && !Number.isNaN(previousCheckedAt.getTime())
+        ? previousCheckedAt.toISOString()
+        : new Date().toISOString();
+
     const out: Record<string, string> = {};
     for (const entry of parsed) {
       if (typeof entry === "string") {
-        // legacy shape — age unknown, synthesise "now" so these flip to
-        // persistent on the next check rather than staying new forever.
-        out[entry] = new Date().toISOString();
+        out[entry.toLowerCase()] = legacyFallback;
       } else if (
         entry &&
         typeof entry === "object" &&
         typeof (entry as { email?: unknown }).email === "string"
       ) {
         const e = entry as { email: string; firstDisconnectedAt?: unknown };
-        out[e.email] =
+        out[e.email.toLowerCase()] =
           typeof e.firstDisconnectedAt === "string"
             ? e.firstDisconnectedAt
-            : new Date().toISOString();
+            : legacyFallback;
       }
     }
     return out;
@@ -144,10 +171,12 @@ async function checkWorkspace(
   const client = new EmailBisonClient(apiToken);
   const senderEmails = await client.getSenderEmails();
 
-  // Build current status map
+  // Build current status map. Keys are lowercased so we stay consistent
+  // with Sender rows (which we key by lowercase email) and with the
+  // persisted snapshot (also lowercased — Finding 2.4).
   const currentStatuses: Record<string, string> = {};
   for (const sender of senderEmails) {
-    currentStatuses[sender.email] = sender.status ?? "Unknown";
+    currentStatuses[sender.email.toLowerCase()] = sender.status ?? "Unknown";
   }
 
   // Load previous snapshot
@@ -155,11 +184,18 @@ async function checkWorkspace(
     where: { workspaceSlug: slug },
   });
 
-  const prevStatuses: Record<string, string> = previous
-    ? JSON.parse(previous.statuses)
-    : {};
+  // Re-parse previous statuses and lowercase the keys so comparisons are
+  // case-insensitive even if an older snapshot stored mixed-case addresses.
+  const prevStatuses: Record<string, string> = {};
+  if (previous) {
+    const rawPrev = JSON.parse(previous.statuses) as Record<string, string>;
+    for (const [email, status] of Object.entries(rawPrev)) {
+      prevStatuses[email.toLowerCase()] = status;
+    }
+  }
   const prevDisconnectedSince = parseDisconnectedEmailsJson(
     previous?.disconnectedEmails,
+    previous?.checkedAt ?? null,
   );
 
   // Load sender rows so we can identify provisioning stalls (never-auth).
@@ -196,20 +232,24 @@ async function checkWorkspace(
   const reconnections: string[] = [];
 
   for (const [email, status] of Object.entries(currentStatuses)) {
+    // Defensive: normalise key once, then use it for all downstream keys
+    // (currentStatuses is already lowercased, this is belt-and-braces).
+    const emailKey = email.toLowerCase();
+
     if (status === "Connected") {
       // Currently connected — was it previously disconnected?
-      if (prevDisconnectedSince[email] !== undefined) {
-        reconnections.push(email);
+      if (prevDisconnectedSince[emailKey] !== undefined) {
+        reconnections.push(emailKey);
       }
       continue;
     }
 
     // Currently disconnected.
     const firstDisconnectedAt =
-      prevDisconnectedSince[email] ?? now.toISOString();
-    nextDisconnectedSince[email] = firstDisconnectedAt;
+      prevDisconnectedSince[emailKey] ?? now.toISOString();
+    nextDisconnectedSince[emailKey] = firstDisconnectedAt;
 
-    const senderRow = senderByEmail.get(email.toLowerCase());
+    const senderRow = senderByEmail.get(emailKey);
     // "Never connected" heuristic: Sender row exists, has never
     // authenticated (sessionConnectedAt null + sessionStatus not_setup).
     // Fall back to false when we have no Sender row (i.e. an inbox only
@@ -231,7 +271,7 @@ async function checkWorkspace(
         : firstDisconnectedAt;
 
     disconnectedEntries.push({
-      email,
+      email: emailKey,
       firstDisconnectedAt,
       ageDays: ageInDays(ageAnchor),
       neverConnected,
@@ -259,12 +299,14 @@ async function checkWorkspace(
   // Bucket entries.
   // Rules (applied in order, first match wins):
   //   - staleProvisioning: neverConnected === true (regardless of age)
-  //   - criticalDisconnections: ageDays > CRITICAL_MIN_DAYS (7)
+  //   - criticalDisconnections: ageDays >= CRITICAL_MIN_DAYS_INCLUSIVE (7)
+  //       (Finding 2.2: was `>`, which let ageDays=7 fall into persistent.)
   //   - persistentDisconnections: ageDays >= PERSISTENT_MIN_DAYS (3)
   //   - newDisconnections: ageDays <= NEW_MAX_DAYS (1) AND the sender
   //       was either Connected or unknown in the previous snapshot
   //       (i.e. genuinely new this run)
-  //   - recentDisconnections: 1 < ageDays < 3 (transitional)
+  //   - recentDisconnections: everything else (1 < ageDays < 3, or
+  //       <=1 with a prior disconnected status — transitional).
   const newDisconnections: DisconnectedEntry[] = [];
   const recentDisconnections: DisconnectedEntry[] = [];
   const persistentDisconnections: DisconnectedEntry[] = [];
@@ -274,17 +316,11 @@ async function checkWorkspace(
   for (const entry of disconnectedEntries) {
     if (entry.neverConnected) {
       staleProvisioning.push(entry);
-      continue;
-    }
-    if (entry.ageDays > AGE_THRESHOLDS.CRITICAL_MIN_DAYS) {
+    } else if (entry.ageDays >= AGE_THRESHOLDS.CRITICAL_MIN_DAYS_INCLUSIVE) {
       criticalDisconnections.push(entry);
-      continue;
-    }
-    if (entry.ageDays >= AGE_THRESHOLDS.PERSISTENT_MIN_DAYS) {
+    } else if (entry.ageDays >= AGE_THRESHOLDS.PERSISTENT_MIN_DAYS) {
       persistentDisconnections.push(entry);
-      continue;
-    }
-    if (entry.ageDays <= AGE_THRESHOLDS.NEW_MAX_DAYS) {
+    } else if (entry.ageDays <= AGE_THRESHOLDS.NEW_MAX_DAYS) {
       // Only treat as "new" if the previous status wasn't already
       // disconnected. Otherwise it's a transitional case.
       const prevStatus = prevStatuses[entry.email];
@@ -293,9 +329,9 @@ async function checkWorkspace(
       } else {
         recentDisconnections.push(entry);
       }
-      continue;
+    } else {
+      recentDisconnections.push(entry);
     }
-    recentDisconnections.push(entry);
   }
 
   const totalConnected = senderEmails.filter(

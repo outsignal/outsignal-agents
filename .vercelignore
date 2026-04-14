@@ -56,7 +56,6 @@ docs/briefs/
 .env.local
 .env.development
 *.log
-/dev.log
 .DS_Store
 
 # Local eval helpers

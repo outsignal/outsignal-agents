@@ -513,27 +513,51 @@ export async function sweepStuckRunningActions(
       // status=running is malformed, but still stuck. Include both cases.
       OR: [{ lastAttemptAt: { lt: cutoff } }, { lastAttemptAt: null }],
     },
-    select: { id: true, attempts: true, result: true },
+    select: { id: true, attempts: true, maxAttempts: true, result: true },
   });
 
   if (stuck.length === 0) {
     return { swept: 0, ids: [] };
   }
 
-  const ids = stuck.map((s) => s.id);
-  const failurePayload = JSON.stringify({
+  // Mirror `recoverStuckActions()` retry semantics (Blocker 5.4): rows that
+  // still have retries left are reset to "pending", only fully exhausted
+  // rows are hard-failed. The sweeper still runs at a longer threshold
+  // (30min vs the worker's 10min) so it remains a backstop, not a primary
+  // mechanism — but we must not contradict the existing retry contract.
+  const sweptAt = new Date().toISOString();
+  const baseFailurePayload = {
     error: "stuck-running-sweeper",
     failureReason: "stuck-running-sweeper",
-    sweptAt: new Date().toISOString(),
+    sweptAt,
     thresholdMinutes,
-  });
+  };
 
-  // Re-match status='running' inside the update so rows that flipped to
-  // complete/failed/pending between the read and write are not clobbered.
-  const update = await prisma.linkedInAction.updateMany({
-    where: { id: { in: ids }, status: "running" },
-    data: { status: "failed", result: failurePayload },
-  });
+  const sweptIds: string[] = [];
+  for (const action of stuck) {
+    const retriesExhausted = action.attempts >= action.maxAttempts;
+    // Re-match status='running' inside each update so rows that flipped to
+    // complete/failed/pending between the read and write are not clobbered.
+    const update = await prisma.linkedInAction.updateMany({
+      where: { id: action.id, status: "running" },
+      data: retriesExhausted
+        ? {
+            status: "failed",
+            result: JSON.stringify(baseFailurePayload),
+          }
+        : {
+            status: "pending",
+            result: JSON.stringify({
+              ...baseFailurePayload,
+              recovered: true,
+              attemptsRemaining: action.maxAttempts - action.attempts,
+            }),
+          },
+    });
+    if (update.count > 0) {
+      sweptIds.push(action.id);
+    }
+  }
 
-  return { swept: update.count, ids };
+  return { swept: sweptIds.length, ids: sweptIds };
 }

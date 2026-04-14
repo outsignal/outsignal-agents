@@ -174,6 +174,8 @@ model Person {
   @@index([vertical])
   @@index([companyDomain])
   @@index([linkedinUrl])
+  // CRITICAL: raw SQL must use "Lead" / "LeadWorkspace" table names, NOT "Person" / "PersonWorkspace" model names.
+  // Bug history: 2026-04-13 LinkedIn planner SQL used "Person" causing 24h outage of LinkedIn deploys.
   @@map("Lead")
 }
 
@@ -196,6 +198,8 @@ model PersonWorkspace {
   @@unique([personId, workspace], map: "LeadWorkspace_leadId_workspace_key")
   @@index([workspace])
   @@index([status])
+  // CRITICAL: raw SQL must use "Lead" / "LeadWorkspace" table names, NOT "Person" / "PersonWorkspace" model names.
+  // Bug history: 2026-04-13 LinkedIn planner SQL used "Person" causing 24h outage of LinkedIn deploys.
   @@map("LeadWorkspace")
 }
 
@@ -429,6 +433,18 @@ model InboxStatusSnapshot {
   disconnectedEmails String   @default("[]")  // JSON array of disconnected emails
   checkedAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  // Per-bucket alert dedup timestamps. We fire ops alerts at most once per
+  // 24h per bucket to avoid Slack flooding (Finding Blocker 2.3). `newNew`
+  // alerts are the only exception — those always fire immediately because
+  // they indicate a genuine regression that needs investigation. The other
+  // buckets (critical >7d, persistent 3-7d, stale provisioning) represent
+  // known-bad states, so re-alerting every tick adds noise without value.
+  lastNewAlertAt         DateTime?
+  lastRecentAlertAt      DateTime?
+  lastPersistentAlertAt  DateTime?
+  lastCriticalAlertAt    DateTime?
+  lastStaleAlertAt       DateTime?
 }
 
 model Proposal {

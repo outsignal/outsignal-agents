@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "_comment_build": "build uses Turbopack (Next 16). build:webpack is the manual rollback if Turbopack regresses on Vercel — Next.js still ships the webpack pipeline, only the build engine differs.",
     "dev": "next dev",
     "build": "next build --turbopack",
+    "build:webpack": "next build",
+    "postbuild": "node -e \"require('fs').statSync('dist/cli/client-sweep.js')\"",
     "postinstall": "prisma generate && npm run build:cli && npm run build:dev-cli",
     "start": "next start",
     "lint": "eslint",

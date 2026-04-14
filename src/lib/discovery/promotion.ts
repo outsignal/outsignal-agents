@@ -337,6 +337,12 @@ async function promoteToPerson(
         icpScoredAt: score.icpScoredAt,
       }
     : {};
+
+  // TODO(BL-future): When PersonWorkspace gains an `icpScoreSource` enum
+  // (e.g. "auto" | "manual"), gate the score update on
+  // `existing.icpScoreSource !== "manual"` to avoid clobbering hand-edited
+  // ICP scores during a re-discovery / re-promotion. Tracked in Finding 3.1
+  // — schema migration deferred so we don't ship an unmigrated column today.
   await prisma.personWorkspace.upsert({
     where: {
       personId_workspace: {

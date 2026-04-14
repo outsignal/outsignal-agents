@@ -26,6 +26,17 @@ export const inboxCheckTask = schedules.task({
 
     const changes = await checkAllWorkspaces();
 
+    // Per-bucket alert dedup window. New disconnects always fire (those need
+    // immediate investigation), but the persistent/critical/stale/recent
+    // buckets re-fire at most once every 24h to avoid Slack flooding when a
+    // workspace stays in a known-bad state across multiple ticks. Schema
+    // fields live on InboxStatusSnapshot (Blocker 2.3).
+    const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const dedupAllows = (lastAt: Date | null | undefined): boolean => {
+      if (!lastAt) return true;
+      return Date.now() - lastAt.getTime() >= ALERT_DEDUP_WINDOW_MS;
+    };
+
     for (const change of changes) {
       const hasNew = change.newDisconnections.length > 0;
       const hasRecent = change.recentDisconnections.length > 0;
@@ -35,6 +46,33 @@ export const inboxCheckTask = schedules.task({
 
       const hasAnyDisconnectAlert =
         hasNew || hasRecent || hasPersistent || hasCritical || hasStale;
+
+      // Load this workspace's alert dedup state. Snapshot is upserted by
+      // checkWorkspace() above, so it should exist whenever the workspace
+      // had any disconnect activity. If it's somehow missing, all buckets
+      // fall through to the "fire" branch — safe default.
+      const snapshot = hasAnyDisconnectAlert
+        ? await prisma.inboxStatusSnapshot.findUnique({
+            where: { workspaceSlug: change.workspaceSlug },
+            select: {
+              lastNewAlertAt: true,
+              lastRecentAlertAt: true,
+              lastPersistentAlertAt: true,
+              lastCriticalAlertAt: true,
+              lastStaleAlertAt: true,
+            },
+          })
+        : null;
+
+      // Track which alert buckets actually fired this tick so we can update
+      // their timestamps in a single write at the end of the loop.
+      const firedBuckets: {
+        new?: boolean;
+        recent?: boolean;
+        persistent?: boolean;
+        critical?: boolean;
+        stale?: boolean;
+      } = {};
 
       if (hasAnyDisconnectAlert) {
         // Email notification (no client Slack — ops Slack handled by notify() below)
@@ -61,7 +99,9 @@ export const inboxCheckTask = schedules.task({
 
         // Critical alerts fire as a separate, explicit error-severity
         // notification so they cannot get lost in the daily digest.
-        if (hasCritical) {
+        // Dedup'd at 24h — re-firing every tick adds noise, the state
+        // is already known-bad and tracked in the workspace.
+        if (hasCritical && dedupAllows(snapshot?.lastCriticalAlertAt)) {
           await notify({
             type: "system",
             severity: "error",
@@ -74,13 +114,14 @@ export const inboxCheckTask = schedules.task({
               totalConnected: change.totalConnected,
             },
           });
+          firedBuckets.critical = true;
         }
 
         // Stale provisioning is a separate category — "needs onboarding"
         // rather than "needs investigation". Routed as warning because
         // these inboxes were never authenticated in the first place; no
-        // recent regression has occurred.
-        if (hasStale) {
+        // recent regression has occurred. Dedup'd at 24h.
+        if (hasStale && dedupAllows(snapshot?.lastStaleAlertAt)) {
           await notify({
             type: "system",
             severity: "warning",
@@ -93,44 +134,61 @@ export const inboxCheckTask = schedules.task({
               totalConnected: change.totalConnected,
             },
           });
+          firedBuckets.stale = true;
         }
 
         // Combined alert for genuine disconnects (new + recent +
         // persistent). Severity is "error" if there is at least one new
         // disconnect (possible regression), otherwise "warning".
-        if (hasNew || hasRecent || hasPersistent) {
+        //
+        // Dedup gating:
+        //   - new disconnects always fire (genuine regression — always
+        //     worth investigating, no dedup)
+        //   - persistent/recent fire at most every 24h via dedupAllows
+        //   - if all gated buckets are within their dedup window AND
+        //     there are no new disconnects, suppress the combined alert
+        const fireNew = hasNew; // never deduped
+        const firePersistent =
+          hasPersistent && dedupAllows(snapshot?.lastPersistentAlertAt);
+        const fireRecent =
+          hasRecent && dedupAllows(snapshot?.lastRecentAlertAt);
+
+        if (fireNew || fireRecent || firePersistent) {
+          // Only describe buckets that are actually firing — buckets in
+          // their dedup window are silently skipped to avoid re-stating
+          // a known-bad state.
           const parts: string[] = [];
-          if (hasNew) {
+          if (fireNew) {
             parts.push(
               `${change.newDisconnections.length} newly disconnected: ${preview(change.newDisconnections)}`,
             );
           }
-          if (hasRecent) {
+          if (fireRecent) {
             parts.push(
               `${change.recentDisconnections.length} recently disconnected (1-3d): ${preview(change.recentDisconnections)}`,
             );
           }
-          if (hasPersistent) {
+          if (firePersistent) {
             parts.push(
               `${change.persistentDisconnections.length} persistent (3-7d): ${preview(change.persistentDisconnections)}`,
             );
           }
 
-          const primaryCount = hasNew
+          const primaryCount = fireNew
             ? change.newDisconnections.length
-            : hasPersistent
+            : firePersistent
               ? change.persistentDisconnections.length
               : change.recentDisconnections.length;
 
-          const title = hasNew
+          const title = fireNew
             ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} newly disconnected`
-            : hasPersistent
+            : firePersistent
               ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} persistently disconnected (3-7 days)`
               : `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} recently disconnected`;
 
           await notify({
             type: "system",
-            severity: hasNew ? "error" : "warning",
+            severity: fireNew ? "error" : "warning",
             title,
             message: `${change.workspaceName}: ${parts.join(" | ")}`,
             workspaceSlug: change.workspaceSlug,
@@ -143,6 +201,38 @@ export const inboxCheckTask = schedules.task({
               totalConnected: change.totalConnected,
             },
           });
+          if (fireNew) firedBuckets.new = true;
+          if (fireRecent) firedBuckets.recent = true;
+          if (firePersistent) firedBuckets.persistent = true;
+        }
+      }
+
+      // Persist the alert timestamps for any bucket that fired this tick
+      // so subsequent ticks can honour the 24h dedup window. We scope the
+      // write to "fired only" so a bucket that didn't fire keeps its
+      // previous timestamp (or remains null), which preserves correct
+      // dedup behaviour across mixed-bucket ticks.
+      const dedupUpdates: Record<string, Date> = {};
+      const nowDate = new Date();
+      if (firedBuckets.new) dedupUpdates.lastNewAlertAt = nowDate;
+      if (firedBuckets.recent) dedupUpdates.lastRecentAlertAt = nowDate;
+      if (firedBuckets.persistent) dedupUpdates.lastPersistentAlertAt = nowDate;
+      if (firedBuckets.critical) dedupUpdates.lastCriticalAlertAt = nowDate;
+      if (firedBuckets.stale) dedupUpdates.lastStaleAlertAt = nowDate;
+      if (Object.keys(dedupUpdates).length > 0) {
+        try {
+          await prisma.inboxStatusSnapshot.update({
+            where: { workspaceSlug: change.workspaceSlug },
+            data: dedupUpdates,
+          });
+        } catch (err) {
+          // Non-fatal: dedup state is best-effort. If the snapshot row was
+          // deleted between the read and write, the worst case is one
+          // duplicate alert next tick.
+          console.warn(
+            `[inbox-check] Failed to persist alert dedup state for ${change.workspaceSlug}:`,
+            err,
+          );
         }
       }
 

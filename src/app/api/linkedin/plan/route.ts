@@ -55,6 +55,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Workspace-level mutex via Postgres advisory lock (Blocker 5.1).
+    // Prevents two parallel planDay calls for the same workspace from racing
+    // and double-enqueueing actions for the same person/campaign. We use a
+    // try-lock (non-blocking) so a concurrent caller fast-fails with a
+    // 409 instead of stacking up. The lock is session-scoped (released
+    // when this request's pooled connection is returned), so we must
+    // unlock explicitly in a finally block to avoid leaking the lock
+    // back into the pool.
+    //
+    // hashtextextended() returns bigint and matches pg_advisory_lock's
+    // single-arg signature. Using the workspace slug as the key gives
+    // per-workspace isolation — cross-workspace planDay calls never block
+    // each other.
+    const lockResult = await prisma.$queryRaw<[{ acquired: boolean }]>`
+      SELECT pg_try_advisory_lock(hashtextextended(${`linkedin-plan:${workspaceSlug}`}, 0)) AS acquired
+    `;
+    if (!lockResult[0]?.acquired) {
+      console.warn(
+        `[plan] Concurrent planDay for ${workspaceSlug} — another caller holds the workspace lock`,
+      );
+      return NextResponse.json(
+        {
+          planned: 0,
+          campaigns: [],
+          senders: [],
+          skipped: "another planDay is already running for this workspace",
+        },
+        { status: 409 },
+      );
+    }
+
+    try {
+
     // 1. Get active LinkedIn campaigns
     const activeCampaigns = await prisma.campaign.findMany({
       where: {
@@ -157,9 +190,9 @@ export async function POST(request: NextRequest) {
       const unstartedCount = await prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*) as count
         FROM "TargetListPerson" tlp
-        JOIN "Lead" p ON p.id = tlp."personId"
+        JOIN "Lead" l ON l.id = tlp."personId"
         WHERE tlp."listId" = ${campaign.targetListId}
-          AND p."linkedinUrl" IS NOT NULL
+          AND l."linkedinUrl" IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM "LinkedInAction" la
             WHERE la."personId" = tlp."personId"
@@ -277,9 +310,9 @@ export async function POST(request: NextRequest) {
       >`
         SELECT tlp."personId"
         FROM "TargetListPerson" tlp
-        JOIN "Lead" p ON p.id = tlp."personId"
+        JOIN "Lead" l ON l.id = tlp."personId"
         WHERE tlp."listId" = ${cu.campaign.targetListId!}
-          AND p."linkedinUrl" IS NOT NULL
+          AND l."linkedinUrl" IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM "LinkedInAction" la
             WHERE la."personId" = tlp."personId"
@@ -379,6 +412,20 @@ export async function POST(request: NextRequest) {
       campaigns: campaignResults,
       senders: senderResults,
     });
+    } finally {
+      // Always release the workspace advisory lock — must run on both
+      // success and failure paths, and from inside the same DB session.
+      try {
+        await prisma.$queryRaw`
+          SELECT pg_advisory_unlock(hashtextextended(${`linkedin-plan:${workspaceSlug}`}, 0))
+        `;
+      } catch (unlockErr) {
+        console.warn(
+          `[plan] Failed to release advisory lock for ${workspaceSlug}:`,
+          unlockErr,
+        );
+      }
+    }
   } catch (error) {
     console.error("[plan] Daily planning error:", error);
     return NextResponse.json(
