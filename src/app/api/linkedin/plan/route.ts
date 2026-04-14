@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
       const unstartedCount = await prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*) as count
         FROM "TargetListPerson" tlp
-        JOIN "Person" p ON p.id = tlp."personId"
+        JOIN "Lead" p ON p.id = tlp."personId"
         WHERE tlp."listId" = ${campaign.targetListId}
           AND p."linkedinUrl" IS NOT NULL
           AND NOT EXISTS (
@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
       >`
         SELECT tlp."personId"
         FROM "TargetListPerson" tlp
-        JOIN "Person" p ON p.id = tlp."personId"
+        JOIN "Lead" p ON p.id = tlp."personId"
         WHERE tlp."listId" = ${cu.campaign.targetListId!}
           AND p."linkedinUrl" IS NOT NULL
           AND NOT EXISTS (
