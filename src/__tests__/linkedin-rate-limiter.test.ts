@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
 import {
+  bucketKeyFor,
   checkBudget,
   consumeBudget,
   getSenderBudget,
@@ -8,6 +9,31 @@ import {
   progressWarmup,
   getAccountWarmupSchedule,
 } from "@/lib/linkedin/rate-limiter";
+
+// ─── bucketKeyFor invariants ────────────────────────────────────────────────
+//
+// The BUDGET_BUCKETS map groups action types that share a daily limit. The
+// first entry in each bucket is the canonical key. If someone reorders or
+// edits the map without realising both connect/connection_request (and
+// both profile_view/check_connection) must collapse to the same key, the
+// bucket-keyed in-flight counter in queue.ts silently regresses — two
+// types race against the same daily cap through separate Map slots.
+// These invariants lock that contract down at test time.
+
+describe("bucketKeyFor (shared-bucket invariants)", () => {
+  it("connect and connection_request map to the same bucket", () => {
+    expect(bucketKeyFor("connect")).toBe(bucketKeyFor("connection_request"));
+  });
+
+  it("profile_view and check_connection map to the same bucket", () => {
+    expect(bucketKeyFor("profile_view")).toBe(bucketKeyFor("check_connection"));
+  });
+
+  it("message maps to its own bucket (distinct from connect and profile_view)", () => {
+    expect(bucketKeyFor("message")).not.toBe(bucketKeyFor("connect"));
+    expect(bucketKeyFor("message")).not.toBe(bucketKeyFor("profile_view"));
+  });
+});
 
 // ─── getWarmupLimits ────────────────────────────────────────────────────────
 

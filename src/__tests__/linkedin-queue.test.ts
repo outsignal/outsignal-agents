@@ -14,25 +14,20 @@ import {
 import { checkBudget } from "@/lib/linkedin/rate-limiter";
 
 // Mock the rate-limiter module. Real BUDGET_BUCKETS / bucketKeyFor are
-// re-exported so the queue's bucket-keyed in-flight counter behaves
-// identically to production; only checkBudget / checkCircuitBreaker are
-// stubbed (they own the "is this action allowed" decision).
-vi.mock("@/lib/linkedin/rate-limiter", () => ({
-  BUDGET_BUCKETS: {
-    connect: ["connect", "connection_request"],
-    connection_request: ["connect", "connection_request"],
-    message: ["message"],
-    profile_view: ["profile_view", "check_connection"],
-    check_connection: ["profile_view", "check_connection"],
-  },
-  bucketKeyFor: (actionType: string) => {
-    if (actionType === "connect" || actionType === "connection_request") return "connect";
-    if (actionType === "profile_view" || actionType === "check_connection") return "profile_view";
-    return actionType;
-  },
-  checkBudget: vi.fn().mockResolvedValue({ allowed: true, remaining: 10 }),
-  checkCircuitBreaker: vi.fn().mockResolvedValue({ tripped: false, consecutiveFailures: 0 }),
-}));
+// pulled in via vi.importActual so the queue's bucket-keyed in-flight
+// counter stays in sync with production if the bucket mapping changes.
+// Only checkBudget / checkCircuitBreaker are stubbed (they own the
+// "is this action allowed" decision).
+vi.mock("@/lib/linkedin/rate-limiter", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/linkedin/rate-limiter")>(
+    "@/lib/linkedin/rate-limiter",
+  );
+  return {
+    ...actual,
+    checkBudget: vi.fn().mockResolvedValue({ allowed: true, remaining: 10 }),
+    checkCircuitBreaker: vi.fn().mockResolvedValue({ tripped: false, consecutiveFailures: 0 }),
+  };
+});
 
 const mockCheckBudget = vi.mocked(checkBudget);
 

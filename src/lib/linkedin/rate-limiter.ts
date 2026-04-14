@@ -169,6 +169,23 @@ async function getOrCreateDailyUsage(senderId: string) {
 }
 
 /**
+ * Minimum Sender fields needed by checkBudget. Callers that have already
+ * loaded the sender row (e.g. getSenderBudget) can pass it in via the
+ * optional `sender` argument to skip the PK lookup. Kept as a structural
+ * type so we don't have to import the full Prisma Sender model here.
+ */
+type SenderForBudget = {
+  id: string;
+  status: string;
+  healthStatus: string;
+  dailyConnectionLimit: number;
+  dailyMessageLimit: number;
+  dailyProfileViewLimit: number;
+  pendingConnectionCount: number | null;
+  acceptanceRate: number | null;
+};
+
+/**
  * Check if a sender has budget remaining for a given action type.
  * P1 connection actions bypass the daily budget entirely (capped at P1_DAILY_CAP per sender per day).
  *
@@ -178,24 +195,31 @@ async function getOrCreateDailyUsage(senderId: string) {
  * the running-count DB query and reads the pre-computed count instead.
  * Without the cache, each call would run its own linkedInAction.count
  * query (10 candidates × 3 action types = 30 queries per poll).
+ *
+ * Callers that have already fetched the sender row can also pass it via
+ * `sender` to skip the internal findUnique. getSenderBudget uses this to
+ * collapse 4 identical PK lookups (1 outer + 3 inner) into 1.
  */
 export async function checkBudget(
   senderId: string,
   actionType: LinkedInActionType,
   priority: number = 5,
   runningCountCache?: Map<string, number>,
+  sender?: SenderForBudget,
 ): Promise<BudgetCheckResult> {
-  const sender = await prisma.sender.findUnique({ where: { id: senderId } });
-  if (!sender) {
+  const resolvedSender =
+    sender ??
+    ((await prisma.sender.findUnique({ where: { id: senderId } })) as SenderForBudget | null);
+  if (!resolvedSender) {
     return { allowed: false, remaining: 0, reason: "Sender not found" };
   }
 
-  if (sender.status !== "active") {
-    return { allowed: false, remaining: 0, reason: `Sender is ${sender.status}` };
+  if (resolvedSender.status !== "active") {
+    return { allowed: false, remaining: 0, reason: `Sender is ${resolvedSender.status}` };
   }
 
-  if (sender.healthStatus !== "healthy") {
-    return { allowed: false, remaining: 0, reason: `Account health: ${sender.healthStatus}` };
+  if (resolvedSender.healthStatus !== "healthy") {
+    return { allowed: false, remaining: 0, reason: `Account health: ${resolvedSender.healthStatus}` };
   }
 
   // Withdrawals are unlimited — always allowed (no daily budget gate)
@@ -205,7 +229,7 @@ export async function checkBudget(
 
   // Gate 3: Pending connection count gate (connect/connection_request only)
   if (actionType === "connect" || actionType === "connection_request") {
-    const pendingCount = sender.pendingConnectionCount ?? 0;
+    const pendingCount = resolvedSender.pendingConnectionCount ?? 0;
     if (pendingCount >= 2500) {
       console.log(`[rate-limiter] Sender ${senderId}: pending count gate BLOCKING (${pendingCount} pending connections)`);
       return { allowed: false, remaining: 0, reason: "Pending connection cap (2500+)" };
@@ -217,7 +241,7 @@ export async function checkBudget(
   let totalSentConnections: number | null = null;
   if (
     (actionType === "connect" || actionType === "connection_request") &&
-    sender.acceptanceRate !== null
+    resolvedSender.acceptanceRate !== null
   ) {
     totalSentConnections = await prisma.linkedInConnection.count({
       where: { senderId, status: { not: "none" } },
@@ -226,10 +250,10 @@ export async function checkBudget(
 
   // Gate 4: Acceptance rate gate (connect/connection_request only, 50+ requests required)
   if (actionType === "connect" || actionType === "connection_request") {
-    if (sender.acceptanceRate !== null && sender.acceptanceRate < 0.10) {
+    if (resolvedSender.acceptanceRate !== null && resolvedSender.acceptanceRate < 0.10) {
       if (totalSentConnections !== null && totalSentConnections >= 50) {
-        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate BLOCKING (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate, ${totalSentConnections} total sent)`);
-        return { allowed: false, remaining: 0, reason: `Acceptance rate too low (${(sender.acceptanceRate * 100).toFixed(1)}%)` };
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate BLOCKING (${(resolvedSender.acceptanceRate * 100).toFixed(1)}% acceptance rate, ${totalSentConnections} total sent)`);
+        return { allowed: false, remaining: 0, reason: `Acceptance rate too low (${(resolvedSender.acceptanceRate * 100).toFixed(1)}%)` };
       }
     }
   }
@@ -265,12 +289,12 @@ export async function checkBudget(
     return { allowed: false, remaining: 0, reason: `Unknown action type: ${actionType}` };
   }
 
-  const baseLimit = (sender as Record<string, unknown>)[limitField] as number;
+  const baseLimit = (resolvedSender as unknown as Record<string, unknown>)[limitField] as number;
   let effectiveLimit = applyJitter(baseLimit, senderId);
 
   // Apply pending count budget reduction (connect/connection_request only)
   if (actionType === "connect" || actionType === "connection_request") {
-    const pendingCount = sender.pendingConnectionCount ?? 0;
+    const pendingCount = resolvedSender.pendingConnectionCount ?? 0;
     if (pendingCount >= 2000) {
       const before = effectiveLimit;
       effectiveLimit = Math.min(effectiveLimit, 3);
@@ -282,13 +306,13 @@ export async function checkBudget(
     }
 
     // Apply acceptance rate budget reduction (15-25% warning only logged, 10-15% reduces by 30%)
-    if (sender.acceptanceRate !== null && totalSentConnections !== null && totalSentConnections >= 50) {
-      if (sender.acceptanceRate >= 0.10 && sender.acceptanceRate < 0.15) {
+    if (resolvedSender.acceptanceRate !== null && totalSentConnections !== null && totalSentConnections >= 50) {
+      if (resolvedSender.acceptanceRate >= 0.10 && resolvedSender.acceptanceRate < 0.15) {
         const before = effectiveLimit;
         effectiveLimit = Math.floor(effectiveLimit * 0.7);
-        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate reducing budget from ${before} to ${effectiveLimit} (${(sender.acceptanceRate * 100).toFixed(1)}% acceptance rate)`);
-      } else if (sender.acceptanceRate >= 0.15 && sender.acceptanceRate < 0.25) {
-        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate warning — ${(sender.acceptanceRate * 100).toFixed(1)}% (between 15-25%)`);
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate gate reducing budget from ${before} to ${effectiveLimit} (${(resolvedSender.acceptanceRate * 100).toFixed(1)}% acceptance rate)`);
+      } else if (resolvedSender.acceptanceRate >= 0.15 && resolvedSender.acceptanceRate < 0.25) {
+        console.log(`[rate-limiter] Sender ${senderId}: acceptance rate warning — ${(resolvedSender.acceptanceRate * 100).toFixed(1)}% (between 15-25%)`);
       }
     }
   }
@@ -376,14 +400,36 @@ export async function getSenderBudget(senderId: string) {
 
   const usage = await getOrCreateDailyUsage(senderId);
 
+  // Pre-compute running-count per distinct bucket ONCE and share across the
+  // 3 checkBudget calls below. Without this, each checkBudget would fire its
+  // own linkedInAction.count query for the same sender — 3 identical queries
+  // per call. Mirrors the pattern used by filterByBudget in queue.ts.
+  const runningCountCache = new Map<string, number>();
+  const distinctBuckets = new Map<string, LinkedInActionType[]>();
+  for (const types of Object.values(BUDGET_BUCKETS)) {
+    distinctBuckets.set(bucketKeyFor(types[0]), types);
+  }
+  await Promise.all(
+    Array.from(distinctBuckets.entries()).map(async ([key, types]) => {
+      const count = await prisma.linkedInAction.count({
+        where: { senderId, actionType: { in: types }, status: "running" },
+      });
+      runningCountCache.set(key, count);
+    }),
+  );
+
   // Priority 5 = normal priority (no P1 bypass, no warm-lead fast-track).
   // Using priority 5 means remaining reflects the STANDARD daily budget,
   // which is what the worker needs for spread math. P1 slots are reserved
   // for warm leads and must not inflate the spread denominator.
+  //
+  // Pass the already-fetched sender so checkBudget skips 3 identical PK
+  // lookups; pass runningCountCache so it skips 3 identical count queries.
+  const senderForBudget = sender as unknown as SenderForBudget;
   const [connBudget, msgBudget, pvBudget] = await Promise.all([
-    checkBudget(senderId, "connection_request", 5),
-    checkBudget(senderId, "message", 5),
-    checkBudget(senderId, "profile_view", 5),
+    checkBudget(senderId, "connection_request", 5, runningCountCache, senderForBudget),
+    checkBudget(senderId, "message", 5, runningCountCache, senderForBudget),
+    checkBudget(senderId, "profile_view", 5, runningCountCache, senderForBudget),
   ]);
 
   const effectiveRemaining = (result: BudgetCheckResult): number => {
