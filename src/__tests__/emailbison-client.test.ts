@@ -458,4 +458,198 @@ describe("EmailBisonClient", () => {
       expect(calledUrl).toBe(`${BASE_URL}/campaigns?page=1`);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // 14. getCampaign — full campaign fetch via GET /campaigns/{id}
+  // -----------------------------------------------------------------------
+  describe("getCampaign", () => {
+    it("returns the full Campaign object", async () => {
+      const campaign = {
+        id: 31,
+        uuid: "abc-123",
+        name: "Lime Transportation+Logistics",
+        type: "outbound",
+        status: "active",
+        max_emails_per_day: 50,
+        max_new_leads_per_day: 25,
+        plain_text: true,
+        open_tracking: false,
+        can_unsubscribe: true,
+        unsubscribe_text: "Unsubscribe here",
+        sequence_prioritization: "followups",
+        tags: [],
+      };
+
+      fetchMock.mockResolvedValueOnce(
+        mockFetchResponse({ data: campaign }),
+      );
+
+      const result = await client.getCampaign(31);
+      expect(result).toEqual(campaign);
+      expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/campaigns/31`);
+    });
+
+    it("throws EmailBisonError when EB returns a body with no data", async () => {
+      fetchMock.mockResolvedValueOnce(mockFetchResponse({ data: null }));
+
+      await expect(client.getCampaign(999)).rejects.toThrow(
+        /CAMPAIGN_NOT_FOUND/,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 15. updateCampaign — PATCH /campaigns/{id}/update
+  // -----------------------------------------------------------------------
+  describe("updateCampaign", () => {
+    it("PATCHes the campaign with snake_case body fields", async () => {
+      const updated = {
+        id: 31,
+        name: "Lime Transportation+Logistics",
+        plain_text: true,
+        open_tracking: false,
+        can_unsubscribe: true,
+        unsubscribe_text: "Unsubscribe",
+        sequence_prioritization: "followups",
+      };
+      fetchMock.mockResolvedValueOnce(mockFetchResponse({ data: updated }));
+
+      const result = await client.updateCampaign(31, {
+        plain_text: true,
+        open_tracking: false,
+        can_unsubscribe: true,
+        unsubscribe_text: "Unsubscribe",
+        sequence_prioritization: "followups",
+      });
+
+      expect(result).toEqual(updated);
+      const [url, options] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${BASE_URL}/campaigns/31/update`);
+      expect(options.method).toBe("PATCH");
+      const body = JSON.parse(options.body as string);
+      expect(body).toEqual({
+        plain_text: true,
+        open_tracking: false,
+        can_unsubscribe: true,
+        unsubscribe_text: "Unsubscribe",
+        sequence_prioritization: "followups",
+      });
+    });
+
+    it("rejects an empty params object without hitting the API", async () => {
+      await expect(client.updateCampaign(31, {})).rejects.toThrow(
+        /EMPTY_UPDATE/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 16. createCampaign — extended settings forwarded as snake_case
+  // -----------------------------------------------------------------------
+  describe("createCampaign (extended settings)", () => {
+    it("forwards extended settings (open_tracking, can_unsubscribe, etc.) when provided", async () => {
+      const created = {
+        id: 99,
+        uuid: "uuid-99",
+        name: "Lime - Email - L7 - Transportation",
+        status: "draft",
+        sequence_id: null,
+      };
+      fetchMock.mockResolvedValueOnce(mockFetchResponse({ data: created }));
+
+      await client.createCampaign({
+        name: "Lime - Email - L7 - Transportation",
+        maxEmailsPerDay: 50,
+        maxNewLeadsPerDay: 25,
+        plainText: true,
+        openTracking: false,
+        canUnsubscribe: true,
+        unsubscribeText: "Unsubscribe",
+        sequencePrioritization: "followups",
+      });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body).toMatchObject({
+        name: "Lime - Email - L7 - Transportation",
+        type: "outbound",
+        max_emails_per_day: 50,
+        max_new_leads_per_day: 25,
+        plain_text: true,
+        open_tracking: false,
+        can_unsubscribe: true,
+        unsubscribe_text: "Unsubscribe",
+        sequence_prioritization: "followups",
+      });
+    });
+
+    it("omits extended settings when caller does not provide them", async () => {
+      const created = {
+        id: 100,
+        uuid: "uuid-100",
+        name: "minimal",
+        status: "draft",
+        sequence_id: null,
+      };
+      fetchMock.mockResolvedValueOnce(mockFetchResponse({ data: created }));
+
+      await client.createCampaign({ name: "minimal" });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.open_tracking).toBeUndefined();
+      expect(body.can_unsubscribe).toBeUndefined();
+      expect(body.unsubscribe_text).toBeUndefined();
+      expect(body.sequence_prioritization).toBeUndefined();
+      expect(body.reputation_building).toBeUndefined();
+      // Existing defaults preserved.
+      expect(body.plain_text).toBe(true);
+      expect(body.max_emails_per_day).toBe(1000);
+      expect(body.max_new_leads_per_day).toBe(100);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 17. getCampaignSenderEmails — paginates /campaigns/{id}/sender-emails
+  // -----------------------------------------------------------------------
+  describe("getCampaignSenderEmails", () => {
+    it("returns the list of senders attached to a campaign", async () => {
+      const senders = [
+        { id: 50, email: "alice@1210solutionsservices.co.uk", name: "Alice" },
+        { id: 51, email: "bob@1210solutionsservices.co.uk", name: "Bob" },
+      ];
+      fetchMock.mockResolvedValueOnce(
+        mockFetchResponse(makePaginatedResponse(senders, 1, 1)),
+      );
+
+      const result = await client.getCampaignSenderEmails(42);
+      expect(result).toEqual(senders);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `${BASE_URL}/campaigns/42/sender-emails?page=1`,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 18. attachSenderEmails — POST /campaigns/{id}/attach-sender-emails
+  // -----------------------------------------------------------------------
+  describe("attachSenderEmails", () => {
+    it("POSTs the sender_email_ids array to the doc-conformant path", async () => {
+      fetchMock.mockResolvedValueOnce(mockFetchResponse({}, 204));
+
+      await client.attachSenderEmails(42, [50, 51, 52]);
+
+      const [url, options] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${BASE_URL}/campaigns/42/attach-sender-emails`);
+      expect(options.method).toBe("POST");
+      const body = JSON.parse(options.body as string);
+      expect(body).toEqual({ sender_email_ids: [50, 51, 52] });
+    });
+
+    it("rejects an empty senderEmailIds array without hitting the API", async () => {
+      await expect(client.attachSenderEmails(42, [])).rejects.toThrow(
+        /EMPTY_SENDER_LIST/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
 });

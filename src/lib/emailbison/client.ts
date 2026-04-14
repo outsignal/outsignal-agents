@@ -16,6 +16,7 @@ import type {
   PatchSenderEmailParams,
   SendReplyParams,
   SendReplyResponse,
+  UpdateCampaignParams,
 } from "./types";
 import { EmailBisonError } from "./types";
 import type { RateLimits } from "@/lib/discovery/rate-limit";
@@ -273,18 +274,141 @@ export class EmailBisonClient {
   }
 
   async createCampaign(params: CreateCampaignParams): Promise<CampaignCreateResult> {
+    // Build the request body. Per the docs, POST /api/campaigns only
+    // documents `name` + `type` as accepted on create. Extra settings
+    // (open_tracking, plain_text, etc.) are documented on the PATCH update
+    // endpoint. We forward the extras in case EB accepts them inline (the
+    // existing implementation does this for max_emails_per_day, max_new_leads_per_day
+    // and plain_text), but callers needing strict guarantees should follow
+    // up with updateCampaign() — see docs/emailbison-dedi-api-reference.md
+    // (PATCH /api/campaigns/{id}/update).
+    const body: Record<string, unknown> = {
+      name: params.name,
+      type: params.type ?? 'outbound',
+      max_emails_per_day: params.maxEmailsPerDay ?? 1000,
+      max_new_leads_per_day: params.maxNewLeadsPerDay ?? 100,
+      plain_text: params.plainText ?? true,
+    };
+    if (params.openTracking !== undefined) body.open_tracking = params.openTracking;
+    if (params.reputationBuilding !== undefined) body.reputation_building = params.reputationBuilding;
+    if (params.canUnsubscribe !== undefined) body.can_unsubscribe = params.canUnsubscribe;
+    if (params.unsubscribeText !== undefined) body.unsubscribe_text = params.unsubscribeText;
+    if (params.includeAutoRepliesInStats !== undefined) {
+      body.include_auto_replies_in_stats = params.includeAutoRepliesInStats;
+    }
+    if (params.sequencePrioritization !== undefined) {
+      body.sequence_prioritization = params.sequencePrioritization;
+    }
+
     const res = await this.request<{ data: CampaignCreateResult }>('/campaigns', {
       method: 'POST',
-      body: JSON.stringify({
-        name: params.name,
-        type: params.type ?? 'outbound',
-        max_emails_per_day: params.maxEmailsPerDay ?? 1000,
-        max_new_leads_per_day: params.maxNewLeadsPerDay ?? 100,
-        plain_text: params.plainText ?? true,
-      }),
+      body: JSON.stringify(body),
       revalidate: 0,
     });
     return res.data;
+  }
+
+  /**
+   * Fetch the full campaign object.
+   * GET /api/campaigns/{id} per docs/emailbison-dedi-api-reference.md.
+   *
+   * Returns the full Campaign object (id, uuid, name, type, status,
+   * completion_percentage, all stats, max_emails_per_day,
+   * max_new_leads_per_day, plain_text, open_tracking, can_unsubscribe,
+   * unsubscribe_text, include_auto_replies_in_stats, sequence_prioritization,
+   * tags, created_at, updated_at).
+   *
+   * Unlike getCampaignById() (which swallows errors and returns null), this
+   * throws on any non-2xx so callers can distinguish "not found" from "rate
+   * limited" or "auth failed".
+   */
+  async getCampaign(campaignId: number): Promise<Campaign> {
+    const res = await this.request<{ data: Campaign }>(
+      `/campaigns/${campaignId}`,
+      { revalidate: 0 },
+    );
+    if (!res?.data) {
+      throw new EmailBisonError(
+        'CAMPAIGN_NOT_FOUND',
+        404,
+        `No campaign data returned for id=${campaignId}`,
+      );
+    }
+    return res.data;
+  }
+
+  /**
+   * Update campaign settings.
+   * PATCH /api/campaigns/{id}/update per docs/emailbison-dedi-api-reference.md.
+   *
+   * Pass any subset of the documented fields (UpdateCampaignParams uses
+   * snake_case to match the EB body 1:1). The endpoint is partial — fields
+   * not included in the request are left unchanged.
+   *
+   * Returns the updated Campaign object.
+   */
+  async updateCampaign(
+    campaignId: number,
+    params: UpdateCampaignParams,
+  ): Promise<Campaign> {
+    if (Object.keys(params).length === 0) {
+      throw new EmailBisonError(
+        'EMPTY_UPDATE',
+        400,
+        'updateCampaign called with no fields to update',
+      );
+    }
+    const res = await this.request<{ data: Campaign }>(
+      `/campaigns/${campaignId}/update`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(params),
+        revalidate: 0,
+      },
+    );
+    return res.data;
+  }
+
+  /**
+   * Get all sender emails attached to a campaign.
+   * GET /api/campaigns/{campaign_id}/sender-emails per docs.
+   *
+   * Useful for verifying the sender allowlist is correctly restricted before
+   * a campaign goes active (e.g. excluding disconnected inboxes from a
+   * campaign that should only use the 34 connected ones).
+   */
+  async getCampaignSenderEmails(campaignId: number): Promise<SenderEmail[]> {
+    return this.getAllPages<SenderEmail>(`/campaigns/${campaignId}/sender-emails`);
+  }
+
+  /**
+   * Attach sender emails to a campaign — EB-documented path.
+   * POST /api/campaigns/{campaign_id}/attach-sender-emails per docs.
+   *
+   * This is the canonical endpoint per the EB docs. The existing
+   * addSenderToCampaign() method uses /add-sender-emails (an undocumented
+   * alias) and is preserved for backwards compatibility — new code should
+   * prefer this method.
+   */
+  async attachSenderEmails(
+    campaignId: number,
+    senderEmailIds: number[],
+  ): Promise<void> {
+    if (senderEmailIds.length === 0) {
+      throw new EmailBisonError(
+        'EMPTY_SENDER_LIST',
+        400,
+        'attachSenderEmails called with empty senderEmailIds array',
+      );
+    }
+    await this.request<unknown>(
+      `/campaigns/${campaignId}/attach-sender-emails`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ sender_email_ids: senderEmailIds }),
+        revalidate: 0,
+      },
+    );
   }
 
   // Note: name param is IGNORED by API — always produces "Copy of {original}"

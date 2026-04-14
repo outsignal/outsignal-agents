@@ -169,6 +169,34 @@ export interface CreateCampaignParams {
   maxEmailsPerDay?: number;
   maxNewLeadsPerDay?: number;
   plainText?: boolean;
+  // Extended settings (the docs allow these on update; create accepts at minimum
+  // name + type. We forward the extras and EB ignores anything it doesn't accept
+  // on create — callers should follow up with updateCampaign() to be safe).
+  openTracking?: boolean;
+  reputationBuilding?: boolean;
+  canUnsubscribe?: boolean;
+  unsubscribeText?: string;
+  includeAutoRepliesInStats?: boolean;
+  sequencePrioritization?: string;
+}
+
+/**
+ * Settings updatable via PATCH /api/campaigns/{id}/update.
+ * Snake-case to match the EB request body 1:1 (the PATCH endpoint takes the
+ * same field names the GET returns, so we don't camelCase-bridge here — pass
+ * the EB-native field name in directly to avoid ambiguity).
+ */
+export interface UpdateCampaignParams {
+  name?: string;
+  max_emails_per_day?: number;
+  max_new_leads_per_day?: number;
+  plain_text?: boolean;
+  open_tracking?: boolean;
+  reputation_building?: boolean;
+  can_unsubscribe?: boolean;
+  unsubscribe_text?: string | null;
+  include_auto_replies_in_stats?: boolean;
+  sequence_prioritization?: string;
 }
 
 export interface CreateLeadParams {

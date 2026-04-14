@@ -237,3 +237,84 @@ async getSequenceSteps(campaignId: number): Promise<SequenceStep[]> {
 ---
 
 *Spike completed: 2026-02-27 via live API probes (6 probe scripts)*
+
+---
+
+## Update — 2026-04-14 (Monty)
+
+To unblock Nova's deployment of 15 client-approved campaigns we extended
+`src/lib/emailbison/client.ts` with the previously-missing campaign settings
+surface so we can replicate campaign 31's (Lime Transportation+Logistics)
+settings onto the new deploys, and so 1210's email campaigns can be
+restricted to the 34 connected inboxes.
+
+### Gaps closed
+
+| Area | Method | Endpoint |
+|------|--------|----------|
+| Full campaign object | `getCampaign(id)` | `GET /api/campaigns/{id}` |
+| Settings update | `updateCampaign(id, params)` | `PATCH /api/campaigns/{id}/update` |
+| Extended create | `createCampaign({ openTracking, canUnsubscribe, unsubscribeText, sequencePrioritization, reputationBuilding, includeAutoRepliesInStats, ... })` | `POST /api/campaigns` (extras forwarded; follow up with `updateCampaign` for guarantees — see note below) |
+| Read sender allowlist | `getCampaignSenderEmails(id)` | `GET /api/campaigns/{id}/sender-emails` |
+| Restrict sender allowlist (doc-conformant) | `attachSenderEmails(id, ids)` | `POST /api/campaigns/{id}/attach-sender-emails` |
+
+The existing `addSenderToCampaign` (path: `/add-sender-emails`) is preserved
+as an undocumented alias. New code should prefer `attachSenderEmails` (the
+EB-documented path) for safety against future EB deprecations.
+
+The existing `removeSenderFromCampaign` already targets the documented
+`DELETE /api/campaigns/{id}/remove-sender-emails` path.
+
+### POST vs PATCH note (on extended create)
+
+The EB docs only document `name` + `type` as accepted on `POST /api/campaigns`.
+The settings fields (`max_emails_per_day`, `plain_text`, `open_tracking`,
+`can_unsubscribe`, `unsubscribe_text`, `sequence_prioritization`, etc.) are
+documented on the PATCH update endpoint. Our existing implementation
+already forwarded `max_emails_per_day`, `max_new_leads_per_day` and
+`plain_text` on create (which works in practice, validated against live EB),
+so we extended that pattern to cover the remaining fields. Callers who need
+strict guarantees should still follow up the create with `updateCampaign()`
+to be safe.
+
+### Gaps remaining
+
+- **Sender allowlist as a "replace" operation**: there is no documented
+  `PUT /api/campaigns/{id}/sender-emails` (replace) endpoint. To restrict a
+  campaign to N specific senders, the caller must:
+    1. `getCampaignSenderEmails(id)` to read the current set
+    2. Compute (current ∩ allowed) and (current \ allowed)
+    3. `removeSenderFromCampaign(id, senderId)` for each sender to remove
+       (one at a time — the existing method takes a single id) — or batch
+       via the documented `DELETE /api/campaigns/{id}/remove-sender-emails`
+       which accepts `sender_email_ids: number[]`. The existing client
+       method already passes an array.
+    4. `attachSenderEmails(id, idsToAdd)` for any allowed senders not yet
+       attached.
+  The 1210 case (restrict to 34 connected, exclude 25 disconnected on
+  `1210solutionsservices.co.uk`) is supported via this read-diff-write
+  flow. It is NOT a single API call.
+
+- **Sequence step v1.1 endpoints** (`/api/campaigns/v1.1/{id}/sequence-steps`):
+  not exposed in the client. The existing `getSequenceSteps` /
+  `createSequenceStep` use the v1 (deprecated per docs) path. Out of
+  scope for this change — flagged for a future spike.
+
+- **Schedule endpoints** (`POST /api/campaigns/{id}/schedule`,
+  `GET/PUT /api/campaigns/{id}/schedule`,
+  `POST /api/campaigns/{id}/create-schedule-from-template`): not exposed.
+  Flagged as future work — currently set in the EB UI for each campaign.
+
+- **Tags** (`POST /api/tags/attach-to-campaigns` /
+  `POST /api/tags/remove-from-campaigns`): not exposed in the client. Tags
+  are currently set in the EB UI.
+
+- **Custom tracking domain** (`POST /api/custom-tracking-domain`,
+  `GET /api/custom-tracking-domain/{id}`): not exposed. Out of scope —
+  we use EB's default tracking domain.
+
+- **Archive campaign** (`PATCH /api/campaigns/{id}/archive`): not exposed.
+  Currently a manual EB UI action.
+
+These gaps are listed for follow-up sessions; closing them was outside the
+scope of unblocking the 15-campaign deployment.
