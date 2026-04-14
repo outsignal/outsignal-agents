@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
-import { createInviteAndSendEmail } from "../route";
+import { createInviteAndSendEmail } from "@/lib/member-invite";
 
 type RouteContext = { params: Promise<{ slug: string }> };
 
