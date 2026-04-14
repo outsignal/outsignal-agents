@@ -818,11 +818,40 @@ export async function notifyCampaignLive(params: {
   }
 }
 
+/**
+ * Entry used by the disconnect alert. Mirrors
+ * `DisconnectedEntry` in `@/lib/inbox-health/monitor` but is redeclared
+ * here to avoid a cyclic import of the monitor from the notifications
+ * module. Callers pass the monitor output straight through.
+ */
+export interface InboxDisconnectEntry {
+  email: string;
+  firstDisconnectedAt: string;
+  ageDays: number;
+  neverConnected: boolean;
+}
+
+/**
+ * Send the "inbox disconnection" alert email. New categorisation
+ * (2026-04-14) differentiates:
+ *
+ * - Newly disconnected (ageDays <= 1, was previously connected) — urgent.
+ * - Persistent (3-7 days) — elevated warning.
+ * - Critical (>7 days) — "needs immediate action".
+ * - Stale provisioning (never authenticated) — separate onboarding-style
+ *   alert, because these inboxes should not be lumped in with inboxes
+ *   that were connected and then disconnected.
+ *
+ * Reconnections are still included for completeness.
+ */
 export async function notifyInboxDisconnect(params: {
   workspaceSlug: string;
   workspaceName: string;
-  newDisconnections: string[];
-  persistentDisconnections: string[];
+  newDisconnections: InboxDisconnectEntry[];
+  recentDisconnections: InboxDisconnectEntry[];
+  persistentDisconnections: InboxDisconnectEntry[];
+  criticalDisconnections: InboxDisconnectEntry[];
+  staleProvisioning: InboxDisconnectEntry[];
   reconnections: string[];
   totalDisconnected: number;
   totalConnected: number;
@@ -836,47 +865,108 @@ export async function notifyInboxDisconnect(params: {
     process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.outsignal.ai";
   const inboxHealthUrl = `${adminBaseUrl}/workspace/${params.workspaceSlug}/inbox-health`;
   const newCount = params.newDisconnections.length;
+  const recentCount = params.recentDisconnections.length;
   const persistentCount = params.persistentDisconnections.length;
+  const criticalCount = params.criticalDisconnections.length;
+  const staleCount = params.staleProvisioning.length;
   const hasNew = newCount > 0;
+  const hasRecent = recentCount > 0;
   const hasPersistent = persistentCount > 0;
+  const hasCritical = criticalCount > 0;
+  const hasStale = staleCount > 0;
+  const hasReconnections = params.reconnections.length > 0;
 
-  // Determine header based on what we have
-  const headerText = hasNew
-    ? "Inbox Disconnection Alert"
-    : hasPersistent
-      ? "Inbox Still Disconnected"
-      : "Inboxes Reconnected";
+  // Determine header — critical takes precedence, then new disconnects,
+  // then provisioning stalls, then persistent, finally reconnect-only.
+  const headerText = hasCritical
+    ? "Critical: Inboxes Need Immediate Action"
+    : hasNew
+      ? "Inbox Disconnection Alert"
+      : hasStale
+        ? "Inboxes Need Onboarding"
+        : hasPersistent
+          ? "Inbox Still Disconnected"
+          : "Inboxes Reconnected";
 
   // --- Email to admin only (Slack goes via ops channel in notify()) ---
   // Use ADMIN_EMAIL env var — workspace.notificationEmails are client emails
   const adminEmail = process.env.ADMIN_EMAIL;
-  if (adminEmail && (hasNew || hasPersistent || params.reconnections.length > 0)) {
+  const anyAlertContent =
+    hasNew ||
+    hasRecent ||
+    hasPersistent ||
+    hasCritical ||
+    hasStale ||
+    hasReconnections;
+  if (adminEmail && anyAlertContent) {
     try {
       const recipients = [adminEmail];
       const verified = verifyEmailRecipients(recipients, "admin", "notifyInboxDisconnect");
       if (verified.length === 0) return;
       {
-        // Build subject line
+        // Build subject line — lead with criticality.
         const subjectParts: string[] = [];
+        if (hasCritical)
+          subjectParts.push(
+            `CRITICAL ${criticalCount} Inbox${criticalCount !== 1 ? "es" : ""} >7d`,
+          );
         if (hasNew)
           subjectParts.push(
-            `${newCount} Inbox${newCount !== 1 ? "es" : ""} Disconnected`,
+            `${newCount} New Disconnect${newCount !== 1 ? "s" : ""}`,
           );
-        if (hasPersistent)
+        if (hasPersistent && !hasCritical)
           subjectParts.push(
             `${persistentCount} Still Disconnected`,
+          );
+        if (hasStale)
+          subjectParts.push(
+            `${staleCount} Need Onboarding`,
           );
         const subject = subjectParts.length > 0
           ? `[${params.workspaceName}] ${subjectParts.join(" + ")}`
           : `Inboxes Reconnected — ${params.workspaceName}`;
 
-        // Build table section for a list of emails with status pills
-        const buildEmailListHtml = (
-          emails: string[],
+        /**
+         * Render a list of disconnect entries with the email, an age
+         * pill, and a severity pill. `max` caps the visible rows;
+         * overflow is summarised on a trailing row.
+         */
+        const buildEntryListHtml = (
+          entries: InboxDisconnectEntry[],
           max: number,
           pillLabel: string,
           pillColor: string,
           pillBg: string,
+        ): string => {
+          const rows = entries
+            .slice(0, max)
+            .map((entry) => {
+              const ageText =
+                entry.ageDays === 0
+                  ? "today"
+                  : `${entry.ageDays} day${entry.ageDays !== 1 ? "s" : ""}`;
+              return `<tr>
+                  <td style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
+                    <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${entry.email}</span>
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#71717a;margin-left:8px;">${ageText}</span>
+                  </td>
+                  <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:${pillColor};background-color:${pillBg};padding:3px 10px;border-radius:100px;white-space:nowrap;">${pillLabel}</span>
+                  </td>
+                </tr>`;
+            })
+            .join("");
+          const overflow =
+            entries.length > max
+              ? `<tr><td colspan="2" style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">...and ${entries.length - max} more</td></tr>`
+              : "";
+          return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${rows}${overflow}</table>`;
+        };
+
+        /** Render a plain-email reconnection list (no age pill). */
+        const buildReconnectListHtml = (
+          emails: string[],
+          max: number,
         ): string => {
           const rows = emails
             .slice(0, max)
@@ -887,7 +977,7 @@ export async function notifyInboxDisconnect(params: {
                     <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:#18181b;">${e}</span>
                   </td>
                   <td align="right" style="padding:8px 0;border-bottom:1px solid #f4f4f5;">
-                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:${pillColor};background-color:${pillBg};padding:3px 10px;border-radius:100px;white-space:nowrap;">${pillLabel}</span>
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;color:#065f46;background-color:#d1fae5;padding:3px 10px;border-radius:100px;white-space:nowrap;">Reconnected</span>
                   </td>
                 </tr>`,
             )
@@ -908,27 +998,52 @@ export async function notifyInboxDisconnect(params: {
           ),
         ];
 
+        if (hasCritical) {
+          bodyParts.push(
+            emailLabel(`Critical (>7 days) — needs immediate action (${criticalCount})`),
+            buildEntryListHtml(params.criticalDisconnections, 20, "Critical", "#7f1d1d", "#fee2e2"),
+            `<div style="margin-bottom:24px;"></div>`,
+          );
+        }
+
         if (hasNew) {
           bodyParts.push(
-            emailLabel(`Newly Disconnected (${newCount})`),
-            buildEmailListHtml(params.newDisconnections, 20, "Disconnected", "#991b1b", "#fef2f2"),
+            emailLabel(`Newly Disconnected — needs investigation (${newCount})`),
+            buildEntryListHtml(params.newDisconnections, 20, "New", "#991b1b", "#fef2f2"),
+            `<div style="margin-bottom:24px;"></div>`,
+          );
+        }
+
+        if (hasRecent) {
+          bodyParts.push(
+            emailLabel(`Recently Disconnected (1-3 days) (${recentCount})`),
+            buildEntryListHtml(params.recentDisconnections, 20, "Recent", "#92400e", "#fffbeb"),
             `<div style="margin-bottom:24px;"></div>`,
           );
         }
 
         if (hasPersistent) {
           bodyParts.push(
-            emailLabel(`Still Disconnected (${persistentCount})`),
-            buildEmailListHtml(params.persistentDisconnections, 20, "Persistent", "#92400e", "#fffbeb"),
+            emailLabel(`Persistent (3-7 days) — known issue (${persistentCount})`),
+            buildEntryListHtml(params.persistentDisconnections, 20, "Persistent", "#92400e", "#fffbeb"),
             `<div style="margin-bottom:24px;"></div>`,
           );
         }
 
-        if (params.reconnections.length > 0) {
+        if (hasStale) {
+          bodyParts.push(
+            emailDivider(),
+            emailLabel(`Needs Onboarding — never authenticated (${staleCount})`),
+            buildEntryListHtml(params.staleProvisioning, 20, "Never Connected", "#1e3a8a", "#dbeafe"),
+            `<div style="margin-bottom:24px;"></div>`,
+          );
+        }
+
+        if (hasReconnections) {
           bodyParts.push(
             emailDivider(),
             emailLabel(`Reconnected (${params.reconnections.length})`),
-            buildEmailListHtml(params.reconnections, 10, "Reconnected", "#065f46", "#d1fae5"),
+            buildReconnectListHtml(params.reconnections, 10),
             `<div style="margin-bottom:24px;"></div>`,
           );
         }

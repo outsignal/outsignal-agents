@@ -27,42 +27,123 @@ export const inboxCheckTask = schedules.task({
     const changes = await checkAllWorkspaces();
 
     for (const change of changes) {
-      const hasNewDisconnections = change.newDisconnections.length > 0;
-      const hasPersistentDisconnections = change.persistentDisconnections.length > 0;
+      const hasNew = change.newDisconnections.length > 0;
+      const hasRecent = change.recentDisconnections.length > 0;
+      const hasPersistent = change.persistentDisconnections.length > 0;
+      const hasCritical = change.criticalDisconnections.length > 0;
+      const hasStale = change.staleProvisioning.length > 0;
 
-      if (hasNewDisconnections || hasPersistentDisconnections) {
+      const hasAnyDisconnectAlert =
+        hasNew || hasRecent || hasPersistent || hasCritical || hasStale;
+
+      if (hasAnyDisconnectAlert) {
         // Email notification (no client Slack — ops Slack handled by notify() below)
         await notifyInboxDisconnect(change);
 
-        // In-app notification + ops Slack
-        const parts: string[] = [];
-        if (hasNewDisconnections) {
-          parts.push(
-            `${change.newDisconnections.length} newly disconnected: ${change.newDisconnections.slice(0, 5).join(", ")}${change.newDisconnections.length > 5 ? ` (+${change.newDisconnections.length - 5} more)` : ""}`,
-          );
-        }
-        if (hasPersistentDisconnections) {
-          parts.push(
-            `${change.persistentDisconnections.length} still disconnected: ${change.persistentDisconnections.slice(0, 5).join(", ")}${change.persistentDisconnections.length > 5 ? ` (+${change.persistentDisconnections.length - 5} more)` : ""}`,
-          );
+        // --- In-app notification + ops Slack ---
+        // Preview helper: list up to 5 emails with age, " (+N more)".
+        const preview = (
+          entries: { email: string; ageDays: number }[],
+          n = 5,
+        ): string => {
+          const shown = entries
+            .slice(0, n)
+            .map((e) =>
+              e.ageDays === 0
+                ? e.email
+                : `${e.email} (${e.ageDays}d)`,
+            )
+            .join(", ");
+          const overflow =
+            entries.length > n ? ` (+${entries.length - n} more)` : "";
+          return `${shown}${overflow}`;
+        };
+
+        // Critical alerts fire as a separate, explicit error-severity
+        // notification so they cannot get lost in the daily digest.
+        if (hasCritical) {
+          await notify({
+            type: "system",
+            severity: "error",
+            title: `CRITICAL: ${change.criticalDisconnections.length} inbox${change.criticalDisconnections.length !== 1 ? "es" : ""} disconnected >7 days — needs immediate action`,
+            message: `${change.workspaceName}: ${preview(change.criticalDisconnections)}`,
+            workspaceSlug: change.workspaceSlug,
+            metadata: {
+              criticalDisconnections: change.criticalDisconnections,
+              totalDisconnected: change.totalDisconnected,
+              totalConnected: change.totalConnected,
+            },
+          });
         }
 
-        await notify({
-          type: "system",
-          severity: hasNewDisconnections ? "error" : "warning",
-          title: hasNewDisconnections
-            ? `${change.newDisconnections.length} inbox${change.newDisconnections.length !== 1 ? "es" : ""} disconnected`
-            : `${change.persistentDisconnections.length} inbox${change.persistentDisconnections.length !== 1 ? "es" : ""} still disconnected`,
-          message: `${change.workspaceName}: ${parts.join(" | ")}`,
-          workspaceSlug: change.workspaceSlug,
-          metadata: {
-            newDisconnections: change.newDisconnections,
-            persistentDisconnections: change.persistentDisconnections,
-            reconnections: change.reconnections,
-            totalDisconnected: change.totalDisconnected,
-            totalConnected: change.totalConnected,
-          },
-        });
+        // Stale provisioning is a separate category — "needs onboarding"
+        // rather than "needs investigation". Routed as warning because
+        // these inboxes were never authenticated in the first place; no
+        // recent regression has occurred.
+        if (hasStale) {
+          await notify({
+            type: "system",
+            severity: "warning",
+            title: `${change.staleProvisioning.length} inbox${change.staleProvisioning.length !== 1 ? "es" : ""} never authenticated — needs onboarding`,
+            message: `${change.workspaceName}: ${preview(change.staleProvisioning)}`,
+            workspaceSlug: change.workspaceSlug,
+            metadata: {
+              staleProvisioning: change.staleProvisioning,
+              totalDisconnected: change.totalDisconnected,
+              totalConnected: change.totalConnected,
+            },
+          });
+        }
+
+        // Combined alert for genuine disconnects (new + recent +
+        // persistent). Severity is "error" if there is at least one new
+        // disconnect (possible regression), otherwise "warning".
+        if (hasNew || hasRecent || hasPersistent) {
+          const parts: string[] = [];
+          if (hasNew) {
+            parts.push(
+              `${change.newDisconnections.length} newly disconnected: ${preview(change.newDisconnections)}`,
+            );
+          }
+          if (hasRecent) {
+            parts.push(
+              `${change.recentDisconnections.length} recently disconnected (1-3d): ${preview(change.recentDisconnections)}`,
+            );
+          }
+          if (hasPersistent) {
+            parts.push(
+              `${change.persistentDisconnections.length} persistent (3-7d): ${preview(change.persistentDisconnections)}`,
+            );
+          }
+
+          const primaryCount = hasNew
+            ? change.newDisconnections.length
+            : hasPersistent
+              ? change.persistentDisconnections.length
+              : change.recentDisconnections.length;
+
+          const title = hasNew
+            ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} newly disconnected`
+            : hasPersistent
+              ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} persistently disconnected (3-7 days)`
+              : `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} recently disconnected`;
+
+          await notify({
+            type: "system",
+            severity: hasNew ? "error" : "warning",
+            title,
+            message: `${change.workspaceName}: ${parts.join(" | ")}`,
+            workspaceSlug: change.workspaceSlug,
+            metadata: {
+              newDisconnections: change.newDisconnections,
+              recentDisconnections: change.recentDisconnections,
+              persistentDisconnections: change.persistentDisconnections,
+              reconnections: change.reconnections,
+              totalDisconnected: change.totalDisconnected,
+              totalConnected: change.totalConnected,
+            },
+          });
+        }
       }
 
       if (change.reconnections.length > 0) {
@@ -210,7 +291,10 @@ export const inboxCheckTask = schedules.task({
       workspacesWithChanges: changes.map((c) => ({
         workspace: c.workspaceSlug,
         newDisconnections: c.newDisconnections.length,
+        recentDisconnections: c.recentDisconnections.length,
         persistentDisconnections: c.persistentDisconnections.length,
+        criticalDisconnections: c.criticalDisconnections.length,
+        staleProvisioning: c.staleProvisioning.length,
         reconnections: c.reconnections.length,
       })),
       senderHealth: {
