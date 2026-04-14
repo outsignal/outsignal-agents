@@ -11,9 +11,11 @@
  * The worker source is excluded from the root tsconfig but vitest compiles
  * it via esbuild on-demand, so a relative import works at test time.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   getSpreadDelay,
+  getRemainingBusinessMs,
+  getLondonHoursMinutes,
   SPREAD_MIN_DELAY,
   SPREAD_MAX_DELAY,
   SPREAD_FALLBACK_DELAY,
@@ -92,5 +94,54 @@ describe("getSpreadDelay (LinkedIn worker scheduler)", () => {
     expect(Number.isFinite(delay)).toBe(true);
     expect(delay).toBeGreaterThanOrEqual(SPREAD_MIN_DELAY);
     expect(delay).toBeLessThanOrEqual(SPREAD_MAX_DELAY);
+  });
+});
+
+// F4 regression: `getRemainingBusinessMs` previously used `getUTCHours`.
+// During BST (UK summer), London is UTC+1, so 5 PM London = 4 PM UTC —
+// the old code thought ~2h remained instead of ~1h, giving the spread
+// math a denominator that drained budget well past the business-day end.
+
+describe("getRemainingBusinessMs (London-local)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns ~1h when London wall-clock is 5 PM BST (16:00 UTC)", () => {
+    // 2026-05-15 16:00 UTC → 17:00 London (BST). 18:00 cutoff → ~1h left.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-15T16:00:00Z"));
+
+    const { hour } = getLondonHoursMinutes();
+    expect(hour).toBe(17); // London wall-clock, not UTC
+
+    const ms = getRemainingBusinessMs(18);
+    // ~1h ± a few ms for clock drift between the two calls.
+    const hours = ms / (60 * 60 * 1000);
+    expect(hours).toBeGreaterThan(0.99);
+    expect(hours).toBeLessThan(1.01);
+  });
+
+  it("returns ~1h when London wall-clock is 5 PM GMT (17:00 UTC)", () => {
+    // 2026-01-15 17:00 UTC → 17:00 London (GMT, UTC+0). Same 1h remaining.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-15T17:00:00Z"));
+
+    const { hour } = getLondonHoursMinutes();
+    expect(hour).toBe(17);
+
+    const ms = getRemainingBusinessMs(18);
+    const hours = ms / (60 * 60 * 1000);
+    expect(hours).toBeGreaterThan(0.99);
+    expect(hours).toBeLessThan(1.01);
+  });
+
+  it("returns 0 when London is already past the business-day end", () => {
+    // 19:30 London BST = 18:30 UTC. 18:00 cutoff → 0 remaining.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-15T18:30:00Z"));
+
+    const ms = getRemainingBusinessMs(18);
+    expect(ms).toBe(0);
   });
 });

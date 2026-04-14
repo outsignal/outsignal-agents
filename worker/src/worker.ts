@@ -20,6 +20,7 @@ import {
   getActionDelay,
   getSpreadDelay,
   getRemainingBusinessMs,
+  getLondonHoursMinutes,
   getPollDelay,
   sleep,
 } from "./scheduler.js";
@@ -863,10 +864,19 @@ export class Worker {
         const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
         const delaySec = Math.round(delay / 1000);
         const totalRemaining = this.getTotalDailyRemaining(usageData);
-        const now = new Date();
-        const hoursLeft = Math.max(0, 18 - (now.getUTCHours() + now.getUTCMinutes() / 60));
+        // Pick remaining per type for log transparency. Same shape the
+        // /api/linkedin/usage endpoint returns.
+        const pick = (slot: unknown): number => {
+          const s = slot as { remaining?: number } | undefined;
+          return typeof s?.remaining === "number" ? Math.max(0, s.remaining) : 0;
+        };
+        const connRemaining = pick(usageData?.connections);
+        const msgRemaining = pick(usageData?.messages);
+        const pvRemaining = pick(usageData?.profileViews);
+        const { hour, minute } = getLondonHoursMinutes();
+        const hoursLeft = Math.max(0, 18 - (hour + minute / 60));
         console.log(
-          `[Worker] Waiting ${delaySec}s before next action (~${totalRemaining} total daily actions remaining over ${hoursLeft.toFixed(1)}h)`,
+          `[Worker] ${sender.name}: spread ${connRemaining}c + ${msgRemaining}m + ${pvRemaining}pv (total ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
         );
         await sleep(delay);
       }

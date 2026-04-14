@@ -177,16 +177,43 @@ export function getSpreadDelay(
 }
 
 /**
- * Compute milliseconds until end of today's business window (UTC-based approximation).
- * Worker assumes UTC for business hour math — this matches the scheduler's
- * existing convention (London business hours are roughly UTC-aligned year-round).
+ * Extract the current London wall-clock hour/minute regardless of whether
+ * London is on GMT (winter, UTC+0) or BST (summer, UTC+1). Using raw UTC
+ * hours drifts by 1h during BST, which caused the spread math to believe
+ * the business day ended an hour later than it actually did — the 6 PM
+ * cut-off was computed as 5 PM UK during BST, leaving one extra hour for
+ * actions that would then drain outside business hours.
+ */
+export function getLondonHoursMinutes(
+  now: Date = new Date(),
+): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hourPart = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const minutePart = parts.find((p) => p.type === "minute")?.value ?? "0";
+  // `en-GB` with `hour: "2-digit"` can return "24" at midnight — normalise.
+  const rawHour = parseInt(hourPart, 10);
+  const hour = rawHour === 24 ? 0 : rawHour;
+  const minute = parseInt(minutePart, 10);
+  return { hour, minute };
+}
+
+/**
+ * Compute milliseconds until end of today's business window in London time.
+ * Uses Intl.DateTimeFormat with `timeZone: "Europe/London"` to follow the
+ * same pattern as isWithinBusinessHours, so the cutoff lands at the correct
+ * wall-clock hour regardless of GMT/BST.
  */
 export function getRemainingBusinessMs(
   businessEndHour: number = 18,
 ): number {
-  const now = new Date();
-  const currentHourUTC = now.getUTCHours() + now.getUTCMinutes() / 60;
-  const remainingHours = Math.max(0, businessEndHour - currentHourUTC);
+  const { hour, minute } = getLondonHoursMinutes();
+  const currentHourLondon = hour + minute / 60;
+  const remainingHours = Math.max(0, businessEndHour - currentHourLondon);
   return remainingHours * 60 * 60 * 1000;
 }
 

@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { checkBudget, consumeBudget, getWarmupLimits, progressWarmup, getAccountWarmupSchedule } from "@/lib/linkedin/rate-limiter";
+import {
+  checkBudget,
+  consumeBudget,
+  getSenderBudget,
+  getWarmupLimits,
+  progressWarmup,
+  getAccountWarmupSchedule,
+} from "@/lib/linkedin/rate-limiter";
 
 // ─── getWarmupLimits ────────────────────────────────────────────────────────
 
@@ -528,6 +535,243 @@ describe("checkBudget", () => {
     await checkBudget("sender-1", "message");
 
     expect(prisma.linkedInConnection.count).not.toHaveBeenCalled();
+  });
+
+  // ── F5: profile_view bucket enforcement ─────────────────────────────────
+  //
+  // profile_view and check_connection share a bucket. Running actions of
+  // either type must be counted against the shared daily profile-view limit.
+
+  it("counts running actions across the shared profile_view/check_connection bucket", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 20,
+      dailyMessageLimit: 30,
+      dailyProfileViewLimit: 50,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      profileViews: 0,
+    });
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+
+    await checkBudget("sender-1", "profile_view");
+
+    const countCall = (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mock.calls.find(
+      (args) => {
+        const where = args[0]?.where;
+        return where?.status === "running" && Array.isArray(where?.actionType?.in);
+      },
+    );
+    expect(countCall).toBeDefined();
+    expect(countCall![0].where.actionType.in).toEqual(
+      expect.arrayContaining(["profile_view", "check_connection"]),
+    );
+  });
+
+  it("blocks profile_view when running count + used exceeds shared bucket limit", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 20,
+      dailyMessageLimit: 30,
+      dailyProfileViewLimit: 10,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    // usage=9 + 5 running = 14 > any jittered 10 → block
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      profileViews: 9,
+    });
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(5);
+
+    const result = await checkBudget("sender-1", "profile_view");
+
+    expect(result.allowed).toBe(false);
+    expect(result.remaining).toBe(0);
+  });
+
+  // ── F5: null/undefined usage field fallback ─────────────────────────────
+  //
+  // If the daily usage row exists but the counter field is null/undefined
+  // (schema migration, test fixture, whatever), we must treat it as 0 —
+  // NOT NaN, which would poison `remaining` math downstream.
+
+  it("treats null usage field as 0 (no NaN remaining)", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 10,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: null, // explicit null — should fall back to 0
+    });
+
+    const result = await checkBudget("sender-1", "connect");
+
+    expect(result.allowed).toBe(true);
+    expect(Number.isFinite(result.remaining)).toBe(true);
+    expect(result.remaining).toBeGreaterThan(0);
+  });
+
+  it("treats undefined usage field as 0 (no NaN remaining)", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 10,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      // connectionsSent omitted entirely
+    });
+
+    const result = await checkBudget("sender-1", "connect");
+
+    expect(result.allowed).toBe(true);
+    expect(Number.isFinite(result.remaining)).toBe(true);
+    expect(result.remaining).toBeGreaterThan(0);
+  });
+});
+
+// ─── getSenderBudget ─────────────────────────────────────────────────────────
+//
+// F2 regression: getSenderBudget previously used raw `limit - sent` which
+// ignored the pending-count reduction, acceptance-rate reduction, and
+// running-action subtraction. The worker's spread math (which sums
+// `remaining` across connections + messages + profile views) therefore
+// over-estimated daily budget and front-loaded sending. Fix: route every
+// `remaining` through checkBudget so the gate logic lines up exactly.
+
+describe("getSenderBudget (mirrors checkBudget gate logic)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (prisma.linkedInConnection.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+  });
+
+  it("halves connections remaining when pending count triggers 50% reduction at 1600", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 20,
+      dailyMessageLimit: 30,
+      dailyProfileViewLimit: 50,
+      pendingConnectionCount: 1600, // 1500 ≤ x < 2000 → floor(limit / 2)
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 0,
+      messagesSent: 0,
+      profileViews: 0,
+    });
+
+    const budget = await getSenderBudget("sender-1");
+
+    expect(budget).not.toBeNull();
+    // Jittered base ~16-24. After halving: ~8-12. Must be ≤ floor(24/2) = 12.
+    expect(budget!.connections.remaining).toBeLessThanOrEqual(12);
+    // And strictly less than the raw limit field (which is unreduced).
+    expect(budget!.connections.remaining).toBeLessThan(budget!.connections.limit);
+    // Messages/profile views are unaffected by pending count — full remaining.
+    expect(budget!.messages.remaining).toBeGreaterThan(0);
+    expect(budget!.profileViews.remaining).toBeGreaterThan(0);
+  });
+
+  it("caps connections remaining at 3 when pending count hits 2000", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 20,
+      dailyMessageLimit: 30,
+      dailyProfileViewLimit: 50,
+      pendingConnectionCount: 2000,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 0,
+      messagesSent: 0,
+      profileViews: 0,
+    });
+
+    const budget = await getSenderBudget("sender-1");
+
+    expect(budget).not.toBeNull();
+    expect(budget!.connections.remaining).toBeLessThanOrEqual(3);
+  });
+
+  it("returns 0 remaining for connections when acceptance-rate gate blocks", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 20,
+      dailyMessageLimit: 30,
+      dailyProfileViewLimit: 50,
+      pendingConnectionCount: 0,
+      acceptanceRate: 0.05, // below 10%
+    });
+    (prisma.linkedInConnection.count as ReturnType<typeof vi.fn>).mockResolvedValue(100);
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 0,
+      messagesSent: 0,
+      profileViews: 0,
+    });
+
+    const budget = await getSenderBudget("sender-1");
+
+    expect(budget).not.toBeNull();
+    // Acceptance gate blocks connects → remaining must be 0.
+    expect(budget!.connections.remaining).toBe(0);
+    // Messages/views unaffected — full remaining.
+    expect(budget!.messages.remaining).toBeGreaterThan(0);
+    expect(budget!.profileViews.remaining).toBeGreaterThan(0);
+  });
+
+  it("subtracts running actions from remaining (race-safe)", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 10,
+      dailyMessageLimit: 10,
+      dailyProfileViewLimit: 10,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 5,
+      messagesSent: 5,
+      profileViews: 5,
+    });
+    // 3 running in each bucket
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+
+    const budget = await getSenderBudget("sender-1");
+
+    expect(budget).not.toBeNull();
+    // Min jittered limit ~8. effectiveUsage = 5 + 3 = 8. Remaining ≤ ~4.
+    expect(budget!.connections.remaining).toBeLessThanOrEqual(4);
+    expect(budget!.messages.remaining).toBeLessThanOrEqual(4);
+    expect(budget!.profileViews.remaining).toBeLessThanOrEqual(4);
+  });
+
+  it("returns null for missing sender", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const budget = await getSenderBudget("missing");
+
+    expect(budget).toBeNull();
   });
 });
 

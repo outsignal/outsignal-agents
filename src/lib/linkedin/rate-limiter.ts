@@ -12,14 +12,36 @@ import { ACTION_TYPE_TO_LIMIT_FIELD, ACTION_TYPE_TO_USAGE_FIELD } from "./types"
  * Action types that share a daily budget bucket. checkBudget counts
  * running actions across every type in the bucket so a mid-flight connect
  * consumes the same limit as a mid-flight connection_request.
+ *
+ * Exported so filterByBudget can key its in-flight counter on the bucket
+ * rather than the raw actionType — a batch containing BOTH "connect" and
+ * "connection_request" would otherwise double-approve against a shared
+ * daily limit (same bucket, different Map keys).
  */
-const BUDGET_BUCKETS: Record<string, LinkedInActionType[]> = {
+export const BUDGET_BUCKETS: Record<string, LinkedInActionType[]> = {
   connect: ["connect", "connection_request"],
   connection_request: ["connect", "connection_request"],
   message: ["message"],
   profile_view: ["profile_view", "check_connection"],
   check_connection: ["profile_view", "check_connection"],
 };
+
+/**
+ * Canonical bucket key for an actionType. Used by filterByBudget to key its
+ * in-flight accumulator on the bucket (shared daily limit) rather than on
+ * the raw actionType — otherwise a batch containing both `connect` and
+ * `connection_request` would get separate Map slots but compete for the
+ * same daily limit.
+ */
+export function bucketKeyFor(actionType: LinkedInActionType): string {
+  // Pick the first type in the bucket as the canonical key so all members
+  // of a shared bucket collapse to the same Map slot.
+  for (const [, types] of Object.entries(BUDGET_BUCKETS)) {
+    if (types.includes(actionType)) return types[0];
+  }
+  // Unknown types (defensive): fall back to the raw actionType.
+  return actionType;
+}
 
 /** Circuit breaker threshold — trip after this many consecutive failures */
 const CIRCUIT_BREAKER_THRESHOLD = 5;
@@ -149,11 +171,19 @@ async function getOrCreateDailyUsage(senderId: string) {
 /**
  * Check if a sender has budget remaining for a given action type.
  * P1 connection actions bypass the daily budget entirely (capped at P1_DAILY_CAP per sender per day).
+ *
+ * Performance: callers that invoke this for multiple candidates within a
+ * single tick (e.g. filterByBudget looping a batch of 10) can pass a
+ * `runningCountCache` — a Map keyed by bucket name — so checkBudget skips
+ * the running-count DB query and reads the pre-computed count instead.
+ * Without the cache, each call would run its own linkedInAction.count
+ * query (10 candidates × 3 action types = 30 queries per poll).
  */
 export async function checkBudget(
   senderId: string,
   actionType: LinkedInActionType,
   priority: number = 5,
+  runningCountCache?: Map<string, number>,
 ): Promise<BudgetCheckResult> {
   const sender = await prisma.sender.findUnique({ where: { id: senderId } });
   if (!sender) {
@@ -270,15 +300,23 @@ export async function checkBudget(
   // batch has been picked up (markRunning) but not yet completed, so the
   // daily usage counter hasn't been incremented yet. Without this, a second
   // poll tick could approve actions the first tick is still executing.
+  //
+  // Callers inside a batch loop pass a pre-computed cache keyed by bucket so
+  // we don't re-run this count query for every candidate. Cache miss falls
+  // through to a direct query — keeping the function safe to call standalone.
   const typesForLimit = BUDGET_BUCKETS[actionType] ?? [actionType];
+  const bucketKey = bucketKeyFor(actionType);
+  const cachedRunning = runningCountCache?.get(bucketKey);
   const runningCount =
-    (await prisma.linkedInAction.count({
-      where: {
-        senderId,
-        actionType: { in: typesForLimit },
-        status: "running",
-      },
-    })) ?? 0;
+    cachedRunning !== undefined
+      ? cachedRunning
+      : ((await prisma.linkedInAction.count({
+          where: {
+            senderId,
+            actionType: { in: typesForLimit },
+            status: "running",
+          },
+        })) ?? 0);
   const effectiveUsage = used + runningCount;
   const remaining = Math.max(0, effectiveLimit - effectiveUsage);
 
@@ -321,6 +359,16 @@ export async function consumeBudget(
 
 /**
  * Get the full budget status for a sender (all action types).
+ *
+ * `remaining` mirrors the full checkBudget gate logic so external callers
+ * (worker spread math, /api/linkedin/usage, /api/senders/[id]/budget,
+ * /api/linkedin/plan) see the SAME effective budget the queue enforces —
+ * including pending-count reductions (halved at 1500, capped at 3 at 2000),
+ * acceptance-rate reductions, running-action subtraction, and
+ * status/health blockers. If the gate blocks the action entirely, remaining
+ * is 0.
+ *
+ * `sent` and `limit` stay raw for UI transparency.
  */
 export async function getSenderBudget(senderId: string) {
   const sender = await prisma.sender.findUnique({ where: { id: senderId } });
@@ -328,21 +376,40 @@ export async function getSenderBudget(senderId: string) {
 
   const usage = await getOrCreateDailyUsage(senderId);
 
+  // Priority 5 = normal priority (no P1 bypass, no warm-lead fast-track).
+  // Using priority 5 means remaining reflects the STANDARD daily budget,
+  // which is what the worker needs for spread math. P1 slots are reserved
+  // for warm leads and must not inflate the spread denominator.
+  const [connBudget, msgBudget, pvBudget] = await Promise.all([
+    checkBudget(senderId, "connection_request", 5),
+    checkBudget(senderId, "message", 5),
+    checkBudget(senderId, "profile_view", 5),
+  ]);
+
+  const effectiveRemaining = (result: BudgetCheckResult): number => {
+    if (!result.allowed) return 0;
+    // checkBudget can return Infinity for the withdraw bypass — clamp to a
+    // finite number here so downstream math (spread delay denominator,
+    // JSON serialization) never hits NaN/Infinity.
+    if (!Number.isFinite(result.remaining)) return 0;
+    return Math.max(0, result.remaining);
+  };
+
   return {
     connections: {
       sent: usage.connectionsSent,
       limit: applyJitter(sender.dailyConnectionLimit, senderId),
-      remaining: Math.max(0, applyJitter(sender.dailyConnectionLimit, senderId) - usage.connectionsSent),
+      remaining: effectiveRemaining(connBudget),
     },
     messages: {
       sent: usage.messagesSent,
       limit: applyJitter(sender.dailyMessageLimit, senderId),
-      remaining: Math.max(0, applyJitter(sender.dailyMessageLimit, senderId) - usage.messagesSent),
+      remaining: effectiveRemaining(msgBudget),
     },
     profileViews: {
       sent: usage.profileViews,
       limit: applyJitter(sender.dailyProfileViewLimit, senderId),
-      remaining: Math.max(0, applyJitter(sender.dailyProfileViewLimit, senderId) - usage.profileViews),
+      remaining: effectiveRemaining(pvBudget),
     },
   };
 }

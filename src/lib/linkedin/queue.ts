@@ -8,7 +8,12 @@
 import { prisma } from "@/lib/db";
 import { WITHDRAWAL_COOLDOWN_MS } from "./types";
 import type { EnqueueActionParams, LinkedInActionType } from "./types";
-import { checkBudget, checkCircuitBreaker } from "./rate-limiter";
+import {
+  BUDGET_BUCKETS,
+  bucketKeyFor,
+  checkBudget,
+  checkCircuitBreaker,
+} from "./rate-limiter";
 
 /**
  * Enqueue a LinkedIn action. Returns the action ID.
@@ -173,26 +178,68 @@ export async function getNextBatch(
     }),
   ]);
 
+  // Pre-compute the running-action count per budget bucket ONCE per poll
+  // tick. Without this, checkBudget would run `linkedInAction.count` on every
+  // iteration of filterByBudget — 10 candidates × 3 action types = 30 queries
+  // per poll. We build a cache keyed by bucket name (so `connect` and
+  // `connection_request` share a slot — they share a daily limit) and pass
+  // it into every checkBudget call inside the loop.
+  //
+  // Bucket keys come from `bucketKeyFor` so the cache stays aligned with
+  // checkBudget's internal bucket derivation. Distinct bucket keys appear
+  // once: connect-bucket, profile_view-bucket, message.
+  const runningCountCache = new Map<string, number>();
+  const distinctBuckets = new Map<string, LinkedInActionType[]>();
+  for (const types of Object.values(BUDGET_BUCKETS)) {
+    distinctBuckets.set(bucketKeyFor(types[0]), types);
+  }
+  await Promise.all(
+    Array.from(distinctBuckets.entries()).map(async ([key, types]) => {
+      const count = await prisma.linkedInAction.count({
+        where: {
+          senderId,
+          actionType: { in: types },
+          status: "running",
+        },
+      });
+      runningCountCache.set(key, count);
+    }),
+  );
+
   // Budget-filter each group independently against its own daily limit.
   //
-  // Tracks in-flight consumption inside the filter loop to prevent a same-tick
-  // race: checkBudget reads committed DB state only, so a batch with remaining=1
-  // would otherwise approve every candidate in the loop (all reading the same
-  // "remaining=1" value) and overshoot the daily limit. James Bessey-Saldanha
-  // sent 8/6 connections in one day due to this race (2026-04-14).
+  // Tracks in-flight consumption inside the filter loop to prevent a
+  // same-tick race: checkBudget reads committed DB state only, so a batch
+  // with remaining=1 would otherwise approve every candidate in the loop
+  // (all reading the same "remaining=1" value) and overshoot the daily
+  // limit. James Bessey-Saldanha sent 8/6 connections in one day due to
+  // this race (2026-04-14).
+  //
+  // Keying by BUCKET (not raw actionType): `connect` and `connection_request`
+  // share `dailyConnectionLimit` via BUDGET_BUCKETS. A batch containing both
+  // types would otherwise get separate Map slots but compete for the same
+  // underlying limit — `connect` takes 1, `connection_request` takes 1, both
+  // pass because neither type-slot sees the other's consumption. The bucket
+  // key collapses them to a single counter.
   const filterByBudget = async (
     actions: typeof connectionActions,
     limit: number,
   ) => {
     const filtered: typeof actions = [];
-    const inFlightByType = new Map<string, number>();
+    const inFlightByBucket = new Map<string, number>();
     for (const action of actions) {
       if (filtered.length >= limit) break;
-      const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
-      const alreadyTakenThisTick = inFlightByType.get(action.actionType) ?? 0;
+      const bucketKey = bucketKeyFor(action.actionType as LinkedInActionType);
+      const budget = await checkBudget(
+        senderId,
+        action.actionType as LinkedInActionType,
+        action.priority,
+        runningCountCache,
+      );
+      const alreadyTakenThisTick = inFlightByBucket.get(bucketKey) ?? 0;
       if (budget.allowed && budget.remaining > alreadyTakenThisTick) {
         filtered.push(action);
-        inFlightByType.set(action.actionType, alreadyTakenThisTick + 1);
+        inFlightByBucket.set(bucketKey, alreadyTakenThisTick + 1);
       }
     }
     return filtered;

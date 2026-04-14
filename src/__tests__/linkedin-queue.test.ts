@@ -13,8 +13,23 @@ import {
 } from "@/lib/linkedin/queue";
 import { checkBudget } from "@/lib/linkedin/rate-limiter";
 
-// Mock the rate-limiter module
+// Mock the rate-limiter module. Real BUDGET_BUCKETS / bucketKeyFor are
+// re-exported so the queue's bucket-keyed in-flight counter behaves
+// identically to production; only checkBudget / checkCircuitBreaker are
+// stubbed (they own the "is this action allowed" decision).
 vi.mock("@/lib/linkedin/rate-limiter", () => ({
+  BUDGET_BUCKETS: {
+    connect: ["connect", "connection_request"],
+    connection_request: ["connect", "connection_request"],
+    message: ["message"],
+    profile_view: ["profile_view", "check_connection"],
+    check_connection: ["profile_view", "check_connection"],
+  },
+  bucketKeyFor: (actionType: string) => {
+    if (actionType === "connect" || actionType === "connection_request") return "connect";
+    if (actionType === "profile_view" || actionType === "check_connection") return "profile_view";
+    return actionType;
+  },
   checkBudget: vi.fn().mockResolvedValue({ allowed: true, remaining: 10 }),
   checkCircuitBreaker: vi.fn().mockResolvedValue({ tripped: false, consecutiveFailures: 0 }),
 }));
@@ -695,6 +710,35 @@ describe("getNextBatch — independent per-type budgets", () => {
     ).length;
 
     expect(connectionCount).toBe(3);
+  });
+
+  it("bucket-keyed in-flight counter collapses connect + connection_request (shared daily limit)", async () => {
+    // F1 regression: a batch with BOTH "connect" and "connection_request"
+    // must NOT approve one of each when only 1 slot remains. Both types
+    // share dailyConnectionLimit via BUDGET_BUCKETS — keying the in-flight
+    // Map by raw actionType gave them separate slots, letting each type
+    // take 1 (total 2) against a shared `remaining=1`.
+    const mixedConnections = [
+      { ...makeAction("conn-0", "connect") },
+      { ...makeAction("req-0", "connection_request") },
+      { ...makeAction("conn-1", "connect") },
+      { ...makeAction("req-1", "connection_request") },
+    ];
+    mockFindMany(mixedConnections, []);
+
+    // usage=5/limit=6 → remaining=1 reported on every call (same snapshot).
+    mockCheckBudget.mockResolvedValue({ allowed: true, remaining: 1 });
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    const approvedConnectionTotal = batch.filter(
+      (a) => a.actionType === "connect" || a.actionType === "connection_request",
+    ).length;
+
+    // With the bucket fix: only 1 of the 4 candidates is approved, because
+    // after the first one, inFlightByBucket["connect"] = 1 and the next
+    // candidate (of either type) sees remaining=1 vs already-taken=1.
+    expect(approvedConnectionTotal).toBe(1);
   });
 
   it("in-flight counter is scoped per-type, not global", async () => {
