@@ -1,5 +1,64 @@
+# Vercel deployment ignore list.
+#
+# IMPORTANT: do NOT add entries that runtime code actually reads.
+# Known runtime reads:
+#   - dist/cli/*.js (spawned by src/lib/agents/cli-spawn.ts)
+#   - docs/clients/{slug}.md (read by profile page)
+#   - .nova/memory/** and .monty/memory/** (agent memory roots)
+# Keep all of the above INCLUDED in the deployment.
+
+# Previous exclusions (preserved)
 .trigger/
 .planning/
 .next/
-*.md
-!README.md
+
+# Root-level docs and markdown (runtime-read docs/clients/ stays because only top-level *.md and listed docs/ subfolders are excluded)
+/README.md
+/CHANGELOG.md
+/*.md
+
+# Documentation subtrees not used at runtime
+docs/api-specs/
+docs/architecture/
+docs/playbooks/
+docs/runbooks/
+docs/briefs/
+/docs/*.md
+
+# Session handover logs (project root memory/ dir — NOT the runtime .nova/memory or .monty/memory)
+/memory/
+
+# Audit artefacts (agent state, not runtime)
+/audits-*/
+
+# Worker (deployed separately on Railway)
+/worker/
+/worker-signals/
+/extension/
+
+# Local-only pipeline data (not read at runtime)
+/data/
+
+# Local workspace scratch
+/workspaces/
+
+# Build artifacts not needed in deploy (note: we do NOT exclude /dist/ — CLI bundles are spawned at runtime)
+/out/
+
+# Tests (not needed in production build)
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Dev / local files
+.env.local
+.env.development
+*.log
+/dev.log
+.DS_Store
+
+# Local eval helpers
+/verify-cookies.js
+/verify-cookies.ts
