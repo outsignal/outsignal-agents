@@ -22,6 +22,12 @@ vi.mock("@/lib/db", () => ({
     company: {
       findMany: vi.fn(),
     },
+    exclusionEntry: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    exclusionEmail: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
 }));
 
@@ -126,5 +132,54 @@ describe("promotion ICP gate", () => {
         }),
       }),
     );
+    // INV2: score must also be copied onto the PersonWorkspace row so
+    // DiscoveredPerson.icpScore and PersonWorkspace.icpScore stay in sync.
+    expect(mockUpsertPw).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          icpScore: 40,
+          icpReasoning: "Exact threshold",
+          icpConfidence: "medium",
+          icpScoredAt: expect.any(Date),
+        }),
+        update: expect.objectContaining({
+          icpScore: 40,
+          icpReasoning: "Exact threshold",
+          icpConfidence: "medium",
+          icpScoredAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it("does not touch score fields on PersonWorkspace when ICP scoring is disabled", async () => {
+    // Workspace without ICP scoring configured
+    mockWorkspace.mockResolvedValue({
+      slug: "test-ws",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+
+    const dp = makeStagedPerson({ id: "dp-no-score" });
+    mockFindManyDiscovered.mockResolvedValue([dp]);
+
+    const result = await deduplicateAndPromote("test-ws", ["run-1"]);
+
+    expect(result.promoted).toBe(1);
+    // Upsert payloads must NOT contain icp* keys when no score is available —
+    // we leave existing fields untouched rather than nulling them out.
+    const call = mockUpsertPw.mock.calls[0]?.[0] as {
+      create: Record<string, unknown>;
+      update: Record<string, unknown>;
+    };
+    expect(call).toBeDefined();
+    expect(call.create).not.toHaveProperty("icpScore");
+    expect(call.create).not.toHaveProperty("icpReasoning");
+    expect(call.create).not.toHaveProperty("icpConfidence");
+    expect(call.create).not.toHaveProperty("icpScoredAt");
+    expect(call.update).not.toHaveProperty("icpScore");
+    expect(call.update).not.toHaveProperty("icpReasoning");
+    expect(call.update).not.toHaveProperty("icpConfidence");
+    expect(call.update).not.toHaveProperty("icpScoredAt");
   });
 });

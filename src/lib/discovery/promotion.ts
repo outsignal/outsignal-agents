@@ -236,6 +236,14 @@ function findExistingPersonFromMaps(dp: StagedRecord, maps: DedupMaps): string |
   return null;
 }
 
+/** Optional ICP score data to apply to the PersonWorkspace row during promotion. */
+interface PromotionScore {
+  icpScore: number;
+  icpReasoning: string;
+  icpConfidence: "high" | "medium" | "low";
+  icpScoredAt: Date;
+}
+
 /**
  * Promote a staged DiscoveredPerson to the Person table.
  * Creates (or finds) the Person record and ensures a PersonWorkspace junction exists.
@@ -244,10 +252,16 @@ function findExistingPersonFromMaps(dp: StagedRecord, maps: DedupMaps): string |
  * Handles two cases:
  * - Has email: upsert by email (standard path)
  * - No email but has LinkedIn URL: upsert by linkedinUrl (discovery-first path)
+ *
+ * If `score` is provided, the ICP score fields are copied onto the PersonWorkspace
+ * row in both the create and update payloads. When omitted, existing score fields
+ * are left untouched (never nulled out). This keeps DiscoveredPerson.icpScore and
+ * PersonWorkspace.icpScore in sync — required for INV2 audit compliance.
  */
 async function promoteToPerson(
   dp: StagedRecord,
   workspaceSlug: string,
+  score?: PromotionScore,
 ): Promise<{ id: string }> {
   const email = dp.email ?? null;
 
@@ -308,7 +322,21 @@ async function promoteToPerson(
   // Preserve discovery sourceId (Prospeo person_id, AI Ark id, etc.) for
   // source-first enrichment: the waterfall can use the original platform's
   // ID for a direct lookup instead of generic name/company matching.
+  //
+  // When `score` is supplied, the ICP fields are written on both create and
+  // update. On update we always override — the fresh batch score is the most
+  // recent signal, and we want DiscoveredPerson.icpScore and
+  // PersonWorkspace.icpScore to stay in sync (INV2). When `score` is omitted,
+  // the spread is empty so existing fields are left untouched.
   const discoverySourceId = extractSourceId(dp.rawResponse);
+  const scorePayload = score
+    ? {
+        icpScore: score.icpScore,
+        icpReasoning: score.icpReasoning,
+        icpConfidence: score.icpConfidence,
+        icpScoredAt: score.icpScoredAt,
+      }
+    : {};
   await prisma.personWorkspace.upsert({
     where: {
       personId_workspace: {
@@ -320,10 +348,12 @@ async function promoteToPerson(
       personId: person.id,
       workspace: workspaceSlug,
       sourceId: discoverySourceId,
+      ...scorePayload,
     },
     update: {
       // Only set sourceId if not already populated (don't overwrite)
       ...(discoverySourceId ? { sourceId: discoverySourceId } : {}),
+      ...scorePayload,
     },
   });
 
@@ -687,6 +717,7 @@ export async function deduplicateAndPromote(
     // --- ICP scoring gate (BL-038) ---
     // Scores were pre-computed in batch above. Look up from scoreMap.
     // Fail-open: if score not found (batch failed for this person), promote anyway.
+    let promotionScore: PromotionScore | undefined;
     if (icpScoringEnabled) {
       const scoreResult = scoreMap.get(dp.id);
       if (scoreResult) {
@@ -709,12 +740,21 @@ export async function deduplicateAndPromote(
           scoredRejectedCount++;
           continue;
         }
+
+        // Passed the gate — forward the score to promoteToPerson so it lands
+        // on PersonWorkspace as well (INV2: keep scores in sync).
+        promotionScore = {
+          icpScore: scoreResult.score,
+          icpReasoning: scoreResult.reasoning,
+          icpConfidence: scoreResult.confidence,
+          icpScoredAt: now,
+        };
       }
       // If scoreResult is undefined, fail-open: promote without score
     }
 
     // Not a duplicate (and passed ICP gate if enabled) — promote to Person table
-    const person = await promoteToPerson(dp, workspaceSlug);
+    const person = await promoteToPerson(dp, workspaceSlug, promotionScore);
 
     // Update DiscoveredPerson record with promotion details
     await prisma.discoveredPerson.update({
