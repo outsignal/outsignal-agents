@@ -556,12 +556,12 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("Finding 2b: audit write failure propagates out of saveCampaignSequences", async () => {
+  it("Finding 2b: audit write failure propagates the error", async () => {
     // If tx.auditLog.create rejects, the $transaction callback rejects, and
-    // the whole operation must throw. This documents that audit failures
-    // propagate so callers know the save failed. Note: full rollback
-    // semantics cannot be verified against mocks — only the real Prisma
-    // client enforces atomicity.
+    // the whole operation must throw. This test proves ERROR PROPAGATION
+    // only — NOT rollback. True atomicity (both writes undone on the DB)
+    // depends on real Prisma's $transaction semantics and would require
+    // an integration test against a real database.
     mockFindUnique.mockResolvedValue({
       workspaceSlug: "test-ws",
       name: "Test Campaign",
@@ -582,5 +582,231 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
         ],
       }),
     ).rejects.toThrow(/boom/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding A: deployed/active/paused/completed campaigns reject overwrites
+  // ---------------------------------------------------------------------------
+
+  it("Finding A1: overwriting a deployed campaign's sequence throws and writes no state", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Deployed Campaign",
+      status: "deployed",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+        ],
+      }),
+    ).rejects.toThrow(/Cannot overwrite sequence.*status="deployed"/);
+
+    // No state changes — the throw must fire before any writes.
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("Finding A2: overwriting an active campaign's sequence throws", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Active Campaign",
+      status: "active",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+        ],
+      }),
+    ).rejects.toThrow(/status="active"/);
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("Finding A3: overwriting a paused campaign's sequence throws", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Paused Campaign",
+      status: "paused",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+        ],
+      }),
+    ).rejects.toThrow(/status="paused"/);
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("Finding A4: overwriting a completed campaign's sequence throws", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Completed Campaign",
+      status: "completed",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+        ],
+      }),
+    ).rejects.toThrow(/status="completed"/);
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("Finding A5: IDENTICAL content save on a deployed campaign succeeds (pure no-op)", async () => {
+    // Prior content matches the new content exactly → not an overwrite →
+    // no reset required → no status-guard violation. Should succeed.
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Deployed Campaign",
+      status: "deployed",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        status: "deployed",
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: true,
+      }),
+    );
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: SAMPLE_EMAIL_SEQUENCE,
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    // No reset flags — this is an idempotent save.
+    expect(updateArgs.data).not.toHaveProperty("contentApproved");
+    expect(updateArgs.data).not.toHaveProperty("contentApprovedAt");
+    expect(updateArgs.data).not.toHaveProperty("status");
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding B: sequencesEqual is key-order-insensitive (via canonicalize)
+  // ---------------------------------------------------------------------------
+
+  it("Finding B: reordered object keys in the new sequence are treated as equal (no reset)", async () => {
+    // Prior sequence has keys in order [position, body, subject].
+    // New sequence has keys in order [subject, body, position].
+    // Canonicalize() sorts keys before stringify → these compare equal.
+    const priorStep = { position: 1, body: "hi", subject: "test" };
+    const newStep = { subject: "test", body: "hi", position: 1 };
+
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "approved",
+      contentApproved: true,
+      emailSequence: JSON.stringify([priorStep]),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        status: "approved",
+        emailSequence: JSON.stringify([priorStep]),
+        contentApproved: true,
+      }),
+    );
+
+    await saveCampaignSequences(CAMPAIGN_ID, { emailSequence: [newStep] });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    // No overwrite detected, no reset.
+    expect(updateArgs.data).not.toHaveProperty("contentApproved");
+    expect(updateArgs.data).not.toHaveProperty("contentApprovedAt");
+    expect(updateArgs.data).not.toHaveProperty("status");
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding E: audit metadata includes statusChanged boolean
+  // ---------------------------------------------------------------------------
+
+  it("Finding E1: audit metadata includes statusChanged=false when no status transition", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: false,
+      }),
+    );
+    mockAuditCreate.mockResolvedValue({ id: "audit_e1" });
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: [
+        { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+      ],
+    });
+
+    const auditArgs = mockAuditCreate.mock.calls[0][0];
+    expect(auditArgs.data.metadata.previousStatus).toBe("pending_approval");
+    expect(auditArgs.data.metadata.newStatus).toBe("pending_approval");
+    expect(auditArgs.data.metadata.statusChanged).toBe(false);
+  });
+
+  it("Finding E2: audit metadata includes statusChanged=true when approved → pending_approval", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "approved",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        status: "pending_approval",
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: false,
+      }),
+    );
+    mockAuditCreate.mockResolvedValue({ id: "audit_e2" });
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: [
+        { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+      ],
+    });
+
+    const auditArgs = mockAuditCreate.mock.calls[0][0];
+    expect(auditArgs.data.metadata.previousStatus).toBe("approved");
+    expect(auditArgs.data.metadata.newStatus).toBe("pending_approval");
+    expect(auditArgs.data.metadata.statusChanged).toBe(true);
   });
 });

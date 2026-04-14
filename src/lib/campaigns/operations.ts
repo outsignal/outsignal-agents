@@ -125,23 +125,43 @@ function parseJsonArray(value: string | null): unknown[] | null {
 }
 
 /**
- * Compare the serialized prior sequence against the incoming new sequence.
- * Used by saveCampaignSequences to avoid spurious contentApproved resets on
- * idempotent saves (UI retries, client-side dedup races).
+ * Canonicalize a value by recursively sorting object keys. Ensures
+ * JSON.stringify produces a stable, order-independent representation so
+ * semantically-equal sequences with reordered keys (e.g. caller-side Zod
+ * reshuffles) compare as equal.
+ */
+function canonicalize(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonicalize);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.keys(v as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, canonicalize((v as Record<string, unknown>)[k])]),
+    );
+  }
+  return v;
+}
+
+/**
+ * Compare an already-parsed prior sequence array against the incoming new
+ * sequence. Used by saveCampaignSequences to avoid spurious contentApproved
+ * resets on idempotent saves (UI retries, client-side dedup races) and on
+ * callers that reorder object keys.
  *
  * Returns true when the two logically represent the same sequence. A null
  * prior is equal to an empty incoming array (both mean "no content").
+ * Callers pass the PARSED prior (via parseJsonArray) so we avoid a redundant
+ * JSON.parse and the asymmetry where parseJsonArray returns null on malformed
+ * JSON but a raw-string equality check would see mismatched text.
  */
-function sequencesEqual(prior: string | null, next: unknown[]): boolean {
+function sequencesEqualParsed(
+  prior: unknown[] | null,
+  next: unknown[],
+): boolean {
   if (!prior) return next.length === 0;
-  try {
-    const parsedPrior = JSON.parse(prior);
-    if (!Array.isArray(parsedPrior)) return false;
-    return JSON.stringify(parsedPrior) === JSON.stringify(next);
-  } catch {
-    // malformed prior — treat as different so the reset fires conservatively
-    return false;
-  }
+  return (
+    JSON.stringify(canonicalize(prior)) === JSON.stringify(canonicalize(next))
+  );
 }
 
 /**
@@ -774,24 +794,27 @@ export async function saveCampaignSequences(
     //   1. The channel is being saved in this call (not undefined).
     //   2. The channel had PRIOR CONTENT — first-time saves never count
     //      (campaign was never approved against prior copy for this channel).
-    //   3. The new content DIFFERS from the prior content (sequencesEqual
+    //   3. The new content DIFFERS from the prior content (sequencesEqualParsed
     //      catches UI retries / idempotent clients so they don't spuriously
-    //      strip approval).
+    //      strip approval; canonicalize() also neutralises object-key reorders).
     // A clear (new=[], prior non-empty) satisfies all three → IS an
     // overwrite. An empty→empty re-clear satisfies (1) + (3-negated) → NOT
     // an overwrite.
-    const emailPriorContent =
-      (parseJsonArray(current.emailSequence)?.length ?? 0) > 0;
-    const linkedinPriorContent =
-      (parseJsonArray(current.linkedinSequence)?.length ?? 0) > 0;
+    //
+    // Finding D: parse the prior sequences once and reuse. sequencesEqualParsed
+    // takes the already-parsed array so we never double-parse the same string.
+    const emailPrior = parseJsonArray(current.emailSequence);
+    const linkedinPrior = parseJsonArray(current.linkedinSequence);
+    const emailPriorContent = (emailPrior?.length ?? 0) > 0;
+    const linkedinPriorContent = (linkedinPrior?.length ?? 0) > 0;
     const emailIsOverwrite =
       emailSequence !== undefined &&
       emailPriorContent &&
-      !sequencesEqual(current.emailSequence, emailSequence);
+      !sequencesEqualParsed(emailPrior, emailSequence);
     const linkedinIsOverwrite =
       linkedinSequence !== undefined &&
       linkedinPriorContent &&
-      !sequencesEqual(current.linkedinSequence, linkedinSequence);
+      !sequencesEqualParsed(linkedinPrior, linkedinSequence);
     const isOverwrite = emailIsOverwrite || linkedinIsOverwrite;
 
     // Reset only fires when approval was true AND content actually changed.
@@ -799,7 +822,28 @@ export async function saveCampaignSequences(
     // not touch contentApproved.
     const shouldResetApproval = current.contentApproved && isOverwrite;
     const previousStatus = current.status;
-    let newStatus = previousStatus;
+
+    // Finding A: active/deployed/paused/completed campaigns must not accept
+    // silent content overwrites. Force callers to pause and re-approve via
+    // the proper flow. Throw BEFORE writing anything so no state changes.
+    if (
+      shouldResetApproval &&
+      ["deployed", "active", "paused", "completed"].includes(previousStatus)
+    ) {
+      throw new Error(
+        `Cannot overwrite sequence on campaign ${id} with status="${previousStatus}". ` +
+          `Pause the campaign first, then re-approve the new content.`,
+      );
+    }
+
+    // Finding F: single source of truth for the new status. Ternary avoids
+    // the let→mutate pattern and keeps the update-data block and audit
+    // metadata in lockstep.
+    const newStatus =
+      shouldResetApproval && previousStatus === "approved"
+        ? "pending_approval"
+        : previousStatus;
+
     if (shouldResetApproval) {
       updateData.contentApproved = false;
       updateData.contentApprovedAt = null;
@@ -809,9 +853,8 @@ export async function saveCampaignSequences(
       // must flip the status back to 'pending_approval' so the client is
       // asked to re-review the new copy. Without this, the campaign is
       // 'approved' but holds unapproved content — the exact 1210 bug.
-      if (previousStatus === "approved") {
-        updateData.status = "pending_approval";
-        newStatus = "pending_approval";
+      if (newStatus !== previousStatus) {
+        updateData.status = newStatus;
       }
     }
 
@@ -825,6 +868,10 @@ export async function saveCampaignSequences(
       // Direct tx.auditLog.create (not the shared auditLog() helper) because
       // this write MUST participate in the enclosing transaction — helper
       // uses the top-level prisma client and is fire-and-forget.
+      //
+      // NOTE: Atomicity guarantee depends on real Prisma's $transaction
+      // rollback. Unit tests verify error propagation only — true rollback
+      // would require an integration test against a real DB.
       await tx.auditLog.create({
         data: {
           action: "campaign.contentApproved.reset",
@@ -841,6 +888,9 @@ export async function saveCampaignSequences(
             newContentApproved: false,
             previousStatus,
             newStatus,
+            // Finding E: explicit boolean so searching audit logs for actual
+            // transitions doesn't require comparing two string fields.
+            statusChanged: previousStatus !== newStatus,
             resetAt: new Date().toISOString(),
           },
         },
