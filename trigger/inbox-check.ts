@@ -165,12 +165,12 @@ export const inboxCheckTask = schedules.task({
           }
           if (fireRecent) {
             parts.push(
-              `${change.recentDisconnections.length} recently disconnected (1-3d): ${preview(change.recentDisconnections)}`,
+              `${change.recentDisconnections.length} recently disconnected (1-2d transitional): ${preview(change.recentDisconnections)}`,
             );
           }
           if (firePersistent) {
             parts.push(
-              `${change.persistentDisconnections.length} persistent (3-7d): ${preview(change.persistentDisconnections)}`,
+              `${change.persistentDisconnections.length} persistent (3-6d): ${preview(change.persistentDisconnections)}`,
             );
           }
 
@@ -183,7 +183,7 @@ export const inboxCheckTask = schedules.task({
           const title = fireNew
             ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} newly disconnected`
             : firePersistent
-              ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} persistently disconnected (3-7 days)`
+              ? `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} persistently disconnected (3-6 days)`
               : `${primaryCount} inbox${primaryCount !== 1 ? "es" : ""} recently disconnected`;
 
           await notify({

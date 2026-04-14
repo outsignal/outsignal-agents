@@ -4,18 +4,24 @@ import { EmailBisonClient } from "@/lib/emailbison/client";
 /**
  * Age buckets for disconnected inboxes.
  *
- * - new: first observed disconnect within the last 24h — treat as urgent
- *   (needs investigation).
- * - persistent: disconnected for 3-7 days — known issue, still warrants
- *   an elevated warning in the daily digest.
- * - critical: disconnected for more than 7 days — explicit "needs
- *   immediate action" alert; these are the cases that were getting lost
- *   in the previous flat "new + persistent" alert.
+ * Boundaries (inclusive on the first-listed side; integer days via
+ * Math.floor, so a 23-hour disconnect is still ageDays=0):
  *
- * Inboxes aged 1-3 days fall between "new" and "persistent" and are
- * reported as part of `newDisconnections` (since the state is still
- * changing). A separate `neverConnected` bucket covers provisioning
- * stalls (see `DisconnectedEntry.neverConnected`).
+ * - new:        ageDays 0-1, and prior status was Connected or unknown.
+ *               Fresh disconnect, worth investigating immediately.
+ * - recent:     ageDays 0-2 with prior status Disconnected (transitional —
+ *               we've seen it disconnected for more than one tick but
+ *               less than the persistent threshold). In practice, with
+ *               daily ticks, this bucket fires mostly at ageDays=1 or
+ *               ageDays=2.
+ * - persistent: ageDays 3-6. Known-bad state, elevated warning in digest.
+ * - critical:   ageDays >= 7. "Needs immediate action" alert; inclusive at
+ *               day 7 (Finding 2.2 — previous `>` let ageDays=7 fall into
+ *               persistent).
+ *
+ * A separate `neverConnected` bucket covers provisioning stalls — see
+ * `DisconnectedEntry.neverConnected`. Those always land in
+ * `staleProvisioning` regardless of age.
  */
 export interface DisconnectedEntry {
   email: string;
@@ -34,13 +40,13 @@ export interface DisconnectedEntry {
 export interface InboxStatusChange {
   workspaceSlug: string;
   workspaceName: string;
-  /** Disconnections first observed in this run (ageDays === 0). */
+  /** Disconnections first observed this run (ageDays 0-1, no prior disconnect). */
   newDisconnections: DisconnectedEntry[];
-  /** Disconnected 1-3 days — transitional, reported with new. */
+  /** Transitional (1-2 days) — prior status was Disconnected. */
   recentDisconnections: DisconnectedEntry[];
-  /** Disconnected 3-7 days — elevated warning. */
+  /** Disconnected 3-6 days — elevated warning. */
   persistentDisconnections: DisconnectedEntry[];
-  /** Disconnected >7 days — critical, needs immediate action. */
+  /** Disconnected >=7 days — critical, needs immediate action. */
   criticalDisconnections: DisconnectedEntry[];
   /**
    * Inboxes that were provisioned in EmailBison but never authenticated.
@@ -65,10 +71,12 @@ export interface InboxStatusChange {
  * Bucketing is applied in this order, first match wins:
  *   - staleProvisioning: neverConnected === true (regardless of age)
  *   - criticalDisconnections: ageDays >= CRITICAL_MIN_DAYS_INCLUSIVE (7)
- *   - persistentDisconnections: ageDays >= PERSISTENT_MIN_DAYS (3)
- *   - newDisconnections: ageDays <= NEW_MAX_DAYS (1) AND previously connected
- *   - recentDisconnections: everything else (1 < ageDays < 3, or ageDays<=1
- *       with a prior disconnected status — i.e. transitional)
+ *   - persistentDisconnections: ageDays >= PERSISTENT_MIN_DAYS (3) — so 3-6
+ *   - newDisconnections: ageDays <= NEW_MAX_DAYS (1) AND previously
+ *       connected (or unknown)
+ *   - recentDisconnections: everything else — i.e. ageDays=2, or ageDays<=1
+ *       with a prior disconnected status. This bucket captures the
+ *       transitional state between "just noticed" and "persistent".
  *
  * Inclusive semantics at the boundaries matter: an inbox with ageDays === 7
  * is critical (not persistent). This was Finding 2.2 — the previous `>`
@@ -137,14 +145,14 @@ function parseDisconnectedEmailsJson(
     const out: Record<string, string> = {};
     for (const entry of parsed) {
       if (typeof entry === "string") {
-        out[entry.toLowerCase()] = legacyFallback;
+        out[normEmail(entry)] = legacyFallback;
       } else if (
         entry &&
         typeof entry === "object" &&
         typeof (entry as { email?: unknown }).email === "string"
       ) {
         const e = entry as { email: string; firstDisconnectedAt?: unknown };
-        out[e.email.toLowerCase()] =
+        out[normEmail(e.email)] =
           typeof e.firstDisconnectedAt === "string"
             ? e.firstDisconnectedAt
             : legacyFallback;
@@ -154,6 +162,26 @@ function parseDisconnectedEmailsJson(
   } catch {
     return {};
   }
+}
+
+/**
+ * Normalise an email for dictionary lookup / comparison.
+ *
+ * - `trim()` strips accidental whitespace (some providers include trailing
+ *   newlines in stored addresses).
+ * - `normalize("NFC")` canonicalises Unicode composition so accented
+ *   domains compare equal regardless of whether they're stored as
+ *   precomposed or decomposed forms. Cold outbound rarely hits Unicode
+ *   addresses but provisioning imports from spreadsheets sometimes do.
+ * - `toLowerCase()` makes lookups case-insensitive, matching what the
+ *   snapshot JSON and EmailBison responses expect.
+ *
+ * All four inputs — EmailBison response, Sender row, previous snapshot
+ * keys, legacy snapshot shape — go through this helper so the keyspace
+ * is consistent. (QA-005)
+ */
+function normEmail(raw: string): string {
+  return raw.trim().normalize("NFC").toLowerCase();
 }
 
 function ageInDays(fromIso: string): number {
@@ -176,7 +204,7 @@ async function checkWorkspace(
   // persisted snapshot (also lowercased — Finding 2.4).
   const currentStatuses: Record<string, string> = {};
   for (const sender of senderEmails) {
-    currentStatuses[sender.email.toLowerCase()] = sender.status ?? "Unknown";
+    currentStatuses[normEmail(sender.email)] = sender.status ?? "Unknown";
   }
 
   // Load previous snapshot
@@ -190,7 +218,7 @@ async function checkWorkspace(
   if (previous) {
     const rawPrev = JSON.parse(previous.statuses) as Record<string, string>;
     for (const [email, status] of Object.entries(rawPrev)) {
-      prevStatuses[email.toLowerCase()] = status;
+      prevStatuses[normEmail(email)] = status;
     }
   }
   const prevDisconnectedSince = parseDisconnectedEmailsJson(
@@ -220,7 +248,7 @@ async function checkWorkspace(
   >();
   for (const row of senderRows) {
     if (row.emailAddress) {
-      senderByEmail.set(row.emailAddress.toLowerCase(), row);
+      senderByEmail.set(normEmail(row.emailAddress), row);
     }
   }
 
@@ -234,7 +262,7 @@ async function checkWorkspace(
   for (const [email, status] of Object.entries(currentStatuses)) {
     // Defensive: normalise key once, then use it for all downstream keys
     // (currentStatuses is already lowercased, this is belt-and-braces).
-    const emailKey = email.toLowerCase();
+    const emailKey = normEmail(email);
 
     if (status === "Connected") {
       // Currently connected — was it previously disconnected?
@@ -301,12 +329,12 @@ async function checkWorkspace(
   //   - staleProvisioning: neverConnected === true (regardless of age)
   //   - criticalDisconnections: ageDays >= CRITICAL_MIN_DAYS_INCLUSIVE (7)
   //       (Finding 2.2: was `>`, which let ageDays=7 fall into persistent.)
-  //   - persistentDisconnections: ageDays >= PERSISTENT_MIN_DAYS (3)
+  //   - persistentDisconnections: ageDays >= PERSISTENT_MIN_DAYS (3) — so 3-6
   //   - newDisconnections: ageDays <= NEW_MAX_DAYS (1) AND the sender
   //       was either Connected or unknown in the previous snapshot
   //       (i.e. genuinely new this run)
-  //   - recentDisconnections: everything else (1 < ageDays < 3, or
-  //       <=1 with a prior disconnected status — transitional).
+  //   - recentDisconnections: everything else — ageDays=2, or ageDays<=1
+  //       with a prior disconnected status (transitional).
   const newDisconnections: DisconnectedEntry[] = [];
   const recentDisconnections: DisconnectedEntry[] = [];
   const persistentDisconnections: DisconnectedEntry[] = [];

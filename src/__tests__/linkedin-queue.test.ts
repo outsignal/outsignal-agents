@@ -441,6 +441,19 @@ describe("sweepStuckRunningActions (Blocker 5.4 / Finding 5.5)", () => {
 
     expect(swept).toBe(0);
     expect(ids).toEqual([]);
+    // Lock in the race-guard: the updateMany MUST scope by id AND
+    // status='running'. Without the status clause the sweeper would
+    // clobber a row that the worker has already flipped to complete.
+    // (QA-007 — previous assertion only checked swept/ids, which
+    // would still pass if the guard was accidentally dropped.)
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "raced-row",
+          status: "running",
+        }),
+      }),
+    );
   });
 });
 

@@ -211,4 +211,29 @@ describe("inbox-monitor — email case normalization (Finding 2.4)", () => {
     expect("PERSISTENT_MAX_DAYS" in AGE_THRESHOLDS).toBe(false);
     expect(AGE_THRESHOLDS.CRITICAL_MIN_DAYS_INCLUSIVE).toBe(7);
   });
+
+  it("trims whitespace and NFC-normalises email keys (QA-005)", async () => {
+    // Previous snapshot stores the NFC canonical form. EmailBison returns
+    // the same address with leading whitespace + uppercase letters — if
+    // we only `.toLowerCase()` without trim/NFC the lookup misses and
+    // the inbox gets re-bucketed as new every tick.
+    const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000);
+    mockSnapshotFindUnique.mockResolvedValue({
+      workspaceSlug: "ws",
+      statuses: JSON.stringify({ "alice@example.com": "Disconnected" }),
+      disconnectedEmails: JSON.stringify([
+        { email: "alice@example.com", firstDisconnectedAt: fiveDaysAgo.toISOString() },
+      ]),
+      checkedAt: new Date(),
+    });
+    // EmailBison returns the address with a trailing newline + mixed case
+    mockSenderEmails = [{ email: "  Alice@Example.COM\n", status: "Disconnected" }];
+
+    const change = (await checkAllWorkspaces())[0];
+    // After trim+NFC+lowercase normalisation, this matches the 5-day-old
+    // entry and lands in persistent — not new.
+    expect(change.persistentDisconnections).toHaveLength(1);
+    expect(change.persistentDisconnections[0].email).toBe("alice@example.com");
+    expect(change.newDisconnections).toHaveLength(0);
+  });
 });

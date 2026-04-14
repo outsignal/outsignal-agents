@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build --turbopack",
     "build:webpack": "next build",
-    "postbuild": "node -e \"require('fs').statSync('dist/cli/client-sweep.js')\"",
+    "postbuild": "node -e \"const fs=require('fs'); const expected=['client-sweep.js','campaign-create.js','kb-search.js','sender-health.js','discovery-promote.js','workspace-intelligence.js','domain-health.js']; for (const f of expected) fs.statSync('dist/cli/'+f);\"",
     "postinstall": "prisma generate && npm run build:cli && npm run build:dev-cli",
     "start": "next start",
     "lint": "eslint",
