@@ -696,6 +696,18 @@ export async function publishForReview(id: string): Promise<PublishForReviewResu
  * Save campaign sequence content. Only provided sequences are updated —
  * passing undefined for a sequence leaves it unchanged.
  *
+ * BL-053 — contentApproved reset:
+ * If the caller is persisting a sequence that OVERWRITES an existing sequence
+ * on a campaign where `contentApproved === true`, flip contentApproved back
+ * to false (and clear contentApprovedAt) so the client re-reviews the new
+ * copy. Write an AuditLog row documenting the reset. First-time sequence
+ * saves never trigger the reset — the campaign was never approved against
+ * any prior copy.
+ *
+ * NOTE (deferred): leadsApproved reset is intentionally out of scope here —
+ * sequence overwrites do not change the lead list, so leadsApproved is
+ * unaffected. See BL-053 scope.
+ *
  * @param id - Campaign ID
  * @param data - { emailSequence?, linkedinSequence? }
  * @returns Updated CampaignDetail
@@ -717,13 +729,72 @@ export async function saveCampaignSequences(
     updateData.copyStrategy = data.copyStrategy;
   }
 
-  const campaign = await prisma.campaign.update({
-    where: { id },
-    data: updateData,
-    include: targetListInclude,
-  });
+  return prisma.$transaction(async (tx) => {
+    // Read current state inside the transaction so we can detect overwrite
+    // semantics atomically with the update.
+    const current = await tx.campaign.findUnique({
+      where: { id },
+      select: {
+        workspaceSlug: true,
+        name: true,
+        contentApproved: true,
+        emailSequence: true,
+        linkedinSequence: true,
+      },
+    });
 
-  return formatCampaignDetail(campaign);
+    if (!current) {
+      throw new Error(`Campaign not found: '${id}'`);
+    }
+
+    // Is this an overwrite? For each channel being saved, check whether a
+    // prior sequence already existed. A channel that isn't being saved in
+    // this call cannot trigger a reset (we never touched the approved copy).
+    const emailIsOverwrite =
+      emailSequence !== undefined &&
+      current.emailSequence !== null &&
+      (parseJsonArray(current.emailSequence)?.length ?? 0) > 0;
+    const linkedinIsOverwrite =
+      linkedinSequence !== undefined &&
+      current.linkedinSequence !== null &&
+      (parseJsonArray(current.linkedinSequence)?.length ?? 0) > 0;
+    const isOverwrite = emailIsOverwrite || linkedinIsOverwrite;
+
+    const shouldResetApproval = current.contentApproved && isOverwrite;
+    if (shouldResetApproval) {
+      updateData.contentApproved = false;
+      updateData.contentApprovedAt = null;
+    }
+
+    const campaign = await tx.campaign.update({
+      where: { id },
+      data: updateData,
+      include: targetListInclude,
+    });
+
+    if (shouldResetApproval) {
+      await tx.auditLog.create({
+        data: {
+          action: "campaign.contentApproved.reset",
+          entityType: "Campaign",
+          entityId: id,
+          adminEmail: "system@outsignal.ai",
+          metadata: {
+            workspace: current.workspaceSlug,
+            campaignName: current.name,
+            reason: "sequence overwritten",
+            emailOverwritten: emailIsOverwrite,
+            linkedinOverwritten: linkedinIsOverwrite,
+            previousContentApproved: true,
+            newContentApproved: false,
+            resetAt: new Date().toISOString(),
+          },
+        },
+      });
+    }
+
+    return formatCampaignDetail(campaign);
+  });
 }
 
 // ---------------------------------------------------------------------------
