@@ -12,6 +12,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { SYSTEM_ADMIN_EMAIL } from "@/lib/audit";
 import { validateListForChannel, runDataQualityPreCheck, type DataQualityReport } from "@/lib/campaigns/list-validation";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
 import { auditTargetListForChannel, type ChannelValidationResult } from "@/lib/validation/channel-gate";
@@ -120,6 +121,26 @@ function parseJsonArray(value: string | null): unknown[] | null {
     return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Compare the serialized prior sequence against the incoming new sequence.
+ * Used by saveCampaignSequences to avoid spurious contentApproved resets on
+ * idempotent saves (UI retries, client-side dedup races).
+ *
+ * Returns true when the two logically represent the same sequence. A null
+ * prior is equal to an empty incoming array (both mean "no content").
+ */
+function sequencesEqual(prior: string | null, next: unknown[]): boolean {
+  if (!prior) return next.length === 0;
+  try {
+    const parsedPrior = JSON.parse(prior);
+    if (!Array.isArray(parsedPrior)) return false;
+    return JSON.stringify(parsedPrior) === JSON.stringify(next);
+  } catch {
+    // malformed prior — treat as different so the reset fires conservatively
+    return false;
   }
 }
 
@@ -737,6 +758,7 @@ export async function saveCampaignSequences(
       select: {
         workspaceSlug: true,
         name: true,
+        status: true,
         contentApproved: true,
         emailSequence: true,
         linkedinSequence: true,
@@ -747,23 +769,50 @@ export async function saveCampaignSequences(
       throw new Error(`Campaign not found: '${id}'`);
     }
 
-    // Is this an overwrite? For each channel being saved, check whether a
-    // prior sequence already existed. A channel that isn't being saved in
-    // this call cannot trigger a reset (we never touched the approved copy).
+    // Is this save OVERWRITING prior content? Three conditions must hold
+    // for a channel to count as an overwrite:
+    //   1. The channel is being saved in this call (not undefined).
+    //   2. The channel had PRIOR CONTENT — first-time saves never count
+    //      (campaign was never approved against prior copy for this channel).
+    //   3. The new content DIFFERS from the prior content (sequencesEqual
+    //      catches UI retries / idempotent clients so they don't spuriously
+    //      strip approval).
+    // A clear (new=[], prior non-empty) satisfies all three → IS an
+    // overwrite. An empty→empty re-clear satisfies (1) + (3-negated) → NOT
+    // an overwrite.
+    const emailPriorContent =
+      (parseJsonArray(current.emailSequence)?.length ?? 0) > 0;
+    const linkedinPriorContent =
+      (parseJsonArray(current.linkedinSequence)?.length ?? 0) > 0;
     const emailIsOverwrite =
       emailSequence !== undefined &&
-      current.emailSequence !== null &&
-      (parseJsonArray(current.emailSequence)?.length ?? 0) > 0;
+      emailPriorContent &&
+      !sequencesEqual(current.emailSequence, emailSequence);
     const linkedinIsOverwrite =
       linkedinSequence !== undefined &&
-      current.linkedinSequence !== null &&
-      (parseJsonArray(current.linkedinSequence)?.length ?? 0) > 0;
+      linkedinPriorContent &&
+      !sequencesEqual(current.linkedinSequence, linkedinSequence);
     const isOverwrite = emailIsOverwrite || linkedinIsOverwrite;
 
+    // Reset only fires when approval was true AND content actually changed.
+    // A copyStrategy-only save (no sequences passed) is metadata — it does
+    // not touch contentApproved.
     const shouldResetApproval = current.contentApproved && isOverwrite;
+    const previousStatus = current.status;
+    let newStatus = previousStatus;
     if (shouldResetApproval) {
       updateData.contentApproved = false;
       updateData.contentApprovedAt = null;
+      // Mirror the forward-transition pattern in approveCampaignContent /
+      // approveCampaignLeads (status flips when dual-approval state changes).
+      // If the campaign had reached 'approved' via dual approval, the reset
+      // must flip the status back to 'pending_approval' so the client is
+      // asked to re-review the new copy. Without this, the campaign is
+      // 'approved' but holds unapproved content — the exact 1210 bug.
+      if (previousStatus === "approved") {
+        updateData.status = "pending_approval";
+        newStatus = "pending_approval";
+      }
     }
 
     const campaign = await tx.campaign.update({
@@ -773,12 +822,15 @@ export async function saveCampaignSequences(
     });
 
     if (shouldResetApproval) {
+      // Direct tx.auditLog.create (not the shared auditLog() helper) because
+      // this write MUST participate in the enclosing transaction — helper
+      // uses the top-level prisma client and is fire-and-forget.
       await tx.auditLog.create({
         data: {
           action: "campaign.contentApproved.reset",
           entityType: "Campaign",
           entityId: id,
-          adminEmail: "system@outsignal.ai",
+          adminEmail: SYSTEM_ADMIN_EMAIL,
           metadata: {
             workspace: current.workspaceSlug,
             campaignName: current.name,
@@ -787,6 +839,8 @@ export async function saveCampaignSequences(
             linkedinOverwritten: linkedinIsOverwrite,
             previousContentApproved: true,
             newContentApproved: false,
+            previousStatus,
+            newStatus,
             resetAt: new Date().toISOString(),
           },
         },

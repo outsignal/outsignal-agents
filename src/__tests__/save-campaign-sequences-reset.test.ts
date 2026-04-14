@@ -3,37 +3,52 @@
  *
  * Spec: when persisting a sequence that OVERWRITES an existing sequence on a
  * campaign where contentApproved=true, the save path must flip contentApproved
- * back to false, clear contentApprovedAt, and write an AuditLog row. A
- * first-time sequence save must NOT trigger the reset (campaign was never
- * approved against prior copy). leadsApproved is deferred — not touched by
- * this fix.
+ * back to false, clear contentApprovedAt, and write an AuditLog row. If the
+ * campaign had reached status=approved via dual approval, the save must also
+ * flip the status back to pending_approval. A first-time sequence save must
+ * NOT trigger the reset (campaign was never approved against prior copy). An
+ * idempotent save (same content re-submitted) must NOT trigger the reset.
+ * leadsApproved is deferred — not touched by this fix.
+ *
+ * Transaction safety: distinct outer `prisma` and inner `tx` mocks verify
+ * that reads/writes inside the callback route through the tx client, not the
+ * outer prisma client.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Extend the shared mock with auditLog + $transaction support for this test.
-// The shared setup.ts mock stubs `prisma.campaign.findUnique/update` which is
-// all we need via a transaction that simply runs the callback against the
-// same mocked prisma client.
+// Distinct outer prisma + inner tx mocks. The $transaction mock invokes the
+// callback with the tx client; tests assert that save reads/writes hit the
+// tx client and NOT the outer prisma client. This catches regressions where
+// a future refactor accidentally reaches for the outer client and loses
+// transactional atomicity.
 vi.mock("@/lib/db", async () => {
-  const campaignFindUnique = vi.fn();
-  const campaignUpdate = vi.fn();
-  const auditLogCreate = vi.fn();
-
-  const prismaMock = {
+  const tx = {
     campaign: {
-      findUnique: campaignFindUnique,
-      update: campaignUpdate,
+      findUnique: vi.fn(),
+      update: vi.fn(),
     },
     auditLog: {
-      create: auditLogCreate,
+      create: vi.fn(),
     },
-    // $transaction invokes the callback with the same mock client so the
-    // transactional reads/writes route to the same vi.fn() mocks the tests
-    // configure below.
+  };
+
+  const prismaMock = {
+    // Outer-client stubs that should NEVER be called during saveCampaignSequences.
+    // If a test ever asserts one of these was called, the implementation has
+    // bypassed the transaction.
+    campaign: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn(),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      return fn(prismaMock);
+      return fn(tx);
     }),
+    // Expose the inner tx for test assertions.
+    __tx: tx,
   };
 
   return { prisma: prismaMock };
@@ -41,12 +56,22 @@ vi.mock("@/lib/db", async () => {
 
 import { prisma } from "@/lib/db";
 import { saveCampaignSequences } from "@/lib/campaigns/operations";
+import { SYSTEM_ADMIN_EMAIL } from "@/lib/audit";
 
-const mockFindUnique = prisma.campaign.findUnique as ReturnType<typeof vi.fn>;
-const mockUpdate = prisma.campaign.update as ReturnType<typeof vi.fn>;
-const mockAuditCreate = prisma.auditLog.create as ReturnType<typeof vi.fn>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockTransaction = (prisma as any).$transaction as ReturnType<typeof vi.fn>;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const prismaAny = prisma as any;
+const tx = prismaAny.__tx;
+
+const mockFindUnique = tx.campaign.findUnique as ReturnType<typeof vi.fn>;
+const mockUpdate = tx.campaign.update as ReturnType<typeof vi.fn>;
+const mockAuditCreate = tx.auditLog.create as ReturnType<typeof vi.fn>;
+const mockTransaction = prismaAny.$transaction as ReturnType<typeof vi.fn>;
+
+// Outer-client sentinels — these must never be hit.
+const outerFindUnique = prismaAny.campaign.findUnique as ReturnType<typeof vi.fn>;
+const outerUpdate = prismaAny.campaign.update as ReturnType<typeof vi.fn>;
+const outerAuditCreate = prismaAny.auditLog.create as ReturnType<typeof vi.fn>;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const CAMPAIGN_ID = "camp_test_1";
 
@@ -110,10 +135,10 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
   });
 
   it("Test A: overwriting an approved campaign's sequence resets contentApproved + writes AuditLog", async () => {
-    // Campaign currently has an existing email sequence AND contentApproved=true.
     mockFindUnique.mockResolvedValue({
       workspaceSlug: "test-ws",
       name: "Test Campaign",
+      status: "pending_approval",
       contentApproved: true,
       emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
       linkedinSequence: null,
@@ -133,38 +158,86 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
       ],
     });
 
-    // Update should include contentApproved reset flags.
     expect(mockUpdate).toHaveBeenCalledTimes(1);
     const updateArgs = mockUpdate.mock.calls[0][0];
     expect(updateArgs.where).toEqual({ id: CAMPAIGN_ID });
     expect(updateArgs.data.contentApproved).toBe(false);
     expect(updateArgs.data.contentApprovedAt).toBeNull();
+    // status was pending_approval, not approved → no status flip needed
+    expect(updateArgs.data).not.toHaveProperty("status");
     // leadsApproved must NOT be touched (deferred per BL-053 scope).
     expect(updateArgs.data).not.toHaveProperty("leadsApproved");
     expect(updateArgs.data).not.toHaveProperty("leadsApprovedAt");
 
-    // AuditLog row must be written with correct action/reason.
     expect(mockAuditCreate).toHaveBeenCalledTimes(1);
     const auditArgs = mockAuditCreate.mock.calls[0][0];
     expect(auditArgs.data.action).toBe("campaign.contentApproved.reset");
     expect(auditArgs.data.entityType).toBe("Campaign");
     expect(auditArgs.data.entityId).toBe(CAMPAIGN_ID);
+    expect(auditArgs.data.adminEmail).toBe(SYSTEM_ADMIN_EMAIL);
     expect(auditArgs.data.metadata.reason).toBe("sequence overwritten");
     expect(auditArgs.data.metadata.workspace).toBe("test-ws");
     expect(auditArgs.data.metadata.campaignName).toBe("Test Campaign");
     expect(auditArgs.data.metadata.previousContentApproved).toBe(true);
     expect(auditArgs.data.metadata.newContentApproved).toBe(false);
+    expect(auditArgs.data.metadata.previousStatus).toBe("pending_approval");
+    expect(auditArgs.data.metadata.newStatus).toBe("pending_approval");
     expect(auditArgs.data.metadata.emailOverwritten).toBe(true);
 
-    // The whole thing runs in a transaction.
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
+  it("Finding 1: status=approved + content rewrite flips status to pending_approval (1210 bug)", async () => {
+    // This is the actual bug that stranded 1210 Healthcare: campaign at
+    // status=approved + contentApproved=true + leadsApproved=true, Nova
+    // Writer rewrote the sequence, approval flags should have flipped
+    // but status stayed on 'approved' holding unapproved content.
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "1210 Healthcare",
+      status: "approved",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        name: "1210 Healthcare",
+        status: "pending_approval",
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: false,
+        contentApprovedAt: null,
+        leadsApproved: true,
+      }),
+    );
+    mockAuditCreate.mockResolvedValue({ id: "audit_1210" });
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: [
+        { position: 1, subjectLine: "rewritten", body: "new body", delayDays: 0 },
+      ],
+    });
+
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    expect(updateArgs.data.contentApproved).toBe(false);
+    expect(updateArgs.data.contentApprovedAt).toBeNull();
+    // THE FIX: status must flip back to pending_approval.
+    expect(updateArgs.data.status).toBe("pending_approval");
+    // leadsApproved stays — sequence rewrite doesn't invalidate the lead list.
+    expect(updateArgs.data).not.toHaveProperty("leadsApproved");
+
+    // Audit log captures the status transition for debugging.
+    expect(mockAuditCreate).toHaveBeenCalledTimes(1);
+    const auditArgs = mockAuditCreate.mock.calls[0][0];
+    expect(auditArgs.data.metadata.previousStatus).toBe("approved");
+    expect(auditArgs.data.metadata.newStatus).toBe("pending_approval");
+  });
+
   it("Test B: first sequence save on an (unapproved) campaign does NOT reset or audit", async () => {
-    // No prior sequence → first save. contentApproved=false (never approved).
     mockFindUnique.mockResolvedValue({
       workspaceSlug: "test-ws",
       name: "Test Campaign",
+      status: "pending_approval",
       contentApproved: false,
       emailSequence: null,
       linkedinSequence: null,
@@ -179,19 +252,17 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
 
     expect(mockUpdate).toHaveBeenCalledTimes(1);
     const updateArgs = mockUpdate.mock.calls[0][0];
-    // No reset flags should be set — this is a first-time save.
     expect(updateArgs.data).not.toHaveProperty("contentApproved");
     expect(updateArgs.data).not.toHaveProperty("contentApprovedAt");
-
-    // No audit row.
+    expect(updateArgs.data).not.toHaveProperty("status");
     expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
   it("Test C: overwriting a sequence when contentApproved=false does NOT reset or audit", async () => {
-    // Prior sequence exists, but campaign was never approved.
     mockFindUnique.mockResolvedValue({
       workspaceSlug: "test-ws",
       name: "Test Campaign",
+      status: "pending_approval",
       contentApproved: false,
       emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
       linkedinSequence: null,
@@ -213,13 +284,11 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
-  it("saving LinkedIn sequence when only email was approved+existing still triggers reset (LinkedIn overwrite of empty is a first save, but email approval flag applies to the whole campaign) — specifically: if NEITHER channel is an overwrite, no reset", async () => {
-    // contentApproved=true, but no prior sequences of any kind. Edge case:
-    // contentApproved should never be true without sequences in practice,
-    // but if it is, we treat a first-save as a non-overwrite and skip reset.
+  it("no prior sequence on any channel + contentApproved=true: first save of LinkedIn does not reset", async () => {
     mockFindUnique.mockResolvedValue({
       workspaceSlug: "test-ws",
       name: "Test Campaign",
+      status: "pending_approval",
       contentApproved: true,
       emailSequence: null,
       linkedinSequence: null,
@@ -236,7 +305,6 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     });
 
     const updateArgs = mockUpdate.mock.calls[0][0];
-    // No prior sequence on any channel → not an overwrite → no reset.
     expect(updateArgs.data).not.toHaveProperty("contentApproved");
     expect(mockAuditCreate).not.toHaveBeenCalled();
   });
@@ -245,6 +313,7 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     mockFindUnique.mockResolvedValue({
       workspaceSlug: "test-ws",
       name: "Test Campaign",
+      status: "pending_approval",
       contentApproved: true,
       emailSequence: null,
       linkedinSequence: JSON.stringify(SAMPLE_LINKEDIN_SEQUENCE),
@@ -284,5 +353,234 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding 3: copyStrategy-only saves are metadata, must NOT reset
+  // ---------------------------------------------------------------------------
+
+  it("Finding 3a: copyStrategy-only save on approved campaign does NOT reset", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "approved",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        status: "approved",
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: true,
+        copyStrategy: "pvp",
+      }),
+    );
+
+    await saveCampaignSequences(CAMPAIGN_ID, { copyStrategy: "pvp" });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    expect(updateArgs.data.copyStrategy).toBe("pvp");
+    // Metadata change must NOT reset approval or status.
+    expect(updateArgs.data).not.toHaveProperty("contentApproved");
+    expect(updateArgs.data).not.toHaveProperty("contentApprovedAt");
+    expect(updateArgs.data).not.toHaveProperty("status");
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("Finding 3b: combined {emailSequence, copyStrategy} with changed sequence DOES reset", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: false,
+        contentApprovedAt: null,
+        copyStrategy: "creative-ideas",
+      }),
+    );
+    mockAuditCreate.mockResolvedValue({ id: "audit_3b" });
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: [
+        { position: 1, subjectLine: "changed", body: "changed body", delayDays: 0 },
+      ],
+      copyStrategy: "creative-ideas",
+    });
+
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    expect(updateArgs.data.copyStrategy).toBe("creative-ideas");
+    expect(updateArgs.data.contentApproved).toBe(false);
+    expect(updateArgs.data.contentApprovedAt).toBeNull();
+    expect(mockAuditCreate).toHaveBeenCalledTimes(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding 4: idempotent saves must NOT spuriously reset
+  // ---------------------------------------------------------------------------
+
+  it("Finding 4: saving identical sequence content twice does NOT reset on second save", async () => {
+    // Simulate UI retry / idempotent client call: the payload matches what
+    // is already in the DB. Expected: no-op. No reset, no audit row.
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "approved",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        status: "approved",
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: true,
+      }),
+    );
+
+    // Re-submit the EXACT same sequence content.
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: SAMPLE_EMAIL_SEQUENCE,
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    // Update still fires (emailSequence is set) but reset flags do NOT.
+    expect(updateArgs.data.emailSequence).toBe(JSON.stringify(SAMPLE_EMAIL_SEQUENCE));
+    expect(updateArgs.data).not.toHaveProperty("contentApproved");
+    expect(updateArgs.data).not.toHaveProperty("contentApprovedAt");
+    expect(updateArgs.data).not.toHaveProperty("status");
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding 6: empty-sequence-clear loophole
+  // ---------------------------------------------------------------------------
+
+  it("Finding 6a: clearing a populated sequence on approved campaign triggers reset", async () => {
+    // Prior had content, new is []. That IS a content change (a clear).
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        emailSequence: JSON.stringify([]),
+        contentApproved: false,
+        contentApprovedAt: null,
+      }),
+    );
+    mockAuditCreate.mockResolvedValue({ id: "audit_6a" });
+
+    await saveCampaignSequences(CAMPAIGN_ID, { emailSequence: [] });
+
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    expect(updateArgs.data.contentApproved).toBe(false);
+    expect(updateArgs.data.contentApprovedAt).toBeNull();
+    expect(mockAuditCreate).toHaveBeenCalledTimes(1);
+    expect(mockAuditCreate.mock.calls[0][0].data.metadata.emailOverwritten).toBe(true);
+  });
+
+  it("Finding 6b: clearing an already-empty sequence does NOT re-fire reset", async () => {
+    // Prior was [], new is []. sequencesEqual returns true → no-op.
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      contentApproved: true,
+      emailSequence: JSON.stringify([]),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        emailSequence: JSON.stringify([]),
+        contentApproved: true,
+      }),
+    );
+
+    await saveCampaignSequences(CAMPAIGN_ID, { emailSequence: [] });
+
+    const updateArgs = mockUpdate.mock.calls[0][0];
+    expect(updateArgs.data).not.toHaveProperty("contentApproved");
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Finding 2: transaction isolation — outer prisma client must never be used
+  // ---------------------------------------------------------------------------
+
+  it("Finding 2: reads and writes route through tx client, never the outer prisma client", async () => {
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+        contentApproved: false,
+      }),
+    );
+    mockAuditCreate.mockResolvedValue({ id: "audit_iso" });
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: [
+        { position: 1, subjectLine: "new", body: "new body", delayDays: 0 },
+      ],
+    });
+
+    // Inner tx client received the reads + writes.
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockAuditCreate).toHaveBeenCalledTimes(1);
+
+    // Outer prisma client must NOT have been used.
+    expect(outerFindUnique).not.toHaveBeenCalled();
+    expect(outerUpdate).not.toHaveBeenCalled();
+    expect(outerAuditCreate).not.toHaveBeenCalled();
+
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("Finding 2b: audit write failure propagates out of saveCampaignSequences", async () => {
+    // If tx.auditLog.create rejects, the $transaction callback rejects, and
+    // the whole operation must throw. This documents that audit failures
+    // propagate so callers know the save failed. Note: full rollback
+    // semantics cannot be verified against mocks — only the real Prisma
+    // client enforces atomicity.
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      contentApproved: true,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({ emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE) }),
+    );
+    mockAuditCreate.mockRejectedValue(new Error("boom"));
+
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "new", body: "new body", delayDays: 0 },
+        ],
+      }),
+    ).rejects.toThrow(/boom/);
   });
 });

@@ -1,5 +1,15 @@
 import { prisma } from "@/lib/db";
 
+/**
+ * Email used as the `adminEmail` on AuditLog rows written by system-initiated
+ * actions (i.e. not triggered by a logged-in admin). Examples: the
+ * contentApproved reset in saveCampaignSequences when copy is rewritten by
+ * Nova Writer, or any background job that needs to record an auditable event.
+ *
+ * Human-admin actions should use the actual session email instead.
+ */
+export const SYSTEM_ADMIN_EMAIL = "system@outsignal.ai";
+
 interface AuditLogParams {
   action: string;       // e.g. "campaign.deploy", "client.delete"
   entityType: string;   // e.g. "Campaign", "Client", "Sender", "Invoice"
