@@ -202,9 +202,6 @@ export function getLondonHoursMinutes(
   return { hour, minute };
 }
 
-/** Business window start hour in London (08:00). Matches DEFAULT_CONFIG.startHour. */
-const BUSINESS_START_HOUR = 8;
-
 /**
  * Compute milliseconds until end of today's business window in London time.
  * Uses Intl.DateTimeFormat with `timeZone: "Europe/London"` to follow the
@@ -214,15 +211,17 @@ const BUSINESS_START_HOUR = 8;
  * Pre-business-hours clamp: if the current London hour is BEFORE the
  * business-start hour (e.g. 07:00), the raw subtraction `18 - 7 = 11h`
  * overstates the runway by 1h — the real business window is only 08:00–18:00
- * (10h). We clamp the current hour to BUSINESS_START_HOUR so the returned
- * duration never exceeds the full business window length.
+ * (10h). We clamp the current hour to `businessStartHour` so the returned
+ * duration never exceeds the full business window length. Defaults mirror
+ * DEFAULT_CONFIG (start 08:00, end 18:00).
  */
 export function getRemainingBusinessMs(
-  businessEndHour: number = 18,
+  businessEndHour: number = DEFAULT_CONFIG.endHour,
+  businessStartHour: number = DEFAULT_CONFIG.startHour,
 ): number {
   const { hour, minute } = getLondonHoursMinutes();
   const currentHourLondon = hour + minute / 60;
-  const effectiveHour = Math.max(currentHourLondon, BUSINESS_START_HOUR);
+  const effectiveHour = Math.max(currentHourLondon, businessStartHour);
   const remainingHours = Math.max(0, businessEndHour - effectiveHour);
   return remainingHours * 60 * 60 * 1000;
 }

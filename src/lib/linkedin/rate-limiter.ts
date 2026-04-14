@@ -186,6 +186,13 @@ type SenderForBudget = {
 };
 
 /**
+ * Return shape of getOrCreateDailyUsage. Callers that have already loaded
+ * today's usage row (e.g. getSenderBudget) can thread it through checkBudget
+ * via the optional `usage` argument to avoid duplicate findUnique queries.
+ */
+type DailyUsageForBudget = Awaited<ReturnType<typeof getOrCreateDailyUsage>>;
+
+/**
  * Check if a sender has budget remaining for a given action type.
  * P1 connection actions bypass the daily budget entirely (capped at P1_DAILY_CAP per sender per day).
  *
@@ -199,6 +206,11 @@ type SenderForBudget = {
  * Callers that have already fetched the sender row can also pass it via
  * `sender` to skip the internal findUnique. getSenderBudget uses this to
  * collapse 4 identical PK lookups (1 outer + 3 inner) into 1.
+ *
+ * Similarly, callers that have already fetched today's usage row can pass
+ * it via `usage` to skip the internal getOrCreateDailyUsage call —
+ * getSenderBudget uses this to collapse 4 identical usage lookups (1 outer
+ * + 3 inner) into 1.
  */
 export async function checkBudget(
   senderId: string,
@@ -206,6 +218,7 @@ export async function checkBudget(
   priority: number = 5,
   runningCountCache?: Map<string, number>,
   sender?: SenderForBudget,
+  usage?: DailyUsageForBudget,
 ): Promise<BudgetCheckResult> {
   const resolvedSender =
     sender ??
@@ -280,7 +293,7 @@ export async function checkBudget(
   }
 
   // Gate 6: Daily budget check
-  const usage = await getOrCreateDailyUsage(senderId);
+  const resolvedUsage = usage ?? (await getOrCreateDailyUsage(senderId));
 
   const limitField = ACTION_TYPE_TO_LIMIT_FIELD[actionType];
   const usageField = ACTION_TYPE_TO_USAGE_FIELD[actionType];
@@ -317,7 +330,7 @@ export async function checkBudget(
     }
   }
 
-  const used = ((usage as Record<string, unknown>)[usageField] as number) ?? 0;
+  const used = ((resolvedUsage as Record<string, unknown>)[usageField] as number) ?? 0;
 
   // Belt-and-braces: count running actions across the shared budget bucket
   // as already-consumed. This protects against cross-poll races where a
@@ -424,12 +437,13 @@ export async function getSenderBudget(senderId: string) {
   // for warm leads and must not inflate the spread denominator.
   //
   // Pass the already-fetched sender so checkBudget skips 3 identical PK
-  // lookups; pass runningCountCache so it skips 3 identical count queries.
-  const senderForBudget = sender as unknown as SenderForBudget;
+  // lookups; pass runningCountCache so it skips 3 identical count queries;
+  // pass the already-fetched usage so it skips 3 identical usage lookups.
+  const senderForBudget: SenderForBudget = sender;
   const [connBudget, msgBudget, pvBudget] = await Promise.all([
-    checkBudget(senderId, "connection_request", 5, runningCountCache, senderForBudget),
-    checkBudget(senderId, "message", 5, runningCountCache, senderForBudget),
-    checkBudget(senderId, "profile_view", 5, runningCountCache, senderForBudget),
+    checkBudget(senderId, "connection_request", 5, runningCountCache, senderForBudget, usage),
+    checkBudget(senderId, "message", 5, runningCountCache, senderForBudget, usage),
+    checkBudget(senderId, "profile_view", 5, runningCountCache, senderForBudget, usage),
   ]);
 
   const effectiveRemaining = (result: BudgetCheckResult): number => {

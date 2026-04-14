@@ -144,4 +144,21 @@ describe("getRemainingBusinessMs (London-local)", () => {
     const ms = getRemainingBusinessMs(18);
     expect(ms).toBe(0);
   });
+
+  it("clamps to full business window when London is before the start hour (07:00 → ~10h, not 11h)", () => {
+    // 2026-01-15 07:00 UTC → 07:00 London (GMT). Raw subtraction would give
+    // 18 - 7 = 11h remaining, but the business window is only 08:00–18:00
+    // (10h). The clamp caps the returned duration at 10h.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-15T07:00:00Z"));
+
+    const { hour } = getLondonHoursMinutes();
+    expect(hour).toBe(7);
+
+    const ms = getRemainingBusinessMs(18);
+    const hours = ms / (60 * 60 * 1000);
+    // ~10h ± a few ms for clock drift. Must NOT be 11h.
+    expect(hours).toBeGreaterThan(9.99);
+    expect(hours).toBeLessThan(10.01);
+  });
 });
