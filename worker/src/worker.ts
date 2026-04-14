@@ -290,50 +290,60 @@ export class Worker {
       return;
     }
 
-    // Daily planning — run once per calendar day per workspace (+ mid-day top-up)
+    // Daily planning + workspace processing — run all workspaces in PARALLEL.
+    // Workspaces are independent (different LinkedIn accounts, different campaigns),
+    // so a backlog on one sender must NOT block other workspaces from being polled.
+    // Within processWorkspace, senders are also parallelised (see processWorkspace).
+    // Within a single sender, action-level sleeps remain (LinkedIn safety).
     const today = new Date().toISOString().slice(0, 10);
-    for (const slug of slugs) {
-      if (!this.running) break;
+    await Promise.all(
+      slugs.map(async (slug) => {
+        if (!this.running) return;
 
-      const lastPlan = this.lastPlanDate.get(slug);
-      if (lastPlan !== today) {
-        console.log(`[Worker] Running daily plan for ${slug}...`);
-        try {
-          const result = await this.api.planDay(slug);
-          console.log(
-            `[Worker] Planned ${result.planned} actions for ${slug} across ${result.campaigns.length} campaign(s)`,
-          );
-          this.lastPlanDate.set(slug, today);
-        } catch (err) {
-          console.error(`[Worker] Daily plan failed for ${slug}:`, err);
-        }
-      }
-
-      // Mid-day top-up for signal campaign leads added mid-day
-      if (new Date().getUTCHours() >= 13) {
-        const lastTopup = this.lastTopupDate.get(slug);
-        if (lastTopup !== today) {
-          console.log(`[Worker] Running mid-day top-up for ${slug}...`);
+        // Daily plan
+        const lastPlan = this.lastPlanDate.get(slug);
+        if (lastPlan !== today) {
+          console.log(`[Worker] Running daily plan for ${slug}...`);
           try {
             const result = await this.api.planDay(slug);
-            if (result.planned > 0) {
-              console.log(
-                `[Worker] Mid-day top-up: ${result.planned} new actions for ${slug}`,
-              );
-            }
-            this.lastTopupDate.set(slug, today);
+            console.log(
+              `[Worker] Planned ${result.planned} actions for ${slug} across ${result.campaigns.length} campaign(s)`,
+            );
+            this.lastPlanDate.set(slug, today);
           } catch (err) {
-            console.error(`[Worker] Mid-day top-up failed for ${slug}:`, err);
+            console.error(`[Worker] Daily plan failed for ${slug}:`, err);
           }
         }
-      }
-    }
 
-    // Process each workspace
-    for (const slug of slugs) {
-      if (!this.running) break;
-      await this.processWorkspace(slug);
-    }
+        // Mid-day top-up for signal campaign leads added mid-day
+        if (new Date().getUTCHours() >= 13) {
+          const lastTopup = this.lastTopupDate.get(slug);
+          if (lastTopup !== today) {
+            console.log(`[Worker] Running mid-day top-up for ${slug}...`);
+            try {
+              const result = await this.api.planDay(slug);
+              if (result.planned > 0) {
+                console.log(
+                  `[Worker] Mid-day top-up: ${result.planned} new actions for ${slug}`,
+                );
+              }
+              this.lastTopupDate.set(slug, today);
+            } catch (err) {
+              console.error(`[Worker] Mid-day top-up failed for ${slug}:`, err);
+            }
+          }
+        }
+
+        if (!this.running) return;
+
+        // Process this workspace (senders parallelised inside)
+        try {
+          await this.processWorkspace(slug);
+        } catch (err) {
+          console.error(`[Worker] processWorkspace failed for ${slug}:`, err);
+        }
+      }),
+    );
 
     // -----------------------------------------------------------------------
     // LinkedIn conversation check — runs every 2nd cycle (~4 min)
@@ -390,10 +400,18 @@ export class Worker {
       return;
     }
 
-    for (const sender of activeSenders) {
-      if (!this.running) break;
-      await this.processSender(sender);
-    }
+    // Process senders in PARALLEL — each sender is a different LinkedIn account
+    // with its own session, action queue, and rate limits. The intra-sender
+    // spread-delay sleep remains (LinkedIn safety), so this is the right level
+    // to parallelise: one sender's hour-long backlog must not stall its peers.
+    await Promise.all(
+      activeSenders.map((sender) => {
+        if (!this.running) return Promise.resolve();
+        return this.processSender(sender).catch((err) => {
+          console.error(`[Worker] processSender failed for ${sender.name}:`, err);
+        });
+      }),
+    );
 
     // After processing action queues, poll pending connections (throttled with jitter)
     await this.maybePollConnections(workspaceSlug, activeSenders);

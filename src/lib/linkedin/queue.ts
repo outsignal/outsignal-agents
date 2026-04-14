@@ -483,3 +483,57 @@ export async function recoverStuckActions(): Promise<number> {
 
   return recovered;
 }
+
+/**
+ * Sweeper: hard-fail actions that have been stuck in "running" beyond the
+ * given threshold. Complements `recoverStuckActions()` which retries stuck
+ * actions — this sweeper exists as a belt-and-braces safety net that runs
+ * on a Trigger.dev cron so stuck actions are caught even when the Railway
+ * worker is offline or crashed. Uses a longer threshold than the worker's
+ * own recovery to avoid racing with legitimate retry attempts.
+ *
+ * Schema note: LinkedInAction has no `failureReason` field. We stash the
+ * reason inside the `result` JSON blob (same pattern as `markFailed`).
+ *
+ * @param thresholdMinutes how long a row must have been in "running" with
+ *   `lastAttemptAt` older than this cutoff before it is considered stuck.
+ *   Defaults to 30 minutes — longer than any legitimate LinkedIn action
+ *   (profile view + connection request + post-accept polling all finish
+ *   well inside a minute individually).
+ */
+export async function sweepStuckRunningActions(
+  thresholdMinutes: number = 30,
+): Promise<{ swept: number; ids: string[] }> {
+  const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+
+  const stuck = await prisma.linkedInAction.findMany({
+    where: {
+      status: "running",
+      // lastAttemptAt is set by markRunning() — a row with null here but
+      // status=running is malformed, but still stuck. Include both cases.
+      OR: [{ lastAttemptAt: { lt: cutoff } }, { lastAttemptAt: null }],
+    },
+    select: { id: true, attempts: true, result: true },
+  });
+
+  if (stuck.length === 0) {
+    return { swept: 0, ids: [] };
+  }
+
+  const ids = stuck.map((s) => s.id);
+  const failurePayload = JSON.stringify({
+    error: "stuck-running-sweeper",
+    failureReason: "stuck-running-sweeper",
+    sweptAt: new Date().toISOString(),
+    thresholdMinutes,
+  });
+
+  // Re-match status='running' inside the update so rows that flipped to
+  // complete/failed/pending between the read and write are not clobbered.
+  const update = await prisma.linkedInAction.updateMany({
+    where: { id: { in: ids }, status: "running" },
+    data: { status: "failed", result: failurePayload },
+  });
+
+  return { swept: update.count, ids };
+}
