@@ -8,6 +8,19 @@ import { prisma } from "@/lib/db";
 import type { BudgetCheckResult, CircuitBreakerResult, LinkedInActionType, WarmupLimits } from "./types";
 import { ACTION_TYPE_TO_LIMIT_FIELD, ACTION_TYPE_TO_USAGE_FIELD } from "./types";
 
+/**
+ * Action types that share a daily budget bucket. checkBudget counts
+ * running actions across every type in the bucket so a mid-flight connect
+ * consumes the same limit as a mid-flight connection_request.
+ */
+const BUDGET_BUCKETS: Record<string, LinkedInActionType[]> = {
+  connect: ["connect", "connection_request"],
+  connection_request: ["connect", "connection_request"],
+  message: ["message"],
+  profile_view: ["profile_view", "check_connection"],
+  check_connection: ["profile_view", "check_connection"],
+};
+
 /** Circuit breaker threshold — trip after this many consecutive failures */
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 
@@ -250,14 +263,30 @@ export async function checkBudget(
     }
   }
 
-  const used = (usage as Record<string, unknown>)[usageField] as number;
-  const remaining = Math.max(0, effectiveLimit - used);
+  const used = ((usage as Record<string, unknown>)[usageField] as number) ?? 0;
+
+  // Belt-and-braces: count running actions across the shared budget bucket
+  // as already-consumed. This protects against cross-poll races where a
+  // batch has been picked up (markRunning) but not yet completed, so the
+  // daily usage counter hasn't been incremented yet. Without this, a second
+  // poll tick could approve actions the first tick is still executing.
+  const typesForLimit = BUDGET_BUCKETS[actionType] ?? [actionType];
+  const runningCount =
+    (await prisma.linkedInAction.count({
+      where: {
+        senderId,
+        actionType: { in: typesForLimit },
+        status: "running",
+      },
+    })) ?? 0;
+  const effectiveUsage = used + runningCount;
+  const remaining = Math.max(0, effectiveLimit - effectiveUsage);
 
   if (remaining <= 0) {
     return {
       allowed: false,
       remaining: 0,
-      reason: `Daily ${actionType} limit reached (${used}/${effectiveLimit})`,
+      reason: `Daily ${actionType} limit reached (${effectiveUsage}/${effectiveLimit}${runningCount > 0 ? `, ${runningCount} running` : ""})`,
     };
   }
 

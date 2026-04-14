@@ -651,6 +651,79 @@ describe("getNextBatch — independent per-type budgets", () => {
     expect(batch[2].priority).toBe(5); // profile_view (priority 5)
   });
 
+  it("respects remaining budget across same-tick filter loop (race guard)", async () => {
+    // Regression: James Bessey-Saldanha sent 8/6 connections (+33% overshoot)
+    // on 2026-04-14. Root cause: checkBudget reads committed DB state only,
+    // so when a batch of 5 candidates queried with usage=5/limit=6, every
+    // candidate saw remaining=1 and filterByBudget approved ALL 5. The fix
+    // tracks in-flight consumption inside the loop and only approves while
+    // remaining > already-taken.
+    const connections = Array.from({ length: 5 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    mockFindMany(connections, []);
+
+    // Simulate the race: each call to checkBudget returns the SAME snapshot
+    // (remaining=1) because no action has been completed yet between calls.
+    mockCheckBudget.mockResolvedValue({ allowed: true, remaining: 1 });
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    const connectionCount = batch.filter(
+      (a) => a.actionType === "connection_request",
+    ).length;
+
+    // Only ONE connection should be approved, not 5. The in-flight counter
+    // enforces budget.remaining > alreadyTakenThisTick — after the first
+    // candidate is approved, alreadyTakenThisTick=1 and the check fails.
+    expect(connectionCount).toBe(1);
+  });
+
+  it("approves up to exact remaining count within a single filter loop", async () => {
+    // Budget remaining=3, 5 candidates queued — only 3 should be approved.
+    const connections = Array.from({ length: 5 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    mockFindMany(connections, []);
+
+    mockCheckBudget.mockResolvedValue({ allowed: true, remaining: 3 });
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    const connectionCount = batch.filter(
+      (a) => a.actionType === "connection_request",
+    ).length;
+
+    expect(connectionCount).toBe(3);
+  });
+
+  it("in-flight counter is scoped per-type, not global", async () => {
+    // If the inFlight map were shared across types, approving 3 connections
+    // would incorrectly deplete the message budget too. Verify each type has
+    // its own in-flight counter.
+    const connections = Array.from({ length: 3 }, (_, i) =>
+      makeAction(`conn-${i}`, "connection_request"),
+    );
+    const messages = Array.from({ length: 3 }, (_, i) =>
+      makeAction(`msg-${i}`, "message"),
+    );
+    mockFindMany(connections, [], messages);
+
+    // Both types have remaining=3
+    mockCheckBudget.mockResolvedValue({ allowed: true, remaining: 3 });
+
+    const batch = await getNextBatch("sender-1", 5);
+
+    const connectionCount = batch.filter(
+      (a) => a.actionType === "connection_request",
+    ).length;
+    const messageCount = batch.filter((a) => a.actionType === "message").length;
+
+    // Both buckets get their full 3 — the inFlight counter must reset per type
+    expect(connectionCount).toBe(3);
+    expect(messageCount).toBe(3);
+  });
+
   it("includes withdraw_connection actions in their own pool", async () => {
     // Set up findMany to return withdrawal actions for the WITHDRAWAL_TYPES query
     (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(

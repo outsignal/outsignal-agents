@@ -173,17 +173,26 @@ export async function getNextBatch(
     }),
   ]);
 
-  // Budget-filter each group independently against its own daily limit
+  // Budget-filter each group independently against its own daily limit.
+  //
+  // Tracks in-flight consumption inside the filter loop to prevent a same-tick
+  // race: checkBudget reads committed DB state only, so a batch with remaining=1
+  // would otherwise approve every candidate in the loop (all reading the same
+  // "remaining=1" value) and overshoot the daily limit. James Bessey-Saldanha
+  // sent 8/6 connections in one day due to this race (2026-04-14).
   const filterByBudget = async (
     actions: typeof connectionActions,
     limit: number,
   ) => {
     const filtered: typeof actions = [];
+    const inFlightByType = new Map<string, number>();
     for (const action of actions) {
       if (filtered.length >= limit) break;
       const budget = await checkBudget(senderId, action.actionType as LinkedInActionType, action.priority);
-      if (budget.allowed) {
+      const alreadyTakenThisTick = inFlightByType.get(action.actionType) ?? 0;
+      if (budget.allowed && budget.remaining > alreadyTakenThisTick) {
         filtered.push(action);
+        inFlightByType.set(action.actionType, alreadyTakenThisTick + 1);
       }
     }
     return filtered;

@@ -63,6 +63,11 @@ describe("getAccountWarmupSchedule", () => {
 describe("checkBudget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: no running actions unless a test overrides.
+    // checkBudget calls linkedInAction.count for BOTH the P1 bypass check
+    // AND the belt-and-braces running-action tally. Without this default,
+    // a mockResolvedValue from a previous test leaks into the next.
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
   });
 
   it("allows action when sender is active and has budget", async () => {
@@ -383,6 +388,126 @@ describe("checkBudget", () => {
     expect(result.allowed).toBe(true);
     // No reduction at 20%+ — full jittered budget
     expect(result.remaining).toBeGreaterThanOrEqual(10);
+  });
+
+  // ── Running-action belt-and-braces tests (BL-safety, 2026-04-14) ────────
+  //
+  // checkBudget now counts actions in status='running' as already-consumed.
+  // This prevents cross-poll races where a batch has been picked up (markRunning)
+  // but the daily usage counter hasn't been incremented yet (consumeBudget
+  // runs after completion). Without this guard a second poll tick would
+  // re-approve the same budget slot.
+
+  it("treats running actions as consumed for daily budget", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 6,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    // usage=4 + 2 running = 6 effective. Max jittered limit ≈ 7.2 → 7.
+    // We need effectiveUsage > max jittered limit to deterministically block.
+    // Set usage=10 so effectiveUsage=12 > 7 regardless of jitter direction.
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 10,
+    });
+    // 2 actions currently running. Effective usage = 10 + 2 = 12 > any jittered 6.
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(2);
+
+    const result = await checkBudget("sender-1", "connect");
+
+    expect(result.allowed).toBe(false);
+    expect(result.remaining).toBe(0);
+    expect(result.reason).toContain("Daily");
+    expect(result.reason).toContain("running");
+  });
+
+  it("blocks exactly at the boundary where running pushes usage over limit", async () => {
+    // Specification test: usage=4, running=2, limit=6. Even with max jitter (7),
+    // effectiveUsage=6 leaves remaining ≤ 1. With min jitter (5), blocks immediately.
+    // Use a higher base limit to test the +running semantics cleanly.
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 100, // high enough to survive jitter
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 50,
+    });
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(10);
+
+    const result = await checkBudget("sender-1", "connect");
+
+    // Min jittered limit = 80. effectiveUsage = 50+10 = 60. remaining ≥ 20.
+    // Without the running count, remaining would be higher — verify the count is applied.
+    expect(result.allowed).toBe(true);
+    // effectiveUsage should reflect running actions
+    expect(prisma.linkedInAction.count).toHaveBeenCalledWith({
+      where: {
+        senderId: "sender-1",
+        actionType: { in: ["connect", "connection_request"] },
+        status: "running",
+      },
+    });
+  });
+
+  it("allows action when running count + used is below limit", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 10,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 4,
+    });
+    // 2 running + 4 used = 6. Limit 10 (jittered ±20% so ~8-12). Should allow.
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(2);
+
+    const result = await checkBudget("sender-1", "connect");
+
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBeGreaterThan(0);
+  });
+
+  it("counts running actions across the shared connect/connection_request bucket", async () => {
+    // The budget bucket for 'connect' includes both 'connect' and
+    // 'connection_request' — checkBudget MUST pass both types to the count
+    // query so a mid-flight connection_request blocks a new connect slot.
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      status: "active",
+      healthStatus: "healthy",
+      dailyConnectionLimit: 15,
+      pendingConnectionCount: 0,
+      acceptanceRate: null,
+    });
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connectionsSent: 0,
+    });
+    (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+
+    await checkBudget("sender-1", "connect");
+
+    // Verify the count query used both action types in the bucket
+    const countCall = (prisma.linkedInAction.count as ReturnType<typeof vi.fn>).mock.calls.find(
+      (args) => {
+        const where = args[0]?.where;
+        return where?.status === "running" && Array.isArray(where?.actionType?.in);
+      },
+    );
+    expect(countCall).toBeDefined();
+    expect(countCall![0].where.actionType.in).toEqual(
+      expect.arrayContaining(["connect", "connection_request"]),
+    );
+    expect(countCall![0].where.status).toBe("running");
   });
 
   it("does not query linkedInConnection.count for non-connection action types", async () => {

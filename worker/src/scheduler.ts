@@ -136,44 +136,58 @@ export function msUntilBusinessHours(config: Partial<ScheduleConfig> = {}): numb
   return 60 * 60 * 1000;
 }
 
+/** Minimum spread delay (3 min) — below this, actions start to look automated. */
+export const SPREAD_MIN_DELAY = 180_000;
+
+/** Maximum spread delay (30 min) — above this, worker falls further and further behind schedule. */
+export const SPREAD_MAX_DELAY = 1_800_000;
+
+/** Fallback when inputs are degenerate (no budget remaining, past business hours, etc.). */
+export const SPREAD_FALLBACK_DELAY = 300_000;
+
 /**
  * Calculate delay between actions to spread them evenly across remaining business hours.
  *
- * @param dailyLimit - total actions allowed today for this action type
- * @param usedToday - actions already executed today
- * @param businessStartHour - start of business hours (UTC), default 8
- * @param businessEndHour - end of business hours (UTC), default 18
- * @returns delay in milliseconds, with ±20% random jitter
+ * IMPORTANT: `totalDailyRemaining` is the TOTAL daily budget remaining across
+ * ALL action types for this sender (connections + messages + views), NOT the
+ * current batch size. Using the batch size caused a front-loading bug where a
+ * worker fetching 5 actions at 10 AM with 8h left would use 8h/5 = 30min spread
+ * (clamped to MAX), drain all 5 in ~2.5h, then poll and fetch 5 more — consuming
+ * the full daily budget by lunchtime instead of spreading across 10h business
+ * window. James B-S sent 14 completions in 2h (10:29-12:19) on 2026-04-14.
+ *
+ * @param remainingMs - milliseconds until end of business window today
+ * @param totalDailyRemaining - total actions left in today's budget across all types
+ * @returns delay in milliseconds, with ±20% random jitter, clamped to [MIN, MAX]
  */
 export function getSpreadDelay(
-  dailyLimit: number,
-  usedToday: number,
-  businessStartHour: number = 8,
+  remainingMs: number,
+  totalDailyRemaining: number,
+): number {
+  if (totalDailyRemaining <= 0) return SPREAD_FALLBACK_DELAY;
+  if (remainingMs <= 0) return SPREAD_FALLBACK_DELAY;
+
+  const targetDelay = remainingMs / totalDailyRemaining;
+
+  // Add ±20% random jitter
+  const jitter = 0.8 + Math.random() * 0.4;
+  const jittered = targetDelay * jitter;
+
+  return Math.max(SPREAD_MIN_DELAY, Math.min(SPREAD_MAX_DELAY, jittered));
+}
+
+/**
+ * Compute milliseconds until end of today's business window (UTC-based approximation).
+ * Worker assumes UTC for business hour math — this matches the scheduler's
+ * existing convention (London business hours are roughly UTC-aligned year-round).
+ */
+export function getRemainingBusinessMs(
   businessEndHour: number = 18,
 ): number {
-  const MIN_DELAY = 180_000;   // 3 minutes
-  const MAX_DELAY = 1_800_000; // 30 minutes
-  const FALLBACK_DELAY = 300_000; // 5 minutes
-
-  const remaining = dailyLimit - usedToday;
-  if (remaining <= 0) return FALLBACK_DELAY;
-
-  // Calculate remaining business hours today (UTC)
   const now = new Date();
   const currentHourUTC = now.getUTCHours() + now.getUTCMinutes() / 60;
   const remainingHours = Math.max(0, businessEndHour - currentHourUTC);
-
-  if (remainingHours <= 0) return FALLBACK_DELAY;
-
-  const remainingMs = remainingHours * 60 * 60 * 1000;
-  let interval = remainingMs / remaining;
-
-  // Add ±20% random jitter
-  const jitter = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
-  interval = interval * jitter;
-
-  // Clamp to min/max
-  return Math.max(MIN_DELAY, Math.min(MAX_DELAY, interval));
+  return remainingHours * 60 * 60 * 1000;
 }
 
 /**

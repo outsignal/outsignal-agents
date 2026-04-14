@@ -19,6 +19,7 @@ import {
   msUntilBusinessHours,
   getActionDelay,
   getSpreadDelay,
+  getRemainingBusinessMs,
   getPollDelay,
   sleep,
 } from "./scheduler.js";
@@ -861,13 +862,11 @@ export class Worker {
       if (i < actions.length - 1 && this.running) {
         const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
         const delaySec = Math.round(delay / 1000);
-        const dailyLimit = this.getDailyLimitForAction(action.actionType, sender);
-        const usedToday = this.getUsedTodayForAction(action.actionType, usageData);
-        const remaining = Math.max(0, dailyLimit - usedToday - (i + 1));
+        const totalRemaining = this.getTotalDailyRemaining(usageData);
         const now = new Date();
         const hoursLeft = Math.max(0, 18 - (now.getUTCHours() + now.getUTCMinutes() / 60));
         console.log(
-          `[Worker] Waiting ${delaySec}s before next action (${remaining} actions remaining over ${hoursLeft.toFixed(1)}h)`,
+          `[Worker] Waiting ${delaySec}s before next action (~${totalRemaining} total daily actions remaining over ${hoursLeft.toFixed(1)}h)`,
         );
         await sleep(delay);
       }
@@ -991,66 +990,47 @@ export class Worker {
   }
 
   /**
-   * Get the daily limit for a given action type from the sender config.
+   * Sum the TOTAL remaining daily budget across every action type (connections,
+   * messages, profile views). This is the correct denominator for spread math —
+   * using a single action type or the current batch size causes front-loading
+   * (see getSpreadDelay docstring for the 2026-04-14 incident).
+   *
+   * Withdrawals are excluded: they have no daily limit and run outside the
+   * business-hour spread entirely.
    */
-  private getDailyLimitForAction(
-    actionType: string,
-    sender: SenderConfig,
-  ): number {
-    switch (actionType) {
-      case "connect":
-      case "connection_request":
-        return sender.dailyConnectionLimit;
-      case "message":
-        return sender.dailyMessageLimit;
-      case "profile_view":
-        return sender.dailyProfileViewLimit;
-      default:
-        return 20; // sensible fallback
-    }
-  }
-
-  /**
-   * Extract today's usage count for an action type from the usage API response.
-   */
-  private getUsedTodayForAction(
-    actionType: string,
+  private getTotalDailyRemaining(
     usageData: Record<string, unknown> | null,
   ): number {
     if (!usageData) return 0;
-    switch (actionType) {
-      case "connect":
-      case "connection_request": {
-        const conn = usageData.connections as { sent?: number } | undefined;
-        return conn?.sent ?? 0;
-      }
-      case "message": {
-        const msg = usageData.messages as { sent?: number } | undefined;
-        return msg?.sent ?? 0;
-      }
-      case "profile_view": {
-        const pv = usageData.profileViews as { sent?: number } | undefined;
-        return pv?.sent ?? 0;
-      }
-      default:
-        return 0;
-    }
+    const pickRemaining = (slot: unknown): number => {
+      const s = slot as { remaining?: number } | undefined;
+      return typeof s?.remaining === "number" ? Math.max(0, s.remaining) : 0;
+    };
+    return (
+      pickRemaining(usageData.connections) +
+      pickRemaining(usageData.messages) +
+      pickRemaining(usageData.profileViews)
+    );
   }
 
   /**
    * Calculate spread delay for an action, falling back to getActionDelay() if usage data unavailable.
+   *
+   * Uses the sender's TOTAL daily remaining budget (connections + messages +
+   * views) — NOT the batch size — as the denominator, so N actions are spread
+   * evenly across the remaining business window.
    */
   private calculateSpreadDelay(
-    actionType: string,
-    sender: SenderConfig,
+    _actionType: string,
+    _sender: SenderConfig,
     usageData: Record<string, unknown> | null,
   ): number {
     if (!usageData) return getActionDelay();
 
-    const dailyLimit = this.getDailyLimitForAction(actionType, sender);
-    const usedToday = this.getUsedTodayForAction(actionType, usageData);
+    const totalRemaining = this.getTotalDailyRemaining(usageData);
+    const remainingMs = getRemainingBusinessMs();
 
-    return getSpreadDelay(dailyLimit, usedToday);
+    return getSpreadDelay(remainingMs, totalRemaining);
   }
 
   /**
