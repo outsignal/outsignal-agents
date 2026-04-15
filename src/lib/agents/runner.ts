@@ -1,6 +1,4 @@
-// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { generateText, stepCountIs } from "ai";
-// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/db";
 import { checkBudget } from "@/lib/rate-limits/budget-gate";

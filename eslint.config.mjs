@@ -38,11 +38,15 @@ const eslintConfig = defineConfig([
   },
   // Allow-list: server-side AI workloads (webhooks, cron, serverless) + ICP scorer + tests.
   // Rule of thumb — if there's no human at a terminal when it runs, API use is permitted here.
-  // Interactive agent orchestration (src/lib/agents/*, scripts/nova|monty|chat/etc) stays blocked —
-  // those must route through Claude Code CLI (Max plan). See memory/feedback_nova_no_api.md.
+  // All interactive CLI entry points that previously used generateText/generateObject have been
+  // removed or reduced to thin launchers (BL-060). Remaining runAgent() call paths are purely
+  // server-side (specialists called from /api/chat route handler and trigger/ jobs) and
+  // Vercel production deploys have no Max plan access — API use is correct here.
+  // See memory/feedback_nova_no_api.md + memory/bl-060-handover.md.
   {
     files: [
       "src/lib/icp/**",
+      "src/lib/agents/**",
       "src/lib/reply-analysis.ts",
       "src/lib/classification/**",
       "src/lib/ooo/**",
