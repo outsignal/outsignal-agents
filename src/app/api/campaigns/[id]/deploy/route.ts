@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { auditLog } from "@/lib/audit";
+import {
+  initiateCampaignDeploy,
+  deployFailureHttpStatus,
+} from "@/lib/campaigns/deploy-campaign";
 
 export const maxDuration = 300; // 5 minutes for background execution
 
@@ -20,14 +24,17 @@ export async function POST(
   const url = new URL(request.url);
   const retryChannel = url.searchParams.get("retry") as "email" | "linkedin" | null;
 
-  // Load campaign
-  const campaign = await getCampaign(id);
-  if (!campaign) {
-    return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
-  }
-
-  // Retry path: find latest deploy and retry the specified channel
+  // Retry path: find latest deploy and retry the specified channel.
+  // The retry branch is route-specific (driven by ?retry=) and has no CLI
+  // equivalent, so it stays inline here rather than being hoisted into the
+  // shared helper.
   if (retryChannel) {
+    // Load campaign for audit metadata + existence check.
+    const campaign = await getCampaign(id);
+    if (!campaign) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
     if (!["email", "linkedin"].includes(retryChannel)) {
       return NextResponse.json({ error: "Invalid retry channel" }, { status: 400 });
     }
@@ -62,55 +69,29 @@ export async function POST(
     return NextResponse.json({ deployId: latestDeploy.id, status: "retrying", channel: retryChannel });
   }
 
-  // Validate both approvals
-  if (!campaign.leadsApproved || !campaign.contentApproved) {
-    return NextResponse.json(
-      { error: "Both leads and content must be approved before deploying" },
-      { status: 400 },
-    );
-  }
-
-  // Parse channels
-  const channels: string[] = campaign.channels ?? ["email"];
-
-  // Atomic status transition — prevents double deploy race condition
-  const transitionResult = await prisma.campaign.updateMany({
-    where: { id, status: "approved" },
-    data: { status: "deployed", deployedAt: new Date() },
-  });
-  if (transitionResult.count === 0) {
-    return NextResponse.json(
-      { error: "Campaign is not in approved status (may have already been deployed)" },
-      { status: 409 },
-    );
-  }
-
-  // Create CampaignDeploy record
-  const deploy = await prisma.campaignDeploy.create({
-    data: {
-      campaignId: id,
-      campaignName: campaign.name,
-      workspaceSlug: campaign.workspaceSlug,
-      status: "pending",
-      channels: JSON.stringify(channels),
-      emailStatus: channels.includes("email") ? "pending" : "skipped",
-      linkedinStatus: channels.includes("linkedin") ? "pending" : "skipped",
-    },
-  });
-
-  // Trigger background task — execute deploy via Trigger.dev (retry, observability, no timeout)
-  await tasks.trigger("campaign-deploy", {
+  // Non-retry path: delegate to the shared helper so the CLI and the portal
+  // drive identical logic. Preserve pre-refactor HTTP status codes + response
+  // shapes by mapping helper failure codes back via deployFailureHttpStatus.
+  const result = await initiateCampaignDeploy({
     campaignId: id,
-    deployId: deploy.id,
+    adminEmail: session.email,
   });
 
-  auditLog({
-      action: "campaign.deploy",
-      entityType: "Campaign",
-      entityId: id,
-      adminEmail: session.email,
-      metadata: { campaignName: campaign.name, workspaceSlug: campaign.workspaceSlug, channels },
-    });
+  if (!result.ok) {
+    // Map helper failure codes back to the exact error strings + status codes
+    // the route returned prior to the BL-061 refactor. The portal depends on
+    // these shapes (e.g. displaying a 409 as "already deployed").
+    const errorText =
+      result.code === "not_found"
+        ? "Campaign not found"
+        : result.code === "missing_approvals"
+          ? "Both leads and content must be approved before deploying"
+          : "Campaign is not in approved status (may have already been deployed)";
+    return NextResponse.json(
+      { error: errorText },
+      { status: deployFailureHttpStatus(result.code) },
+    );
+  }
 
-  return NextResponse.json({ deployId: deploy.id, status: "pending" });
+  return NextResponse.json({ deployId: result.deployId, status: "pending" });
 }

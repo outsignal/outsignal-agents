@@ -627,6 +627,72 @@
       "createdAt": "2026-04-15T11:45:00Z",
       "updatedAt": "2026-04-15T18:00:00Z",
       "notes": "DONE. All 8 files migrated across the BL-060 series: 6 deletions (scripts/analyze-website.ts, scripts/generate-copy.ts, scripts/lime-linkedin-writer.ts, scripts/setup-client.ts, plus the campaign.ts and 2 additional interactive entry points), 1 thin-launcher pair (scripts/chat.ts + scripts/monty.ts reduced to launchers that shell out to `claude -p`), 1 relocation (extractIcpCriteria moved to src/lib/icp per commit 96bacc63), and now this final commit adding src/lib/agents/** to the eslint allow-list for runner.ts. This final (8/8) commit contains 3 surgical changes: (1) eslint.config.mjs allow-list expansion + explanatory comment refresh, (2) src/lib/agents/runner.ts removal of the 2 remaining BL-060 eslint-disable lines, (3) BL-060 closure in this backlog. Outcome: 0 no-restricted-imports violations project-wide, production cost unchanged (Vercel has no Max plan token so runner.ts was always going to be API-billed), Max plan cleanly isolated to developer terminal paths via nova/monty slash commands. Subprocess migration of runner.ts was intentionally skipped \u2014 it is only invoked from server-side paths (/api/chat route handler, Trigger.dev jobs, specialist wrappers) where no human terminal exists and no Max plan is reachable."
+    },
+    {
+      "id": "BL-061",
+      "title": "CLI deploy surface for Campaign Agent (scripts/cli/campaign-deploy.ts)",
+      "type": "feature",
+      "severity": null,
+      "priority": 1,
+      "status": "in_progress",
+      "createdAt": "2026-04-15T10:00:00Z",
+      "updatedAt": "2026-04-15T16:30:00Z",
+      "notes": "Gap: Campaign Agent and ops had no CLI to trigger campaign deploys; portal was the only surface. 17 approved campaigns (7 Lime + 10 1210) blocked waiting on this. Shipped: extracted deploy initiation logic from `src/app/api/campaigns/[id]/deploy/route.ts` (non-retry branch) into shared helper `src/lib/campaigns/deploy-campaign.ts` (initiateCampaignDeploy, 204 lines). New CLI `scripts/cli/campaign-deploy.ts` (360 lines after Finding A fix) wraps the helper with --ids/--dry-run/--admin-email/--incident flags, serialized execution, stop-on-first-failure, post-verify GET. Route refactored to delegate (117 \u2192 97 lines, response shapes byte-identical). 35 tests across 2 files. QA finding A (helper-throw mid-batch leaves zombie deploy) fixed in CLI via try/catch + synthetic failure row + loud stderr warning. Follow-ups filed: BL-062 (zombie deploy compensating transaction in helper), BL-063 (missing main()/stdin CLI integration test coverage), BL-064 (missing race-with-approved test in helper), BL-065 (drop unused SummaryEnvelope export). Phase B5 batch deploy of the 17 IDs pending this commit."
+    },
+    {
+      "id": "BL-062",
+      "title": "Zombie deploy compensating transaction in initiateCampaignDeploy",
+      "type": "improvement",
+      "severity": "medium",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-15T16:30:00Z",
+      "updatedAt": "2026-04-15T16:30:00Z",
+      "notes": "Surfaced from BL-061 QA Finding A. If `prisma.campaignDeploy.create()` succeeds and `tasks.trigger('campaign-deploy', ...)` subsequently throws (Trigger.dev outage, auth rotation, network), the Campaign is left in `status='deployed'` with a CampaignDeploy row `status='pending'` that no worker will pick up. BL-061 mitigation was at the CLI layer only (try/catch + synthetic failure row + loud stderr `zombie deploy` warning + halt). The helper itself still has the same window as pre-refactor. Fix sketch: wrap the updateMany + CampaignDeploy.create + tasks.trigger in a logical transaction where a trigger throw causes: (a) campaign.status revert to 'approved' via updateMany guard, (b) CampaignDeploy.delete or mark as 'failed_to_dispatch', (c) rethrow so CLI still stops on failure. OR: keep the trigger outside the transaction but add a scheduled reconciler that detects CampaignDeploys stuck in pending with no worker heartbeat. Acceptance: a trigger-throws test in deploy-campaign.test.ts passes with campaign back to 'approved' and no orphan CampaignDeploy row."
+    },
+    {
+      "id": "BL-063",
+      "title": "CLI integration test coverage for main()/stdin in campaign-deploy.ts",
+      "type": "improvement",
+      "severity": "low",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-15T16:30:00Z",
+      "updatedAt": "2026-04-15T16:30:00Z",
+      "notes": "Surfaced from BL-061 QA Finding B. Current campaign-deploy-cli.test.ts covers: splitStdinIds, parseCliArgs, classifyResult, and the Finding-A helper-throw path. Not covered: the stdin \u2192 splitStdinIds \u2192 parseCliArgs wiring end-to-end, the serialized for-loop with real-ish verdicts, the post-verify success path populating verifiedStatus/verifiedDeployedAt, the runWithHarness envelope output shape. Fix sketch: add `main()` integration tests that mock initiateCampaignDeploy + getCampaign and drive stdin via `process.stdin` push, assert the envelope shape on stdout, assert stop-on-first-failure when a verdict is `ok:false`. Acceptance: campaign-deploy-cli.test.ts has at least 2 additional tests covering stdin end-to-end + normal stop-on-first-failure (complementing the helper-throw test already there)."
+    },
+    {
+      "id": "BL-064",
+      "title": "Missing race test: updateMany count=0 with pre-load status='approved' in initiateCampaignDeploy",
+      "type": "improvement",
+      "severity": "low",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-15T16:30:00Z",
+      "updatedAt": "2026-04-15T16:30:00Z",
+      "notes": "Surfaced from BL-061 QA Finding C. Helper disambiguates `already_deployed` vs `not_approved` when updateMany returns count=0 by inspecting the ALREADY-LOADED campaign's status. If the load happened at status='approved' but a concurrent deploy flipped it before updateMany landed, the loaded status is still 'approved' \u2014 so the helper returns `not_approved` even though the true state is `already_deployed`. Misleading error code for that exact race. Fix sketch: on updateMany count=0, refetch the campaign post-updateMany to disambiguate, OR acknowledge the ambiguity in a code comment and accept the misleading code as low-impact. Add a test variant where the loaded campaign.status is 'approved' but updateMany returns count=0, asserting the chosen behaviour. Acceptance: the race is either test-covered with correct disambiguation, or explicitly documented as acceptable drift."
+    },
+    {
+      "id": "BL-065",
+      "title": "Drop unused `export` on SummaryEnvelope in campaign-deploy.ts",
+      "type": "improvement",
+      "severity": null,
+      "priority": 4,
+      "status": "open",
+      "createdAt": "2026-04-15T16:30:00Z",
+      "updatedAt": "2026-04-15T16:30:00Z",
+      "notes": "Surfaced from BL-061 QA Finding F. `SummaryEnvelope` interface is exported from scripts/cli/campaign-deploy.ts:204 but never imported externally (grep-verified). Drop the `export` keyword. Trivial cleanup, pair with any future touch of this file."
+    },
+    {
+      "id": "BL-066",
+      "title": "Automate EmailBison UI completion — schedule / senders / tracking via undocumented EB API",
+      "type": "feature",
+      "severity": null,
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-15T16:30:00Z",
+      "updatedAt": "2026-04-15T16:30:00Z",
+      "notes": "PROJECT BRIEF. Surfaced during BL-061 17-campaign batch deploy (2026-04-15). Fundamental platform gap: after `POST /api/campaigns/{id}/deploy` lands leads into EmailBison, a human still has to open the EB UI per campaign to: (1) set sending schedule (days, times, timezone), (2) configure sender overrides or allowlists, (3) toggle link_tracking / stop_on_reply / open_tracking. Every campaign \u2014 17 today, dozens per week in steady state \u2014 needs this manual touch. Not a one-off; it's the platform ceiling on throughput.\n\nScope (research phase first):\n1. RESEARCH \u2014 inspect EmailBison UI network calls via browser devtools to find undocumented endpoints. Document: endpoint URLs, HTTP methods, request/response shapes, auth model (same bearer as existing EmailBison client? session cookie? separate token?). The existing EmailBison client at src/lib/emailbison/client.ts uses bearer auth for the documented API subset \u2014 extending it is the natural fit if endpoints are bearer-auth compatible.\n2. PROTOTYPE \u2014 extend `src/lib/emailbison/client.ts` with schedule/senders/tracking setters. Start with the safest endpoint (schedule \u2014 time-based config, reversible, least blast radius).\n3. INTEGRATE \u2014 wire the new setters into `src/lib/campaigns/deploy.ts` (executeDeploy orchestrator) so a deploy finishes with schedule + sender + tracking applied, not just leads uploaded.\n4. CLI surface \u2014 consider extending `scripts/cli/campaign-deploy.ts` with a `--post-configure` flag (or a sibling `campaign-configure.ts`) that applies the settings from Campaign row config to an already-deployed EB campaign.\n\nNot today. File as a follow-up project because (a) research needs devtools inspection on a live EB session, (b) undocumented APIs are fragile \u2014 belongs behind tests + monitoring, (c) deploying 17 campaigns with an untested UI-automation layer is two risks bundled. Today: land BL-061 CLI, run the 17 deploys, ops manually completes UI config per the existing runbook. Tomorrow: start BL-066 research.\n\nAcceptance (project scope, not a single commit):\n- Documented EB UI endpoints in `docs/emailbison-ui-api.md` with request/response schemas and auth model\n- EmailBison client extended with typed methods for schedule/senders/tracking\n- Integration with deploy pipeline OR sibling CLI tool\n- Tests \u2014 mocked unit tests for the new client methods; integration test against a disposable EB sandbox campaign\n- Monitoring \u2014 alerts if an undocumented endpoint returns 4xx (sign that EB shipped a UI change that broke us)\n- Runbook update \u2014 `docs/runbooks/campaign-deploy-post-steps.md` either updated to reflect automation, or deprecated if fully automated."
     }
   ]
 }
