@@ -15,7 +15,9 @@ config({ path: ".env.local" });
 import * as readline from "readline/promises";
 import chalk from "chalk";
 import { PrismaClient } from "@prisma/client";
+// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { generateText, stepCountIs } from "ai";
+// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { anthropic } from "@ai-sdk/anthropic";
 import type { ModelMessage } from "ai";
 import {

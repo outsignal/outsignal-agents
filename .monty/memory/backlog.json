@@ -616,6 +616,17 @@
       "createdAt": "2026-04-15T00:00:00Z",
       "updatedAt": "2026-04-15T11:15:00Z",
       "notes": "DONE. Shipped in commit c804a6f7, deployed to Vercel prod 2026-04-15. Extracted `MAGIC_LINK_TTL_MS` (24h = 86_400_000ms) and `MAGIC_LINK_TTL_HUMAN` (\"24 hours\") from `src/lib/member-invite.ts`, shared with `src/app/api/portal/login/route.ts` via import (single source of truth). 4 sites updated: member-invite.ts:25 (expiresAt), member-invite.ts:69 (email copy), portal/login/route.ts:56 (expiresAt), portal/login/route.ts:95 (email copy). Doc comment at member-invite.ts:9 refreshed. Security model unchanged \u2014 single-use token, 192-bit entropy (randomBytes(24)+base64url), rate-limited verify route. resend-invite/route.ts inherits automatically (calls createInviteAndSendEmail). Added `src/__tests__/member-invite-ttl.test.ts` (3 tests, all pass) locking MS value to 86_400_000 and human string to \"24 hours\". Local verification: tsc clean, full suite 712 pass / 37 pre-existing BL-055 exclusionEntry failures (unchanged). Post-deploy smoke: POST /api/portal/login returned HTTP 400 on empty body as expected. Out of scope: stale MagicLinkToken cleanup cron (rows now persist 48\u00d7 longer before natural expiry \u2014 file a separate ticket if retention becomes a concern)."
+    },
+    {
+      "id": "BL-060",
+      "title": "Migrate 8 interactive entry points off @ai-sdk/anthropic generateText/generateObject to Claude Code CLI",
+      "type": "improvement",
+      "severity": null,
+      "priority": 1,
+      "status": "open",
+      "createdAt": "2026-04-15T11:45:00Z",
+      "updatedAt": "2026-04-15T11:45:00Z",
+      "notes": "Surfaced by 2026-04-15 API-burn incident (~$50 burned, violation #4 of feedback_nova_no_api.md). Eight files still call generateText/generateObject with anthropic(), bypassing Max plan: src/lib/agents/runner.ts (core agent runner used by all specialists \u2014 biggest blast radius), src/lib/agents/campaign.ts, scripts/analyze-website.ts, scripts/chat.ts, scripts/generate-copy.ts, scripts/lime-linkedin-writer.ts, scripts/monty.ts, scripts/setup-client.ts. All are interactive entry points (human at terminal or agent orchestration) \u2014 must route through `cd outsignal-agents && claude -p \"...\"` pattern (per ~/.claude/commands/nova.md). Each file has `// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI` comments on the violating imports to keep CI green until migrated. Rule in eslint.config.mjs will catch any NEW drift (allow-list covers server-side workloads: reply-analysis, classification, normalizers, analytics, insights, ooo, support, icp/, src/app/api/**, trigger/**). Recommended order: scripts first (simpler, 6 files), then campaign.ts (medium), then runner.ts last (biggest blast radius \u2014 consumed by every specialist agent). Each file becomes its own commit. Remove the eslint-disable comment on each file when migrated."
     }
   ]
 }

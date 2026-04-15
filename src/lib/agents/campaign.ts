@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { tool, generateObject } from "ai";
+// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import * as campaignOperations from "@/lib/campaigns/operations";

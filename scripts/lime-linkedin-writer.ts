@@ -1,7 +1,9 @@
 import { config } from "dotenv";
 config({ path: ".env" });
 config({ path: ".env.local" });
+// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { generateText, stepCountIs } from "ai";
+// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
 import { anthropic } from "@ai-sdk/anthropic";
 import { orchestratorConfig, orchestratorTools } from "@/lib/agents/orchestrator";
 
