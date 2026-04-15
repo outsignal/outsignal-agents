@@ -11,7 +11,7 @@ import chalk from "chalk";
 
 function main(): void {
   console.log(
-    chalk.bold.hex("#F0FF7A")(
+    chalk.bold.hex("#635BFF")(
       "\n  Outsignal Orchestrator — moved to Claude Code\n",
     ),
   );
