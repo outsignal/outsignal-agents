@@ -61,14 +61,18 @@ import {
 const LOG_PREFIX = "[patch-content-approved]";
 
 /**
- * Hard exclusion list — these campaigns must NEVER be touched by this
- * script. The 2 Healthcare campaigns were just rewritten by Nova Writer
- * on 2026-04-14; Jamie has not re-reviewed them yet.
+ * Hard exclusion list — campaigns the script must NEVER touch, regardless
+ * of CLI args. The guard is enforced at the script level (not the call
+ * site) so it cannot be bypassed by a typo in the args.
+ *
+ * Currently empty: the 2 Healthcare campaigns that were excluded during
+ * BL-053 remediation received Jamie's verbal re-approval on 2026-04-15
+ * after reviewing the Nova Writer rewrites, so they are no longer blocked
+ * from the patch path. The guard mechanism is intentionally preserved so
+ * future exclusions (e.g. for a new validator regression) can be added
+ * by listing IDs here.
  */
-export const EXCLUDED_CAMPAIGN_IDS: ReadonlySet<string> = new Set([
-  "cmneqhwo50001p843r5hmsul3", // 1210 Healthcare — Email
-  "cmneqhyd30001p8493tg1codq", // 1210 Healthcare — LinkedIn
-]);
+export const EXCLUDED_CAMPAIGN_IDS: ReadonlySet<string> = new Set([]);
 
 export const DEFAULT_ADMIN_EMAIL = "claudia@outsignal.ai";
 

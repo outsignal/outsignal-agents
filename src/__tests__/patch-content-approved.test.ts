@@ -200,9 +200,19 @@ describe("classify", () => {
     expect(classify("c1", row)).toEqual({ kind: "patch", row });
   });
 
-  it("returns excluded when id is in EXCLUDED_CAMPAIGN_IDS", () => {
-    const excludedId = Array.from(EXCLUDED_CAMPAIGN_IDS)[0];
-    expect(classify(excludedId, undefined).kind).toBe("excluded");
+  it("does not exclude any id when EXCLUDED_CAMPAIGN_IDS is empty (post BL-053 closure)", () => {
+    // Jamie re-approved both Healthcare campaigns on 2026-04-15. The guard
+    // mechanism is preserved (see EXCLUDED_CAMPAIGN_IDS definition) but the
+    // set is intentionally empty.
+    expect(EXCLUDED_CAMPAIGN_IDS.size).toBe(0);
+    // With an empty set, a missing row should classify as 'missing' rather
+    // than 'excluded' — proving the exclusion branch is currently inert.
+    expect(classify("cmneqhwo50001p843r5hmsul3", undefined).kind).toBe(
+      "missing",
+    );
+    expect(classify("cmneqhyd30001p8493tg1codq", undefined).kind).toBe(
+      "missing",
+    );
   });
 
   it("returns missing when row not found", () => {
@@ -243,11 +253,17 @@ describe("classify", () => {
       }
     });
 
-    it("still hard-excludes Healthcare IDs in statusOnly mode", () => {
-      const excludedId = Array.from(EXCLUDED_CAMPAIGN_IDS)[0];
-      expect(classify(excludedId, undefined, { statusOnly: true }).kind).toBe(
-        "excluded",
-      );
+    it("does not exclude the former Healthcare IDs in statusOnly mode (post BL-053 closure)", () => {
+      // Both Healthcare IDs are now unblocked — classify should treat them
+      // like any other id, so a missing row returns 'missing'.
+      expect(
+        classify("cmneqhwo50001p843r5hmsul3", undefined, { statusOnly: true })
+          .kind,
+      ).toBe("missing");
+      expect(
+        classify("cmneqhyd30001p8493tg1codq", undefined, { statusOnly: true })
+          .kind,
+      ).toBe("missing");
     });
 
     it("still requires status=pending_approval in statusOnly mode", () => {
