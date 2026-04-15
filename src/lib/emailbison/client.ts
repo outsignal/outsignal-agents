@@ -411,6 +411,27 @@ export class EmailBisonClient {
     );
   }
 
+  /**
+   * Delete a campaign permanently.
+   * DELETE /api/campaigns/{campaign_id} per docs/emailbison-dedi-api-reference.md (lines 572-589).
+   *
+   * Per EB docs: deletion is queued and processed in the background. Overall
+   * stats and lead conversations in the master inbox are preserved, but the
+   * campaign is no longer accessible via API. This action is PERMANENT and
+   * cannot be reversed — callers must confirm intent before invoking.
+   *
+   * Added 2026-04-15 for BL-061 follow-up (cleanup of 22 orphan draft
+   * campaigns left behind by the buggy campaign-deploy path). Kept minimal on
+   * purpose: no batch variant, no soft-delete wrapper. For bulk deletes use
+   * DELETE /api/campaigns/bulk (not implemented here yet — add when needed).
+   */
+  async deleteCampaign(campaignId: number): Promise<void> {
+    await this.request<unknown>(`/campaigns/${campaignId}`, {
+      method: 'DELETE',
+      revalidate: 0,
+    });
+  }
+
   // Note: name param is IGNORED by API — always produces "Copy of {original}"
   async duplicateCampaign(templateCampaignId: number): Promise<CampaignCreateResult> {
     const res = await this.request<{ data: CampaignCreateResult }>(
