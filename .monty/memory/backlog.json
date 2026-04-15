@@ -550,6 +550,39 @@
       "createdAt": "2026-04-14T11:20:00Z",
       "updatedAt": "2026-04-14T11:20:00Z",
       "notes": "Discovered 2026-04-14 on 1210 Healthcare. Nova Writer rewrote both Healthcare email + LinkedIn sequences per Jamie's feedback. After save, the Campaign rows still showed `contentApproved: true` from the OLD copy's approval. Client hadn't seen the new copy but it was flagged as approved. Risk: any rewrite without explicit flag reset will silently carry old approvals forward and could deploy unreviewed content to production. Fix: in the save-sequence path (Nova Writer's save), set `contentApproved: false` whenever a sequence is overwritten on a campaign that previously had contentApproved=true. Same for leadsApproved if the target list changed (lower priority \u2014 content rewrites are more common). Add an integration test that rewrites a sequence and asserts contentApproved gets reset. Also consider an audit log entry on every approval flag change so we can trace 'who approved what' historically. Manual reset performed for the 2 affected Healthcare campaigns via scripts/maintenance/reset-healthcare-content-approved.ts (BL-052 ID was already taken, so this entry is BL-053)."
+    },
+    {
+      "id": "BL-055",
+      "title": "Fix 37 pre-existing broken `exclusionEntry` tests on main",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-15T00:00:00Z",
+      "updatedAt": "2026-04-15T00:00:00Z",
+      "notes": "Surfaced from BL-054 QA round.\n\nProblem: `src/__tests__/setup.ts` global Prisma mock doesn't include `exclusionEntry`. 37 tests across 6 files call `prisma.exclusionEntry.findMany` \u2192 `undefined is not a function`. They're failing silently in the baseline, masking real regressions.\n\nFix sketch: add `exclusionEntry: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() }` to the global mock object in `src/__tests__/setup.ts`. Re-run suite, confirm 37 \u2192 0 failures (or surface real failures hidden by the mock gap).\n\nAcceptance: `npx vitest run` shows zero failures attributable to missing `exclusionEntry` mock."
+    },
+    {
+      "id": "BL-056",
+      "title": "Extract 21-day LinkedIn invite cooldown as named constant + doc pointer",
+      "type": "improvement",
+      "severity": null,
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-15T00:00:00Z",
+      "updatedAt": "2026-04-15T00:00:00Z",
+      "notes": "Surfaced from BL-054 follow-up.\n\nProblem: `src/app/api/linkedin/plan/route.ts` hard-codes `INTERVAL '21 days'` in two SELECT blocks. The 21-day window matches LinkedIn's invite retention but a future grep won't find it from constants/docs. If LinkedIn changes the window or we want to tune it, the magic number is hidden.\n\nFix sketch: define `LINKEDIN_INVITE_COOLDOWN_DAYS = 21` near the top of the route file (or in a shared constants module if one exists). Reference it via Prisma raw-SQL parameter. Add a short doc-comment pointing to the design doc at `docs/designs/linkedin-pull-model-v1.md` (path verified).\n\nAcceptance: no inline `21 days` literal in planner SQL; constant referenced from one place; doc comment links to design doc."
+    },
+    {
+      "id": "BL-057",
+      "title": "Planner SQL integration tests against real/staging DB",
+      "type": "improvement",
+      "severity": "medium",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-15T00:00:00Z",
+      "updatedAt": "2026-04-15T00:00:00Z",
+      "notes": "Surfaced from BL-054 root cause + 2026-04-13 LinkedIn pull-model incident.\n\nProblem: `src/__tests__/setup.ts` globally mocks Prisma. All \"integration tests\" against `/api/linkedin/plan` raw-SQL paths only verify that the JS calls Prisma \u2014 they don't verify the SQL actually does what it claims against a real Postgres. Result: BL-054 (planner re-invited cancelled-but-delivered profiles) wasn't catchable in the unit suite. The 2026-04-13 pull-model cutover incident had the same root cause.\n\nFix sketch: create `scripts/integration-tests/` (or formal vitest integration config with a test DB) that runs the planner SQL against a real schema with seeded fixtures. Should be runnable locally and in CI pre-deploy. Cover at minimum: 21-day cooldown branch, cancelled-row exclusion bug class, profile_view campaign scoping, workspace scoping. Reference `scripts/maintenance/_bl054-live-sql-check.ts` (untracked) for the live-DB read-only pattern Monty used during BL-054 to validate.\n\nAcceptance: an integration suite exists, runs against a Postgres (test DB or staging), covers the 4 BL-054 test cases at the SQL level, runs in CI before Vercel deploy."
     }
   ]
 }
