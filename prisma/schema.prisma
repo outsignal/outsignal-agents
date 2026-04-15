@@ -754,7 +754,10 @@ model Campaign {
   contentApprovedAt DateTime?
 
   // EmailBison linkage (used in Phase 10 deploy)
-  emailBisonCampaignId Int?
+  // @unique: guards against BL-070 concurrent-deploy race — two deploys cannot
+  // both win Step 1 createCampaign and write back; the loser gets P2002 and the
+  // write-back path cleans up the orphan EB campaign.
+  emailBisonCampaignId Int?     @unique
   emailBisonSequenceId Int?
 
   // --- Signal Campaign fields (Phase 19) ---
@@ -800,7 +803,6 @@ model Campaign {
   @@index([workspaceSlug])
   @@index([status])
   @@index([type, status])
-  @@index([emailBisonCampaignId])
   @@index([parentCampaignId])
 }
 

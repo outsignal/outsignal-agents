@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient, EmailBisonApiError } from "@/lib/emailbison/client";
 import { getCampaign } from "@/lib/campaigns/operations";
@@ -242,18 +243,78 @@ export class EmailAdapter implements ChannelAdapter {
       // -----------------------------------------------------------------
       // Step 2 — Persist emailBisonCampaignId on BOTH CampaignDeploy and
       // Campaign records (idempotent write — same ID on every re-run).
+      //
+      // BL-070 race guard — Campaign.emailBisonCampaignId is UNIQUE. Two
+      // concurrent deploys of the same Campaign can both take the
+      // fresh-deploy branch in Step 1 and each createCampaign on EB,
+      // producing two EB drafts. When the loser tries to write back here,
+      // Prisma raises P2002. We catch, re-read the winning ID that the
+      // other deploy persisted, delete our orphan EB campaign, and
+      // continue the rest of the flow against the winner. If the
+      // EmailBison delete itself fails we surface a loud warning rather
+      // than aborting the deploy — the write-back winner is the correct
+      // campaign and subsequent steps are safe to run against it; the
+      // orphan becomes a documented cleanup task (BL-072).
+      //
+      // The idempotent reuse branch in Step 1 can never trigger P2002
+      // because it reuses the already-persisted ID — the update becomes a
+      // no-op write of the same value. So when we reach the catch, we
+      // know ebCampaignId is the one WE just created via createCampaign
+      // and is therefore the orphan to delete.
       // -----------------------------------------------------------------
       currentStep = DEPLOY_STEP.PERSIST_EB_CAMPAIGN_ID;
-      await Promise.all([
-        prisma.campaignDeploy.update({
-          where: { id: deployId },
-          data: { emailBisonCampaignId: ebCampaignId },
-        }),
-        prisma.campaign.update({
+      try {
+        await prisma.campaign.update({
           where: { id: campaignId },
           data: { emailBisonCampaignId: ebCampaignId },
-        }),
-      ]);
+        });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2002" &&
+          preExistingEbId == null
+        ) {
+          // Concurrent-deploy race — another deploy won the write-back.
+          const winningCampaign = await prisma.campaign.findUnique({
+            where: { id: campaignId },
+            select: { emailBisonCampaignId: true },
+          });
+          const winningEbId = winningCampaign?.emailBisonCampaignId ?? null;
+          const orphanEbId = ebCampaignId;
+          console.warn(
+            `[email-adapter] BL-070 race detected for Campaign ${campaignId}: tried to write EB campaign ${orphanEbId}, winner is EB campaign ${winningEbId ?? "unknown"}. Deleting orphan ${orphanEbId} and continuing with winner.`,
+          );
+          if (winningEbId == null) {
+            // Defensive — P2002 implies a non-null row exists, but if the
+            // re-read somehow returns null we must not proceed with an
+            // unknown winner. Rethrow to surface via [step:2].
+            throw new Error(
+              `BL-070 race on Campaign ${campaignId} but re-read returned null emailBisonCampaignId after P2002. Refusing to proceed.`,
+            );
+          }
+          try {
+            await ebClient.deleteCampaign(orphanEbId);
+            console.warn(
+              `[email-adapter] BL-070 cleanup succeeded: deleted orphan EB campaign ${orphanEbId}.`,
+            );
+          } catch (deleteErr) {
+            const dmsg =
+              deleteErr instanceof Error
+                ? deleteErr.message
+                : String(deleteErr);
+            console.warn(
+              `[email-adapter] BL-070 ORPHAN CLEANUP FAILED — EB campaign ${orphanEbId} (workspace '${workspaceSlug}') must be deleted manually. See BL-072. Underlying error: ${dmsg}`,
+            );
+          }
+          ebCampaignId = winningEbId;
+        } else {
+          throw err;
+        }
+      }
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data: { emailBisonCampaignId: ebCampaignId },
+      });
 
       // Campaign was loaded in Step 1 (idempotency check). Validate
       // targetListId and pull sequence here — campaign is in scope from
