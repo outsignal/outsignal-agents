@@ -552,6 +552,17 @@
       "notes": "Discovered 2026-04-14 on 1210 Healthcare. Nova Writer rewrote both Healthcare email + LinkedIn sequences per Jamie's feedback. After save, the Campaign rows still showed `contentApproved: true` from the OLD copy's approval. Client hadn't seen the new copy but it was flagged as approved. Risk: any rewrite without explicit flag reset will silently carry old approvals forward and could deploy unreviewed content to production. Fix: in the save-sequence path (Nova Writer's save), set `contentApproved: false` whenever a sequence is overwritten on a campaign that previously had contentApproved=true. Same for leadsApproved if the target list changed (lower priority \u2014 content rewrites are more common). Add an integration test that rewrites a sequence and asserts contentApproved gets reset. Also consider an audit log entry on every approval flag change so we can trace 'who approved what' historically. Manual reset performed for the 2 affected Healthcare campaigns via scripts/maintenance/reset-healthcare-content-approved.ts (BL-052 ID was already taken, so this entry is BL-053)."
     },
     {
+      "id": "BL-054",
+      "title": "Planner dedup ignores migration-debris cancellations, re-invites already-invited profiles",
+      "type": "bug",
+      "severity": "high",
+      "priority": 1,
+      "status": "done",
+      "createdAt": "2026-04-15T00:00:00Z",
+      "updatedAt": "2026-04-15T08:50:00Z",
+      "notes": "Root cause: 2026-04-13 pull-model cutover's `scripts/maintenance/cancel-stale-pull-migration-pendings.ts` bulk-cancelled push-era pending `LinkedInAction` rows as `pre-pull-model-migration-debris`. Those rows had already been delivered to LinkedIn (3-week invite retention). Planner's exclusion query in `src/app/api/linkedin/plan/route.ts` used `status NOT IN ('cancelled','expired')`, so debris rows became invisible and the same people got re-planned. The 21-day cooldown was a design-doc concept never enforced in SQL. Surfaced: 2026-04-15 via recurring `already_invited` errors on James (BlankTag) and one older Lucy (Lime) case. 14 queued time-bombs identified across blanktag + lime-recruitment. Fix shipped in two commits: `4525b3f4` (one-shot backfill script `scripts/maintenance/backfill-already-invited-cooldown.ts` cancelled the 14 pending rows with reason `already-invited-cooldown-backfill`) and `91270ba8` (planner SQL rewrite \u2014 both SELECT blocks in route.ts now branch on action type: `connect`/`connection_request` workspace-wide with 21-day cooldown regardless of status; `profile_view` retains campaign-scoped dedup). 9 new tests in `src/__tests__/linkedin-plan-sql.test.ts`. Deployed to Vercel 2026-04-15 ~08:50 London. Follow-ups filed: BL-055 (exclusionEntry test mock gap), BL-056 (21d cooldown as named constant), BL-057 (planner SQL integration tests)."
+    },
+    {
       "id": "BL-055",
       "title": "Fix 37 pre-existing broken `exclusionEntry` tests on main",
       "type": "bug",
