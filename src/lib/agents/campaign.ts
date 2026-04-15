@@ -1,7 +1,4 @@
-// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
-import { tool, generateObject } from "ai";
-// eslint-disable-next-line no-restricted-imports -- BL-060: pending migration to Claude Code CLI
-import { anthropic } from "@ai-sdk/anthropic";
+import { tool } from "ai";
 import { z } from "zod";
 import * as campaignOperations from "@/lib/campaigns/operations";
 import * as leadsOperations from "@/lib/leads/operations";
@@ -12,46 +9,8 @@ import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
 import { appendToMemory } from "./memory";
 import { prisma } from "@/lib/db";
+import { extractIcpCriteria } from "@/lib/icp/extract-criteria";
 import { hasModule, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
-
-// --- ICP Criteria Extraction ---
-
-/**
- * Schema for structured ICP criteria extracted from natural language.
- */
-const icpCriteriaSchema = z.object({
-  industries: z
-    .array(z.string())
-    .describe("Industry/vertical names (e.g. 'SaaS', 'Fintech', 'Healthcare')"),
-  titles: z
-    .array(z.string())
-    .describe("Job titles to target (e.g. 'CEO', 'CTO', 'Head of Marketing')"),
-  companySizes: z
-    .array(z.string())
-    .describe("Company size ranges (e.g. '11-50', '51-200', '201-500')"),
-  locations: z
-    .array(z.string())
-    .describe("Geographic locations (e.g. 'United Kingdom', 'London', 'US')"),
-  keywords: z
-    .array(z.string())
-    .optional()
-    .describe("Additional keywords for filtering"),
-});
-
-/**
- * Extract structured ICP criteria from a natural language description.
- * Uses Claude Haiku for cost efficiency — this is a simple extraction task.
- */
-async function extractIcpCriteria(
-  description: string,
-): Promise<z.infer<typeof icpCriteriaSchema>> {
-  const { object } = await generateObject({
-    model: anthropic(NOVA_MODEL),
-    schema: icpCriteriaSchema,
-    prompt: `Extract structured ICP (Ideal Customer Profile) criteria from this description. Return arrays for each field. If a field is not mentioned, return an empty array.\n\nDescription: "${description}"`,
-  });
-  return object;
-}
 
 // --- Campaign Agent Tools ---
 
