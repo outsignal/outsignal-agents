@@ -11,7 +11,8 @@
  * This script flips contentApproved -> true on the supplied campaigns IFF
  * they match that exact pattern, and stamps contentApprovedAt + appends an
  * audit note to contentFeedback. It also writes an AuditLog row so the
- * patch is traceable.
+ * patch is traceable. Optionally transitions campaign.status afterwards
+ * (e.g. for rows that were 'approved' before the validator regression).
  *
  * SAFETY:
  *   - DRY-RUN by default. Use --apply to execute.
@@ -25,11 +26,30 @@
  *     exclusion is enforced at the script level — not at the call site —
  *     so it cannot be bypassed by a typo in the args.
  *
+ * Flags:
+ *   --apply                  execute (otherwise dry-run)
+ *   --justification=<str>    free-form note, lands in contentFeedback and
+ *                            AuditLog metadata
+ *   --admin-email=<email>    overrides the default admin email stamped on
+ *                            the AuditLog row
+ *   --incident=<ref>         ticket/BL reference (e.g. BL-053). Stamped in
+ *                            both contentFeedback and AuditLog metadata so
+ *                            future audits can distinguish this patch from
+ *                            earlier ones on the same campaign.
+ *   --restore-status=<s>     optional post-patch campaign.status transition.
+ *                            Must be a valid CampaignStatus. If unset, only
+ *                            contentApproved changes.
+ *
  * Usage:
- *   npx tsx scripts/maintenance/patch-content-approved.ts <id1> [<id2> ...]            # preview
- *   npx tsx scripts/maintenance/patch-content-approved.ts <id1> [<id2> ...] --apply    # execute
+ *   npx tsx scripts/maintenance/patch-content-approved.ts <id1> [<id2> ...] \
+ *     [--apply] [--justification='...'] [--admin-email='...'] \
+ *     [--incident='BL-XXX'] [--restore-status='approved']
  */
 import { prisma } from "@/lib/db";
+import {
+  CAMPAIGN_STATUSES,
+  type CampaignStatus,
+} from "@/lib/channels/constants";
 
 const LOG_PREFIX = "[patch-content-approved]";
 
@@ -38,33 +58,118 @@ const LOG_PREFIX = "[patch-content-approved]";
  * script. The 2 Healthcare campaigns were just rewritten by Nova Writer
  * on 2026-04-14; Jamie has not re-reviewed them yet.
  */
-const EXCLUDED_CAMPAIGN_IDS: ReadonlySet<string> = new Set([
+export const EXCLUDED_CAMPAIGN_IDS: ReadonlySet<string> = new Set([
   "cmneqhwo50001p843r5hmsul3", // 1210 Healthcare — Email
   "cmneqhyd30001p8493tg1codq", // 1210 Healthcare — LinkedIn
 ]);
 
-const AUDIT_NOTE =
-  "Validator BL-050 blocked client approval; manually patched 2026-04-14 with Claudia's authorization (Jamie verbally approved).";
+export const DEFAULT_ADMIN_EMAIL = "claudia@outsignal.ai";
 
-interface ParsedArgs {
+export interface ParsedArgs {
   apply: boolean;
   campaignIds: string[];
+  justification: string | null;
+  adminEmail: string;
+  incident: string | null;
+  restoreStatus: CampaignStatus | null;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
-  const apply = argv.includes("--apply");
-  const campaignIds = argv.filter(
-    (a) => !a.startsWith("--") && a.trim().length > 0,
-  );
+const VALID_STATUSES: ReadonlySet<string> = new Set(
+  Object.values(CAMPAIGN_STATUSES),
+);
+
+function takeFlagValue(arg: string, flag: string): string | null {
+  if (arg === flag) {
+    // bare flag without value
+    return "";
+  }
+  const prefix = `${flag}=`;
+  if (arg.startsWith(prefix)) {
+    return arg.slice(prefix.length);
+  }
+  return null;
+}
+
+export function parseArgs(argv: string[]): ParsedArgs {
+  let apply = false;
+  let justification: string | null = null;
+  let adminEmail = DEFAULT_ADMIN_EMAIL;
+  let incident: string | null = null;
+  let restoreStatus: CampaignStatus | null = null;
+  const campaignIds: string[] = [];
+
+  for (const raw of argv) {
+    if (raw.trim().length === 0) continue;
+    if (raw === "--apply") {
+      apply = true;
+      continue;
+    }
+    const just = takeFlagValue(raw, "--justification");
+    if (just !== null) {
+      justification = just.length > 0 ? just : null;
+      continue;
+    }
+    const email = takeFlagValue(raw, "--admin-email");
+    if (email !== null) {
+      if (email.length > 0) adminEmail = email;
+      continue;
+    }
+    const inc = takeFlagValue(raw, "--incident");
+    if (inc !== null) {
+      incident = inc.length > 0 ? inc : null;
+      continue;
+    }
+    const rs = takeFlagValue(raw, "--restore-status");
+    if (rs !== null) {
+      if (rs.length === 0) continue;
+      if (!VALID_STATUSES.has(rs)) {
+        throw new Error(
+          `--restore-status='${rs}' is not a valid CampaignStatus. Valid: ${Array.from(VALID_STATUSES).join(", ")}`,
+        );
+      }
+      restoreStatus = rs as CampaignStatus;
+      continue;
+    }
+    if (raw.startsWith("--")) {
+      throw new Error(`Unknown flag: ${raw}`);
+    }
+    campaignIds.push(raw);
+  }
+
   if (campaignIds.length === 0) {
     throw new Error(
-      "No campaign IDs supplied. Usage: patch-content-approved.ts <id1> [<id2> ...] [--apply]",
+      "No campaign IDs supplied. Usage: patch-content-approved.ts <id1> [<id2> ...] [--apply] [--justification='...'] [--admin-email='...'] [--incident='BL-XXX'] [--restore-status='approved']",
     );
   }
-  return { apply, campaignIds };
+
+  return {
+    apply,
+    campaignIds,
+    justification,
+    adminEmail,
+    incident,
+    restoreStatus,
+  };
 }
 
-interface CandidateRow {
+/**
+ * Format an audit note for contentFeedback. Always prefixes with the
+ * incident ref (if present) so future audits can distinguish patches.
+ * Templated: "<incident>: <justification> — patched <date> by <email>".
+ */
+export function formatAuditNote(args: {
+  justification: string | null;
+  adminEmail: string;
+  incident: string | null;
+  patchedAt: Date;
+}): string {
+  const date = args.patchedAt.toISOString().slice(0, 10); // YYYY-MM-DD
+  const body = args.justification ?? "manual content approval patch";
+  const prefix = args.incident ? `${args.incident}: ` : "";
+  return `${prefix}${body} — patched ${date} by ${args.adminEmail}`;
+}
+
+export interface CandidateRow {
   id: string;
   workspaceSlug: string;
   name: string;
@@ -74,16 +179,13 @@ interface CandidateRow {
   contentFeedback: string | null;
 }
 
-type Verdict =
+export type Verdict =
   | { kind: "patch"; row: CandidateRow }
   | { kind: "excluded"; id: string }
   | { kind: "missing"; id: string }
   | { kind: "wrong-state"; row: CandidateRow; reason: string };
 
-function classify(
-  id: string,
-  row: CandidateRow | undefined,
-): Verdict {
+export function classify(id: string, row: CandidateRow | undefined): Verdict {
   if (EXCLUDED_CAMPAIGN_IDS.has(id)) {
     return { kind: "excluded", id };
   }
@@ -114,15 +216,31 @@ function classify(
   return { kind: "patch", row };
 }
 
+/**
+ * Append an audit note to existing contentFeedback, preserving history.
+ * Exported for test coverage.
+ */
+export function appendContentFeedback(
+  existing: string | null,
+  note: string,
+): string {
+  return existing && existing.length > 0 ? `${existing}\n\n${note}` : note;
+}
+
 async function main(): Promise<void> {
-  const { apply, campaignIds } = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2));
+  const { apply, campaignIds, justification, adminEmail, incident, restoreStatus } =
+    args;
 
   // De-duplicate input to avoid double-applying.
   const uniqueIds = Array.from(new Set(campaignIds));
 
   console.log(
-    `${LOG_PREFIX} mode=${apply ? "APPLY" : "DRY-RUN"} candidates=${uniqueIds.length}`,
+    `${LOG_PREFIX} mode=${apply ? "APPLY" : "DRY-RUN"} candidates=${uniqueIds.length} adminEmail=${adminEmail} incident=${incident ?? "(none)"} restoreStatus=${restoreStatus ?? "(none)"}`,
   );
+  if (justification) {
+    console.log(`${LOG_PREFIX} justification=${justification}`);
+  }
 
   // Pre-flight: refuse to even fetch the excluded IDs — fail loud at the
   // very first opportunity if a caller tries to slip them through.
@@ -154,7 +272,6 @@ async function main(): Promise<void> {
 
   const verdicts: Verdict[] = uniqueIds.map((id) => classify(id, byId.get(id)));
 
-  // Print verdict table for visibility.
   console.log(`${LOG_PREFIX} per-campaign verdict:`);
   console.table(
     verdicts.map((v) => {
@@ -173,7 +290,8 @@ async function main(): Promise<void> {
             workspace: "—",
             name: "—",
             verdict: "EXCLUDED",
-            reason: "hard-coded Healthcare exclusion (Nova Writer rewrite pending re-review)",
+            reason:
+              "hard-coded Healthcare exclusion (Nova Writer rewrite pending re-review)",
           };
         case "missing":
           return {
@@ -207,6 +325,13 @@ async function main(): Promise<void> {
   console.log(`${LOG_PREFIX} ${toPatch.length} campaign(s) qualify for patching.`);
 
   if (!apply) {
+    const sampleNote = formatAuditNote({
+      justification,
+      adminEmail,
+      incident,
+      patchedAt: new Date(),
+    });
+    console.log(`${LOG_PREFIX} sample audit note: "${sampleNote}"`);
     console.log(
       `${LOG_PREFIX} DRY-RUN complete. Re-run with --apply to patch ${toPatch.length} campaign(s).`,
     );
@@ -214,6 +339,12 @@ async function main(): Promise<void> {
   }
 
   const now = new Date();
+  const auditNote = formatAuditNote({
+    justification,
+    adminEmail,
+    incident,
+    patchedAt: now,
+  });
 
   for (const { row } of toPatch) {
     // Re-check inside the txn boundary to defend against a concurrent flip
@@ -229,9 +360,7 @@ async function main(): Promise<void> {
       data: {
         contentApproved: true,
         contentApprovedAt: now,
-        contentFeedback: row.contentFeedback
-          ? `${row.contentFeedback}\n\n${AUDIT_NOTE}`
-          : AUDIT_NOTE,
+        contentFeedback: appendContentFeedback(row.contentFeedback, auditNote),
       },
     });
 
@@ -242,16 +371,25 @@ async function main(): Promise<void> {
       continue;
     }
 
+    if (restoreStatus) {
+      await prisma.campaign.update({
+        where: { id: row.id },
+        data: { status: restoreStatus },
+      });
+    }
+
     await prisma.auditLog.create({
       data: {
         action: "campaign.contentApproved.manual_patch",
         entityType: "Campaign",
         entityId: row.id,
-        adminEmail: "claudia@outsignal.ai",
+        adminEmail,
         metadata: {
           workspace: row.workspaceSlug,
           campaignName: row.name,
-          reason: "Validator BL-050/BL-051 false positive blocked client approval write",
+          incident,
+          justification,
+          restoredStatus: restoreStatus,
           script: "scripts/maintenance/patch-content-approved.ts",
           patchedAt: now.toISOString(),
         },
@@ -259,7 +397,7 @@ async function main(): Promise<void> {
     });
 
     console.log(
-      `${LOG_PREFIX} PATCHED ${row.id} (${row.workspaceSlug} — ${row.name})`,
+      `${LOG_PREFIX} PATCHED ${row.id} (${row.workspaceSlug} — ${row.name})${restoreStatus ? ` status->${restoreStatus}` : ""}`,
     );
   }
 
@@ -272,9 +410,17 @@ async function main(): Promise<void> {
   );
 }
 
-main()
-  .catch((err) => {
-    console.error(`${LOG_PREFIX} fatal:`, err);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+// Only run main when invoked as a script (not when imported in tests).
+const invokedAsScript =
+  typeof process !== "undefined" &&
+  Array.isArray(process.argv) &&
+  process.argv[1]?.endsWith("patch-content-approved.ts");
+
+if (invokedAsScript) {
+  main()
+    .catch((err) => {
+      console.error(`${LOG_PREFIX} fatal:`, err);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}
