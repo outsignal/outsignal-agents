@@ -6,6 +6,7 @@
  * are copied from existing code (snapshot.ts, deploy.ts, etc.).
  */
 
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { getCampaign } from "@/lib/campaigns/operations";
@@ -30,14 +31,47 @@ import type {
 // Local types for LinkedIn deploy
 // ---------------------------------------------------------------------------
 
-interface LinkedInSequenceStep {
-  position: number;
-  type: string; // "connect" | "message" | "profile_view"
-  body?: string;
-  delayDays?: number;
-  triggerEvent?: string; // "delay_after_previous" | "email_sent" | "connection_accepted"
-  notes?: string;
-}
+/**
+ * Adapter-boundary schema for LinkedIn sequence steps.
+ *
+ * BL-068 shape-drift guard (2026-04-15):
+ *   Writer/portal paths historically save steps with `stepNumber` while the
+ *   rule builder read `step.position`, producing `position: undefined` and
+ *   failing prisma.campaignSequenceRule.createMany() atomically. The prior
+ *   `as LinkedInSequenceStep[]` cast hid the drift; NaN sort swallowed the
+ *   undefined; the error only surfaced at the Prisma insert.
+ *
+ * We accept BOTH `position` and `stepNumber` (either is sufficient) and
+ * throw loudly at the adapter boundary if a step has neither. Extra keys
+ * are passed through (`.passthrough()`) so we don't reject valid shapes
+ * that happen to carry additional metadata (channel, subject, notes, etc.).
+ */
+const LinkedInSequenceStepSchema = z
+  .object({
+    position: z.number().int().optional(),
+    stepNumber: z.number().int().optional(),
+    type: z.string().optional(),
+    body: z.string().optional().nullable(),
+    delayDays: z.number().optional(),
+    delayHours: z.number().optional(),
+    triggerEvent: z.string().optional(),
+    notes: z.string().optional().nullable(),
+    channel: z.string().optional(),
+    subject: z.string().optional().nullable(),
+    subjectB: z.string().optional().nullable(),
+  })
+  .passthrough()
+  .refine(
+    (s) => s.position != null || s.stepNumber != null,
+    {
+      message:
+        "LinkedIn step must have position or stepNumber (BL-068 shape-drift guard)",
+    },
+  );
+
+const LinkedInSequenceSchema = z.array(LinkedInSequenceStepSchema);
+
+type LinkedInSequenceStep = z.infer<typeof LinkedInSequenceStepSchema>;
 
 export class LinkedInAdapter implements ChannelAdapter {
   readonly channel = CHANNEL_TYPES.LINKEDIN;
@@ -61,7 +95,13 @@ export class LinkedInAdapter implements ChannelAdapter {
         throw new Error("Campaign has no target list");
       }
 
-      const linkedinSequence = (campaign.linkedinSequence ?? []) as LinkedInSequenceStep[];
+      // BL-068: Zod parse at adapter boundary. Throws if any step is missing
+      // both `position` and `stepNumber` — the upstream compensating transaction
+      // catches the throw and rolls the deploy back cleanly. Replaces the prior
+      // silent-drift `as LinkedInSequenceStep[]` cast.
+      const linkedinSequence: LinkedInSequenceStep[] = LinkedInSequenceSchema.parse(
+        campaign.linkedinSequence ?? [],
+      );
 
       if (linkedinSequence.length === 0) {
         await prisma.campaignDeploy.update({
@@ -83,7 +123,16 @@ export class LinkedInAdapter implements ChannelAdapter {
       // connect) are no longer scheduled here. Post-connect steps (follow-up
       // messages) become CampaignSequenceRules triggered by connection_accepted.
       // Pre-connect actions are now created by the daily planner (pull model).
-      const sorted = [...linkedinSequence].sort((a, b) => a.position - b.position);
+      //
+      // BL-068 defensive read: resolve position from either key + idx fallback
+      // before sorting/splitting. Resolved position is used everywhere downstream.
+      const sequenceWithPositions = linkedinSequence.map((step, idx) => ({
+        ...step,
+        position: step.position ?? step.stepNumber ?? idx + 1,
+      }));
+      const sorted = [...sequenceWithPositions].sort(
+        (a, b) => a.position - b.position,
+      );
 
       // Ensure profile_view is the first step (industry standard warm-up)
       if (sorted.length > 0 && sorted[0].type !== "profile_view") {
@@ -103,10 +152,15 @@ export class LinkedInAdapter implements ChannelAdapter {
       // These fire when connection_accepted is detected by the connection-poller.
       // Always called (even if postConnectSteps is empty) to clean up stale rules
       // from a previous deploy (idempotent redeploy support).
+      //
+      // BL-068: `position` here is already resolved via the defensive read
+      // above (step.position ?? step.stepNumber ?? idx + 1). Preserve the
+      // existing delayDays → delayHours*24 conversion — shape-drift between
+      // delayDays and delayHours is filed as BL-069 for a future normalisation.
       const postConnectRules = postConnectSteps.map((step, idx) => ({
-        position: step.position,
-        type: step.type,
-        body: step.body,
+        position: step.position ?? step.stepNumber ?? idx + 1,
+        type: step.type ?? "message",
+        body: step.body ?? undefined,
         delayHours: (step.delayDays ?? (idx === 0 ? 1 : 2)) * 24,
         triggerEvent: "connection_accepted" as const,
       }));

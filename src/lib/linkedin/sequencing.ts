@@ -317,7 +317,13 @@ export async function evaluateSequenceRules(
 // ─── Campaign Sequence Rule Creation ─────────────────────────────────────────
 
 export interface LinkedInSequenceStep {
-  position: number;
+  position?: number;
+  /**
+   * BL-068 shape-drift fallback: some writer/portal paths save steps with
+   * `stepNumber` rather than `position`. The rule builder reads the two
+   * interchangeably via `step.position ?? step.stepNumber ?? idx + 1`.
+   */
+  stepNumber?: number;
   type: string;           // "connect" | "message" | "profile_view"
   /**
    * Optional message template (Handlebars).
@@ -367,27 +373,39 @@ export async function createSequenceRulesForCampaign(
 
   if (linkedinSequence.length === 0) return;
 
-  const data = linkedinSequence.map((step) => ({
-    workspaceSlug,
-    campaignName,
-    triggerEvent:
-      step.triggerEvent ?? (step.position === 1 ? "delay_after_previous" : "email_sent"),
-    triggerStepRef: step.triggerEvent === "email_sent" || (!step.triggerEvent && step.position !== 1)
-      ? (step.triggerStepRef ?? `email_${step.position}`)
-      : (step.triggerStepRef ?? null),
-    actionType: step.type,
-    messageTemplate: step.body ?? null,
-    delayMinutes: (step.delayHours ?? 0) * 60,
-    requireConnected: step.requireConnected ?? step.type === "message",
-    conditionType: step.conditionType ?? null,
-    conditionStepRef: step.conditionStepRef ?? null,
-    elseActionType: step.elseActionType ?? null,
-    elseMessageTemplate: step.elseMessageTemplate ?? null,
-    elseDelayMinutes: step.elseDelayHours != null ? step.elseDelayHours * 60 : null,
-    position: step.position,
-    variantKey: step.variantKey ?? null,
-    variantWeight: step.variantWeight ?? 1,
-  }));
+  const data = linkedinSequence.map((step, idx) => {
+    // BL-068 defense-in-depth: accept either `position` or `stepNumber` from
+    // the step JSON, falling back to the loop index (1-based) if neither is
+    // present. Prevents `position: undefined` from reaching prisma.createMany()
+    // which rejects atomically (Argument `position` is missing). Primary guard
+    // lives at the adapter boundary (Zod parse in linkedin-adapter.ts); this
+    // secondary guard protects any other caller that constructs the sequence
+    // and invokes createSequenceRulesForCampaign directly.
+    const resolvedPosition = step.position ?? step.stepNumber ?? idx + 1;
+    return {
+      workspaceSlug,
+      campaignName,
+      triggerEvent:
+        step.triggerEvent ?? (resolvedPosition === 1 ? "delay_after_previous" : "email_sent"),
+      triggerStepRef:
+        step.triggerEvent === "email_sent" ||
+        (!step.triggerEvent && resolvedPosition !== 1)
+          ? (step.triggerStepRef ?? `email_${resolvedPosition}`)
+          : (step.triggerStepRef ?? null),
+      actionType: step.type,
+      messageTemplate: step.body ?? null,
+      delayMinutes: (step.delayHours ?? 0) * 60,
+      requireConnected: step.requireConnected ?? step.type === "message",
+      conditionType: step.conditionType ?? null,
+      conditionStepRef: step.conditionStepRef ?? null,
+      elseActionType: step.elseActionType ?? null,
+      elseMessageTemplate: step.elseMessageTemplate ?? null,
+      elseDelayMinutes: step.elseDelayHours != null ? step.elseDelayHours * 60 : null,
+      position: resolvedPosition,
+      variantKey: step.variantKey ?? null,
+      variantWeight: step.variantWeight ?? 1,
+    };
+  });
 
   await prisma.campaignSequenceRule.createMany({ data });
 }
