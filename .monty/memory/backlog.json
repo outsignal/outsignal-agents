@@ -605,6 +605,17 @@
       "createdAt": "2026-04-15T09:00:00Z",
       "updatedAt": "2026-04-15T10:00:00Z",
       "notes": "DONE. Shipped in commit 06707ac5. Surfaced from 2026-04-15 James BlankTag audit.\n\nBug 1 (consumeBudget retry double-count): `/api/linkedin/actions/[id]/complete` called markComplete then consumeBudget unconditionally. Retried actions hit the endpoint again and re-incremented `LinkedInDailyUsage`. James's connectionsSent showed 5 today with only 3 actually-completed actions \u2014 2 bogus increments from retries. Fix: only consume budget when prior status was 'running' (mirror the /fail route's `wasRunning` gate). Smallest blast radius \u2014 no schema change, no migration. 4 new tests in `src/__tests__/linkedin-complete-route.test.ts`.\n\nBug 2 (jitter direction allows over-base): `applyJitter` used `base * (1 + factor)` with factor in `(-0.2, 0.2)`, letting effective cap rise above configured base (base 6 \u2192 up to 7). Mathematical enabler for yesterday's 9/6 overshoot remaining \"in range\". Fix: flipped to `base * (1 - factor)` with factor in `[0, 0.2)` \u2014 configured limit is now a hard ceiling. 5 new tests locking the invariant. Comment on existing running-count test at line 443 updated to reflect new max = base (was `\u2248 7.2 \u2192 7`).\n\nWorker deploy not required: worker/src/api-client.ts calls /complete over HTTP; rate-limiter.ts is not vendored into the Railway bundle. Single Vercel deploy covers both fixes.\n\nLocal verification: tsc clean, 55 BL-058 tests pass (51 rate-limiter + 4 complete-route), full suite 709 pass / 37 pre-existing BL-055 exclusionEntry failures (unchanged baseline)."
+    },
+    {
+      "id": "BL-059",
+      "title": "Extend client workspace invite magic-link TTL from 30 min to 24 hours",
+      "type": "improvement",
+      "severity": null,
+      "priority": 2,
+      "status": "done",
+      "createdAt": "2026-04-15T00:00:00Z",
+      "updatedAt": "2026-04-15T11:15:00Z",
+      "notes": "DONE. Shipped in commit c804a6f7, deployed to Vercel prod 2026-04-15. Extracted `MAGIC_LINK_TTL_MS` (24h = 86_400_000ms) and `MAGIC_LINK_TTL_HUMAN` (\"24 hours\") from `src/lib/member-invite.ts`, shared with `src/app/api/portal/login/route.ts` via import (single source of truth). 4 sites updated: member-invite.ts:25 (expiresAt), member-invite.ts:69 (email copy), portal/login/route.ts:56 (expiresAt), portal/login/route.ts:95 (email copy). Doc comment at member-invite.ts:9 refreshed. Security model unchanged \u2014 single-use token, 192-bit entropy (randomBytes(24)+base64url), rate-limited verify route. resend-invite/route.ts inherits automatically (calls createInviteAndSendEmail). Added `src/__tests__/member-invite-ttl.test.ts` (3 tests, all pass) locking MS value to 86_400_000 and human string to \"24 hours\". Local verification: tsc clean, full suite 712 pass / 37 pre-existing BL-055 exclusionEntry failures (unchanged). Post-deploy smoke: POST /api/portal/login returned HTTP 400 on empty body as expected. Out of scope: stale MagicLinkToken cleanup cron (rows now persist 48\u00d7 longer before natural expiry \u2014 file a separate ticket if retention becomes a concern)."
     }
   ]
 }
