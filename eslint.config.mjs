@@ -42,7 +42,6 @@ const eslintConfig = defineConfig([
   // removed or reduced to thin launchers (BL-060). Remaining runAgent() call paths are purely
   // server-side (specialists called from /api/chat route handler and trigger/ jobs) and
   // Vercel production deploys have no Max plan access — API use is correct here.
-  // See memory/feedback_nova_no_api.md + memory/bl-060-handover.md.
   {
     files: [
       "src/lib/icp/**",
