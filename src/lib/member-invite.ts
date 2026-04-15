@@ -6,8 +6,8 @@
  * route handler so both the HTTP endpoint and the CLI wrapper
  * (scripts/cli/member-invite.ts -> dist/cli/member-invite.js) can reuse it.
  *
- * The HTML template and 30-minute token TTL match the prior route-handler
- * implementation byte-for-byte — no behaviour change, just relocation.
+ * Uses a 24-hour token TTL (see MAGIC_LINK_TTL_MS). Clients repeatedly missed
+ * the prior 30-minute window in onboarding flows (BL-059, 2026-04-15).
  */
 
 import { randomBytes } from "crypto";
@@ -16,13 +16,24 @@ import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
 
+/**
+ * Magic-link token TTL for workspace invites and portal login.
+ *
+ * Security model is unchanged from the prior 30-minute TTL — tokens are
+ * single-use (verify consumes them), carry 192 bits of entropy
+ * (randomBytes(24) + base64url), and the verify endpoint is rate-limited.
+ * Only the expiry window changed (BL-059, 2026-04-15).
+ */
+export const MAGIC_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+export const MAGIC_LINK_TTL_HUMAN = "24 hours";
+
 export async function createInviteAndSendEmail(
   email: string,
   workspaceSlug: string,
   workspaceName: string,
 ) {
   const token = randomBytes(24).toString("base64url");
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MS);
 
   await prisma.magicLinkToken.create({
     data: { token, email, workspaceSlug, expiresAt },
@@ -66,7 +77,7 @@ export async function createInviteAndSendEmail(
               <tr><td style="padding:6px 0;font-family:'Geist Sans',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;color:#6B6B6B;line-height:1.6;"><span style="color:#635BFF;font-weight:700;padding-right:10px;">&#10003;</span>Manage your outreach pipeline from a single dashboard</td></tr>
             </table>
             <div style="height:24px;"></div>
-            ${emailNotice('This invitation link expires in <strong style="color:#2F2F2F;">30 minutes</strong>. If you didn\'t expect this email, you can safely ignore it.')}
+            ${emailNotice(`This invitation link expires in <strong style="color:#2F2F2F;">${MAGIC_LINK_TTL_HUMAN}</strong>. If you didn't expect this email, you can safely ignore it.`)}
           `,
           footerNote: `This is a one-time invitation link for your ${safeName} dashboard.`,
         }),

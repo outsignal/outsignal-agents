@@ -5,6 +5,7 @@ import { sendNotificationEmail } from "@/lib/resend";
 import { audited } from "@/lib/notification-audit";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
+import { MAGIC_LINK_TTL_MS, MAGIC_LINK_TTL_HUMAN } from "@/lib/member-invite";
 
 const portalLoginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   // Generate magic link token
   const token = randomBytes(24).toString("base64url");
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MS);
 
   await prisma.magicLinkToken.create({
     data: {
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
             ${emailButton("Sign In to Dashboard", verifyUrl)}
             <div style="height:32px;"></div>
             <div style="border-top:1px solid #E8E5E1;margin-bottom:28px;"></div>
-            ${emailNotice('This link expires in <strong style="color:#2F2F2F;">30 minutes</strong>. If you didn\'t request this, you can safely ignore this email.')}
+            ${emailNotice(`This link expires in <strong style="color:#2F2F2F;">${MAGIC_LINK_TTL_HUMAN}</strong>. If you didn't request this, you can safely ignore this email.`)}
           `,
           footerNote: `This is a one-time login link for your ${safeName} dashboard.`,
         }),
