@@ -17,6 +17,9 @@ import type {
   SendReplyParams,
   SendReplyResponse,
   UpdateCampaignParams,
+  CreateScheduleParams,
+  UpdateScheduleParams,
+  ScheduleResponse,
 } from "./types";
 import { EmailBisonError } from "./types";
 import type { RateLimits } from "@/lib/discovery/rate-limit";
@@ -367,6 +370,108 @@ export class EmailBisonClient {
       },
     );
     return res.data;
+  }
+
+  /**
+   * Create a campaign sending schedule.
+   * POST /api/campaigns/{campaign_id}/schedule per docs/emailbison-dedi-api-reference.md (lines 152-169).
+   *
+   * All day booleans + start_time/end_time/timezone are required; save_as_template is optional.
+   */
+  async createSchedule(
+    campaignId: number,
+    params: CreateScheduleParams,
+  ): Promise<ScheduleResponse> {
+    const res = await this.request<{ data: ScheduleResponse }>(
+      `/campaigns/${campaignId}/schedule`,
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+        revalidate: 0,
+      },
+    );
+    return res?.data ?? {};
+  }
+
+  /**
+   * Update a campaign sending schedule.
+   * PUT /api/campaigns/{campaign_id}/schedule per docs/emailbison-dedi-api-reference.md (lines 181-198).
+   *
+   * Mirrors createSchedule but save_as_template is required per the spec.
+   */
+  async updateSchedule(
+    campaignId: number,
+    params: UpdateScheduleParams,
+  ): Promise<ScheduleResponse> {
+    const res = await this.request<{ data: ScheduleResponse }>(
+      `/campaigns/${campaignId}/schedule`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(params),
+        revalidate: 0,
+      },
+    );
+    return res?.data ?? {};
+  }
+
+  /**
+   * Get a campaign's sending schedule.
+   * GET /api/campaigns/{campaign_id}/schedule per docs/emailbison-dedi-api-reference.md (lines 173-179).
+   *
+   * Returns null on 404 (matches getBlacklistedDomain's not-found pattern).
+   */
+  async getSchedule(campaignId: number): Promise<ScheduleResponse | null> {
+    try {
+      const res = await this.request<{ data: ScheduleResponse }>(
+        `/campaigns/${campaignId}/schedule`,
+        { revalidate: 0 },
+      );
+      return res?.data ?? null;
+    } catch (err) {
+      if (err instanceof EmailBisonApiError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Attach tags to one or more campaigns.
+   * POST /api/tags/attach-to-campaigns per docs/emailbison-dedi-api-reference.md (lines 1118-1127).
+   *
+   * This is a top-level tags endpoint, NOT /campaigns/.../tags — the EB spec
+   * is explicit about the path. Both tag_ids and campaign_ids are required
+   * and non-empty.
+   */
+  async attachTagsToCampaigns(params: {
+    tagIds: number[];
+    campaignIds: number[];
+    skipWebhooks?: boolean;
+  }): Promise<void> {
+    if (params.tagIds.length === 0) {
+      throw new EmailBisonError(
+        'EMPTY_TAG_LIST',
+        400,
+        'attachTagsToCampaigns called with empty tagIds array',
+      );
+    }
+    if (params.campaignIds.length === 0) {
+      throw new EmailBisonError(
+        'EMPTY_CAMPAIGN_LIST',
+        400,
+        'attachTagsToCampaigns called with empty campaignIds array',
+      );
+    }
+    const body: Record<string, unknown> = {
+      tag_ids: params.tagIds,
+      campaign_ids: params.campaignIds,
+    };
+    if (params.skipWebhooks !== undefined) {
+      body.skip_webhooks = params.skipWebhooks;
+    }
+    await this.request<unknown>('/tags/attach-to-campaigns', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      revalidate: 0,
+    });
   }
 
   /**

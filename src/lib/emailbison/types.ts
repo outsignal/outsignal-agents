@@ -181,6 +181,44 @@ export interface CreateCampaignParams {
 }
 
 /**
+ * Parameters for POST /api/campaigns/{campaign_id}/schedule.
+ * Per docs/emailbison-dedi-api-reference.md lines 152-169.
+ *
+ * All day booleans and start_time/end_time/timezone are required on create.
+ * save_as_template is optional on create.
+ */
+export interface CreateScheduleParams {
+  monday: boolean;
+  tuesday: boolean;
+  wednesday: boolean;
+  thursday: boolean;
+  friday: boolean;
+  saturday: boolean;
+  sunday: boolean;
+  start_time: string; // HH:MM (24h)
+  end_time: string;   // HH:MM (24h)
+  timezone: string;   // e.g. "Europe/London"
+  save_as_template?: boolean;
+}
+
+/**
+ * Parameters for PUT /api/campaigns/{campaign_id}/schedule.
+ * Per docs/emailbison-dedi-api-reference.md lines 181-198.
+ *
+ * Mirrors CreateScheduleParams but save_as_template is required on update per the spec.
+ */
+export interface UpdateScheduleParams extends Omit<CreateScheduleParams, "save_as_template"> {
+  save_as_template: boolean;
+}
+
+/**
+ * Response shape for schedule endpoints. The EB API returns a data envelope
+ * whose exact shape is not documented in the reference — we treat it as opaque
+ * since callers don't currently read the returned value.
+ */
+export type ScheduleResponse = Record<string, unknown>;
+
+/**
  * Settings updatable via PATCH /api/campaigns/{id}/update.
  * Snake-case to match the EB request body 1:1 (the PATCH endpoint takes the
  * same field names the GET returns, so we don't camelCase-bridge here — pass
