@@ -28,6 +28,7 @@ describe("parseArgs", () => {
       adminEmail: DEFAULT_ADMIN_EMAIL,
       incident: null,
       restoreStatus: null,
+      statusOnly: false,
     });
   });
 
@@ -97,6 +98,7 @@ describe("parseArgs", () => {
       adminEmail: "ops@outsignal.ai",
       incident: "BL-053",
       restoreStatus: "approved",
+      statusOnly: false,
     });
   });
 });
@@ -221,6 +223,62 @@ describe("classify", () => {
   it("returns wrong-state when contentApproved is already true", () => {
     const row = makeRow({ contentApproved: true });
     expect(classify("c1", row).kind).toBe("wrong-state");
+  });
+
+  describe("statusOnly mode", () => {
+    it("returns patch when contentApproved=true + status=pending_approval", () => {
+      const row = makeRow({ contentApproved: true });
+      expect(classify("c1", row, { statusOnly: true })).toEqual({
+        kind: "patch",
+        row,
+      });
+    });
+
+    it("returns wrong-state when contentApproved=false in statusOnly mode", () => {
+      const row = makeRow({ contentApproved: false });
+      const v = classify("c1", row, { statusOnly: true });
+      expect(v.kind).toBe("wrong-state");
+      if (v.kind === "wrong-state") {
+        expect(v.reason).toMatch(/--status-only/);
+      }
+    });
+
+    it("still hard-excludes Healthcare IDs in statusOnly mode", () => {
+      const excludedId = Array.from(EXCLUDED_CAMPAIGN_IDS)[0];
+      expect(classify(excludedId, undefined, { statusOnly: true }).kind).toBe(
+        "excluded",
+      );
+    });
+
+    it("still requires status=pending_approval in statusOnly mode", () => {
+      const row = makeRow({ contentApproved: true, status: "approved" });
+      expect(classify("c1", row, { statusOnly: true }).kind).toBe(
+        "wrong-state",
+      );
+    });
+  });
+});
+
+describe("parseArgs --status-only", () => {
+  it("parses --status-only and requires --restore-status", () => {
+    expect(() =>
+      parseArgs(["c1", "--status-only", "--apply"]),
+    ).toThrow(/--status-only requires --restore-status/);
+  });
+
+  it("accepts --status-only when --restore-status is set", () => {
+    const out = parseArgs([
+      "c1",
+      "--status-only",
+      "--restore-status=approved",
+    ]);
+    expect(out.statusOnly).toBe(true);
+    expect(out.restoreStatus).toBe("approved");
+  });
+
+  it("defaults statusOnly to false", () => {
+    const out = parseArgs(["c1"]);
+    expect(out.statusOnly).toBe(false);
   });
 });
 

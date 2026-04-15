@@ -39,11 +39,18 @@
  *   --restore-status=<s>     optional post-patch campaign.status transition.
  *                            Must be a valid CampaignStatus. If unset, only
  *                            contentApproved changes.
+ *   --status-only            status-only patch for rows where contentApproved
+ *                            is ALREADY true but status is stuck at
+ *                            pending_approval (e.g. status revert after a
+ *                            content edit). Skips the contentApproved flip and
+ *                            contentFeedback append — only transitions status
+ *                            and writes an AuditLog entry. Requires
+ *                            --restore-status. Excluded IDs still blocked.
  *
  * Usage:
  *   npx tsx scripts/maintenance/patch-content-approved.ts <id1> [<id2> ...] \
  *     [--apply] [--justification='...'] [--admin-email='...'] \
- *     [--incident='BL-XXX'] [--restore-status='approved']
+ *     [--incident='BL-XXX'] [--restore-status='approved'] [--status-only]
  */
 import { prisma } from "@/lib/db";
 import {
@@ -72,6 +79,7 @@ export interface ParsedArgs {
   adminEmail: string;
   incident: string | null;
   restoreStatus: CampaignStatus | null;
+  statusOnly: boolean;
 }
 
 const VALID_STATUSES: ReadonlySet<string> = new Set(
@@ -96,12 +104,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let adminEmail = DEFAULT_ADMIN_EMAIL;
   let incident: string | null = null;
   let restoreStatus: CampaignStatus | null = null;
+  let statusOnly = false;
   const campaignIds: string[] = [];
 
   for (const raw of argv) {
     if (raw.trim().length === 0) continue;
     if (raw === "--apply") {
       apply = true;
+      continue;
+    }
+    if (raw === "--status-only") {
+      statusOnly = true;
       continue;
     }
     const just = takeFlagValue(raw, "--justification");
@@ -138,7 +151,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   if (campaignIds.length === 0) {
     throw new Error(
-      "No campaign IDs supplied. Usage: patch-content-approved.ts <id1> [<id2> ...] [--apply] [--justification='...'] [--admin-email='...'] [--incident='BL-XXX'] [--restore-status='approved']",
+      "No campaign IDs supplied. Usage: patch-content-approved.ts <id1> [<id2> ...] [--apply] [--justification='...'] [--admin-email='...'] [--incident='BL-XXX'] [--restore-status='approved'] [--status-only]",
+    );
+  }
+
+  if (statusOnly && !restoreStatus) {
+    throw new Error(
+      "--status-only requires --restore-status=<s> (nothing else changes in this mode).",
     );
   }
 
@@ -149,6 +168,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     adminEmail,
     incident,
     restoreStatus,
+    statusOnly,
   };
 }
 
@@ -185,7 +205,12 @@ export type Verdict =
   | { kind: "missing"; id: string }
   | { kind: "wrong-state"; row: CandidateRow; reason: string };
 
-export function classify(id: string, row: CandidateRow | undefined): Verdict {
+export function classify(
+  id: string,
+  row: CandidateRow | undefined,
+  opts: { statusOnly?: boolean } = {},
+): Verdict {
+  const statusOnly = opts.statusOnly === true;
   if (EXCLUDED_CAMPAIGN_IDS.has(id)) {
     return { kind: "excluded", id };
   }
@@ -206,7 +231,15 @@ export function classify(id: string, row: CandidateRow | undefined): Verdict {
       reason: `leadsApproved=${row.leadsApproved} (expected true)`,
     };
   }
-  if (row.contentApproved !== false) {
+  if (statusOnly) {
+    if (row.contentApproved !== true) {
+      return {
+        kind: "wrong-state",
+        row,
+        reason: `contentApproved=${row.contentApproved} (expected true for --status-only — drop the flag to also flip contentApproved)`,
+      };
+    }
+  } else if (row.contentApproved !== false) {
     return {
       kind: "wrong-state",
       row,
@@ -229,14 +262,21 @@ export function appendContentFeedback(
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const { apply, campaignIds, justification, adminEmail, incident, restoreStatus } =
-    args;
+  const {
+    apply,
+    campaignIds,
+    justification,
+    adminEmail,
+    incident,
+    restoreStatus,
+    statusOnly,
+  } = args;
 
   // De-duplicate input to avoid double-applying.
   const uniqueIds = Array.from(new Set(campaignIds));
 
   console.log(
-    `${LOG_PREFIX} mode=${apply ? "APPLY" : "DRY-RUN"} candidates=${uniqueIds.length} adminEmail=${adminEmail} incident=${incident ?? "(none)"} restoreStatus=${restoreStatus ?? "(none)"}`,
+    `${LOG_PREFIX} mode=${apply ? "APPLY" : "DRY-RUN"}${statusOnly ? " (STATUS-ONLY)" : ""} candidates=${uniqueIds.length} adminEmail=${adminEmail} incident=${incident ?? "(none)"} restoreStatus=${restoreStatus ?? "(none)"}`,
   );
   if (justification) {
     console.log(`${LOG_PREFIX} justification=${justification}`);
@@ -270,7 +310,9 @@ async function main(): Promise<void> {
   });
   const byId = new Map<string, CandidateRow>(rows.map((r) => [r.id, r]));
 
-  const verdicts: Verdict[] = uniqueIds.map((id) => classify(id, byId.get(id)));
+  const verdicts: Verdict[] = uniqueIds.map((id) =>
+    classify(id, byId.get(id), { statusOnly }),
+  );
 
   console.log(`${LOG_PREFIX} per-campaign verdict:`);
   console.table(
@@ -282,7 +324,9 @@ async function main(): Promise<void> {
             workspace: v.row.workspaceSlug,
             name: v.row.name,
             verdict: "WILL PATCH",
-            reason: "matches pending_approval + leadsApproved + !contentApproved",
+            reason: statusOnly
+              ? "matches pending_approval + leadsApproved + contentApproved (status-only)"
+              : "matches pending_approval + leadsApproved + !contentApproved",
           };
         case "excluded":
           return {
@@ -347,40 +391,63 @@ async function main(): Promise<void> {
   });
 
   for (const { row } of toPatch) {
-    // Re-check inside the txn boundary to defend against a concurrent flip
-    // between the initial read and the write — only update rows still
-    // matching the validator-blocked pattern.
-    const updated = await prisma.campaign.updateMany({
-      where: {
-        id: row.id,
-        status: "pending_approval",
-        leadsApproved: true,
-        contentApproved: false,
-      },
-      data: {
-        contentApproved: true,
-        contentApprovedAt: now,
-        contentFeedback: appendContentFeedback(row.contentFeedback, auditNote),
-      },
-    });
-
-    if (updated.count !== 1) {
-      console.warn(
-        `${LOG_PREFIX} WARN: ${row.id} did not update (count=${updated.count}). Likely raced — verify state manually.`,
-      );
-      continue;
-    }
-
-    if (restoreStatus) {
-      await prisma.campaign.update({
-        where: { id: row.id },
-        data: { status: restoreStatus },
+    if (statusOnly) {
+      // Status-only path: contentApproved is already true. Re-check the guard
+      // inside the write boundary to defend against a concurrent revert.
+      const updated = await prisma.campaign.updateMany({
+        where: {
+          id: row.id,
+          status: "pending_approval",
+          leadsApproved: true,
+          contentApproved: true,
+        },
+        data: { status: restoreStatus! },
       });
+
+      if (updated.count !== 1) {
+        console.warn(
+          `${LOG_PREFIX} WARN: ${row.id} did not update (count=${updated.count}). Likely raced — verify state manually.`,
+        );
+        continue;
+      }
+    } else {
+      // Re-check inside the txn boundary to defend against a concurrent flip
+      // between the initial read and the write — only update rows still
+      // matching the validator-blocked pattern.
+      const updated = await prisma.campaign.updateMany({
+        where: {
+          id: row.id,
+          status: "pending_approval",
+          leadsApproved: true,
+          contentApproved: false,
+        },
+        data: {
+          contentApproved: true,
+          contentApprovedAt: now,
+          contentFeedback: appendContentFeedback(row.contentFeedback, auditNote),
+        },
+      });
+
+      if (updated.count !== 1) {
+        console.warn(
+          `${LOG_PREFIX} WARN: ${row.id} did not update (count=${updated.count}). Likely raced — verify state manually.`,
+        );
+        continue;
+      }
+
+      if (restoreStatus) {
+        await prisma.campaign.update({
+          where: { id: row.id },
+          data: { status: restoreStatus },
+        });
+      }
     }
 
     await prisma.auditLog.create({
       data: {
-        action: "campaign.contentApproved.manual_patch",
+        action: statusOnly
+          ? "campaign.status.manual_patch"
+          : "campaign.contentApproved.manual_patch",
         entityType: "Campaign",
         entityId: row.id,
         adminEmail,
@@ -390,6 +457,7 @@ async function main(): Promise<void> {
           incident,
           justification,
           restoredStatus: restoreStatus,
+          mode: statusOnly ? "status-only" : "content-approved",
           script: "scripts/maintenance/patch-content-approved.ts",
           patchedAt: now.toISOString(),
         },
@@ -397,7 +465,7 @@ async function main(): Promise<void> {
     });
 
     console.log(
-      `${LOG_PREFIX} PATCHED ${row.id} (${row.workspaceSlug} — ${row.name})${restoreStatus ? ` status->${restoreStatus}` : ""}`,
+      `${LOG_PREFIX} PATCHED ${row.id} (${row.workspaceSlug} — ${row.name})${statusOnly ? ` (status-only)` : ""}${restoreStatus ? ` status->${restoreStatus}` : ""}`,
     );
   }
 
