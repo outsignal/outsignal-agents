@@ -27,8 +27,21 @@ export async function POST(
       return NextResponse.json({ error: "Action not found" }, { status: 404 });
     }
 
+    // BL-058 Bug 1: Guard against retry double-count. Only consume budget on
+    // the FIRST transition into `complete`. If the worker retried a flaky
+    // action and already hit /complete once, the status is already `complete`
+    // and re-incrementing the daily usage counter would inflate James/Lucy/etc.
+    // above their real send count. Mirrors the `wasRunning` gate on /fail.
+    const wasRunning = action.status === "running";
+
     await markComplete(id, body.result ? JSON.stringify(body.result) : undefined);
-    await consumeBudget(action.senderId, action.actionType as LinkedInActionType);
+    if (wasRunning) {
+      await consumeBudget(action.senderId, action.actionType as LinkedInActionType);
+    } else {
+      console.warn(
+        `[complete] Skipping consumeBudget for action ${id} \u2014 prior status was '${action.status}', not 'running' (retry or double-complete)`,
+      );
+    }
 
     // If this was a connection request, create/update the LinkedInConnection
     if ((action.actionType === "connect" || action.actionType === "connection_request") && action.personId) {

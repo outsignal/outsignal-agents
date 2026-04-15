@@ -49,7 +49,13 @@ const CIRCUIT_BREAKER_THRESHOLD = 5;
 /** Maximum P1 connection actions per sender per day before falling through to normal budget */
 const P1_DAILY_CAP = 5;
 
-/** Daily volume randomisation — actual limit = base ± this fraction */
+/**
+ * Daily volume randomisation — actual limit = base × (1 - factor) where
+ * factor ∈ [0, VOLUME_JITTER_FRACTION). Jitter ONLY REDUCES below the base
+ * (BL-058 Bug 2). Prior behaviour allowed `1 + factor` which could push the
+ * effective cap ABOVE the configured base (e.g. base 6 → 7) — a soft ceiling
+ * when we need a hard one. The configured limit is now a hard upper bound.
+ */
 const VOLUME_JITTER_FRACTION = 0.2;
 
 /** Per-account warmup schedule jitter — tier boundaries shift ± this many days */
@@ -139,16 +145,24 @@ function todayUTC(): Date {
 }
 
 /**
- * Apply daily volume jitter to a limit. Returns a value within ±20% of the base.
- * Uses a deterministic seed (senderId + date) so the same sender gets the same
- * jittered limit within a single day.
+ * Apply daily volume jitter to a limit. Returns a value in the range
+ * [base × (1 - VOLUME_JITTER_FRACTION), base]. Jitter only ever REDUCES
+ * the effective cap — the configured base is a hard ceiling (BL-058 Bug 2).
+ *
+ * Uses a deterministic seed (senderId + date) so the same sender gets the
+ * same jittered limit within a single day. The downward-only bias slightly
+ * tightens the worker's spread interval (denominator in spread math is now
+ * ≤ base instead of potentially > base), which keeps actions inside the
+ * configured business window rather than risking an over-base burst.
  */
-function applyJitter(baseLimit: number, senderId: string): number {
+export function applyJitter(baseLimit: number, senderId: string): number {
   const today = todayUTC().toISOString().slice(0, 10);
   const hash = deterministicHash(`${senderId}:${today}`);
-  // Normalise to [-1, 1] range
-  const factor = ((hash % 1000) / 1000) * VOLUME_JITTER_FRACTION;
-  return Math.max(1, Math.round(baseLimit * (1 + factor)));
+  // Map hash → [0, VOLUME_JITTER_FRACTION), then apply as a NEGATIVE factor
+  // so effective = base * (1 - f) ∈ (base * 0.8, base]. Upper bound is
+  // the configured base; no upward bias.
+  const factor = ((Math.abs(hash) % 1000) / 1000) * VOLUME_JITTER_FRACTION;
+  return Math.max(1, Math.round(baseLimit * (1 - factor)));
 }
 
 /**

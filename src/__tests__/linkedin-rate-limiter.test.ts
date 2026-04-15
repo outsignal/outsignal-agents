@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
 import {
+  applyJitter,
   bucketKeyFor,
   checkBudget,
   consumeBudget,
@@ -32,6 +33,66 @@ describe("bucketKeyFor (shared-bucket invariants)", () => {
   it("message maps to its own bucket (distinct from connect and profile_view)", () => {
     expect(bucketKeyFor("message")).not.toBe(bucketKeyFor("connect"));
     expect(bucketKeyFor("message")).not.toBe(bucketKeyFor("profile_view"));
+  });
+});
+
+// ─── applyJitter (BL-058 Bug 2: downward-only, base is hard ceiling) ───────
+//
+// Prior behaviour used `1 + factor` where factor ∈ (-0.2, 0.2), which let
+// the effective cap rise above the configured base (e.g. base 6 → 7). That
+// was the mathematical enabler for James's 9/6 overshoot on 2026-04-14.
+// Fix: jitter now only REDUCES the limit — the configured base is a hard
+// ceiling. These tests lock that contract.
+
+describe("applyJitter (BL-058: hard upper ceiling)", () => {
+  it("never exceeds the configured base limit", () => {
+    for (const base of [1, 6, 8, 11, 20, 50, 100]) {
+      // Sample many senderIds to exercise the hash space
+      for (let i = 0; i < 200; i++) {
+        const senderId = `sender-jitter-${base}-${i}`;
+        const result = applyJitter(base, senderId);
+        expect(result).toBeLessThanOrEqual(base);
+      }
+    }
+  });
+
+  it("stays within ±20% reduction band (never goes below 80% of base)", () => {
+    // base=100 so rounding doesn't dominate. 80% of 100 = 80.
+    for (let i = 0; i < 200; i++) {
+      const senderId = `sender-jitter-band-${i}`;
+      const result = applyJitter(100, senderId);
+      expect(result).toBeGreaterThanOrEqual(80);
+      expect(result).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("is deterministic for a given (senderId, day) pair", () => {
+    const a = applyJitter(10, "sender-stable");
+    const b = applyJitter(10, "sender-stable");
+    expect(a).toBe(b);
+  });
+
+  it("clamps to minimum of 1 for very small bases", () => {
+    // base=1 with max downward jitter of -20% → round(0.8) = 1 (due to Math.max floor)
+    for (let i = 0; i < 50; i++) {
+      const result = applyJitter(1, `sender-min-${i}`);
+      expect(result).toBeGreaterThanOrEqual(1);
+      expect(result).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("produces spread values across senders (not all clamped to base)", () => {
+    // Sanity check: the distribution should actually produce reduced values,
+    // not just always return base. Otherwise the jitter is useless.
+    const results = new Set<number>();
+    for (let i = 0; i < 500; i++) {
+      results.add(applyJitter(100, `sender-spread-${i}`));
+    }
+    // Should see at least 10 distinct values in 500 samples with a 0.2 range.
+    expect(results.size).toBeGreaterThan(10);
+    // And at least some should be strictly below the base.
+    const belowBase = Array.from(results).filter((v) => v < 100);
+    expect(belowBase.length).toBeGreaterThan(0);
   });
 });
 
@@ -440,9 +501,9 @@ describe("checkBudget", () => {
       pendingConnectionCount: 0,
       acceptanceRate: null,
     });
-    // usage=4 + 2 running = 6 effective. Max jittered limit ≈ 7.2 → 7.
-    // We need effectiveUsage > max jittered limit to deterministically block.
-    // Set usage=10 so effectiveUsage=12 > 7 regardless of jitter direction.
+    // usage=4 + 2 running = 6 effective. With BL-058 jitter, max jittered
+    // limit = base = 6 (hard ceiling). We need effectiveUsage > max jittered
+    // limit to deterministically block. Set usage=10 so effectiveUsage=12 > 6.
     (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       connectionsSent: 10,
     });
