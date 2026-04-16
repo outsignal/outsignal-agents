@@ -232,62 +232,85 @@ export class EmailBisonClient {
     return this.getAllPages<Tag>("/tags");
   }
 
+  /**
+   * Read sequence steps for a campaign.
+   *
+   * Endpoint: `GET /api/campaigns/v1.1/{campaignId}/sequence-steps`
+   *   (docs/emailbison-dedi-api-reference.md line 1318 — the v1 path
+   *   `/campaigns/{id}/sequence-steps` is deprecated per EB docs).
+   *
+   * Phase 6.5b / BL-074 follow-through: migrated off the deprecated v1 GET
+   * path. The deprecated path was the last remaining v1 reference in this
+   * client (creates already moved to v1.1 batch endpoint in Phase 6.5a).
+   *
+   * Behaviour:
+   *   - Response is parsed through a Zod schema at the HTTP boundary matching
+   *     the `createSequenceSteps` pattern — shape drift throws an
+   *     EmailBisonError("UNEXPECTED_RESPONSE", 200, ...) rather than silently
+   *     casting. Extra fields are tolerated via passthrough.
+   *   - EB has historically returned mixed casings for sequence step fields;
+   *     defensive fallbacks (`order ?? position`, `email_subject ?? subject`,
+   *     etc.) are preserved even against v1.1 — the schema guards against
+   *     drift, the fallbacks guard against inconsistent shape within the
+   *     allowed set.
+   *   - Supports both `{ data: [...] }` and bare array response shapes
+   *     (v1.1 is documented as `{ data: [...] }` but EB has returned both
+   *     historically — parser accepts either).
+   */
   async getSequenceSteps(campaignId: number): Promise<SequenceStep[]> {
-    const res = await this.request<{ data: Record<string, unknown>[] } | Record<string, unknown>[]>(
-      `/campaigns/${campaignId}/sequence-steps`,
+    const res = await this.request<unknown>(
+      `/campaigns/v1.1/${campaignId}/sequence-steps`,
     );
-    // API returns non-paginated response with snake_case fields
-    const raw = Array.isArray(res) ? res : (res.data ?? []);
+
+    // Zod schema at the HTTP boundary — matches the createSequenceSteps
+    // pattern at lines 381-402. EB may return `{ data: [...] }` (documented
+    // v1.1 shape) or a bare array (historical v1 shape tolerated on the read
+    // path). Passthrough lets us keep the defensive `order ?? position`
+    // fallbacks below without the schema complaining about unknown keys.
+    const EbSequenceStepSchema = z
+      .object({
+        id: z.number(),
+        campaign_id: z.number().nullable().optional(),
+        email_subject: z.string().nullable().optional(),
+        subject: z.string().nullable().optional(),
+        email_body: z.string().nullable().optional(),
+        body: z.string().nullable().optional(),
+        wait_in_days: z.number().nullable().optional(),
+        delay_days: z.number().nullable().optional(),
+        order: z.number().nullable().optional(),
+        position: z.number().nullable().optional(),
+      })
+      .passthrough();
+    const EbResponseSchema = z.union([
+      z.object({ data: z.array(EbSequenceStepSchema) }),
+      z.array(EbSequenceStepSchema),
+    ]);
+
+    const parsed = EbResponseSchema.safeParse(res);
+    if (!parsed.success) {
+      throw new EmailBisonError(
+        "UNEXPECTED_RESPONSE",
+        200,
+        `getSequenceSteps response failed schema validation: ${parsed.error.message}. Raw: ${JSON.stringify(res).slice(0, 500)}`,
+      );
+    }
+
+    const raw = Array.isArray(parsed.data) ? parsed.data : parsed.data.data;
+
+    // Defensive field-name normalization preserved from the v1 implementation.
+    // EB has historically returned both casings (`order` and `position`,
+    // `email_subject` and `subject`, `wait_in_days` and `delay_days`). Even
+    // on v1.1 we keep the fallbacks so a partial-response edge-case (e.g.
+    // `position` populated but `order` null for a legacy step) maps
+    // consistently to the internal SequenceStep shape.
     return raw.map((s) => ({
-      id: s.id as number,
-      campaign_id: (s.campaign_id ?? campaignId) as number,
+      id: s.id,
+      campaign_id: s.campaign_id ?? campaignId,
       position: (s.order ?? s.position ?? 0) as number,
       subject: (s.email_subject ?? s.subject ?? "") as string,
       body: (s.email_body ?? s.body ?? "") as string,
       delay_days: (s.wait_in_days ?? s.delay_days ?? 0) as number,
     }));
-  }
-
-  /**
-   * @deprecated BL-074 — this method posts an EB-incorrect flat
-   * `{position, subject, body, delay_days}` body to the v1 (deprecated per
-   * EB docs) path `/campaigns/{id}/sequence-steps`. EmailBison actually
-   * requires the v1.1 batch envelope `{title, sequence_steps:[...]}` with
-   * entries shaped `{email_subject, email_body, wait_in_days}` (spike notes
-   * at .planning/spikes/emailbison-api.md lines 151-177; docs at
-   * docs/emailbison-dedi-api-reference.md lines 260-269 + 1326-1334).
-   *
-   * Phase 6a canary returned 422 "title/sequence_steps required" — this
-   * method is the root cause. New code MUST use `createSequenceSteps` (plural,
-   * batch) which targets the correct v1.1 endpoint and wire format.
-   *
-   * Kept for backwards compatibility because two production callers still
-   * reference it as of 2026-04-16:
-   *   - trigger/ooo-reengage.ts:229 (OOO re-engage campaigns)
-   *   - src/lib/agents/campaign.ts:310 (signal campaign activation)
-   * Both are known to be subject to the same 422 bug on next execution and
-   * will be migrated in a follow-up phase (Phase 6.5b scope). Removing this
-   * method in Phase 6.5a would leave a dead export pointing at broken
-   * callers, so we tag it @deprecated and migrate incrementally.
-   */
-  async createSequenceStep(
-    campaignId: number,
-    step: CreateSequenceStepParams,
-  ): Promise<SequenceStep> {
-    const res = await this.request<{ data: SequenceStep }>(
-      `/campaigns/${campaignId}/sequence-steps`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          position: step.position,
-          subject: step.subject,
-          body: step.body,
-          delay_days: step.delay_days ?? 1,
-        }),
-        revalidate: 0,
-      },
-    );
-    return res.data;
   }
 
   /**

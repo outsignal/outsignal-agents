@@ -224,15 +224,21 @@ export const oooReengage = task({
         ebCampaignId = ebCampaign.id;
         console.log("[ooo-reengage] Created EB campaign", { ebCampaignId, campaignName });
 
-        // Add sequence steps
-        for (const step of emailSteps) {
-          await ebClient.createSequenceStep(ebCampaignId, {
+        // Add sequence steps via the v1.1 batch endpoint (BL-074 follow-through).
+        // The deprecated singular `createSequenceStep` posted a flat body to the
+        // v1 path and hit EB 422 "title/sequence_steps required". We now send
+        // one batched POST with the EB-required `{title, sequence_steps:[...]}`
+        // envelope — title reuses the campaign name already computed above.
+        await ebClient.createSequenceSteps(
+          ebCampaignId,
+          campaignName,
+          emailSteps.map((step) => ({
             position: step.position,
             subject: step.subjectLine,
             body: step.body,
             delay_days: step.delayDays,
-          });
-        }
+          })),
+        );
 
         // Assign sending inbox — prefer original campaign's inboxes
         try {

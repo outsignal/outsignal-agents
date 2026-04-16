@@ -298,7 +298,12 @@ const campaignTools = {
         const ebCampaign = await ebClient.createCampaign({ name: campaign.name });
         signalEmailBisonCampaignId = ebCampaign.id;
 
-        // Create sequence steps
+        // Create sequence steps via the v1.1 batch endpoint (BL-074 follow-through).
+        // The deprecated singular `createSequenceStep` posted a flat body to the
+        // v1 path and hit EB 422 "title/sequence_steps required". We now send
+        // one batched POST with the EB-required `{title, sequence_steps:[...]}`
+        // envelope — title reuses the campaign name already passed to
+        // createCampaign above.
         const emailSeq = campaign.emailSequence as Array<{
           position: number;
           subjectLine?: string;
@@ -306,14 +311,16 @@ const campaignTools = {
           bodyText?: string;
           delayDays?: number;
         }>;
-        for (const step of emailSeq) {
-          await ebClient.createSequenceStep(ebCampaign.id, {
+        await ebClient.createSequenceSteps(
+          ebCampaign.id,
+          campaign.name,
+          emailSeq.map((step) => ({
             position: step.position,
             subject: step.subjectLine,
             body: step.body ?? step.bodyText ?? "",
             delay_days: step.delayDays ?? 1,
-          });
-        }
+          })),
+        );
       }
 
       // Transition to active

@@ -301,3 +301,132 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// BL-074 follow-through (Phase 6.5b) — getSequenceSteps GET path migration
+// ---------------------------------------------------------------------------
+//
+// Phase 6.5a fixed the CREATE path (POST) to use the v1.1 batch endpoint.
+// Phase 6.5b fixes the READ path (GET) to also use v1.1 — the deprecated v1
+// path `/campaigns/{id}/sequence-steps` was the last remaining reference.
+//
+// These tests assert the outgoing fetch URL uses the v1.1 path and that the
+// response is parsed via Zod-at-boundary (schema drift throws loudly rather
+// than silently casting). This mirrors the createSequenceSteps contract above.
+// ---------------------------------------------------------------------------
+
+describe("EmailBisonClient.getSequenceSteps — v1.1 READ path (BL-074 follow-through)", () => {
+  let client: EmailBisonClient;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    client = new EmailBisonClient(TOKEN);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("GETs the v1.1 path and maps snake_case to the internal SequenceStep shape", async () => {
+    // EB v1.1 response shape per docs line 1318 + spike notes:
+    // `{ data: [ { id, email_subject, email_body, wait_in_days, order, ... } ] }`.
+    fetchMock.mockResolvedValue(
+      mockResponse({
+        data: [
+          {
+            id: 301,
+            email_subject: "Hi there",
+            email_body: "Body 1",
+            wait_in_days: 1,
+            order: 1,
+          },
+          {
+            id: 302,
+            email_subject: "Follow up",
+            email_body: "Body 2",
+            wait_in_days: 3,
+            order: 2,
+          },
+        ],
+      }),
+    );
+
+    const result = await client.getSequenceSteps(CAMPAIGN_ID);
+
+    // URL must hit the v1.1 path — asserts the deprecated v1
+    // `/campaigns/{id}/sequence-steps` path is no longer used.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toBe(`${EB_BASE}/campaigns/v1.1/${CAMPAIGN_ID}/sequence-steps`);
+    expect(url).toContain("/v1.1/");
+    // Defensive — the old v1 path segment `/campaigns/{id}/sequence-steps`
+    // (with the campaign id immediately after /campaigns/) must NOT appear.
+    expect(url).not.toMatch(
+      new RegExp(`/campaigns/${CAMPAIGN_ID}/sequence-steps`),
+    );
+
+    // Method default is GET; the request helper omits the method header when
+    // no body is passed. Just assert body is absent.
+    const options = fetchMock.mock.calls[0][1] as RequestInit | undefined;
+    expect(options?.body).toBeUndefined();
+
+    // Response shape normalization: email_subject → subject, email_body → body,
+    // wait_in_days → delay_days, order → position. campaign_id falls back to
+    // the argument when absent from the response.
+    expect(result).toEqual([
+      {
+        id: 301,
+        campaign_id: CAMPAIGN_ID,
+        position: 1,
+        subject: "Hi there",
+        body: "Body 1",
+        delay_days: 1,
+      },
+      {
+        id: 302,
+        campaign_id: CAMPAIGN_ID,
+        position: 2,
+        subject: "Follow up",
+        body: "Body 2",
+        delay_days: 3,
+      },
+    ]);
+  });
+
+  it("accepts a bare-array response shape (historical EB behaviour)", async () => {
+    // Historically EB has returned both `{ data: [...] }` and a bare array;
+    // the Zod union tolerates both so a shape-flip in production doesn't
+    // silently break the reader.
+    fetchMock.mockResolvedValue(
+      mockResponse([
+        { id: 401, subject: "legacy", body: "legacy body", position: 1, delay_days: 0 },
+      ]),
+    );
+
+    const result = await client.getSequenceSteps(CAMPAIGN_ID);
+
+    expect(result).toEqual([
+      {
+        id: 401,
+        campaign_id: CAMPAIGN_ID,
+        position: 1,
+        subject: "legacy",
+        body: "legacy body",
+        delay_days: 0,
+      },
+    ]);
+  });
+
+  it("throws UNEXPECTED_RESPONSE when the Zod schema fails (drift guard)", async () => {
+    // EB returns something that's neither `{data:[...]}` nor a bare array —
+    // e.g. a bare object. Zod parse must fail and surface an EmailBisonError
+    // rather than silently returning an empty or malformed list.
+    fetchMock.mockResolvedValue(mockResponse({ not_data: "oops" }));
+
+    await expect(client.getSequenceSteps(CAMPAIGN_ID)).rejects.toThrow(
+      /UNEXPECTED_RESPONSE|getSequenceSteps response failed schema validation/,
+    );
+  });
+});

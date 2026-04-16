@@ -32,14 +32,12 @@ const {
     createCampaign: vi.fn(),
     getCampaign: vi.fn(),
     getSequenceSteps: vi.fn(),
-    // BL-074 / Phase 6.5a: email-adapter.ts Step 3 now calls the batched
-    // `createSequenceSteps` (plural) against the v1.1 endpoint. The
-    // deprecated per-step `createSequenceStep` remains on the client for
-    // legacy callers (trigger/ooo-reengage.ts, agents/campaign.ts) but is
-    // NOT invoked by the adapter anymore. We keep the old mock declared
-    // so any test that introspects calls on it keeps its shape (and so a
-    // future accidental revert to the old method fails loud in tests).
-    createSequenceStep: vi.fn(),
+    // BL-074 / Phase 6.5a: email-adapter.ts Step 3 calls the batched
+    // `createSequenceSteps` (plural) against the v1.1 endpoint. Phase 6.5b
+    // follow-through removed the deprecated singular `createSequenceStep`
+    // from the real client after migrating the last two callers
+    // (trigger/ooo-reengage.ts + agents/campaign.ts) to the batch API, so
+    // the legacy mock stub is no longer needed as a tripwire.
     createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
@@ -165,7 +163,6 @@ describe("EmailAdapter.deploy()", () => {
     // Fresh-deploy path skips getSequenceSteps (preExistingEbId == null),
     // so this default is only exercised by idempotency tests if added.
     ebMock.getSequenceSteps.mockResolvedValue([]);
-    ebMock.createSequenceStep.mockResolvedValue({ id: 1 });
     // BL-074 — batched sequence step creation default: return a shape
     // compatible with SequenceStep[]. Individual tests that assert on
     // call args override via mockResolvedValueOnce.
@@ -219,8 +216,10 @@ describe("EmailAdapter.deploy()", () => {
     // uses the Campaign name so EB's UI can trace back to the Outsignal
     // Campaign without a lookup. Per-step consumer shape is unchanged
     // (position/subject/body/delay_days) — the client handles v1.1 wire
-    // transformation internally.
-    expect(ebMock.createSequenceStep).not.toHaveBeenCalled();
+    // transformation internally. Phase 6.5b follow-through deleted the
+    // deprecated singular `createSequenceStep` entirely, so the
+    // `not.toHaveBeenCalled()` tripwire is no longer necessary (the method
+    // is gone at the type level).
     expect(ebMock.createSequenceSteps).toHaveBeenCalledTimes(1);
     expect(ebMock.createSequenceSteps).toHaveBeenCalledWith(999, "Acme E1", [
       { position: 1, subject: "hi", body: "hello", delay_days: 0 },
@@ -281,13 +280,8 @@ describe("EmailAdapter.deploy()", () => {
       return { id: 999 };
     });
     // BL-074 — Step 3 is now a SINGLE batched call to createSequenceSteps.
-    // We still register a stub on the legacy `createSequenceStep` mock so
-    // any accidental revert to the old method surfaces here (the assertion
-    // below asserts it NEVER appears in the call order).
-    ebMock.createSequenceStep.mockImplementation(async () => {
-      callOrder.push("createSequenceStep");
-      return { id: 1 };
-    });
+    // Phase 6.5b follow-through deleted the deprecated singular
+    // `createSequenceStep` entirely — no tripwire stub is needed.
     ebMock.createSequenceSteps.mockImplementation(async () => {
       callOrder.push("createSequenceSteps");
       return [

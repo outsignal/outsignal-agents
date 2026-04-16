@@ -321,8 +321,11 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
           },
         });
       }
-      // Step 3 — existing sequence-step at position 1.
-      if (method === "GET" && /\/campaigns\/10001\/sequence-steps/.test(stripped)) {
+      // Step 3 — existing sequence-step at position 1. BL-074 follow-through:
+      // GET path migrated from deprecated v1 `/campaigns/{id}/sequence-steps`
+      // to v1.1 `/campaigns/v1.1/{id}/sequence-steps`. Regex accepts either
+      // shape so re-running against an older client build does not false-fail.
+      if (method === "GET" && /\/campaigns\/(v1\.1\/)?10001\/sequence-steps/.test(stripped)) {
         return mockResponse({
           data: [
             { position: 1, id: 1, subject: "hi", body: "hello", delay_days: 0 },
@@ -514,7 +517,9 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
           },
         });
       }
-      if (method === "GET" && /\/campaigns\/10002\/sequence-steps/.test(stripped)) {
+      // BL-074 follow-through: GET migrated to v1.1 path. Regex accepts either
+      // shape to stay robust against future reverts to the deprecated v1 path.
+      if (method === "GET" && /\/campaigns\/(v1\.1\/)?10002\/sequence-steps/.test(stripped)) {
         return mockResponse({ data: [{ position: 1, id: 1 }] });
       }
       if (method === "POST" && stripped === "/leads") {

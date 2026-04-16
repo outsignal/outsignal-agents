@@ -759,6 +759,72 @@
       "createdAt": "2026-04-15T20:12:05Z",
       "updatedAt": "2026-04-15T20:12:05Z",
       "notes": "When email-adapter hits P2002 on Campaign.emailBisonCampaignId it deletes the orphan EB campaign inline. Add a periodic reconciliation worker that catches any orphans missed by inline cleanup (e.g. if the delete call itself failed). Low priority — inline cleanup covers the happy-path race."
+    },
+    {
+      "id": "BL-073",
+      "title": "Signal campaign sibling of BL-070 race: signalEmailBisonCampaignId needs @unique + P2002 handling",
+      "type": "bug",
+      "severity": "high",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-15T21:40:00Z",
+      "updatedAt": "2026-04-15T21:40:00Z",
+      "notes": "QA F1 on Phase 3.5 review (commit 5a13ceba). src/lib/agents/campaign.ts:283-329 activateSignalCampaign does the exact read-createEBCampaign-write pattern that BL-070 found in the static deploy path. Schema line 785 declares Campaign.signalEmailBisonCampaignId as Int? with NO @unique. Two concurrent signal-campaign activations reproduce BL-070 verbatim on this untouched code path. Fix mirrors Phase 3.5: (1) add @unique to schema.prisma line 785, (2) write migration DROP INDEX Campaign_signalEmailBisonCampaignId_idx + CREATE UNIQUE INDEX Campaign_signalEmailBisonCampaignId_key, (3) apply P2002-catch at campaign.ts:320 with orphan-delete + re-read (mirror email-adapter.ts:271-313 with target filter narrowed to signalEmailBisonCampaignId per F2). Gate any Phase 4+ work that introduces concurrency into signal-campaign lifecycle on this landing."
+    },
+    {
+      "id": "BL-074",
+      "title": "createSequenceStep wire-format + v1.1 endpoint migration — Phase 6a canary root cause",
+      "type": "bug",
+      "severity": "critical",
+      "priority": 1,
+      "status": "done",
+      "createdAt": "2026-04-16T08:09:18.262Z",
+      "updatedAt": "2026-04-16T09:48:09Z",
+      "notes": "Phase 6a canary failed 422 on email deploy with identical error string to pre-rebuild 2026-04-15 failure (CampaignDeploy cmo00nd6g000pp8j53qk6h1ky). Phase 3 rebuild (e2ffe366+dfdef8fc+aa0db89b) did NOT fix the root cause — it wrapped scaffolding around an untested wire-payload bug. Per QA F1: src/lib/emailbison/client.ts:250-268 createSequenceStep() POSTs flat {position,subject,body,delay_days}. EB API requires {title, sequence_steps:[...]} (deprecated docs/emailbison-dedi-api-reference.md:260-269 AND v1.1 1326-1334). Also uses deprecated endpoint path while v1.1 is live. Compounded by src/lib/channels/email-adapter.ts:359-373 calling in a for-loop when EB expects a single batched POST. Fix: (a) rewrite createSequenceStep to accept full sequence array + POST to v1.1 path with {title, sequence_steps}, (b) collapse for-loop in email-adapter.ts into single batched call, (c) mandatory contract test that inspects outgoing fetch body for title + sequence_steps fields (current tests mock success regardless of payload — QA F2). Blocks Phase 6b. [UPDATE 2026-04-16T09:45Z] PM-authorized Phase 6a-rollback superseded the forensic hold on EB 79 — campaign 79 was DELETED (no DB row survived, so no mutating state to examine, and it was blocking Phase 6.5 retry on cmneqixpv). Orphan EB 78 IS STILL RETAINED for BL-076 serial-retry forensics; BL-077 tracks EB 78 cleanup after BL-076 root-cause captures. BL-078 tracks the error-class mismatch surfaced during rollback execution. [CLOSED 2026-04-16T09:48:09Z Phase 6.5b Bundle A] getSequenceSteps migrated to v1.1 path with Zod-at-boundary; trigger/ooo-reengage.ts:229 and src/lib/agents/campaign.ts:310 migrated from deprecated createSequenceStep to batched createSequenceSteps; deprecated method removed from client.ts. BL-074 fully closed across all call sites."
+    },
+    {
+      "id": "BL-075",
+      "title": "Campaign.status optimistic rollback gap on deploy failure",
+      "type": "bug",
+      "severity": "high",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-16T08:09:18.262Z",
+      "updatedAt": "2026-04-16T08:09:18.262Z",
+      "notes": "QA F4. src/lib/campaigns/deploy-campaign.ts:130-158 flips Campaign.status approved→deployed OPTIMISTICALLY before async Trigger.dev task runs. src/lib/campaigns/deploy.ts:174-197 executeDeploy catch-block only updates CampaignDeploy row — never rolls Campaign.status back, never clears deployedAt, never clears emailBisonCampaignId. Phase 5.5 commit 184db22c was a manual SQL fix for this exact drift but the systemic fix never landed. Every failed deploy now leaves zombie Campaign state (status=deployed, ebId=populated, deployedAt=non-null, but CampaignDeploy.status=failed in sibling table). Phase 6a canary reproduced this exactly. Fix: executeDeploy catch block must atomically revert Campaign.status→approved AND clear emailBisonCampaignId AND clear deployedAt on terminal failure. Must also handle the retry case (do not rollback if another CampaignDeploy row is still pending)."
+    },
+    {
+      "id": "BL-076",
+      "title": "Trigger.dev retry semantics + serial-retry orphan creation",
+      "type": "bug",
+      "severity": "high",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-16T08:09:18.262Z",
+      "updatedAt": "2026-04-16T08:09:18.262Z",
+      "notes": "QA F3+F8. trigger/campaign-deploy.ts:14-19 has retry.maxAttempts=2. Phase 6a canary produced 2 EB drafts (78+79, 17s apart) — suggests Trigger.dev fired a retry after Step 3 422, re-entering deploy.ts with state that re-created EB campaign instead of reusing preExistingEbId. Compensating-tx did NOT delete orphan EB 78. The concurrent-race test (email-adapter-race.test.ts) exercises P2002 but NOT the serial-retry path. Need: (a) retry-idempotency integration test reproducing Phase 6a dual-orphan, (b) root-cause whether Trigger.dev retry bypasses the preExistingEbId reuse branch in email-adapter.ts, (c) decide whether createCampaign retries should be guarded by a separate idempotency key. Do NOT start fixes until BL-074 lands — they compound."
+    },
+    {
+      "id": "BL-077",
+      "title": "Delete EB 78 orphan after Phase 6.5 forensic work",
+      "type": "improvement",
+      "severity": "low",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-16T09:45:00Z",
+      "updatedAt": "2026-04-16T09:45:00Z",
+      "notes": "Phase 6a-rollback (2026-04-16) deleted orphan EB 79 per PM brief but explicitly left EB 78 on the 1210-solutions EmailBison workspace as forensic evidence for BL-076 (Trigger.dev serial-retry orphan creation). EB 78 state: status=draft, 0 leads, 0 senders, not persisted on any DB row, unreachable from app data. Cleanup must happen AFTER BL-076 root-cause is captured and a reproduction test lands. Cleanup flow: call client.deleteCampaign(78) with 1210-solutions workspace apiToken, verify 404 (handle BOTH EmailBisonApiError AND EmailBisonError classes per BL-078), write AuditLog entry action='campaign.orphan.cleanup' metadata={reason:'Phase 6a BL-076 forensic evidence retained until root-cause captured'}. No DB Campaign/CampaignDeploy row exists for EB 78 (the retry path re-used the same CampaignDeploy row). Follow _phase-6a-rollback pattern but with the F1 fix (widen catches to EmailBisonError class)."
+    },
+    {
+      "id": "BL-078",
+      "title": "EmailBisonClient error-class mismatch: EmailBisonApiError vs EmailBisonError",
+      "type": "bug",
+      "severity": "medium",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-16T09:45:00Z",
+      "updatedAt": "2026-04-16T09:45:00Z",
+      "notes": "Phase 6a-rollback QA F1. client.getCampaign() throws TWO error classes: (a) EmailBisonApiError (src/lib/emailbison/client.ts:44-66) has .status + .isRecordNotFound getter when HTTP returns non-2xx, OR (b) EmailBisonError from src/lib/emailbison/types.ts:336 with code='CAMPAIGN_NOT_FOUND', statusCode=404 (thrown at client.ts:334-339 when EB returns 200 with empty/missing data). EB's DELETE is async per docs/emailbison-dedi-api-reference.md:572-589 — GET during the cleanup window returns 200-with-empty-data, triggering EmailBisonError (not EmailBisonApiError). Callers that narrow to `e as EmailBisonApiError` and check `err.isRecordNotFound || err.status === 404` silently mishandle EmailBisonError (status=undefined, isRecordNotFound=undefined → rethrow). Surfaced in _phase-6a-rollback-email-canary.ts:150-161 as a spurious failure that misdiagnosed as 'transient fetch retry race'. Fix: (a) introduce a shared helper `isNotFoundError(e): boolean` covering BOTH classes, (b) grep all callers of getCampaign/deleteCampaign for the pattern `isRecordNotFound || .status === 404` and refactor, (c) add unit test mocking BOTH error paths. Blocks clean BL-077 execution."
     }
   ]
 }
