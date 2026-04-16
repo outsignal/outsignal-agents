@@ -402,14 +402,68 @@ export class EmailAdapter implements ChannelAdapter {
         : [];
       const existingPositions = new Set(existingSteps.map((s) => s.position));
 
+      // BL-085 — reply-in-thread empty-subject handling.
+      //
+      // Outsignal convention (see feedback_email_threading_subject memory):
+      // follow-up steps ship with an EMPTY subjectLine so recipient-side
+      // email clients thread the follow-up under step 1. EB v1.1
+      // `POST /campaigns/{id}/sequence-steps` REJECTS empty email_subject
+      // with 422 "email_subject required" (Phase 6a canary Step 3
+      // failure). The EB reference docs do NOT document any
+      // inherit_subject / reply_in_thread / is_followup flag on the
+      // sequence-step schema — only `email_subject`, `email_body`,
+      // `wait_in_days` per docs/emailbison-dedi-api-reference.md
+      // lines 1326-1334. Reply-threading flags exist only on the
+      // reply endpoints (`inject_previous_email_body` on
+      // POST /replies/{id}/reply, line 665), not on sequence-step
+      // creation.
+      //
+      // Fix — `Re: {firstStepSubject}` fallback. Email clients (Gmail,
+      // Outlook, Apple Mail) thread messages under the same
+      // normalized subject per RFC 5322 — the `Re: ` prefix is
+      // stripped for subject-match threading. So EB validates, EB
+      // sends, and the recipient still sees the follow-up threaded
+      // under step 1.
+      //
+      // firstStepSubject is picked by sorting emailSequence by
+      // position (the stored order is usually but not always
+      // position-ascending; the canonical Phase 6.5c writer is
+      // position-ascending, but historical 0-indexed sequences and
+      // future drifts should not break this). If step 1 itself has
+      // an empty subjectLine (shouldn't happen per the writer but
+      // defensive), fall back to a safe placeholder and emit a
+      // console.warn so operators notice the drift.
+      const sortedByPosition = [...emailSequence].sort(
+        (a, b) => a.position - b.position,
+      );
+      const firstStepSubjectRaw = sortedByPosition[0]?.subjectLine;
+      const firstStepSubject =
+        firstStepSubjectRaw && firstStepSubjectRaw.trim() !== ""
+          ? firstStepSubjectRaw
+          : "(no subject)";
+      if (firstStepSubject === "(no subject)") {
+        console.warn(
+          `[email-adapter] BL-085: Campaign ${campaignId} ('${campaignName}') has empty subjectLine on its first sequence step (position ${sortedByPosition[0]?.position}). Using placeholder '(no subject)' — review stored emailSequence shape.`,
+        );
+      }
+
       const missingSteps = emailSequence
         .filter((step) => !existingPositions.has(step.position))
-        .map((step) => ({
-          position: step.position,
-          subject: step.subjectLine,
-          body: step.body ?? step.bodyText ?? "",
-          delay_days: step.delayDays ?? 1,
-        }));
+        .map((step) => {
+          const isEmptySubject =
+            !step.subjectLine || step.subjectLine.trim() === "";
+          return {
+            position: step.position,
+            // Empty subjects on follow-up steps get `Re: <step1>`
+            // so EB accepts them AND recipient clients thread the
+            // reply under step 1. BL-085.
+            subject: isEmptySubject
+              ? `Re: ${firstStepSubject}`
+              : step.subjectLine,
+            body: step.body ?? step.bodyText ?? "",
+            delay_days: step.delayDays ?? 1,
+          };
+        });
 
       if (missingSteps.length > 0) {
         // Title parameter — EB docs describe it as "The title for the
