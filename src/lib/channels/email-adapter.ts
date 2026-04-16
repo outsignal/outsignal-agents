@@ -167,6 +167,7 @@ export class EmailAdapter implements ChannelAdapter {
 
   async deploy(params: DeployParams): Promise<void> {
     const { deployId, campaignId, campaignName, workspaceSlug } = params;
+    const skipResume = params.skipResume === true;
 
     // Mark email channel as running
     await prisma.campaignDeploy.update({
@@ -602,7 +603,35 @@ export class EmailAdapter implements ChannelAdapter {
       // succeeded before control is handed to EB's sender. Any non-2xx
       // propagates via withRetry → outer catch → emailError tagged
       // `[step:9]`.
+      //
+      // skipResume path (stage-deploy): DO NOT call resumeCampaign and
+      // DO NOT run Step 10 verify. Leave the EB campaign in DRAFT so
+      // the PM can inspect it in the EB UI before launching manually.
+      // CampaignDeploy.emailStatus is marked 'complete' with a narrative
+      // note in emailError explaining the staged state (emailError is
+      // the conventional free-form narrative field; we intentionally
+      // co-opt it for the staged signal since no schema change is in
+      // scope for this path). Campaign.status stays at 'deployed'
+      // because the outer deploy.ts post-finalize auto-transition is
+      // also gated by skipResume.
       // -----------------------------------------------------------------
+      if (skipResume) {
+        console.log(
+          `[email-adapter] skipResume=true — Steps 9/10 skipped; EB campaign ${ebCampaignId} staged in DRAFT for manual PM review. deployId=${deployId}, campaign '${campaignName}'.`,
+        );
+        await prisma.campaignDeploy.update({
+          where: { id: deployId },
+          data: {
+            emailStatus: "complete",
+            emailStepCount,
+            leadCount,
+            emailError:
+              "STAGED — resume pending PM review via EB UI or manual resumeCampaign call",
+          },
+        });
+        return;
+      }
+
       currentStep = DEPLOY_STEP.RESUME_LAUNCH;
       await withRetry(() => ebClient.resumeCampaign(ebCampaignId));
 

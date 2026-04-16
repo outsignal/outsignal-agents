@@ -69,6 +69,20 @@ async function finalizeDeployStatus(
 // ---------------------------------------------------------------------------
 
 /**
+ * Options for executeDeploy.
+ *
+ * skipResume — stage the EB campaign through Step 8 but do NOT run Step 9
+ *   (resumeCampaign / launch) or Step 10 (verify status). The EB campaign
+ *   is left in DRAFT for manual PM review in the EmailBison UI. On
+ *   successful stage-deploy, Campaign.status STAYS at 'deployed' (no auto
+ *   transition to 'active'). Used for canary stage-then-launch flows where
+ *   the PM wants to inspect the EB state before launch.
+ */
+export interface ExecuteDeployOptions {
+  skipResume?: boolean;
+}
+
+/**
  * Execute a full campaign deploy. Fire-and-forget — call this after the API
  * route has returned 202.
  *
@@ -78,6 +92,7 @@ async function finalizeDeployStatus(
 export async function executeDeploy(
   campaignId: string,
   deployId: string,
+  opts?: ExecuteDeployOptions,
 ): Promise<void> {
   initAdapters();
 
@@ -205,6 +220,7 @@ export async function executeDeploy(
           campaignName: campaign.name,
           workspaceSlug: campaign.workspaceSlug,
           channels,
+          skipResume: opts?.skipResume === true,
         });
       } else {
         const statusField = channel === "email" ? "emailStatus" : "linkedinStatus";
@@ -218,12 +234,19 @@ export async function executeDeploy(
     // 5. Finalize
     await finalizeDeployStatus(deployId, channels);
 
-    // 5b. Auto-transition campaign from "deployed" to "active" on successful deploy
+    // 5b. Auto-transition campaign from "deployed" to "active" on successful deploy.
+    //
+    // skipResume stage-deploy path: Step 9 (resumeCampaign) and Step 10
+    // (verifyStatus) were intentionally skipped by the adapter, so the EB
+    // campaign is still in DRAFT. Flipping Campaign.status to 'active' here
+    // would lie about the state — leave it at 'deployed' until the PM
+    // launches manually (either via EB UI + a follow-up executeDeploy
+    // without skipResume, or via a direct resumeCampaign call).
     const finalizedDeploy = await prisma.campaignDeploy.findUniqueOrThrow({
       where: { id: deployId },
       select: { status: true },
     });
-    if (finalizedDeploy.status === "complete") {
+    if (finalizedDeploy.status === "complete" && opts?.skipResume !== true) {
       // Only transition if still in "deployed" — don't re-activate paused/archived campaigns
       const activated = await prisma.campaign.updateMany({
         where: { id: campaignId, status: "deployed" },
@@ -234,6 +257,10 @@ export async function executeDeploy(
           `[deploy] Auto-transitioned campaign ${campaignId} from 'deployed' to 'active'`,
         );
       }
+    } else if (finalizedDeploy.status === "complete" && opts?.skipResume === true) {
+      console.log(
+        `[deploy] skipResume=true — Campaign ${campaignId} staying at 'deployed' (EB campaign left in DRAFT for manual PM review).`,
+      );
     }
 
     // 6. Send deploy completion notification (non-blocking)

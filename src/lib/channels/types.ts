@@ -26,6 +26,13 @@ export interface DeployParams {
   campaignName: string;
   workspaceSlug: string;
   channels: string[];  // All channels being deployed — adapters use for cross-channel awareness
+  /**
+   * Stage the channel deploy but do NOT run the final launch step
+   * (Step 9 resumeCampaign / launch + Step 10 verifyStatus on the email
+   * adapter). Leaves the external campaign in DRAFT for manual PM review.
+   * Threaded from executeDeploy's `opts.skipResume`. Default: false.
+   */
+  skipResume?: boolean;
 }
 
 /** Result returned from an adapter's deploy method. */

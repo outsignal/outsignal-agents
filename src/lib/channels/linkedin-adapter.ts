@@ -82,6 +82,19 @@ export class LinkedInAdapter implements ChannelAdapter {
 
   async deploy(params: DeployParams): Promise<void> {
     const { deployId, campaignId, workspaceSlug } = params;
+    // skipResume (belt-and-braces): the LinkedIn adapter uses the pull model —
+    // pre-connect actions (profile_view / connection_request) are created by
+    // the daily planner (src/app/api/linkedin/plan) rather than fired at
+    // deploy time, and post-connect rules (CampaignSequenceRule rows) are
+    // inert until connection_accepted events fire. There is no direct
+    // "launch" step analogous to email's resumeCampaign. We honor the flag
+    // for symmetry with the email adapter and future-proofing; today the
+    // only behavioural difference on skipResume is a log line signalling
+    // that the sequence rules have been written but no active execution
+    // hand-off happens (true on both paths). Campaign.status is controlled
+    // by the outer executeDeploy, which also gates the deployed→active
+    // auto-transition behind skipResume.
+    const skipResume = params.skipResume === true;
 
     // Mark linkedin channel as running
     await prisma.campaignDeploy.update({
@@ -190,7 +203,10 @@ export class LinkedInAdapter implements ChannelAdapter {
 
       console.log(
         `[deploy] Campaign "${campaign.name}" deployed with pull model — ${leadCount} leads, ` +
-          `${postConnectRules.length} post-connect rules. Actions will be created by daily planner.`,
+          `${postConnectRules.length} post-connect rules. Actions will be created by daily planner.` +
+          (skipResume
+            ? " [skipResume=true — Campaign will stay at 'deployed' per outer executeDeploy gate; pull-model semantics unchanged.]"
+            : ""),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
