@@ -281,8 +281,14 @@ export async function executeDeploy(
       }).catch((err) => console.error("Deploy notification failed:", err));
 
       // Send client-facing campaign-live notification (not for "failed" — that's admin-only via notifyDeploy)
+      // Gated behind skipResume: staged deploys leave the EB campaign in DRAFT, so
+      // firing the "campaign is live" notification would be a lie. Symmetric to the
+      // deployed→active auto-transition gate above.
       const deployStatus = finalDeploy.status as string;
-      if (deployStatus === "complete" || deployStatus === "partial_failure") {
+      if (
+        (deployStatus === "complete" || deployStatus === "partial_failure") &&
+        opts?.skipResume !== true
+      ) {
         await notifyCampaignLive({
           workspaceSlug: campaign.workspaceSlug,
           campaignName: campaign.name,
