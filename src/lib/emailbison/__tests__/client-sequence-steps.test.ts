@@ -269,7 +269,7 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
   // whatever the caller passes — the email-adapter is responsible for
   // selecting the right subject (RAW step-1 subject for threaded follow-ups,
   // own subject for fresh threads).
-  it("BL-093: thread_reply=true forwarded on the wire; canonical {FIRSTNAME} variable transformed to {{first_name}}", async () => {
+  it("BL-093 (vendor-authoritative): thread_reply=true forwarded on the wire; canonical {FIRSTNAME} variable transformed to {FIRST_NAME}", async () => {
     fetchMock.mockResolvedValue(
       mockResponse({
         data: [
@@ -304,17 +304,19 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
     const sequenceSteps = body.sequence_steps as Array<Record<string, unknown>>;
     expect(sequenceSteps).toHaveLength(2);
 
-    // Step 1 — variables transformed at the wire boundary.
-    expect(sequenceSteps[0].email_subject).toBe("Hi {{first_name}}");
+    // Step 1 — variables transformed at the wire boundary to EB vendor spec
+    // (SINGLE-curly UPPER_SNAKE). SENDER_FIRST_NAME is vendor-native and
+    // passes through unchanged.
+    expect(sequenceSteps[0].email_subject).toBe("Hi {FIRST_NAME}");
     expect(sequenceSteps[0].email_body).toBe(
-      "Hello {{first_name}}, about {{company}}.\n\nCheers,\n{SENDER_FIRST_NAME}",
+      "Hello {FIRST_NAME}, about {COMPANY}.\n\nCheers,\n{SENDER_FIRST_NAME}",
     );
     expect(sequenceSteps[0].thread_reply).toBe(false);
 
     // Step 2 — RAW step-1 subject (NOT prefixed) AND thread_reply=true.
-    // Variable in the subject is also transformed.
-    expect(sequenceSteps[1].email_subject).toBe("Hi {{first_name}}");
-    expect(sequenceSteps[1].email_body).toBe("Following up, {{first_name}}.");
+    // Variable in the subject is also transformed to vendor spec.
+    expect(sequenceSteps[1].email_subject).toBe("Hi {FIRST_NAME}");
+    expect(sequenceSteps[1].email_body).toBe("Following up, {FIRST_NAME}.");
     expect(sequenceSteps[1].thread_reply).toBe(true);
   });
 

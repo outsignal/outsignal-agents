@@ -309,7 +309,18 @@ export class EmailBisonClient {
         position: z.number().nullable().optional(),
       })
       .passthrough();
+    // BL-096 (2026-04-16): EB v1.1 GET now returns a nested shape
+    // `{ data: { sequence_id, sequence_steps: [...] } }` in addition to the
+    // previously-documented `{ data: [...] }` and historical bare-array
+    // shapes. All three are accepted here (closes BL-096 latent drift —
+    // previously the canary verification side threw UNEXPECTED_RESPONSE).
     const EbResponseSchema = z.union([
+      z.object({
+        data: z.object({
+          sequence_id: z.number().nullable().optional(),
+          sequence_steps: z.array(EbSequenceStepSchema),
+        }),
+      }),
       z.object({ data: z.array(EbSequenceStepSchema) }),
       z.array(EbSequenceStepSchema),
     ]);
@@ -323,7 +334,12 @@ export class EmailBisonClient {
       );
     }
 
-    const raw = Array.isArray(parsed.data) ? parsed.data : parsed.data.data;
+    // Unwrap to the raw step array regardless of shape variant.
+    const raw = Array.isArray(parsed.data)
+      ? parsed.data
+      : Array.isArray(parsed.data.data)
+        ? parsed.data.data
+        : parsed.data.data.sequence_steps;
 
     // Defensive field-name normalization preserved from the v1 implementation.
     // EB has historically returned both casings (`order` and `position`,
@@ -405,12 +421,14 @@ export class EmailBisonClient {
     const body = {
       title,
       sequence_steps: steps.map((step) => ({
-        // BL-093 (2026-04-16): apply variable transform on the wire so
-        // writer-emitted `{FIRSTNAME}` / `{COMPANYNAME}` / etc. become EB's
-        // documented `{{first_name}}` / `{{company}}` syntax. EB renders
-        // double-curly snake_case lead built-ins; literal `FIRSTNAME` in the
-        // body would render as the string "FIRSTNAME" to the recipient.
-        // Transform is idempotent — safe on already-correct EB tokens.
+        // BL-093 (2026-04-16, corrected post-da7fdf60): apply variable
+        // transform on the wire so writer-emitted `{FIRSTNAME}` /
+        // `{COMPANYNAME}` / etc. become EB's vendor-documented
+        // `{FIRST_NAME}` / `{COMPANY}` syntax — SINGLE-curly UPPER_SNAKE.
+        // Without this, literal `FIRSTNAME` in the body would render as the
+        // string "FIRSTNAME" to the recipient. Transform is idempotent
+        // because the target shape is same as input shape (single-curly
+        // UPPER_SNAKE) — already-correct EB tokens pass through unchanged.
         email_subject: transformVariablesForEB(step.subject ?? ""),
         email_body: transformVariablesForEB(step.body),
         // EB docs: wait_in_days required, minimum 1 (NOT 0). Callers may
