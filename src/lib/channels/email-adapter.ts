@@ -11,6 +11,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { isNotFoundError } from "@/lib/emailbison/errors";
+import {
+  transformSenderNames,
+  type SenderRoster,
+} from "@/lib/emailbison/sender-name-transform";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { withRetry } from "@/lib/utils/retry";
 import { CHANNEL_TYPES } from "./constants";
@@ -243,6 +247,58 @@ export function resolveAllocatedSenders(
   }
   const allowed = new Set(allWorkspaceSenderIds);
   return allocated.filter((id) => allowed.has(id));
+}
+
+/**
+ * BL-100 (2026-04-16) — build a `SenderRoster` from a set of Sender rows.
+ *
+ * The roster is consumed by `transformSenderNames` in
+ * `src/lib/emailbison/sender-name-transform.ts`. We split each Sender's
+ * `name` field into first/last tokens so the transformer can match
+ * either "Daniel Lazarus" (full) or "Daniel" / "Lazarus" (fragments) in
+ * the signature region of a step body.
+ *
+ * Splitting rules:
+ *   - Single-word names (e.g. "Cher") → contribute only firstNames +
+ *     fullNames=[name]. lastNames gets nothing.
+ *   - Two+ word names → firstNames=[first], lastNames=[rest.join(" ")],
+ *     fullNames=[full]. The multi-word trailing path supports names
+ *     like "Mary Jane Smith" where the effective last-name block is
+ *     "Jane Smith"; the writer conventionally signs with "Mary" alone
+ *     (first) or the full name, so this split covers the common cases.
+ *   - Empty/null/whitespace-only names → silently skipped (no crash).
+ *   - Duplicate names across senders are deduplicated — all three
+ *     output arrays contain distinct values only.
+ *
+ * Exported for unit-test visibility; not used outside this module.
+ */
+export function buildSenderRoster(
+  senders: readonly { name: string | null }[],
+): SenderRoster {
+  const firstNames = new Set<string>();
+  const lastNames = new Set<string>();
+  const fullNames = new Set<string>();
+
+  for (const s of senders) {
+    const raw = s.name?.trim();
+    if (!raw) continue;
+    // Collapse internal whitespace so "Daniel   Lazarus" → "Daniel Lazarus".
+    const normalized = raw.replace(/\s+/g, " ");
+    const parts = normalized.split(" ");
+    if (parts.length === 0) continue;
+
+    fullNames.add(normalized);
+    firstNames.add(parts[0]);
+    if (parts.length > 1) {
+      lastNames.add(parts.slice(1).join(" "));
+    }
+  }
+
+  return {
+    firstNames: Array.from(firstNames),
+    lastNames: Array.from(lastNames),
+    fullNames: Array.from(fullNames),
+  };
 }
 
 /**
@@ -622,6 +678,76 @@ export class EmailAdapter implements ChannelAdapter {
         `Campaign ${campaignId} ('${campaignName}')`,
         (step) => !existingPositions.has(step.position),
       );
+
+      // -----------------------------------------------------------------
+      // BL-100 (2026-04-16) — sender-name substitution at the signature.
+      //
+      // Writer prompts emit sender first/last/full names as literal text
+      // in the body's signature region (e.g. `Daniel Lazarus` on its own
+      // line). The canary EB 89 shipped that literal to EB verbatim;
+      // recipients of any non-Daniel sender's inbox would have received
+      // the wrong name. Fix: rewrite the signature-region name to the EB
+      // sender built-ins (`{SENDER_FULL_NAME}` / `{SENDER_FIRST_NAME}`)
+      // at the adapter boundary so EB substitutes the actual sender at
+      // send time.
+      //
+      // Fix lives here (NOT in the writer) for the same reason as the
+      // BL-093 lead variable transform: normalize at the vendor edge;
+      // writer prompts stay human-readable.
+      //
+      // Roster sourcing — same allocation logic as Step 6 (attach
+      // senders). We query the allocated-sender names now rather than
+      // waiting until Step 6 because the transform has to run BEFORE
+      // `createSequenceSteps` POSTs the body to EB. The query below is
+      // the mirror of the Step 6 query with `name` added to the select;
+      // the Step 6 block remains authoritative for the EB-IDs-to-attach
+      // path and is left unchanged.
+      //
+      // Empty-roster semantics: if allocation returns zero senders
+      // here (e.g. all senders were deleted between initiateDeploy and
+      // the adapter running), the transformer is a no-op — the body
+      // passes through verbatim and Step 6 will surface the zero-sender
+      // error loudly. We deliberately do NOT throw here to keep the
+      // existing Step 6 error path as the single point of truth for
+      // missing senders.
+      const rosterSenders = await prisma.sender.findMany({
+        where: {
+          workspaceSlug,
+          channel: { in: ["email", "both"] },
+          emailBisonSenderId: { not: null },
+          healthStatus: { in: ["healthy", "warning"] },
+        },
+        select: { name: true, emailBisonSenderId: true },
+        orderBy: { emailBisonSenderId: "asc" },
+      });
+      const rosterSenderIds = rosterSenders
+        .map((s) => s.emailBisonSenderId)
+        .filter((id): id is number => id != null);
+      const allocatedRosterIds = new Set(
+        resolveAllocatedSenders(campaignId, rosterSenderIds),
+      );
+      const senderRoster = buildSenderRoster(
+        rosterSenders.filter(
+          (s) =>
+            s.emailBisonSenderId != null &&
+            allocatedRosterIds.has(s.emailBisonSenderId),
+        ),
+      );
+
+      // Apply sender-name transform to each step body before the POST.
+      // The lead-variable transform happens INSIDE
+      // `ebClient.createSequenceSteps` (per BL-093, 14bb69ba), so the
+      // ordering on the wire is: [this] sender-name → [client-internal]
+      // lead-variable → HTTP POST. Both transforms are idempotent;
+      // already-transformed bodies (e.g. an idempotent re-deploy) are
+      // no-ops with `matched=false`.
+      for (const step of missingSteps) {
+        const result = transformSenderNames(step.body, senderRoster, {
+          campaignId,
+          campaignName,
+        });
+        step.body = result.transformed;
+      }
 
       if (missingSteps.length > 0) {
         // Title parameter — EB docs describe it as "The title for the
