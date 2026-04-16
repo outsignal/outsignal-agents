@@ -611,11 +611,16 @@ export class EmailAdapter implements ChannelAdapter {
       // NOT add a failedAtStep column; the `[step:N]` prefix is the
       // conventional serialization until a schema change lands.
       //
-      // Note: we deliberately do NOT roll back Campaign.status or
-      // Campaign.emailBisonCampaignId here — that's a Tier 3 action
-      // the PM owns (same pattern as Phase 0's rolled_back transition).
-      // Leaving the EB state in place lets the next idempotent re-run
-      // pick up where this one stopped.
+      // Note: we do NOT roll back Campaign.status or
+      // Campaign.emailBisonCampaignId here. Rollback is the outer orchestrator's
+      // responsibility — see src/lib/campaigns/deploy.ts::executeDeploy catch
+      // (BL-075, Phase 6.5b). Email-adapter rethrows; deploy.ts catches and
+      // runs the atomic rollback (Campaign.status → 'approved',
+      // emailBisonCampaignId → null, deployedAt → null + CampaignDeploy.status
+      // → 'failed' + AuditLog, all in one $transaction) — or skips rollback
+      // if another CampaignDeploy for the same campaignId is still in flight.
+      // Keeping the boundary at deploy.ts means linkedin-adapter inherits the
+      // same rollback semantics without duplicating the logic per channel.
       const message = err instanceof Error ? err.message : String(err);
       const tagged = `[step:${currentStep}] ${message}`;
       // Log the failure so errors are never silently swallowed (the catch

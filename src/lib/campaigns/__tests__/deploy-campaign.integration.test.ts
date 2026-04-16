@@ -19,7 +19,7 @@
  * Prisma is mocked too (same pattern as sibling unit tests) — this is an
  * HTTP-boundary integration test, not a DB integration test.
  *
- * 4 cases:
+ * 5 cases:
  *   1. First-time deploy happy path — fresh create, all 10 steps fire in order
  *   2. Re-deploy idempotency — preExistingEbId set, reuse branch taken
  *   3. Mid-flight failure — Step 6 (attach-sender-emails) 422s, deploy fails
@@ -27,6 +27,13 @@
  *   4. Resume after failure — following the Step 6 fail, re-run idempotently
  *      picks up where we stopped (reuses EB campaign ID, re-posts only the
  *      failed steps)
+ *   5. BL-075 — Step 6 mid-flight failure driven through executeDeploy() this
+ *      time (not just the adapter) so the outer catch's atomic rollback
+ *      fires. Asserts Campaign.status→'approved', emailBisonCampaignId→null,
+ *      deployedAt→null, CampaignDeploy.status→'failed', and an AuditLog row
+ *      with action='campaign.status.auto_rollback_on_deploy_failure' all land
+ *      together inside a single $transaction. Complements case 3 which only
+ *      asserted the per-channel (adapter-level) emailError write.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -36,17 +43,55 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // we want the REAL client instantiated and its fetch calls inspected.
 // ---------------------------------------------------------------------------
 
-const { getCampaignMock, prismaMock } = vi.hoisted(() => ({
-  getCampaignMock: vi.fn(),
-  prismaMock: {
-    workspace: { findUniqueOrThrow: vi.fn() },
-    campaign: { update: vi.fn(), findUnique: vi.fn() },
-    campaignDeploy: { update: vi.fn() },
-    targetListPerson: { findMany: vi.fn() },
-    webhookEvent: { findFirst: vi.fn() },
-    sender: { findMany: vi.fn() },
-  },
-}));
+const { getCampaignMock, prismaMock, txMock } = vi.hoisted(() => {
+  // Inner tx client for BL-075 rollback assertions (case 5). The
+  // $transaction mock below invokes its callback with `txMock` so rollback
+  // writes land here, not on the outer prismaMock. Cases 1-4 don't touch
+  // these.
+  const tx = {
+    campaignDeploy: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    campaign: {
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn(),
+    },
+  };
+  return {
+    getCampaignMock: vi.fn(),
+    txMock: tx,
+    prismaMock: {
+      workspace: { findUniqueOrThrow: vi.fn() },
+      // BL-075: extend campaign / campaignDeploy to cover the reads/writes
+      // executeDeploy performs outside the rollback tx (initial status→running
+      // write, finalize read, happy-path auto-active Campaign.updateMany).
+      campaign: {
+        update: vi.fn(),
+        findUnique: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      campaignDeploy: {
+        update: vi.fn(),
+        findUnique: vi.fn(),
+        findUniqueOrThrow: vi.fn(),
+      },
+      targetListPerson: { findMany: vi.fn() },
+      webhookEvent: { findFirst: vi.fn() },
+      sender: { findMany: vi.fn() },
+      // $transaction invokes its callback with the inner tx client — BL-075
+      // rollback writes go through tx.campaign / tx.campaignDeploy /
+      // tx.auditLog (see src/lib/campaigns/deploy.ts executeDeploy catch).
+      $transaction: vi.fn(
+        async (fn: (txArg: unknown) => Promise<unknown>) => fn(tx),
+      ),
+    },
+  };
+});
 
 vi.mock("@/lib/campaigns/operations", () => ({
   getCampaign: (...args: unknown[]) => getCampaignMock(...args),
@@ -60,6 +105,8 @@ vi.mock("@/lib/utils/retry", () => ({
 }));
 
 import { EmailAdapter } from "@/lib/channels/email-adapter";
+import { executeDeploy } from "@/lib/campaigns/deploy";
+import { SYSTEM_ADMIN_EMAIL } from "@/lib/audit";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -576,5 +623,170 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
     expect(finalUpdate).toMatchObject({
       data: { emailStatus: "complete", emailError: null },
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Case 5 — BL-075 rollback: same Step 6 mid-flight failure as case 3, but
+  // driven through executeDeploy() so the outer catch's atomic rollback
+  // fires. Asserts Campaign.status → 'approved', emailBisonCampaignId → null,
+  // deployedAt → null, CampaignDeploy.status → 'failed', and AuditLog row
+  // all land together.
+  // -------------------------------------------------------------------------
+  it("case 5 (BL-075): Step 6 mid-flight failure driven through executeDeploy — atomic rollback flips Campaign + CampaignDeploy + AuditLog in one tx", async () => {
+    // Same HTTP mock setup as case 3 — identical 422 at attach-sender-emails.
+    setupBaselinePrisma({ preExistingEbId: null, leadCount: 1 });
+
+    // Inside executeDeploy, `getCampaign` is called BEFORE the adapter to
+    // validate status. The case-3 baseline provides the adapter-level shape
+    // only — re-override to include the status='deployed' gate the outer
+    // orchestrator checks. `channels` is also required (parsed array).
+    getCampaignMock.mockReset();
+    getCampaignMock.mockResolvedValue({
+      id: "camp-integ-1",
+      name: "Integration Campaign",
+      workspaceSlug: WORKSPACE_SLUG,
+      status: "deployed",
+      channels: ["email"],
+      targetListId: "tl-1",
+      emailBisonCampaignId: null,
+      emailSequence: [
+        { position: 1, subjectLine: "hi", body: "hello", delayDays: 0 },
+      ],
+    });
+
+    // executeDeploy reads CampaignDeploy.findUnique inside the rollback tx —
+    // wire the tx client to report status='running' so the terminal
+    // CampaignDeploy.update fires.
+    txMock.campaignDeploy.findUnique.mockResolvedValue({ status: "running" });
+    txMock.campaignDeploy.update.mockResolvedValue({});
+    // No in-flight sibling → full Campaign rollback + audit.
+    txMock.campaignDeploy.findFirst.mockResolvedValue(null);
+    // Snapshot: the adapter had already persisted ebId=10002 via Step 2 by
+    // the time the Step 6 catch fires, so the pre-rollback read sees it.
+    txMock.campaign.findUnique.mockResolvedValue({
+      emailBisonCampaignId: 10002,
+      status: "deployed",
+    });
+    // Rollback landed.
+    txMock.campaign.updateMany.mockResolvedValue({ count: 1 });
+    txMock.auditLog.create.mockResolvedValue({});
+
+    fetchMock.mockImplementation(
+      routeFetch([
+        {
+          method: "POST",
+          match: /\/api\/campaigns$/,
+          handler: () =>
+            mockResponse({ data: { id: 10002, uuid: "uuid-10002" } }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/campaigns\/v1\.1\/10002\/sequence-steps$/,
+          handler: () =>
+            mockResponse({
+              data: [
+                {
+                  id: 1,
+                  email_subject: "hi",
+                  email_body: "hello",
+                  wait_in_days: 1,
+                  order: 1,
+                },
+              ],
+            }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/leads$/,
+          handler: () =>
+            mockResponse({
+              data: { id: 2003, email: "lead1@acme.com", status: "active" },
+            }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/campaigns\/10002\/leads\/attach-leads/,
+          handler: () => mockResponse({}),
+        },
+        {
+          method: "POST",
+          match: /\/api\/campaigns\/10002\/schedule/,
+          handler: () => mockResponse({ data: { id: 1 } }),
+        },
+        // Step 6 — 422 triggers the adapter's internal catch, which logs
+        // the [step:6] tag on CampaignDeploy.emailError then rethrows. The
+        // outer executeDeploy catch is what this test exercises.
+        {
+          method: "POST",
+          match: /\/api\/campaigns\/10002\/attach-sender-emails/,
+          handler: () =>
+            mockResponse(
+              { message: "Sender 501 not verified in workspace" },
+              422,
+            ),
+        },
+      ]),
+    );
+
+    await expect(
+      executeDeploy("camp-integ-1", "deploy-integ-1"),
+    ).rejects.toThrow(/Email Bison API error 422/);
+
+    // BL-075 core — atomic rollback fired.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+
+    // Campaign.status → 'approved', ebId → null, deployedAt → null, guarded
+    // by status='deployed' (race-safe optimistic pattern).
+    expect(txMock.campaign.updateMany).toHaveBeenCalledWith({
+      where: { id: "camp-integ-1", status: "deployed" },
+      data: {
+        status: "approved",
+        emailBisonCampaignId: null,
+        deployedAt: null,
+      },
+    });
+
+    // CampaignDeploy.status → 'failed' (outer tx write, distinct from the
+    // adapter-level emailStatus='failed' write in case 3 which went to
+    // prismaMock.campaignDeploy.update directly).
+    expect(txMock.campaignDeploy.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "deploy-integ-1" },
+        data: expect.objectContaining({
+          status: "failed",
+          error: expect.stringContaining("422"),
+          completedAt: expect.any(Date),
+        }),
+      }),
+    );
+
+    // AuditLog row with BL-075 action string.
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(1);
+    const auditCall = txMock.auditLog.create.mock.calls[0]?.[0];
+    expect(auditCall.data).toMatchObject({
+      action: "campaign.status.auto_rollback_on_deploy_failure",
+      entityType: "Campaign",
+      entityId: "camp-integ-1",
+      adminEmail: SYSTEM_ADMIN_EMAIL,
+    });
+    // Metadata should capture what was cleared + the [step:6] tag.
+    const meta = auditCall.data.metadata as Record<string, unknown>;
+    expect(meta).toMatchObject({
+      fromCampaignStatus: "deployed",
+      toCampaignStatus: "approved",
+      campaignDeployId: "deploy-integ-1",
+      clearedEmailBisonCampaignId: 10002,
+    });
+
+    // Preserve the case-3 contract — adapter still tagged emailError with
+    // [step:6] on the outer prismaMock before rethrowing. This confirms the
+    // two catch layers coexist (adapter tags per-channel state, outer catch
+    // atomically rolls back Campaign).
+    const adapterUpdates = prismaMock.campaignDeploy.update.mock.calls;
+    const lastAdapterUpdate = adapterUpdates.at(-1)?.[0];
+    expect(lastAdapterUpdate).toMatchObject({
+      data: { emailStatus: "failed" },
+    });
+    expect(lastAdapterUpdate.data.emailError).toMatch(/\[step:6\]/);
   });
 });

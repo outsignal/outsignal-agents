@@ -16,6 +16,7 @@ import { initAdapters, getAdapter } from "@/lib/channels";
 import type { ChannelType } from "@/lib/channels";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { notifyDeploy, notifyCampaignLive } from "@/lib/notifications";
+import { SYSTEM_ADMIN_EMAIL } from "@/lib/audit";
 
 // CAMP-03 audit (Phase 73): emailBisonCampaignId writes moved to EmailAdapter.deploy().
 // Remaining raw EB ID references in portal/analytics files are Phase 74/75 scope.
@@ -172,26 +173,126 @@ export async function executeDeploy(
       }
     }
   } catch (err) {
-    // Unexpected top-level failure
+    // Unexpected top-level failure.
+    //
+    // BL-075 (Phase 6.5b Bundle B): atomic Campaign.status rollback on terminal
+    // deploy failure. Before this fix, `initiateCampaignDeploy` optimistically
+    // flipped Campaign.status approved→deployed (and set deployedAt +
+    // emailBisonCampaignId via the adapter's persist step). If the deploy then
+    // blew up, only CampaignDeploy.status was flipped to 'failed' — leaving
+    // Campaign in a zombie state that looked successful. Commit 184db22c was a
+    // one-shot SQL cleanup for that exact drift; this catch is the systemic
+    // fix.
+    //
+    // Design:
+    //   1. All writes happen inside a single $transaction (callback form),
+    //      matching the style used by saveCampaignSequences in operations.ts.
+    //   2. The inflight-sibling check happens INSIDE the tx (serializable with
+    //      the write) so a retry enqueuing between the findFirst and the
+    //      update can't cause a rollback while the retry is in flight.
+    //   3. The Campaign rollback uses updateMany({status:'deployed'}) as the
+    //      where-guard — same race-safe optimistic pattern as
+    //      deploy-campaign.ts:130-133's forward transition. If Campaign has
+    //      already been moved (paused / archived / active by something else),
+    //      we silently skip the rollback (count=0) and the audit write.
+    //   4. The existing {current.status === 'running'} guard on the
+    //      CampaignDeploy write is preserved — a channel-level handler
+    //      (email-adapter.ts, linkedin-adapter.ts) may have already written
+    //      the terminal state; we MUST NOT clobber that.
     const message = err instanceof Error ? err.message : String(err);
 
-    const current = await prisma.campaignDeploy.findUnique({
-      where: { id: deployId },
-      select: { status: true },
-    });
+    // Extract [step:N] tag if the failing adapter encoded one (email-adapter
+    // convention, see email-adapter.ts:620). Best-effort; null if absent.
+    const stepMatch = message.match(/\[step:(\d+)\]/);
+    const erroredStep: string | null = stepMatch ? stepMatch[0] : null;
 
-    // Only overwrite status if it hasn't already been set to a terminal state
-    // by a channel-level handler
-    if (current && current.status === "running") {
-      await prisma.campaignDeploy.update({
+    // Clip the error message for the audit metadata to keep the JSONB small.
+    const reason = message.length > 500 ? message.slice(0, 500) : message;
+
+    await prisma.$transaction(async (tx) => {
+      const currentDeploy = await tx.campaignDeploy.findUnique({
         where: { id: deployId },
+        select: { status: true },
+      });
+
+      // 1. CampaignDeploy terminal write — preserve existing guard.
+      if (currentDeploy && currentDeploy.status === "running") {
+        await tx.campaignDeploy.update({
+          where: { id: deployId },
+          data: {
+            status: "failed",
+            error: message,
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      // 2. Retry-awareness gate — if another deploy for this campaign is still
+      //    in flight (pending|running) it will own the final state. Skip the
+      //    Campaign rollback; the eventual retry's own terminal outcome will
+      //    be audited by its own catch.
+      //
+      //    This findFirst runs INSIDE the tx so a sibling enqueuing between
+      //    the read and the write can't create a race hole where we roll back
+      //    while a retry is actually mid-flight.
+      const inflightSibling = await tx.campaignDeploy.findFirst({
+        where: {
+          campaignId,
+          status: { in: ["pending", "running"] },
+          id: { not: deployId },
+        },
+        select: { id: true },
+      });
+
+      if (inflightSibling) {
+        return;
+      }
+
+      // 3. Read Campaign.emailBisonCampaignId BEFORE the rollback so the
+      //    audit metadata captures what was cleared.
+      const campaignSnapshot = await tx.campaign.findUnique({
+        where: { id: campaignId },
+        select: { emailBisonCampaignId: true, status: true },
+      });
+      const clearedEmailBisonCampaignId =
+        campaignSnapshot?.emailBisonCampaignId ?? null;
+
+      // 4. Atomic Campaign rollback, guarded by status='deployed'. If
+      //    something else has already moved the row (manual pause, etc.),
+      //    updateMany returns count=0 and we skip the audit write.
+      const rollback = await tx.campaign.updateMany({
+        where: { id: campaignId, status: "deployed" },
         data: {
-          status: "failed",
-          error: message,
-          completedAt: new Date(),
+          status: "approved",
+          emailBisonCampaignId: null,
+          deployedAt: null,
         },
       });
-    }
+
+      if (rollback.count === 0) {
+        return;
+      }
+
+      // 5. Audit the rollback — only on the path where we actually flipped
+      //    Campaign state. Retry-sibling case (returned above) is
+      //    audit-silent by design.
+      await tx.auditLog.create({
+        data: {
+          action: "campaign.status.auto_rollback_on_deploy_failure",
+          entityType: "Campaign",
+          entityId: campaignId,
+          adminEmail: SYSTEM_ADMIN_EMAIL,
+          metadata: {
+            fromCampaignStatus: "deployed",
+            toCampaignStatus: "approved",
+            erroredStep,
+            campaignDeployId: deployId,
+            clearedEmailBisonCampaignId,
+            reason,
+          },
+        },
+      });
+    });
 
     throw err;
   }
