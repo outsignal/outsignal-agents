@@ -401,6 +401,23 @@ export class EmailBisonClient {
     // on response data. EB returns the full sequence after append, shape
     // `{ data: [ { id, email_subject, email_body, wait_in_days, order, ... } ] }`
     // per the spike notes. Extra fields are tolerated via passthrough.
+    //
+    // BL-085 (2026-04-16) — tolerant parse on 200. The spike notes describe
+    // the v1 response shape; the v1.1 endpoint's response is UNDOCUMENTED
+    // and in production returned a shape that failed this schema, throwing
+    // `UNEXPECTED_RESPONSE (200)`. That Zod throw was then retried by the
+    // caller's withRetry wrap (email-adapter.ts Step 3, since removed), so
+    // EB inserted the full batch again on every retry → 3× duplicate
+    // sequence steps in the orphan EB 82 canary run (BL-085 cascade).
+    //
+    // Behaviour change: HTTP 200 is the success signal. The response body
+    // is bonus data and is NOT consumed by email-adapter.ts (the Step 3
+    // idempotency diff reads `getSequenceSteps` (GET) to determine missing
+    // positions, not this POST response). On parse failure we log a
+    // descriptive warn so shape drift is visible in ops logs, and return
+    // `[]` so the caller proceeds. 4xx/5xx responses are still thrown by
+    // the underlying `request` helper — only 200-with-unexpected-shape is
+    // tolerated here.
     const EbSequenceStepSchema = z
       .object({
         id: z.number(),
@@ -417,11 +434,25 @@ export class EmailBisonClient {
 
     const parsed = EbResponseSchema.safeParse(res);
     if (!parsed.success) {
-      throw new EmailBisonError(
-        "UNEXPECTED_RESPONSE",
-        200,
-        `createSequenceSteps response failed schema validation: ${parsed.error.message}. Raw: ${JSON.stringify(res).slice(0, 500)}`,
+      // Build a raw preview that never throws — res can be undefined
+      // (empty 200 body; `request` returns `undefined as T` in that case),
+      // a string, an object, or any JSON-serializable value.
+      let rawPreview: string;
+      if (res === undefined) {
+        rawPreview = "(empty body)";
+      } else if (typeof res === "string") {
+        rawPreview = res.slice(0, 500);
+      } else {
+        try {
+          rawPreview = JSON.stringify(res).slice(0, 500);
+        } catch {
+          rawPreview = "(unserializable)";
+        }
+      }
+      console.warn(
+        `[EmailBison] createSequenceSteps: HTTP 200 but response failed schema validation — tolerating drift (caller does not consume response body; Step 3 idempotency reads getSequenceSteps GET). Zod: ${parsed.error.message}. Raw (first 500 chars): ${rawPreview}`,
       );
+      return [];
     }
 
     // Map EB's snake_case shape to the internal SequenceStep type.

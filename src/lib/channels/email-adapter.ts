@@ -472,8 +472,28 @@ export class EmailAdapter implements ChannelAdapter {
         // without further lookup. (Per spike notes the title is accepted
         // but currently always stored as null in the response — we still
         // send a meaningful value in case EB starts surfacing it.)
-        await withRetry(() =>
-          ebClient.createSequenceSteps(ebCampaignId, campaignName, missingSteps),
+        //
+        // BL-085 (2026-04-16) — NO withRetry wrap. Same reasoning as
+        // BL-076 createCampaign (see Step 1 comment above). createSequenceSteps
+        // is a POST and is NOT server-side idempotent by position — EB
+        // appends every batch it receives, so a retry on any client-side
+        // throw (Zod mismatch, timeout, transient 5xx) inserts the full
+        // batch again. Phase 6.5c canary (Campaign cmneqixpv deploy
+        // cmo1ig1yf, EB 82) produced 9 sequence steps from 3 steps ×
+        // 3 retries when the v1.1 response shape failed client Zod parse
+        // and withRetry looped. Fix A (client tolerant parse) removes the
+        // Zod-throw trigger; Fix B (this change) removes the retry
+        // amplifier so a future non-Zod transient failure cannot
+        // recreate the same duplication. Transient failures now route
+        // through Trigger.dev task-level retry → reuse path (preExistingEbId
+        // is set by Step 2) → the GET-then-diff above finds the
+        // already-inserted positions and posts only the missing ones,
+        // or short-circuits with missingSteps=[] if the retry re-enters
+        // after a successful first POST.
+        await ebClient.createSequenceSteps(
+          ebCampaignId,
+          campaignName,
+          missingSteps,
         );
       }
 

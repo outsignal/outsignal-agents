@@ -262,6 +262,119 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
   });
 
   // ---------------------------------------------------------------------------
+  // (b') BL-085 TOLERANT PARSE — 200 with unexpected shape returns [] (no throw)
+  // ---------------------------------------------------------------------------
+  //
+  // BL-085 (2026-04-16) — the v1.1 POST /sequence-steps response shape is
+  // UNDOCUMENTED; the spike-notes shape we pinned to was from v1. In
+  // production (canary Campaign cmneqixpv, EB 82, deploy cmo1ig1yf) EB
+  // returned 200 with a body that failed our Zod schema, which previously
+  // threw EmailBisonError("UNEXPECTED_RESPONSE", 200, ...). That throw was
+  // then caught by the caller's `withRetry` wrap in email-adapter.ts Step 3,
+  // which re-POSTED the full batch on every retry → EB appended the steps
+  // again each time → 9 sequence steps from 3 steps × 3 retries.
+  //
+  // Fix: on HTTP 200, try Zod parse. On SUCCESS → map and return. On
+  // FAILURE → log a descriptive warn and return []. The response body is
+  // not actually consumed by email-adapter.ts (Step 3 idempotency reads
+  // `getSequenceSteps` GET to determine missing positions), so returning
+  // [] is safe. The warn preserves observability of schema drift.
+  //
+  // 4xx/5xx are still thrown by the underlying `request` helper — only
+  // 200-with-unexpected-shape is tolerated here.
+  describe("(b') BL-085 tolerant parse — 200 with unexpected shape", () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    // Table-driven — each entry is a plausible shape EB v1.1 could have
+    // returned that does NOT match our Zod schema. The production shape is
+    // still unknown (the canary error message was truncated to 500 chars),
+    // so we test the shapes most likely to appear: null data, absent
+    // data, empty object, empty string, and the Phase 6a-v1.1-likely
+    // alternative `{data: {}, success: true}` (EB wraps other endpoint
+    // responses like this — docs reference pattern).
+    const UNEXPECTED_SHAPES: Array<[label: string, body: unknown]> = [
+      ["{data: null}", { data: null }],
+      ["{success: true}", { success: true }],
+      ["empty object {}", {}],
+      ["empty string ''", ""],
+      [
+        "{data: {}, success: true} (v1.1-likely envelope)",
+        { data: {}, success: true },
+      ],
+      // Another plausible v1.1 shape — data shape is array but entries
+      // are missing the required `id` number field. Individual-element
+      // schema failure cascades to the response-level Zod fail.
+      [
+        "{data: [{position: 1}]} (missing required id)",
+        { data: [{ position: 1 }] },
+      ],
+    ];
+
+    for (const [label, body] of UNEXPECTED_SHAPES) {
+      it(`(b'-${label}) 200 with ${label} → returns [] + warns, does NOT throw`, async () => {
+        fetchMock.mockResolvedValue(mockResponse(body));
+
+        const result = await client.createSequenceSteps(
+          CAMPAIGN_ID,
+          TITLE,
+          HAPPY_STEPS,
+        );
+
+        // No throw — returns empty array so caller proceeds.
+        expect(result).toEqual([]);
+
+        // Exactly one fetch call — the tolerant parse path must NOT retry
+        // internally (that would re-trigger the amplifier bug the fix was
+        // introduced to prevent).
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        // Warn MUST be emitted so schema drift is visible in ops logs.
+        // Check for the BL-085 signature + the "tolerating drift" phrase
+        // + evidence of the raw body preview.
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const warnArg = warnSpy.mock.calls[0][0] as string;
+        expect(warnArg).toMatch(/createSequenceSteps/);
+        expect(warnArg).toMatch(/tolerating drift/i);
+        expect(warnArg).toMatch(/Raw \(first 500 chars\)/);
+      });
+    }
+
+    // Regression guard — the specific canary scenario. Emulates what
+    // happened on 2026-04-16: EB v1.1 returns 200 with a shape that
+    // previously caused the Zod schema to fail, which in turn caused
+    // the caller's withRetry to loop. With Fix A this returns [] and
+    // with Fix B (withRetry removal) the single POST is never repeated.
+    it("(b'-regression) canary Step 3 failure mode — returns [] without throwing", async () => {
+      // Use the shape most likely to match what EB actually sent. Even
+      // if the exact production shape is different, the tolerant parse
+      // path covers all non-matching 200 responses.
+      fetchMock.mockResolvedValue(
+        mockResponse({ data: {}, success: true, campaign_id: CAMPAIGN_ID }),
+      );
+
+      const result = await client.createSequenceSteps(
+        CAMPAIGN_ID,
+        TITLE,
+        HAPPY_STEPS,
+      );
+
+      // The key invariant: SINGLE fetch call, NO throw. This is what
+      // prevents the 3× duplicate sequence steps the canary produced.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // (c) 422 response — EB rejection bubbles as EmailBisonApiError
   // ---------------------------------------------------------------------------
   it("(c) 422 response: throws EmailBisonApiError with status === 422 (no retry — 422 is non-retryable)", async () => {
