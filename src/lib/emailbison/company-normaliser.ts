@@ -1,11 +1,15 @@
 /**
  * BL-103 (2026-04-16) — company-name normaliser for the EmailBison wire
  * boundary.
+ * BL-104 (2026-04-16) — polish: trailing round-bracket strip, domain-based
+ * token truncation, entry-trim, MAX_ITERATIONS warn, ampersand preservation.
  *
  * Strips trailing legal suffixes (Ltd / Limited / LLC / Inc / Corp / PLC /
- * GmbH / Pty / ...) AND trailing geographic / regional qualifiers (UK / USA /
- * Scotland / Ireland / EMEA / ...) from a company name, iteratively, until
- * the input is stable.
+ * GmbH / Pty / ...), trailing geographic / regional qualifiers (UK / USA /
+ * Scotland / Ireland / EMEA / ...), AND trailing round-bracketed tails
+ * ((Contact Us) / (UK) / ...) from a company name, iteratively, until the
+ * input is stable. Optionally truncates the remaining name to a prefix
+ * matching the domain stem when a domain hint is provided.
  *
  * Why this exists:
  *   The 1210-solutions canary EB 90 shipped lead bodies that read robotic
@@ -28,21 +32,51 @@
  *     "Manchester United" must NOT lose "United"; "Scottish Widows" must
  *     NOT lose "Scottish") and the false-positive risk outweighs the
  *     normalisation benefit.
+ *   - Round-bracketed tail strip (BL-104): a trailing `(...)` group at
+ *     the VERY end of the string is stripped. Mid-string parentheticals
+ *     (e.g. "Amazon (EMEA) Services Ltd" after the Ltd strip leaves
+ *     "Amazon (EMEA) Services") are preserved — the bracketed group is
+ *     only stripped when nothing non-whitespace follows it. Square
+ *     brackets (e.g. "Acme [UK]") are NEVER stripped — different semantic
+ *     meaning, typically used for editorial qualifiers.
  *   - Iterative strip-until-stable: "Acme Services UK Limited" → strip
  *     Limited → "Acme Services UK" → strip UK → "Acme Services". Cap at
  *     10 iterations to bound worst-case runtime; in practice a real
- *     company name will stabilise in 0-3.
+ *     company name will stabilise in 0-3. BL-104: when the cap is hit
+ *     without stabilising, emit a console.warn so operators can chase
+ *     regex edge cases before they ship bad copy silently.
+ *   - Entry + per-iteration whitespace trim (BL-104): `raw.trim()` at
+ *     entry and after every iteration — the `\s+SUFFIX\.?$` regex anchors
+ *     on a word-boundary preceded by whitespace, so "Acme Corp  " (with
+ *     trailing spaces) would ALSO match — but re-trimming after each
+ *     strip ensures we don't leave trailing whitespace / comma / bracket
+ *     residue on the stable return.
+ *   - Ampersand preservation (BL-104): "Bain & Company" must stay
+ *     "Bain & Company" — "& Co" and "& Company" are atomic brand elements
+ *     when preceded by `&`. Guarded by detecting a leading `& ` before
+ *     the suffix at the matched position and aborting the strip in that
+ *     case. "Mars & Co" → "Mars & Co". Normal "Acme Co" / "Acme Company"
+ *     still strip because the legal-suffix token does not have a `&`
+ *     directly before it.
  *   - Trailing comma + whitespace trim each iteration: "ABC, LLC" → strip
  *     LLC → "ABC," → trim trailing comma → "ABC".
- *   - Bracketed tail handling (e.g. "Foo Ltd (UK)" → "Foo (UK)"): the
- *     trailing `(...)` group is detached, the remaining base is checked
- *     for a legal-suffix strip only (geo strip is intentionally suppressed
- *     when a bracketed tail is present — we never want to strip a country
- *     name out of a parenthetical brand qualifier), then the bracketed
- *     group is re-attached. This keeps "Bar (USA) Inc" → "Bar (USA)" (Inc
- *     stripped at iteration 1; iteration 2 detaches "(USA)", finds no
- *     legal suffix, returns original).
+ *   - Bracketed mid-qualifier handling (PRE-BL-104): "Foo Ltd (UK)" →
+ *     "Foo (UK)": the trailing `(...)` group is detached, the remaining
+ *     base is checked for a legal-suffix strip only, then the group is
+ *     re-attached. BL-104 REPLACES this: the trailing `(...)` group is
+ *     now fully stripped at the end of the iteration ladder. "Foo Ltd
+ *     (UK)" now → "Foo" (strip Ltd → "Foo (UK)" → strip (UK) → "Foo").
+ *     "Bar (USA) Inc" → "Bar" (Inc stripped, then (USA) stripped).
  *   - Casing: always preserved on the surviving prefix. We never lowercase.
+ *   - Domain-based truncation (BL-104): optional 2nd arg. When provided,
+ *     AFTER the iteration ladder settles, parse the domain stem (strip
+ *     `www.`, take portion before first `.`, lowercase, `-` → ` `), split
+ *     into tokens, and check whether the stem tokens match a PREFIX of
+ *     the cleaned-name tokens (in order, case-insensitive). If yes AND
+ *     the cleaned name has MORE tokens than the match length, truncate
+ *     to the match length (preserving original casing). This handles
+ *     "Sonnic Support Solutions" + "sonnic.com" → "Sonnic" — the domain
+ *     is authoritative evidence of the canonical brand name.
  *
  * Out of scope (NOT done here):
  *   - DB backfill of stored Person.company values. This file ONLY changes
@@ -86,7 +120,11 @@ const LEGAL_SUFFIXES: readonly string[] = [
   "P.L.C.",
   "GmbH",
   "SARL",
-  "& Co",
+  // BL-104: "& Co" intentionally removed from the suffix list —
+  // brands like "Mars & Co" / "Bain & Company" keep the ampersand as
+  // atomic brand identity. The bare "Co" / "Company" entries below
+  // are guarded via `isAmpersandAtomicBrand` against the same-position
+  // strip, so "Bain & Company" preserves correctly too.
   "S.A.",
   "B.V.",
   "N.V.",
@@ -210,73 +248,161 @@ function trimTrailingPunct(s: string): string {
 }
 
 /**
- * Detach a trailing parenthetical group `(...)` from a string if present.
+ * BL-104: Try to strip a trailing round-bracketed group `(...)` when it
+ * sits at the very end of the string (optionally followed by whitespace).
+ * Returns the stripped prefix, or the original input if no trailing
+ * bracket is present.
  *
- * Returns `{ base, bracket }` where `base + bracket === input.replace(/\s*$/, '')`
- * (modulo whitespace handling). If no trailing parenthetical, returns
- * `{ base: input, bracket: "" }`.
+ * Square brackets are NEVER touched — they typically mark editorial
+ * qualifiers ("Acme [UK]" / "Foo [Ltd]") and the strip is semantically
+ * different. Only round parens are in scope.
  *
- * The regex `^(.*?)(\s*\([^)]+\))\s*$` requires:
- *   - `(.*?)` lazy capture of the prefix
- *   - `(\s*\([^)]+\))` capture optional whitespace + parenthetical (no
- *     nested parens — `[^)]+` excludes the closing brace)
- *   - `\s*$` anchored to end (allowing trailing whitespace only)
+ * Leading / mid-string parens are preserved: "(Leading Bracket) Foo"
+ * does NOT match (there's non-whitespace after the paren group).
+ * "Amazon (EMEA) Services" does NOT match (the paren group is not at
+ * the end).
  *
- * If the bracketed group is followed by ANY non-whitespace content (e.g.
- * "Bar (USA) Inc" — `Inc` follows the parenthetical), the regex doesn't
- * match and we return `{ base: input, bracket: "" }` so the suffix-strip
- * logic operates on the full string.
+ * The regex `^(.*?\S)\s*\([^)]+\)\s*$` requires:
+ *   - `(.*?\S)` lazy capture of the prefix ending in non-whitespace
+ *     (ensures we don't produce an empty prefix from "(Foo)")
+ *   - `\s*\([^)]+\)` the paren group with a non-empty body, no nested
+ *     parens
+ *   - `\s*$` anchored to end, allowing trailing whitespace only
  */
-function detachTrailingBracket(input: string): {
-  base: string;
-  bracket: string;
-} {
-  const m = input.match(/^(.*?)(\s*\([^)]+\))\s*$/);
-  if (!m) return { base: input, bracket: "" };
-  return { base: m[1], bracket: m[2] };
+function stripTrailingRoundBracket(input: string): string {
+  const m = input.match(/^(.*?\S)\s*\([^)]+\)\s*$/);
+  if (!m) return input;
+  return trimTrailingPunct(m[1]);
 }
 
 /**
- * Try one strip pass. Returns the modified string if any suffix matched,
- * or the original string unchanged if no match (which signals stability
- * to the outer loop).
+ * BL-104: Guard against stripping '& Co' / '& Company' when the '&'
+ * is part of an atomic brand element ("Bain & Company").
  *
- * Order:
- *   1. Detach trailing `(...)` if present.
- *   2. Try legal suffixes (longest-first) on the base.
- *   3. If no legal match AND no bracketed tail: try geo suffixes
- *      (longest-first) on the base.
- *   4. Re-attach the bracketed tail if any.
+ * Returns true if the match position is immediately preceded by an
+ * ampersand (optionally with whitespace between). Those brands are
+ * NOT to be stripped.
  *
- * Why geo is suppressed when a bracket is present:
- *   "Bar (USA)" should NOT lose its "(USA)" qualifier — that's
- *   intentionally part of the brand. We only strip geo bare-words at the
- *   very tail of the string.
+ * The suffix regexes match with a leading `\s+`, so the first char of
+ * the match is whitespace; we look one further back (the char before
+ * that whitespace run) to check for `&`. If the prefix before the
+ * match is empty OR ends in `&` (ignoring whitespace), this is the
+ * atomic-brand case.
+ */
+function isAmpersandAtomicBrand(base: string, matchIndex: number): boolean {
+  // Walk back over whitespace chars from matchIndex toward index 0.
+  let i = matchIndex - 1;
+  while (i >= 0 && /\s/.test(base.charAt(i))) i--;
+  if (i < 0) return false; // match at start — no prefix to guard
+  // The char immediately before the whitespace run (or the match if no
+  // whitespace precedes) — if it's `&`, the suffix IS the second half
+  // of an atomic `& Co` / `& Company` (or similar) brand element.
+  return base.charAt(i) === "&";
+}
+
+/**
+ * Try one strip pass. Returns the modified string if any suffix / bracket
+ * matched, or the original string unchanged if no match (which signals
+ * stability to the outer loop).
+ *
+ * BL-104 order:
+ *   1. Try legal suffixes (longest-first), guarded by ampersand check.
+ *   2. If no legal match: try geo suffixes (longest-first).
+ *   3. If still no match: try trailing round-bracket strip.
+ *
+ * This is a single strip per call — the outer loop re-runs stripOnce
+ * until stable, so "Foo Ltd (UK)" becomes "Foo" over 2 iterations (Ltd
+ * stripped → "Foo (UK)" → (UK) stripped → "Foo").
  */
 function stripOnce(input: string): string {
-  const { base, bracket } = detachTrailingBracket(input);
+  const base = input;
 
-  // (1) Try legal suffixes.
+  // (1) Try legal suffixes. Ampersand-atomic brands are guarded — we
+  //     treat "& Co" / "& Company" / "& LLC" etc. as a single atomic
+  //     unit and skip the strip if `&` directly precedes the match.
   for (const { re } of LEGAL_PATTERNS) {
+    const m = base.match(re);
+    if (m && m.index !== undefined) {
+      if (isAmpersandAtomicBrand(base, m.index)) continue;
+      return trimTrailingPunct(base.replace(re, ""));
+    }
+  }
+
+  // (2) Try geo suffixes.
+  for (const { re } of GEO_PATTERNS) {
     if (re.test(base)) {
-      const stripped = trimTrailingPunct(base.replace(re, ""));
-      return stripped + bracket;
+      return trimTrailingPunct(base.replace(re, ""));
     }
   }
 
-  // (2) Try geo suffixes — only when no bracketed tail present.
-  if (bracket === "") {
-    for (const { re } of GEO_PATTERNS) {
-      if (re.test(base)) {
-        return trimTrailingPunct(base.replace(re, ""));
-      }
+  // (3) Try trailing round-bracket strip. Only kicks in when no legal
+  //     / geo strip was possible — keeps order-of-precedence simple.
+  const bracketStripped = stripTrailingRoundBracket(base);
+  if (bracketStripped !== base) return bracketStripped;
+
+  // No strip — return unchanged. Signals stability to the outer loop.
+  return base;
+}
+
+/**
+ * BL-104: Domain-based token truncation.
+ *
+ * After the iteration ladder settles, if a domain hint was provided,
+ * compare the cleaned name's tokens against the domain stem's tokens.
+ * If the domain stem tokens match a PREFIX of the cleaned tokens (in
+ * order, case-insensitive) AND the cleaned name has MORE tokens than
+ * the match length, truncate cleaned to that prefix length (preserving
+ * original casing).
+ *
+ * Domain stem parsing:
+ *   - strip leading `www.`
+ *   - take everything before the FIRST `.`
+ *   - lowercase
+ *   - replace `-` with ` ` (split compound brand hints)
+ *
+ * Examples:
+ *   ('Sonnic Support Solutions', 'sonnic.com') — domain stem 'sonnic' =
+ *     1 token, matches cleaned[0]='sonnic', cleaned has 3 → truncate to
+ *     ['Sonnic'].
+ *   ('Abby Cleaning Scotland Ltd' → (after iterate) 'Abby Cleaning',
+ *     'abby-cleaning.com') — domain stem 'abby cleaning' = 2 tokens
+ *     matches both, cleaned has 2 → exact match, no truncation.
+ *   ('DMW Recruitment', 'dmwrecruitment.com') — domain stem 'dmwrecruitment'
+ *     = 1 concatenated token, cleaned[0]='dmw' ≠ 'dmwrecruitment' → no
+ *     prefix match → no truncation.
+ */
+function truncateByDomain(cleaned: string, domain: string): string {
+  const trimmedDomain = domain.trim();
+  if (trimmedDomain === "") return cleaned;
+
+  // Parse domain stem.
+  const withoutWww = trimmedDomain.replace(/^www\./i, "");
+  const dotIdx = withoutWww.indexOf(".");
+  const stemRaw = dotIdx === -1 ? withoutWww : withoutWww.slice(0, dotIdx);
+  if (stemRaw === "") return cleaned;
+  const stem = stemRaw.toLowerCase().replace(/-/g, " ").trim();
+  if (stem === "") return cleaned;
+
+  const stemTokens = stem.split(/\s+/).filter(Boolean);
+  if (stemTokens.length === 0) return cleaned;
+
+  // Tokenise cleaned preserving original casing for output.
+  const cleanedTokens = cleaned.split(/\s+/).filter(Boolean);
+  if (cleanedTokens.length === 0) return cleaned;
+
+  // Only truncate when cleaned has MORE tokens than the domain match
+  // length — otherwise we'd either exact-match or delete content.
+  if (cleanedTokens.length <= stemTokens.length) return cleaned;
+
+  // Check prefix match.
+  for (let i = 0; i < stemTokens.length; i++) {
+    if (cleanedTokens[i].toLowerCase() !== stemTokens[i]) {
+      return cleaned; // No prefix match — bail.
     }
   }
 
-  // No strip — return ORIGINAL (with bracket re-attached if we detached
-  // one). This signals stability to the outer loop because the returned
-  // string equals (or is structurally equivalent to) the input.
-  return base + bracket;
+  // Truncate, preserving original casing of the surviving tokens.
+  return cleanedTokens.slice(0, stemTokens.length).join(" ");
 }
 
 /**
@@ -289,45 +415,85 @@ const MAX_ITERATIONS = 10;
 /**
  * Normalise a company name for the EmailBison wire boundary.
  *
- * Iteratively strips trailing legal suffixes and geographic qualifiers
- * until the input is stable. Preserves casing, "The " prefix, industry
- * descriptors (Group / Holdings / Services / ...), and bracketed
- * mid-name qualifiers (Foo (UK) → Foo (UK)).
+ * Iteratively strips trailing legal suffixes, geographic qualifiers, AND
+ * trailing round-bracketed groups until the input is stable. Optionally
+ * truncates to a domain-matched token prefix when a domain hint is
+ * provided. Preserves casing, "The " prefix, industry descriptors
+ * (Group / Holdings / Services / ...), and mid-name bracketed qualifiers
+ * (Amazon (EMEA) Services → Amazon (EMEA) Services).
  *
  * Pass-through behaviour:
  *   - `null` → `null`
  *   - `undefined` → `undefined`
  *   - `""` → `""`
- *   - whitespace-only string → returned unchanged (no strip applied; the
- *     trim-trailing-punct after a no-op strip leaves it as-is)
+ *   - whitespace-only string → returned trimmed (empty string).
  *
- * @param raw The raw company name from the lead row (typically
- *   `Person.company` or `DiscoveredPerson.company`). May be null/undefined.
+ * @param raw    The raw company name from the lead row (typically
+ *               `Person.company` or `DiscoveredPerson.company`). May be
+ *               null/undefined.
+ * @param domain Optional domain hint (typically `Person.companyDomain`).
+ *               When provided AND a prefix-token match exists, truncates
+ *               the cleaned name to the domain stem's token length.
+ *               `null` / `undefined` / `""` disable domain truncation.
  * @returns The normalised name, or the original null/undefined/empty value.
  */
-export function normalizeCompanyName(raw: string): string;
-export function normalizeCompanyName(raw: null): null;
-export function normalizeCompanyName(raw: undefined): undefined;
+export function normalizeCompanyName(
+  raw: string,
+  domain?: string | null,
+): string;
+export function normalizeCompanyName(raw: null, domain?: string | null): null;
+export function normalizeCompanyName(
+  raw: undefined,
+  domain?: string | null,
+): undefined;
 export function normalizeCompanyName(
   raw: string | null | undefined,
+  domain?: string | null,
 ): string | null | undefined;
 export function normalizeCompanyName(
   raw: string | null | undefined,
+  domain?: string | null,
 ): string | null | undefined {
   if (raw === null) return null;
   if (raw === undefined) return undefined;
-  if (raw === "") return "";
 
-  let current = raw;
+  // BL-104: trim at entry. "Acme Corp  " (trailing whitespace) would
+  // bypass the `\s+SUFFIX\.?$` regex anchor without this.
+  const entryTrimmed = raw.trim();
+  if (entryTrimmed === "") return "";
+
+  let current = entryTrimmed;
+  let hitCap = false;
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const next = stripOnce(current);
+    const next = stripOnce(current).trim();
     if (next === current) {
       // Stable — no further strip is possible.
-      return current;
+      hitCap = false;
+      break;
     }
     current = next;
+    // If we just consumed the last allowed iteration and the NEXT
+    // stripOnce would still change the value, we've hit the cap.
+    if (i === MAX_ITERATIONS - 1 && stripOnce(current).trim() !== current) {
+      hitCap = true;
+    }
   }
-  // Ran out of iterations. Return whatever we have; the cap is a safety
-  // net so this should never fire on real-world inputs.
+
+  if (hitCap) {
+    // BL-104 F2: cap hit without stabilising. Log once per call so
+    // operators can chase the edge case before copy ships bad to prospects.
+    // Matches the convention in variable-transform.ts / sender-name-transform.ts.
+    console.warn(
+      `[company-normaliser] MAX_ITERATIONS hit for input — current=${JSON.stringify(current)} raw=${JSON.stringify(raw.slice(0, 200))}`,
+    );
+  }
+
+  // BL-104: domain-based truncation. Runs ONCE after the iteration
+  // ladder settles; the truncated result is considered final (we do
+  // not feed it back into the strip ladder — it's already stripped).
+  if (domain !== undefined && domain !== null && domain !== "") {
+    current = truncateByDomain(current, domain);
+  }
+
   return current;
 }

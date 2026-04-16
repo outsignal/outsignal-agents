@@ -868,6 +868,14 @@ export class EmailAdapter implements ChannelAdapter {
         // strip-until-stable algorithm and the full PM-authorized suffix
         // list. `??` ensures null/undefined pass through to EB unchanged
         // (createOrUpdateLeadsMultiple omits the field on undefined).
+        //
+        // BL-104 (2026-04-16) — pass `person.companyDomain` as the optional
+        // 2nd arg so the domain-truncation rule fires in-wire ("Sonnic
+        // Support Solutions" + "sonnic.com" → "Sonnic"). Null/undefined/""
+        // domain disables truncation (silent fall-through, preserving the
+        // legal+geo+bracket ladder output). Person.companyDomain is
+        // schema-level nullable (prisma/schema.prisma:149), so we `?? null`
+        // to produce a uniform call signature.
         const upserted = await withRetry(() =>
           ebClient.createOrUpdateLeadsMultiple(
             eligibleLeads.map((entry) => ({
@@ -876,7 +884,10 @@ export class EmailAdapter implements ChannelAdapter {
               lastName: entry.person.lastName ?? undefined,
               jobTitle: entry.person.jobTitle ?? undefined,
               company:
-                normalizeCompanyName(entry.person.company) ?? undefined,
+                normalizeCompanyName(
+                  entry.person.company,
+                  entry.person.companyDomain ?? null,
+                ) ?? undefined,
             })),
           ),
         );
