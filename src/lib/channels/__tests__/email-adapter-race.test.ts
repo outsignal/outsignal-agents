@@ -201,17 +201,23 @@ describe("EmailAdapter.deploy() — BL-070 concurrent-deploy race guard", () => 
       expect(ebMock.deleteCampaign).toHaveBeenCalledTimes(1);
       expect(ebMock.deleteCampaign).toHaveBeenCalledWith(777);
 
-      // CampaignDeploy row gets the WINNING ID (555).
+      // BL-076 Bundle C: Step 2 write order is CampaignDeploy-first (writes
+      // the orphan ID 777 as the retry anchor), then Campaign (which hits
+      // P2002), then the race-catch corrects CampaignDeploy to the winner
+      // (555). So we expect TWO emailBisonCampaignId persist calls on the
+      // loser: first 777 (anchor), then 555 (winner) after the correction.
+      // Final persisted value is the winner.
       const deployUpdates = prismaMock.campaignDeploy.update.mock.calls.map(
         (c) => c[0],
       );
-      const persistCall = deployUpdates.find(
+      const persistCalls = deployUpdates.filter(
         (u) =>
           u.where?.id === "deploy-loser" &&
           u.data?.emailBisonCampaignId !== undefined,
       );
-      expect(persistCall).toBeDefined();
-      expect(persistCall!.data.emailBisonCampaignId).toBe(555);
+      expect(persistCalls.length).toBe(2);
+      expect(persistCalls[0].data.emailBisonCampaignId).toBe(777);
+      expect(persistCalls[1].data.emailBisonCampaignId).toBe(555);
 
       // Rest of the flow ran against the WINNER — resumeCampaign fires with 555.
       expect(ebMock.resumeCampaign).toHaveBeenCalledWith(555);
@@ -392,17 +398,27 @@ describe("EmailAdapter.deploy() — BL-070 true Promise.all concurrency", () => 
     expect(ebMock.deleteCampaign).toHaveBeenCalledTimes(1);
     expect(ebMock.deleteCampaign).toHaveBeenCalledWith(loserEbId);
 
-    // Both CampaignDeploy rows ended on the winner's EB ID.
+    // BL-076 Bundle C: Step 2 write order is CampaignDeploy-first. Both
+    // callers write their own orphan ID to CampaignDeploy BEFORE Campaign
+    // resolves the race; the loser then re-writes to the winner's ID after
+    // its P2002 race-catch. So persist calls include early anchor writes
+    // with either caller's create ID — the important invariant is that the
+    // FINAL write per deployId is the winner's ID (the retry anchor that
+    // BL-076's restore logic reads on Trigger.dev retry).
     const deployUpdates = prismaMock.campaignDeploy.update.mock.calls.map(
       (c) => c[0],
     );
     const persistCalls = deployUpdates.filter(
       (u) => u.data?.emailBisonCampaignId != null,
     );
-    // One persist call per deploy that reached Step 2 — both should land on the winner.
     expect(persistCalls.length).toBeGreaterThanOrEqual(1);
+    // Per-deploy LAST persist call must be the winner.
+    const lastPersistPerDeploy = new Map<string, unknown>();
     for (const call of persistCalls) {
-      expect(call.data.emailBisonCampaignId).toBe(winningEbId);
+      lastPersistPerDeploy.set(call.where.id, call.data.emailBisonCampaignId);
+    }
+    for (const ebId of lastPersistPerDeploy.values()) {
+      expect(ebId).toBe(winningEbId);
     }
 
     // Rest of the flow fired against the WINNER for both callers.

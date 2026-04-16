@@ -81,11 +81,103 @@ export async function executeDeploy(
 ): Promise<void> {
   initAdapters();
 
-  // 1. Mark deploy as running
-  await prisma.campaignDeploy.update({
+  // 1. Mark deploy as running — state-machine-guarded to support Trigger.dev
+  // retries.
+  //
+  // BL-076 (Phase 6.5b Bundle C): this task is configured with
+  // retry.maxAttempts=2 (see trigger/campaign-deploy.ts). On a terminal
+  // failure the outer catch runs Bundle B's atomic rollback — which flips
+  // CampaignDeploy.status 'running'→'failed' AND clears Campaign.status /
+  // Campaign.emailBisonCampaignId / Campaign.deployedAt. Trigger.dev then
+  // re-invokes executeDeploy with the same (campaignId, deployId) payload
+  // for the retry attempt.
+  //
+  // The retry path needs to (a) transition CampaignDeploy 'failed'→'running'
+  // cleanly (terminal→non-terminal is only legal for this exact Trigger.dev
+  // retry case, and we must clear error/completedAt so the row doesn't show
+  // stale state), and (b) restore Campaign.emailBisonCampaignId +
+  // Campaign.status before the status guard below fires. The anchor we use
+  // is CampaignDeploy.emailBisonCampaignId — EmailAdapter Step 2 writes it
+  // immediately after createCampaign returns, BEFORE any step that can fail
+  // non-idempotently. So if the prior attempt got past Step 1, that column
+  // holds the EB ID we want the retry to reuse.
+  //
+  // First attempt (happy path): current status='pending', no restore needed,
+  // flip to 'running' via updateMany guarded on status='pending'.
+  //
+  // Retry attempt: current status='failed', CampaignDeploy.emailBisonCampaignId
+  // set, Campaign state possibly rolled back by Bundle B. Restore Campaign
+  // state from CampaignDeploy then flip CampaignDeploy 'failed'→'running'
+  // with error/completedAt cleared.
+  const currentDeploy = await prisma.campaignDeploy.findUniqueOrThrow({
     where: { id: deployId },
-    data: { status: "running" },
+    select: {
+      status: true,
+      emailBisonCampaignId: true,
+    },
   });
+
+  if (currentDeploy.status === "pending") {
+    // Normal first attempt — standard transition.
+    await prisma.campaignDeploy.updateMany({
+      where: { id: deployId, status: "pending" },
+      data: { status: "running" },
+    });
+  } else if (
+    currentDeploy.status === "failed" &&
+    currentDeploy.emailBisonCampaignId != null
+  ) {
+    // Trigger.dev retry re-entry. Step 1 of the prior attempt persisted
+    // emailBisonCampaignId; restore Campaign state that Bundle B's rollback
+    // may have cleared, then transition the row back to 'running'.
+    //
+    // Wrap the two writes in a $transaction so a concurrent observer never
+    // sees Campaign restored while CampaignDeploy still shows 'failed', or
+    // vice versa.
+    const restoredEbId = currentDeploy.emailBisonCampaignId;
+    await prisma.$transaction(async (tx) => {
+      // Restore Campaign — only if it is CURRENTLY rolled-back (status=
+      // 'approved' with null emailBisonCampaignId). This idempotent guard
+      // means a retry whose prior attempt's Bundle B rollback DIDN'T fire
+      // (e.g. the rollback tx itself failed) still works without double-
+      // restoring.
+      await tx.campaign.updateMany({
+        where: {
+          id: campaignId,
+          status: "approved",
+          emailBisonCampaignId: null,
+        },
+        data: {
+          status: "deployed",
+          emailBisonCampaignId: restoredEbId,
+          deployedAt: new Date(),
+        },
+      });
+
+      // Flip CampaignDeploy 'failed'→'running' with stale fields cleared.
+      // Guarded on status='failed' so a concurrent finalize can't clobber.
+      await tx.campaignDeploy.updateMany({
+        where: { id: deployId, status: "failed" },
+        data: {
+          status: "running",
+          error: null,
+          completedAt: null,
+        },
+      });
+    });
+
+    console.log(
+      `[deploy] BL-076 retry re-entry: restored Campaign ${campaignId} (emailBisonCampaignId=${restoredEbId}, status=deployed) + flipped CampaignDeploy ${deployId} 'failed'→'running' for Trigger.dev retry.`,
+    );
+  } else {
+    // Defensive guard — refuse to re-run on any other status. Legitimate
+    // states at entry are exactly 'pending' (fresh) or 'failed' (retry).
+    // 'running' implies concurrent task invocation; 'complete' / terminal
+    // implies a successful run we shouldn't re-run.
+    throw new Error(
+      `CampaignDeploy ${deployId} is in an unexpected status for executeDeploy entry: '${currentDeploy.status}' (emailBisonCampaignId=${currentDeploy.emailBisonCampaignId}). Refusing to proceed.`,
+    );
+  }
 
   try {
     // 2. Load campaign and validate state

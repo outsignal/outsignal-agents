@@ -43,6 +43,7 @@ const { txMock, prismaMock, getCampaignMock, adapterDeployMock } = vi.hoisted(()
     campaignDeploy: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findFirst: vi.fn(),
     },
     campaign: {
@@ -60,7 +61,12 @@ const { txMock, prismaMock, getCampaignMock, adapterDeployMock } = vi.hoisted(()
       // writes, finalize reads. All pre-catch paths land here.
       campaignDeploy: {
         update: vi.fn(),
+        // BL-076 Bundle C: entry-flip uses updateMany with a status guard
+        // rather than unguarded update. Tests mock this alongside update.
+        updateMany: vi.fn(),
         findUnique: vi.fn(),
+        // BL-076 Bundle C: entry reads CampaignDeploy via findUniqueOrThrow
+        // to detect Trigger.dev retry re-entry vs. fresh first-attempt.
         findUniqueOrThrow: vi.fn(),
       },
       campaign: {
@@ -176,6 +182,24 @@ beforeEach(() => {
   // Default: the initial status→running write at executeDeploy entry always
   // succeeds.
   prismaMock.campaignDeploy.update.mockResolvedValue({});
+  // BL-076 Bundle C: entry-flip uses updateMany (fresh-first-attempt path)
+  // and the retry-restore tx path. Defaults to count=1 (row transitioned)
+  // so happy-path tests don't need to stub this.
+  prismaMock.campaignDeploy.updateMany.mockResolvedValue({ count: 1 });
+  // BL-076 Bundle C: entry reads CampaignDeploy row to detect retry vs.
+  // fresh attempt. `findUniqueOrThrow` is ALSO used later by
+  // finalizeDeployStatus and the post-finalize status check, so the entry
+  // call uses `mockImplementationOnce` to return the entry shape and later
+  // calls fall through to whatever `seedPostDeploySnapshot` (or a retry-
+  // path test) sets via `mockResolvedValue`. Retry-path tests override the
+  // entry ONCE via `mockImplementationOnce` to return
+  // `{status:'failed', emailBisonCampaignId:<N>}`.
+  prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+    Promise.resolve({
+      status: "pending",
+      emailBisonCampaignId: null,
+    }),
+  );
   // Adapter succeeds by default; individual tests override to throw.
   adapterDeployMock.mockResolvedValue(undefined);
 });
@@ -418,5 +442,283 @@ describe("executeDeploy — BL-075 atomic rollback (Bundle B)", () => {
     // CampaignDeploy terminal write, not on the Campaign rollback path).
     expect(txMock.campaign.updateMany).toHaveBeenCalledTimes(1);
     expect(txMock.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ===========================================================================
+// BL-076 (Phase 6.5b Bundle C) — Trigger.dev retry re-entry coverage
+//
+// Phase 6a canary surfaced two interacting bugs:
+//
+//  (1) withRetry wrapping createCampaign (a non-idempotent POST) could
+//      produce duplicate EB drafts when EB succeeded server-side but the
+//      client didn't see a 2xx (timeout, transient 5xx, network flap). The
+//      Phase 6a evidence: EB 78 created at 08:00:53Z, EB 79 at 08:01:10Z —
+//      17s apart, consistent with withRetry's 15s-delay retry producing a
+//      second create before the client had the first response. Fix:
+//      createCampaign is no longer wrapped in withRetry. See email-adapter.ts
+//      Step 1 fresh-deploy branch.
+//
+//  (2) When Bundle B's rollback clears Campaign.emailBisonCampaignId +
+//      Campaign.status + Campaign.deployedAt on terminal failure,
+//      Trigger.dev's retry.maxAttempts=2 re-invokes executeDeploy with the
+//      SAME (campaignId, deployId) payload. The retry previously hit the
+//      status guard at deploy.ts:97-101 and threw immediately ("Campaign
+//      is not in 'deployed' or 'active' status (got 'approved')"). Fix:
+//      at executeDeploy entry, detect retry via CampaignDeploy
+//      (status='failed', emailBisonCampaignId!=null) and restore Campaign
+//      state from CampaignDeploy before the status guard fires.
+//
+// These cases assert the retry contract: two executeDeploy invocations
+// with the SAME deployId produce ONE createCampaign call and leave the
+// Campaign in the restored 'deployed' state after the retry transitions.
+// ===========================================================================
+
+describe("executeDeploy — BL-076 Trigger.dev retry re-entry (Bundle C)", () => {
+  it("retry-happy: first invocation fails after Step 2 persisted ebId; second invocation restores Campaign state, reuses ebId, no duplicate createCampaign", async () => {
+    // Reset the beforeEach's default so our scripted implementation-sequence
+    // (2 entry calls + post-finalize calls) fires cleanly in order.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockReset();
+
+    // --- Attempt 1 (first invocation) ---
+    // Entry: fresh pending attempt, no anchor.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "pending", emailBisonCampaignId: null }),
+    );
+
+    // Campaign is in the optimistic 'deployed' state from initiateCampaignDeploy.
+    getCampaignMock.mockResolvedValueOnce({
+      id: CAMPAIGN_ID,
+      name: "Retry Test Campaign",
+      workspaceSlug: "test-ws",
+      status: "deployed",
+      channels: ["email"],
+    });
+
+    // Adapter throws on first attempt AFTER Step 2 persisted emailBisonCampaignId.
+    // The throw's message mimics the Phase 6a 422 at Step 3.
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error("[step:3] EB 422: title/sequence_steps required"),
+    );
+
+    // Rollback tx seeds — inside the catch: no sibling, ebId was persisted
+    // to Campaign, rollback fires.
+    txMock.campaignDeploy.findUnique.mockResolvedValueOnce({
+      status: "running",
+    });
+    txMock.campaignDeploy.findFirst.mockResolvedValueOnce(null);
+    txMock.campaign.findUnique.mockResolvedValueOnce({
+      emailBisonCampaignId: 78,
+      status: "deployed",
+    });
+    txMock.campaign.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /\[step:3\] EB 422/,
+    );
+
+    // After attempt 1: Bundle B rollback fired. Audit row written.
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(1);
+    // Campaign was rolled back (status→approved, ebId→null, deployedAt→null).
+    expect(txMock.campaign.updateMany).toHaveBeenCalledWith({
+      where: { id: CAMPAIGN_ID, status: "deployed" },
+      data: {
+        status: "approved",
+        emailBisonCampaignId: null,
+        deployedAt: null,
+      },
+    });
+
+    // Capture the adapter call count — first attempt invoked it once.
+    expect(adapterDeployMock).toHaveBeenCalledTimes(1);
+
+    // --- Attempt 2 (Trigger.dev retry re-invokes executeDeploy) ---
+    // Entry: CampaignDeploy.status='failed' (from Bundle B rollback),
+    // emailBisonCampaignId=78 (the retry anchor persisted in Step 2 of
+    // attempt 1 — BL-076 key insight: this survives Bundle B's rollback).
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "failed", emailBisonCampaignId: 78 }),
+    );
+
+    // After restore: Campaign should appear as 'deployed' with ebId=78.
+    // getCampaign is called by executeDeploy AFTER the restore tx, so we
+    // return the restored shape.
+    getCampaignMock.mockResolvedValueOnce({
+      id: CAMPAIGN_ID,
+      name: "Retry Test Campaign",
+      workspaceSlug: "test-ws",
+      status: "deployed",
+      channels: ["email"],
+    });
+
+    // Adapter succeeds on second attempt.
+    adapterDeployMock.mockResolvedValueOnce(undefined);
+
+    // Post-adapter finalize shape: status='complete'.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockResolvedValue({
+      status: "complete",
+      emailStatus: "complete",
+      linkedinStatus: null,
+    });
+    prismaMock.campaignDeploy.findUnique.mockResolvedValue({
+      status: "complete",
+      leadCount: 0,
+      emailStepCount: 0,
+      linkedinStepCount: 0,
+      emailStatus: "complete",
+      linkedinStatus: null,
+      error: null,
+    });
+    prismaMock.campaign.updateMany.mockResolvedValue({ count: 1 });
+
+    await executeDeploy(CAMPAIGN_ID, DEPLOY_ID);
+
+    // Core assertion: adapter was invoked EXACTLY twice across both
+    // executeDeploy calls (once per attempt) — no spurious extra invocation
+    // on the retry. This is the dual-orphan regression gate.
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+
+    // Restore tx fired. The retry entry branch opened a $transaction to
+    // restore Campaign + flip CampaignDeploy 'failed'→'running'.
+    // $transaction was called 2x total: once for attempt-1 rollback, once
+    // for attempt-2 restore.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+
+    // Campaign restore used the idempotent optimistic-update pattern
+    // (guarded on status='approved' AND emailBisonCampaignId=null so a
+    // double-restore is a no-op).
+    expect(txMock.campaign.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: CAMPAIGN_ID,
+        status: "approved",
+        emailBisonCampaignId: null,
+      },
+      data: {
+        status: "deployed",
+        emailBisonCampaignId: 78,
+        deployedAt: expect.any(Date),
+      },
+    });
+
+    // CampaignDeploy restored 'failed'→'running' with stale fields cleared
+    // (error + completedAt both nulled so the row reflects the retry, not
+    // the prior failure).
+    expect(txMock.campaignDeploy.updateMany).toHaveBeenCalledWith({
+      where: { id: DEPLOY_ID, status: "failed" },
+      data: {
+        status: "running",
+        error: null,
+        completedAt: null,
+      },
+    });
+  });
+
+  it("retry-still-fails: retry attempt hits Bundle B rollback again — Campaign stays rolled back, CampaignDeploy final status='failed'", async () => {
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockReset();
+
+    // --- Attempt 1 ---
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "pending", emailBisonCampaignId: null }),
+    );
+    getCampaignMock.mockResolvedValueOnce({
+      id: CAMPAIGN_ID,
+      name: "Retry Fail Campaign",
+      workspaceSlug: "test-ws",
+      status: "deployed",
+      channels: ["email"],
+    });
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error("[step:3] EB 422: first failure"),
+    );
+    txMock.campaignDeploy.findUnique.mockResolvedValueOnce({ status: "running" });
+    txMock.campaignDeploy.findFirst.mockResolvedValueOnce(null);
+    txMock.campaign.findUnique.mockResolvedValueOnce({
+      emailBisonCampaignId: 78,
+      status: "deployed",
+    });
+    txMock.campaign.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /first failure/,
+    );
+
+    // --- Attempt 2 (retry — also fails) ---
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "failed", emailBisonCampaignId: 78 }),
+    );
+    getCampaignMock.mockResolvedValueOnce({
+      id: CAMPAIGN_ID,
+      name: "Retry Fail Campaign",
+      workspaceSlug: "test-ws",
+      status: "deployed",
+      channels: ["email"],
+    });
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error("[step:3] EB 422: second failure"),
+    );
+    // Rollback tx seeds for attempt 2 — CampaignDeploy.status='running'
+    // after the retry-restore flipped it back to running.
+    txMock.campaignDeploy.findUnique.mockResolvedValueOnce({ status: "running" });
+    txMock.campaignDeploy.findFirst.mockResolvedValueOnce(null);
+    txMock.campaign.findUnique.mockResolvedValueOnce({
+      emailBisonCampaignId: 78,
+      status: "deployed",
+    });
+    txMock.campaign.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /second failure/,
+    );
+
+    // Two attempts, two adapter invocations.
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+
+    // Total $transaction count = 3: attempt-1 rollback, attempt-2 restore,
+    // attempt-2 rollback.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(3);
+
+    // Both attempts fired the rollback audit (attempt 1 + attempt 2).
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("defensive guard: CampaignDeploy in unexpected status (e.g. 'complete') throws before adapter runs", async () => {
+    // Reset the beforeEach's default 'pending' implementation so this
+    // test's `mockImplementationOnce` fires on the FIRST entry-read call.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockReset();
+    // Seed findUniqueOrThrow to return a status that shouldn't trigger
+    // executeDeploy — status='complete' means a successful run already
+    // finished; re-running is a no-go.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "complete", emailBisonCampaignId: 42 }),
+    );
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /unexpected status for executeDeploy entry/,
+    );
+
+    // Adapter never ran.
+    expect(adapterDeployMock).not.toHaveBeenCalled();
+    // No tx — neither restore nor rollback fired.
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("defensive guard: retry with status='failed' but NO emailBisonCampaignId anchor refuses to proceed (prevents silent duplicate createCampaign)", async () => {
+    // Reset the beforeEach's default 'pending' implementation so this
+    // test's `mockImplementationOnce` fires on the FIRST entry-read call.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockReset();
+    // Edge case: CampaignDeploy.status='failed' but emailBisonCampaignId=null.
+    // This means the prior attempt died BEFORE Step 2 could persist the EB
+    // ID. We have no retry anchor — proceeding would take the fresh-create
+    // path and potentially duplicate an EB campaign. Refuse to proceed so
+    // an operator can investigate.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "failed", emailBisonCampaignId: null }),
+    );
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /unexpected status for executeDeploy entry/,
+    );
+
+    expect(adapterDeployMock).not.toHaveBeenCalled();
   });
 });

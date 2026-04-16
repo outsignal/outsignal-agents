@@ -52,6 +52,7 @@ const { getCampaignMock, prismaMock, txMock } = vi.hoisted(() => {
     campaignDeploy: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findFirst: vi.fn(),
     },
     campaign: {
@@ -70,6 +71,9 @@ const { getCampaignMock, prismaMock, txMock } = vi.hoisted(() => {
       // BL-075: extend campaign / campaignDeploy to cover the reads/writes
       // executeDeploy performs outside the rollback tx (initial status→running
       // write, finalize read, happy-path auto-active Campaign.updateMany).
+      // BL-076 Bundle C: add updateMany for the entry-transition (race-safe
+      // status='pending'→'running' flip) and findUniqueOrThrow for the
+      // retry-detection read.
       campaign: {
         update: vi.fn(),
         findUnique: vi.fn(),
@@ -77,6 +81,7 @@ const { getCampaignMock, prismaMock, txMock } = vi.hoisted(() => {
       },
       campaignDeploy: {
         update: vi.fn(),
+        updateMany: vi.fn(),
         findUnique: vi.fn(),
         findUniqueOrThrow: vi.fn(),
       },
@@ -653,6 +658,20 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
         { position: 1, subjectLine: "hi", body: "hello", delayDays: 0 },
       ],
     });
+
+    // BL-076 Bundle C: executeDeploy reads CampaignDeploy at entry to detect
+    // retry vs. first-attempt. Fresh attempt → status='pending', no anchor.
+    // Use mockImplementationOnce so the SAME mock returns the finalize shape
+    // on subsequent calls (no second finalize call fires on this failure
+    // path, but keeping the mock shape consistent).
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: "pending",
+        emailBisonCampaignId: null,
+      }),
+    );
+    // Default updateMany for entry transition succeeds.
+    prismaMock.campaignDeploy.updateMany.mockResolvedValue({ count: 1 });
 
     // executeDeploy reads CampaignDeploy.findUnique inside the rollback tx —
     // wire the tx client to report status='running' so the terminal

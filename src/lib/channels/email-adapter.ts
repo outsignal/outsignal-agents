@@ -240,9 +240,20 @@ export class EmailAdapter implements ChannelAdapter {
         }
       } else {
         // Fresh deploy — create the EB campaign for the first time.
-        const ebCampaign = await withRetry(() =>
-          ebClient.createCampaign({ name: campaignName }),
-        );
+        //
+        // BL-076 (Phase 6.5b Bundle C): DO NOT wrap createCampaign in
+        // withRetry. Phase 6a root cause was a withRetry-induced duplicate —
+        // if EB successfully creates the campaign but the client doesn't
+        // see a 2xx response (timeout, transient 5xx, network flap),
+        // withRetry's next attempt creates a SECOND EB draft, orphaning
+        // the first. createCampaign is non-idempotent server-side so
+        // client-level retry is unsafe. Transient failures are handled
+        // instead by Trigger.dev's task-level retry — on re-entry,
+        // executeDeploy restores Campaign.emailBisonCampaignId from
+        // CampaignDeploy (see deploy.ts BL-076 restore block), and Step 1
+        // takes the reuse path via preExistingEbId, so no duplicate EB
+        // campaign is created on retry.
+        const ebCampaign = await ebClient.createCampaign({ name: campaignName });
         ebCampaignId = ebCampaign.id;
       }
 
@@ -250,17 +261,28 @@ export class EmailAdapter implements ChannelAdapter {
       // Step 2 — Persist emailBisonCampaignId on BOTH CampaignDeploy and
       // Campaign records (idempotent write — same ID on every re-run).
       //
+      // BL-076 (Phase 6.5b Bundle C): WRITE ORDER matters for Trigger.dev
+      // retry recovery. We write CampaignDeploy FIRST, then Campaign. The
+      // CampaignDeploy row is the durable anchor that survives Bundle B's
+      // terminal-failure rollback (which clears Campaign.emailBisonCampaignId
+      // but leaves CampaignDeploy fields untouched). On a retry re-entry
+      // (deploy.ts executeDeploy), we read CampaignDeploy.emailBisonCampaignId
+      // to restore Campaign state — if we wrote Campaign first and the
+      // process died between the two writes, there'd be a window where the
+      // EB ID lives on Campaign but not CampaignDeploy and the retry anchor
+      // is missing. CampaignDeploy-first closes that window.
+      //
       // BL-070 race guard — Campaign.emailBisonCampaignId is UNIQUE. Two
       // concurrent deploys of the same Campaign can both take the
       // fresh-deploy branch in Step 1 and each createCampaign on EB,
-      // producing two EB drafts. When the loser tries to write back here,
-      // Prisma raises P2002. We catch, re-read the winning ID that the
-      // other deploy persisted, delete our orphan EB campaign, and
-      // continue the rest of the flow against the winner. If the
-      // EmailBison delete itself fails we surface a loud warning rather
-      // than aborting the deploy — the write-back winner is the correct
-      // campaign and subsequent steps are safe to run against it; the
-      // orphan becomes a documented cleanup task (BL-072).
+      // producing two EB drafts. When the loser tries to write back to
+      // Campaign, Prisma raises P2002. We catch, re-read the winning ID
+      // the other deploy persisted, delete our orphan EB campaign, and
+      // re-write CampaignDeploy with the winner's ID before continuing.
+      // If the EmailBison delete itself fails we surface a loud warning
+      // rather than aborting the deploy — the write-back winner is the
+      // correct campaign and subsequent steps are safe to run against it;
+      // the orphan becomes a documented cleanup task (BL-072).
       //
       // The idempotent reuse branch in Step 1 can never trigger P2002
       // because it reuses the already-persisted ID — the update becomes a
@@ -269,6 +291,12 @@ export class EmailAdapter implements ChannelAdapter {
       // and is therefore the orphan to delete.
       // -----------------------------------------------------------------
       currentStep = DEPLOY_STEP.PERSIST_EB_CAMPAIGN_ID;
+      // CampaignDeploy first — retry anchor for BL-076. Idempotent re-runs
+      // write the same ID; no unique constraint exists on this column.
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data: { emailBisonCampaignId: ebCampaignId },
+      });
       try {
         await prisma.campaign.update({
           where: { id: campaignId },
@@ -313,14 +341,16 @@ export class EmailAdapter implements ChannelAdapter {
             );
           }
           ebCampaignId = winningEbId;
+          // Re-write CampaignDeploy with the winning ID — we wrote the
+          // loser's orphan ID above, must correct to the winner.
+          await prisma.campaignDeploy.update({
+            where: { id: deployId },
+            data: { emailBisonCampaignId: ebCampaignId },
+          });
         } else {
           throw err;
         }
       }
-      await prisma.campaignDeploy.update({
-        where: { id: deployId },
-        data: { emailBisonCampaignId: ebCampaignId },
-      });
 
       // Campaign was loaded in Step 1 (idempotency check). Validate
       // targetListId and pull sequence here — campaign is in scope from
@@ -627,6 +657,16 @@ export class EmailAdapter implements ChannelAdapter {
       // if another CampaignDeploy for the same campaignId is still in flight.
       // Keeping the boundary at deploy.ts means linkedin-adapter inherits the
       // same rollback semantics without duplicating the logic per channel.
+      //
+      // BL-076 (Phase 6.5b Bundle C): CampaignDeploy.emailBisonCampaignId is
+      // NOT cleared by the outer rollback — it serves as the retry anchor
+      // for Trigger.dev's automatic retry. When deploy.ts's executeDeploy
+      // re-enters on retry, it reads CampaignDeploy.emailBisonCampaignId
+      // and restores Campaign state before the status guard fires, so the
+      // retry reuses the EB campaign via the idempotent Step 1 branch
+      // rather than creating a duplicate. Step 2 above writes
+      // CampaignDeploy FIRST (before Campaign) specifically so the anchor
+      // is durable even if the process dies between the two writes.
       const message = err instanceof Error ? err.message : String(err);
       const tagged = `[step:${currentStep}] ${message}`;
       // Log the failure so errors are never silently swallowed (the catch
