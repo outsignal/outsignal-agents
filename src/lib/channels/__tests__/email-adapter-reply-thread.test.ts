@@ -40,6 +40,8 @@ const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
     getSequenceSteps: vi.fn(),
     createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
+    // BL-088 — Step 4 routes through this batch upsert.
+    createOrUpdateLeadsMultiple: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     getSchedule: vi.fn(),
     createSchedule: vi.fn(),
@@ -102,7 +104,10 @@ function primeHappyPathTail() {
     },
   ]);
   prismaMock.webhookEvent.findFirst.mockResolvedValue(null);
-  ebMock.createLead.mockResolvedValue({ id: 1001, status: "active" });
+  // BL-088 — single batch upsert returns the eligible lead's EB ID.
+  ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([
+    { id: 1001, email: "a@acme.com", status: "active" },
+  ]);
   ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
   ebMock.getSchedule.mockResolvedValue(null);
   ebMock.createSchedule.mockResolvedValue({});

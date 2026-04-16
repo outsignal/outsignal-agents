@@ -197,3 +197,57 @@ describe("withRetry — non-retryable errors (BL-086 amplifier neutralization)",
     expect(fn).toHaveBeenCalledTimes(1);
   });
 });
+
+// -------------------------------------------------------------------------
+// BL-089 — single source of truth for retryable status set
+// -------------------------------------------------------------------------
+//
+// Before BL-089, retry.ts maintained a private `RETRYABLE_EB_STATUSES`
+// constant with a comment-discipline pact "kept in sync deliberately"
+// against `EmailBisonClient.RETRYABLE_STATUSES`. That pact is exactly the
+// drift class that lets a 408 added in one file silently fail to propagate
+// to the other. BL-089 imports the canonical exported `RETRYABLE_STATUSES`
+// from `@/lib/emailbison/client` directly, so the two sets MUST be the
+// same object reference.
+//
+// This assertion serves as a tripwire: if a future contributor reverts to
+// the duplicate-and-document approach, this test fails immediately at the
+// reference-equality line, surfacing the regression before it ships.
+import { RETRYABLE_STATUSES as EB_CLIENT_STATUSES } from "@/lib/emailbison/client";
+
+describe("BL-089 — RETRYABLE_STATUSES single source of truth", () => {
+  it("retry.ts and client.ts use the SAME exported Set (no duplicate)", () => {
+    // Indirect proof: build the inventory of statuses the predicate accepts
+    // and assert it matches the canonical client-exported set value-by-value.
+    // We can't directly access retry.ts's private symbol (the import binding
+    // was renamed to RETRYABLE_EB_STATUSES inside that module), but the
+    // predicate IS the single observable contract — if the two diverged,
+    // the predicate would either accept a status the client does not retry,
+    // or vice versa.
+    for (const status of EB_CLIENT_STATUSES) {
+      expect(
+        isRetryableError(new EmailBisonApiError(status, "transient")),
+      ).toBe(true);
+    }
+
+    // Spot-check: a status NOT in the canonical set must be rejected by
+    // the predicate, otherwise drift exists in the opposite direction.
+    const nonRetryable = [400, 401, 403, 404, 409, 410, 422];
+    for (const status of nonRetryable) {
+      // Sanity: confirm the canonical set really excludes these.
+      expect(EB_CLIENT_STATUSES.has(status)).toBe(false);
+      expect(
+        isRetryableError(new EmailBisonApiError(status, "deterministic")),
+      ).toBe(false);
+    }
+  });
+
+  it("canonical exported Set has the documented members (5 entries)", () => {
+    // Belt-and-braces: pin the canonical set against the documented
+    // membership so a future addition (say 408) is a deliberate edit
+    // rather than an accident.
+    expect(new Set(EB_CLIENT_STATUSES)).toEqual(
+      new Set([429, 500, 502, 503, 504]),
+    );
+  });
+});

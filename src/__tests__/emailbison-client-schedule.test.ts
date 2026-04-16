@@ -51,6 +51,10 @@ describe("EmailBisonClient schedule + attach-tags methods", () => {
   // createSchedule
   // ---------------------------------------------------------------------
   describe("createSchedule", () => {
+    // BL-090 + BL-087: save_as_template required (EB v1.1 POST rejects 422
+    // if absent). Always send `false` so per-campaign schedules don't
+    // pollute the workspace template list — same default DEFAULT_SCHEDULE
+    // uses in email-adapter Step 5.
     const schedule = {
       monday: true,
       tuesday: true,
@@ -62,6 +66,7 @@ describe("EmailBisonClient schedule + attach-tags methods", () => {
       start_time: "09:00",
       end_time: "17:00",
       timezone: "Europe/London",
+      save_as_template: false,
     };
 
     it("POSTs to /campaigns/{id}/schedule with the schedule body", async () => {

@@ -73,6 +73,30 @@ class RateLimitError extends EmailBisonApiError {
   }
 }
 
+/**
+ * HTTP statuses that the EmailBison client treats as transient and retries
+ * automatically (with exponential backoff) inside the per-request loop.
+ *
+ * Exported as the canonical set for ALL EB-related retry decisions. Layered
+ * callers (`@/lib/utils/retry.withRetry`, future ad-hoc callers) MUST import
+ * this constant rather than maintaining their own copy — BL-089 (2026-04-16)
+ * removed a comment-discipline duplicate in retry.ts so the two sets cannot
+ * drift again. If a new transient status emerges (e.g. 408, 425), add it
+ * here and every layered caller picks it up automatically.
+ *
+ * Status reasoning:
+ *   - 429: rate limited, EB returns retry-after header.
+ *   - 500/502/503/504: 5xx transient — EB has historically returned all four
+ *     during brief outages or slow workers.
+ * Excluded by design (deterministic responses):
+ *   - 4xx non-429: validation/auth/forbidden/not-found — retrying won't
+ *     change the answer; on non-idempotent POSTs it amplifies side-effects
+ *     (BL-085 cascade, BL-086 amplifier neutralization).
+ */
+export const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
+  429, 500, 502, 503, 504,
+]);
+
 export class EmailBisonClient {
   private baseUrl = "https://app.outsignal.ai/api";
 
@@ -82,7 +106,10 @@ export class EmailBisonClient {
     this.token = token;
   }
 
-  private static readonly RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+  // Internal alias — kept for backwards compatibility with the existing
+  // `EmailBisonClient.RETRYABLE_STATUSES` reference in the request loop.
+  // Both names point to the same canonical Set so there's no drift.
+  private static readonly RETRYABLE_STATUSES = RETRYABLE_STATUSES;
   private static readonly MAX_RETRIES = 3;
   private static readonly BASE_DELAY_MS = 1000;
 
@@ -765,6 +792,157 @@ export class EmailBisonClient {
       revalidate: 0,
     });
     return res.data;
+  }
+
+  /**
+   * Bulk upsert leads — create-or-update by email.
+   *
+   * Endpoint: `POST /api/leads/create-or-update/multiple`
+   *   (docs/emailbison-dedi-api-reference.md lines 1595-1611). EB itself
+   *   recommends re-uploading rather than deleting (line 1527: "Instead of
+   *   deleting, simply re-upload the leads. We'll update the records in
+   *   place."). This is the bulk variant — limit 500 leads/request.
+   *
+   * Request body shape:
+   *   {
+   *     "existing_lead_behavior": "patch",
+   *     "leads": [
+   *       { "email": "a@x.com", "first_name": "A", "last_name": "X", ... },
+   *       ...
+   *     ]
+   *   }
+   *
+   * `existing_lead_behavior`:
+   *   - "patch" (we use this) — update only fields passed in the request,
+   *     leave other fields and custom variables untouched. Preserves
+   *     existing lead history (replies, opens, campaign attachments).
+   *   - "put" — replace ALL fields including custom variables. Anything
+   *     not in the request is cleared. Destructive — avoid unless intent
+   *     is reset.
+   *   - default (if omitted) is "put" per docs line 1610. We always pass
+   *     "patch" explicitly to make the intent unambiguous on the wire.
+   *
+   * BL-088 motivation: per-lead `createLead` POST hits 422 ("The email has
+   * already been taken") on canary re-runs because EB's lead store is
+   * WORKSPACE-scoped, not campaign-scoped — prior-run leads persist across
+   * campaign deletions and block any subsequent createLead with the same
+   * email. The upsert endpoint sidesteps this by accepting both new and
+   * existing emails in a single batch.
+   *
+   * Behaviour:
+   *   - Empty `leads` array → returns `[]` without making a network call.
+   *     (EB would 422 on an empty batch and there's nothing to do.)
+   *   - Tolerant Zod parse on HTTP 200 (BL-085 pattern). The exact response
+   *     shape is undocumented in the EB reference; we try the most likely
+   *     `{ data: [{id, email, ...}] }` shape, log a `[BL-088]` warn on
+   *     drift, and return a best-effort empty array on parse failure
+   *     rather than throwing — callers can decide whether to proceed
+   *     (email-adapter Step 4 currently treats zero IDs as a deploy
+   *     failure further downstream).
+   *   - HTTP non-2xx is still thrown by the underlying `request` helper
+   *     as `EmailBisonApiError` (e.g. 422 on validation, 401/403 on auth,
+   *     429/5xx on transient). Status-aware retry behaviour is the
+   *     caller's responsibility (use `withRetry` from `@/lib/utils/retry`).
+   *
+   * Returns: array of `CreateLeadResult` (`{id, email, status?}`) — one entry
+   * per lead in the input batch on the happy path. Per EB's docs (line 1588)
+   * personal-domain emails may be silently skipped server-side; the returned
+   * count can be lower than the input count without an error.
+   */
+  async createOrUpdateLeadsMultiple(
+    leads: CreateLeadParams[],
+  ): Promise<CreateLeadResult[]> {
+    if (leads.length === 0) {
+      // Skip the HTTP call entirely — EB would 422 on an empty batch and
+      // there is nothing to upsert. Matches the early-return pattern used
+      // in createSequenceSteps (returns [] on empty input).
+      return [];
+    }
+
+    const body = {
+      existing_lead_behavior: "patch" as const,
+      leads: leads.map((lead) => {
+        const entry: Record<string, unknown> = { email: lead.email };
+        if (lead.firstName) entry.first_name = lead.firstName;
+        if (lead.lastName) entry.last_name = lead.lastName;
+        if (lead.jobTitle) entry.title = lead.jobTitle;
+        if (lead.company) entry.company = lead.company;
+        if (lead.phone) entry.phone = lead.phone;
+        if (lead.customVariables?.length) {
+          entry.custom_variables = lead.customVariables;
+        }
+        return entry;
+      }),
+    };
+
+    const res = await this.request<unknown>(
+      "/leads/create-or-update/multiple",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        revalidate: 0,
+      },
+    );
+
+    // Parse the response shape at the HTTP boundary — no silent `as` cast.
+    // EB docs do not document the response shape for this endpoint; the
+    // most plausible shape (matching POST /api/leads single-create at
+    // docs line 1449 and POST /api/leads/multiple bulk-create at line 1582)
+    // is `{ data: [{id, email, status?, ...}] }`. We accept that or a
+    // bare array (some EB endpoints return both historically — see
+    // getSequenceSteps Zod union for precedent).
+    //
+    // BL-088 + BL-085 — tolerant parse on 200. If the shape drifts, log a
+    // descriptive warn so ops sees it, and return [] so the caller can
+    // decide. The caller (email-adapter Step 4) treats zero returned IDs
+    // as a no-leads-to-attach condition (existing zero-leads early exit
+    // at email-adapter.ts:579-593), which fails the deploy explicitly
+    // rather than silently. Better to surface drift as a deploy failure
+    // than to silently hide it.
+    //
+    // 4xx/5xx still throw via the request helper — only 200-with-unknown-
+    // shape is tolerated here.
+    const EbLeadSchema = z
+      .object({
+        id: z.number(),
+        email: z.string(),
+        status: z.string().optional(),
+      })
+      .passthrough();
+    const EbResponseSchema = z.union([
+      z.object({ data: z.array(EbLeadSchema) }),
+      z.array(EbLeadSchema),
+    ]);
+
+    const parsed = EbResponseSchema.safeParse(res);
+    if (!parsed.success) {
+      // Build a raw preview that never throws — res can be undefined
+      // (empty 200 body), a string, an object, or any JSON-serializable
+      // value. Mirror the createSequenceSteps drift-warn pattern.
+      let rawPreview: string;
+      if (res === undefined) {
+        rawPreview = "(empty body)";
+      } else if (typeof res === "string") {
+        rawPreview = res.slice(0, 500);
+      } else {
+        try {
+          rawPreview = JSON.stringify(res).slice(0, 500);
+        } catch {
+          rawPreview = "(unserializable)";
+        }
+      }
+      console.warn(
+        `[BL-088] createOrUpdateLeadsMultiple response drift: ${parsed.error.message} raw=${rawPreview}`,
+      );
+      return [];
+    }
+
+    const rows = Array.isArray(parsed.data) ? parsed.data : parsed.data.data;
+    return rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      status: r.status ?? "",
+    }));
   }
 
   async getCustomVariables(): Promise<CustomVariable[]> {

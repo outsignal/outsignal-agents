@@ -514,12 +514,25 @@ export class EmailAdapter implements ChannelAdapter {
       const emailStepCount = existingSteps.length + missingSteps.length;
 
       // -----------------------------------------------------------------
-      // Step 4 — Create leads + attach to campaign
+      // Step 4 — Upsert leads + attach to campaign
       //
       // Load TargetList persons, dedup via WebhookEvent (EMAIL_SENT guard),
-      // createLead for each, capture returned EB IDs, then attach-leads in
-      // a single batch. EB's createLead is idempotent by email on the lead
-      // side; attach-leads is idempotent at the campaign link level.
+      // upsert ALL eligible leads in a SINGLE batch via the EB upsert
+      // endpoint, capture returned EB IDs, then attach-leads in a single
+      // batch.
+      //
+      // BL-088 (2026-04-16): switched from a per-lead `createLead` POST
+      // loop to one batch `createOrUpdateLeadsMultiple` call. EB's lead
+      // store is WORKSPACE-scoped, not campaign-scoped — leads from prior
+      // canary runs persist across campaign deletions and `createLead`
+      // returned 422 ("The email has already been taken") on every retry
+      // attempt. The upsert endpoint accepts both new and existing emails
+      // with `existing_lead_behavior: "patch"` and returns IDs for both.
+      // EB itself recommends this (docs line 1527: "Instead of deleting,
+      // simply re-upload the leads. We'll update the records in place.").
+      //
+      // attach-leads remains idempotent at the campaign link level so a
+      // re-deploy that re-upserts the same leads is safe.
       // -----------------------------------------------------------------
       currentStep = DEPLOY_STEP.ATTACH_LEADS;
       const leads = await prisma.targetListPerson.findMany({
@@ -533,12 +546,20 @@ export class EmailAdapter implements ChannelAdapter {
         },
       });
 
-      let leadCount = 0;
-      const createdLeadIds: number[] = [];
+      // Pre-filter eligible leads (have email, not already deployed) BEFORE
+      // building the batch — keeps the wire payload to only what EB needs
+      // and preserves the existing per-lead WebhookEvent dedup semantics.
+      const eligibleLeads: typeof leads = [];
       for (const entry of leads) {
         const person = entry.person;
 
-        // Outsignal-side dedup: skip if already has EMAIL_SENT event for this workspace
+        // Skip leads without a real email — cannot deploy to EmailBison
+        if (!person.email) continue;
+
+        // Outsignal-side dedup: skip if already has EMAIL_SENT event for
+        // this workspace. Preserves the prior behaviour — a lead that has
+        // already received an email in this workspace must not be re-sent
+        // even if the EB upsert would happily accept the email again.
         const alreadyDeployed = await prisma.webhookEvent.findFirst({
           where: {
             workspace: workspaceSlug,
@@ -547,29 +568,39 @@ export class EmailAdapter implements ChannelAdapter {
           },
           select: { id: true },
         });
+        if (alreadyDeployed) continue;
 
-        if (alreadyDeployed) {
-          continue;
-        }
+        eligibleLeads.push(entry);
+      }
 
-        // Skip leads without a real email — cannot deploy to EmailBison
-        if (!person.email) continue;
-
-        const createdLead = await withRetry(() =>
-          ebClient.createLead({
-            email: person.email!,
-            firstName: person.firstName ?? undefined,
-            lastName: person.lastName ?? undefined,
-            jobTitle: person.jobTitle ?? undefined,
-            company: person.company ?? undefined,
-          }),
+      const createdLeadIds: number[] = [];
+      let leadCount = 0;
+      if (eligibleLeads.length > 0) {
+        // Single batch POST. withRetry stays — BL-086 made it status-aware
+        // so transient 5xx still retries while non-retryable 4xx (e.g. a
+        // wholly different 422 like personal-domain rejection on a stricter
+        // EB instance) surfaces immediately.
+        //
+        // Note: EB caps this endpoint at 500 leads/request (docs line 1599).
+        // Current canary TargetLists are well under that. If a future
+        // workspace exceeds 500, chunk here in 500-lead batches; the
+        // upsert is naturally idempotent so a partial-batch retry is safe.
+        const upserted = await withRetry(() =>
+          ebClient.createOrUpdateLeadsMultiple(
+            eligibleLeads.map((entry) => ({
+              email: entry.person.email!,
+              firstName: entry.person.firstName ?? undefined,
+              lastName: entry.person.lastName ?? undefined,
+              jobTitle: entry.person.jobTitle ?? undefined,
+              company: entry.person.company ?? undefined,
+            })),
+          ),
         );
 
-        createdLeadIds.push(createdLead.id);
-        leadCount++;
-
-        // Throttle — 100ms between leads
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        for (const lead of upserted) {
+          createdLeadIds.push(lead.id);
+          leadCount++;
+        }
       }
 
       // Zero-leads early exit. attach-leads would 422 on an empty array

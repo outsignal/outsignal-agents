@@ -185,7 +185,14 @@ export interface CreateCampaignParams {
  * Per docs/emailbison-dedi-api-reference.md lines 152-169.
  *
  * All day booleans and start_time/end_time/timezone are required on create.
- * save_as_template is optional on create.
+ *
+ * BL-090 + BL-087: EB v1.1 POST /campaigns/:id/schedule rejects 422 if
+ * `save_as_template` is absent (despite the docs marking it optional). The
+ * field is now required at the type level on BOTH POST and PUT — callers
+ * must always send it. DEFAULT_SCHEDULE supplies it (`save_as_template:
+ * false`) so per-campaign schedules don't pollute the workspace template
+ * list. Verified via canary Run F 422 reproduction (BL-087 fix landed in
+ * commit ca2fe6a3).
  */
 export interface CreateScheduleParams {
   monday: boolean;
@@ -198,18 +205,16 @@ export interface CreateScheduleParams {
   start_time: string; // HH:MM (24h)
   end_time: string;   // HH:MM (24h)
   timezone: string;   // e.g. "Europe/London"
-  save_as_template?: boolean;
+  save_as_template: boolean; // BL-090 + BL-087: required on POST + PUT.
 }
 
 /**
  * Parameters for PUT /api/campaigns/{campaign_id}/schedule.
  * Per docs/emailbison-dedi-api-reference.md lines 181-198.
  *
- * Mirrors CreateScheduleParams but save_as_template is required on update per the spec.
+ * Mirrors CreateScheduleParams. `save_as_template` is required (BL-090).
  */
-export interface UpdateScheduleParams extends Omit<CreateScheduleParams, "save_as_template"> {
-  save_as_template: boolean;
-}
+export type UpdateScheduleParams = CreateScheduleParams;
 
 /**
  * Response shape for schedule endpoints. The EB API returns a data envelope

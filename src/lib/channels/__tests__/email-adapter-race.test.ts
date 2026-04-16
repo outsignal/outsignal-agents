@@ -34,6 +34,9 @@ const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
     // is needed here.
     createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
+    // BL-088 — Step 4 routes through this batch upsert; createLead kept
+    // on the mock as a tripwire (assertions confirm no per-lead call).
+    createOrUpdateLeadsMultiple: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     getSchedule: vi.fn(),
     createSchedule: vi.fn(),
@@ -155,7 +158,7 @@ describe("EmailAdapter.deploy() — BL-070 concurrent-deploy race guard", () => 
       },
     ]);
     prismaMock.webhookEvent.findFirst.mockResolvedValue(null);
-    ebMock.createLead.mockResolvedValue({ id: 1001, status: "active" });
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([{ id: 1001, email: "a@acme.com", status: "active" }]);
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
     ebMock.getSchedule.mockResolvedValue(null);
@@ -305,7 +308,7 @@ describe("EmailAdapter.deploy() — BL-070 true Promise.all concurrency", () => 
       },
     ]);
     prismaMock.webhookEvent.findFirst.mockResolvedValue(null);
-    ebMock.createLead.mockResolvedValue({ id: 1001, status: "active" });
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([{ id: 1001, email: "a@acme.com", status: "active" }]);
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
     ebMock.getSchedule.mockResolvedValue(null);
@@ -496,7 +499,7 @@ describe("EmailAdapter.deploy() — BL-070 defensive P2002 branches", () => {
       },
     ]);
     prismaMock.webhookEvent.findFirst.mockResolvedValue(null);
-    ebMock.createLead.mockResolvedValue({ id: 1001, status: "active" });
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([{ id: 1001, email: "a@acme.com", status: "active" }]);
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
     ebMock.getSchedule.mockResolvedValue(null);

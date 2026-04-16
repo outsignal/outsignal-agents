@@ -40,6 +40,10 @@ const {
     // the legacy mock stub is no longer needed as a tripwire.
     createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
+    // BL-088 — Step 4 switched from per-lead createLead to a single batch
+    // upsert. createLead is preserved on the mock for non-canary callers
+    // and as a tripwire (assert .not.toHaveBeenCalled in the happy path).
+    createOrUpdateLeadsMultiple: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     createSchedule: vi.fn(),
     getSchedule: vi.fn(),
@@ -170,7 +174,11 @@ describe("EmailAdapter.deploy()", () => {
       { id: 1, campaign_id: 999, position: 1, subject: "hi", body: "hello", delay_days: 0 },
       { id: 2, campaign_id: 999, position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
     ]);
-    // createLead is a per-call mock — happy-path tests set it via mockResolvedValueOnce.
+    // BL-088 — Step 4 default: empty batch returns []. Tests that need
+    // returned IDs override via mockResolvedValueOnce. createLead is left
+    // unmocked at this layer; tests should never see it called now (Step 4
+    // routes through createOrUpdateLeadsMultiple).
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([]);
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
     ebMock.getSchedule.mockResolvedValue(null);
@@ -202,9 +210,11 @@ describe("EmailAdapter.deploy()", () => {
       fakePersonEntry({ email: "a@acme.com", firstName: "A" }),
       fakePersonEntry({ email: "b@acme.com", firstName: "B" }),
     ]);
-    ebMock.createLead
-      .mockResolvedValueOnce({ id: 1001, email: "a@acme.com", status: "active" })
-      .mockResolvedValueOnce({ id: 1002, email: "b@acme.com", status: "active" });
+    // BL-088 — single batch upsert returns both lead IDs.
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValueOnce([
+      { id: 1001, email: "a@acme.com", status: "active" },
+      { id: 1002, email: "b@acme.com", status: "active" },
+    ]);
 
     await adapter.deploy(DEPLOY_PARAMS);
 
@@ -226,10 +236,19 @@ describe("EmailAdapter.deploy()", () => {
       { position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
     ]);
 
-    // Step 3 — per-lead createLead
-    expect(ebMock.createLead).toHaveBeenCalledTimes(2);
+    // Step 4 — BL-088: single batch upsert (NOT per-lead createLead).
+    // The per-lead createLead path 422'd on retained workspace leads
+    // (canary Run G blocker). Switched to /api/leads/create-or-update/multiple
+    // with existing_lead_behavior='patch' so prior-run leads are tolerated.
+    expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledTimes(1);
+    expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledWith([
+      { email: "a@acme.com", firstName: "A" },
+      { email: "b@acme.com", firstName: "B" },
+    ]);
+    // Tripwire: per-lead createLead path is dead for Step 4.
+    expect(ebMock.createLead).not.toHaveBeenCalled();
 
-    // Step 3b — attachLeadsToCampaign with the captured EB IDs
+    // Step 4b — attachLeadsToCampaign with the captured EB IDs.
     expect(ebMock.attachLeadsToCampaign).toHaveBeenCalledWith(999, [1001, 1002]);
 
     // Step 4 — createSchedule with Mon-Fri 09-17 Europe/London.
@@ -293,9 +312,9 @@ describe("EmailAdapter.deploy()", () => {
         { id: 2, campaign_id: 999, position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
       ];
     });
-    ebMock.createLead.mockImplementation(async () => {
-      callOrder.push("createLead");
-      return { id: 1001 + callOrder.filter((s) => s === "createLead").length };
+    ebMock.createOrUpdateLeadsMultiple.mockImplementation(async () => {
+      callOrder.push("createOrUpdateLeadsMultiple");
+      return [{ id: 1001, email: "a@acme.com", status: "active" }];
     });
     ebMock.attachLeadsToCampaign.mockImplementationOnce(async () => {
       callOrder.push("attachLeadsToCampaign");
@@ -332,7 +351,7 @@ describe("EmailAdapter.deploy()", () => {
     expect(callOrder).toEqual([
       "createCampaign",
       "createSequenceSteps",
-      "createLead",
+      "createOrUpdateLeadsMultiple",
       "attachLeadsToCampaign",
       "createSchedule",
       "attachSenderEmails",
@@ -350,8 +369,11 @@ describe("EmailAdapter.deploy()", () => {
 
     await adapter.deploy(DEPLOY_PARAMS);
 
-    // The early-return MUST skip every post-createLead step.
+    // The early-return MUST skip every post-Step-4 step.
     expect(ebMock.createCampaign).toHaveBeenCalledTimes(1);
+    // BL-088 — empty leads array short-circuits the upsert call entirely
+    // (eligibleLeads.length === 0 branch in adapter).
+    expect(ebMock.createOrUpdateLeadsMultiple).not.toHaveBeenCalled();
     expect(ebMock.createLead).not.toHaveBeenCalled();
     expect(ebMock.attachLeadsToCampaign).not.toHaveBeenCalled();
     expect(ebMock.createSchedule).not.toHaveBeenCalled();
@@ -375,11 +397,15 @@ describe("EmailAdapter.deploy()", () => {
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       fakePersonEntry({ email: "already@acme.com" }),
     ]);
-    // Simulate prior EMAIL_SENT event — loop skips, createLead never fires.
+    // Simulate prior EMAIL_SENT event — loop skips, no upsert fires.
     prismaMock.webhookEvent.findFirst.mockResolvedValue({ id: "ev-1" });
 
     await adapter.deploy(DEPLOY_PARAMS);
 
+    // BL-088 — eligibleLeads filter excludes already-deployed leads BEFORE
+    // building the batch, so the upsert is never called when the only lead
+    // was previously deployed.
+    expect(ebMock.createOrUpdateLeadsMultiple).not.toHaveBeenCalled();
     expect(ebMock.createLead).not.toHaveBeenCalled();
     expect(ebMock.attachLeadsToCampaign).not.toHaveBeenCalled();
     expect(ebMock.resumeCampaign).not.toHaveBeenCalled();
@@ -392,19 +418,18 @@ describe("EmailAdapter.deploy()", () => {
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       fakePersonEntry({ email: "a@acme.com" }),
     ]);
-    ebMock.createLead.mockResolvedValue({
-      id: 1001,
-      email: "a@acme.com",
-      status: "active",
-    });
+    // BL-088 — single batch upsert returns the lead ID (Step 4 succeeds).
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([
+      { id: 1001, email: "a@acme.com", status: "active" },
+    ]);
     prismaMock.sender.findMany.mockResolvedValue([]); // no eligible senders
 
     await expect(adapter.deploy(DEPLOY_PARAMS)).rejects.toThrow(
       /No EB-registered healthy senders/,
     );
 
-    // We reached createLead + attachLeadsToCampaign (both pre-sender-check) ...
-    expect(ebMock.createLead).toHaveBeenCalledTimes(1);
+    // We reached the batch upsert + attachLeadsToCampaign (both pre-sender-check) ...
+    expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledTimes(1);
     expect(ebMock.attachLeadsToCampaign).toHaveBeenCalledWith(999, [1001]);
     expect(ebMock.createSchedule).toHaveBeenCalledTimes(1);
     // ... but never attached senders or launched.
@@ -427,11 +452,10 @@ describe("EmailAdapter.deploy()", () => {
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       fakePersonEntry({ email: "a@acme.com" }),
     ]);
-    ebMock.createLead.mockResolvedValue({
-      id: 1001,
-      email: "a@acme.com",
-      status: "active",
-    });
+    // BL-088 — batch upsert path.
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([
+      { id: 1001, email: "a@acme.com", status: "active" },
+    ]);
 
     await adapter.deploy(DEPLOY_PARAMS);
 

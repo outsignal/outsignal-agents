@@ -30,18 +30,22 @@
  *     unidentified failure mode.
  */
 
-import { EmailBisonApiError } from "@/lib/emailbison/client";
+import {
+  EmailBisonApiError,
+  RETRYABLE_STATUSES as RETRYABLE_EB_STATUSES,
+} from "@/lib/emailbison/client";
 import { EmailBisonError } from "@/lib/emailbison/types";
 
 /**
  * EmailBisonApiError status codes we treat as transient and worth retrying.
- * Mirrors EmailBisonClient.RETRYABLE_STATUSES (src/lib/emailbison/client.ts:85)
- * — kept in sync deliberately. If the inner client adds 408/425, this set
- * should follow.
+ *
+ * BL-089 (2026-04-16): imported directly from
+ * `@/lib/emailbison/client.RETRYABLE_STATUSES` — the canonical set used by
+ * the inner per-request retry loop. Previously this file maintained a
+ * comment-discipline duplicate ("kept in sync deliberately"), which is
+ * exactly the bug-class that lets two sets drift in production. Single
+ * source of truth eliminates the drift risk.
  */
-const RETRYABLE_EB_STATUSES: ReadonlySet<number> = new Set([
-  429, 500, 502, 503, 504,
-]);
 
 /**
  * True if the given error is worth retrying. Exported for testing — the

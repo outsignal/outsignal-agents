@@ -260,13 +260,16 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
               ],
             }),
         },
-        // Step 4 — createLead (POST /leads)
+        // Step 4 — BL-088: createOrUpdateLeadsMultiple
+        // (POST /leads/create-or-update/multiple). Replaces the per-lead
+        // `POST /leads` loop with a single batch call so prior-run leads
+        // in a workspace-scoped store don't 422 the deploy.
         {
           method: "POST",
-          match: /\/api\/leads$/,
+          match: /\/api\/leads\/create-or-update\/multiple$/,
           handler: () =>
             mockResponse({
-              data: { id: 2001, email: "lead1@acme.com", status: "active" },
+              data: [{ id: 2001, email: "lead1@acme.com", status: "active" }],
             }),
         },
         // Step 4 — attachLeadsToCampaign (POST /campaigns/{id}/leads/attach-leads)
@@ -325,8 +328,13 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
       callSequence.findIndex((s) => needle.test(s));
     expect(indexOf(/POST \/campaigns$/)).toBeGreaterThanOrEqual(0);
     expect(indexOf(/sequence-steps/)).toBeGreaterThan(indexOf(/POST \/campaigns$/));
-    expect(indexOf(/POST \/leads$/)).toBeGreaterThan(indexOf(/sequence-steps/));
-    expect(indexOf(/attach-leads/)).toBeGreaterThan(indexOf(/POST \/leads$/));
+    // BL-088 — Step 4 is the upsert endpoint, not the legacy POST /leads.
+    expect(indexOf(/POST \/leads\/create-or-update\/multiple$/)).toBeGreaterThan(
+      indexOf(/sequence-steps/),
+    );
+    expect(indexOf(/attach-leads/)).toBeGreaterThan(
+      indexOf(/POST \/leads\/create-or-update\/multiple$/),
+    );
     expect(indexOf(/\/schedule/)).toBeGreaterThan(indexOf(/attach-leads/));
     expect(indexOf(/attach-sender-emails/)).toBeGreaterThan(indexOf(/\/schedule/));
     expect(indexOf(/PATCH.*\/update/)).toBeGreaterThan(indexOf(/attach-sender-emails/));
@@ -384,9 +392,10 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
           ],
         });
       }
-      if (method === "POST" && stripped === "/leads") {
+      // BL-088 — Step 4 is the bulk upsert endpoint.
+      if (method === "POST" && stripped === "/leads/create-or-update/multiple") {
         return mockResponse({
-          data: { id: 2002, email: "lead1@acme.com", status: "active" },
+          data: [{ id: 2002, email: "lead1@acme.com", status: "active" }],
         });
       }
       if (method === "POST" && /\/campaigns\/10001\/leads\/attach-leads/.test(stripped)) {
@@ -472,10 +481,10 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
         },
         {
           method: "POST",
-          match: /\/api\/leads$/,
+          match: /\/api\/leads\/create-or-update\/multiple$/,
           handler: () =>
             mockResponse({
-              data: { id: 2003, email: "lead1@acme.com", status: "active" },
+              data: [{ id: 2003, email: "lead1@acme.com", status: "active" }],
             }),
         },
         {
@@ -574,9 +583,10 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
       if (method === "GET" && /\/campaigns\/(v1\.1\/)?10002\/sequence-steps/.test(stripped)) {
         return mockResponse({ data: [{ position: 1, id: 1 }] });
       }
-      if (method === "POST" && stripped === "/leads") {
+      // BL-088 — Step 4 is the bulk upsert endpoint.
+      if (method === "POST" && stripped === "/leads/create-or-update/multiple") {
         return mockResponse({
-          data: { id: 2004, email: "lead1@acme.com", status: "active" },
+          data: [{ id: 2004, email: "lead1@acme.com", status: "active" }],
         });
       }
       if (method === "POST" && /\/campaigns\/10002\/leads\/attach-leads/.test(stripped)) {
@@ -716,10 +726,10 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
         },
         {
           method: "POST",
-          match: /\/api\/leads$/,
+          match: /\/api\/leads\/create-or-update\/multiple$/,
           handler: () =>
             mockResponse({
-              data: { id: 2003, email: "lead1@acme.com", status: "active" },
+              data: [{ id: 2003, email: "lead1@acme.com", status: "active" }],
             }),
         },
         {
