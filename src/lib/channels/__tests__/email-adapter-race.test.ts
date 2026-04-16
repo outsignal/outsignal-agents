@@ -28,7 +28,11 @@ const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
     getCampaign: vi.fn(),
     deleteCampaign: vi.fn(),
     getSequenceSteps: vi.fn(),
+    // BL-074 — adapter now calls createSequenceSteps (plural, batched).
+    // Keep the legacy mock declared so accidental reverts to the old
+    // method surface as unexpected calls in test diagnostics.
     createSequenceStep: vi.fn(),
+    createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     getSchedule: vi.fn(),
@@ -135,6 +139,10 @@ describe("EmailAdapter.deploy() — BL-070 concurrent-deploy race guard", () => 
     // Remainder of the flow — mock just enough to run to success.
     ebMock.getSequenceSteps.mockResolvedValue([]);
     ebMock.createSequenceStep.mockResolvedValue({ id: 1 });
+    // BL-074: adapter uses createSequenceSteps (plural, batched).
+    ebMock.createSequenceSteps.mockResolvedValue([
+      { id: 1, campaign_id: 0, position: 1, subject: "hi", body: "hello", delay_days: 1 },
+    ]);
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       {
         person: {
@@ -276,6 +284,10 @@ describe("EmailAdapter.deploy() — BL-070 true Promise.all concurrency", () => 
     // Minimal happy-path stubs for the remainder of the flow.
     ebMock.getSequenceSteps.mockResolvedValue([]);
     ebMock.createSequenceStep.mockResolvedValue({ id: 1 });
+    // BL-074: adapter uses createSequenceSteps (plural, batched).
+    ebMock.createSequenceSteps.mockResolvedValue([
+      { id: 1, campaign_id: 0, position: 1, subject: "hi", body: "hello", delay_days: 1 },
+    ]);
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       {
         person: {
@@ -454,6 +466,10 @@ describe("EmailAdapter.deploy() — BL-070 defensive P2002 branches", () => {
     // Happy-path stubs for later steps (used when a test runs the full flow).
     ebMock.getSequenceSteps.mockResolvedValue([]);
     ebMock.createSequenceStep.mockResolvedValue({ id: 1 });
+    // BL-074: adapter uses createSequenceSteps (plural, batched).
+    ebMock.createSequenceSteps.mockResolvedValue([
+      { id: 1, campaign_id: 0, position: 1, subject: "hi", body: "hello", delay_days: 1 },
+    ]);
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       {
         person: {

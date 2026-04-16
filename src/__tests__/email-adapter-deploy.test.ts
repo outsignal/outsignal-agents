@@ -32,7 +32,15 @@ const {
     createCampaign: vi.fn(),
     getCampaign: vi.fn(),
     getSequenceSteps: vi.fn(),
+    // BL-074 / Phase 6.5a: email-adapter.ts Step 3 now calls the batched
+    // `createSequenceSteps` (plural) against the v1.1 endpoint. The
+    // deprecated per-step `createSequenceStep` remains on the client for
+    // legacy callers (trigger/ooo-reengage.ts, agents/campaign.ts) but is
+    // NOT invoked by the adapter anymore. We keep the old mock declared
+    // so any test that introspects calls on it keeps its shape (and so a
+    // future accidental revert to the old method fails loud in tests).
     createSequenceStep: vi.fn(),
+    createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     createSchedule: vi.fn(),
@@ -158,6 +166,13 @@ describe("EmailAdapter.deploy()", () => {
     // so this default is only exercised by idempotency tests if added.
     ebMock.getSequenceSteps.mockResolvedValue([]);
     ebMock.createSequenceStep.mockResolvedValue({ id: 1 });
+    // BL-074 — batched sequence step creation default: return a shape
+    // compatible with SequenceStep[]. Individual tests that assert on
+    // call args override via mockResolvedValueOnce.
+    ebMock.createSequenceSteps.mockResolvedValue([
+      { id: 1, campaign_id: 999, position: 1, subject: "hi", body: "hello", delay_days: 0 },
+      { id: 2, campaign_id: 999, position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
+    ]);
     // createLead is a per-call mock — happy-path tests set it via mockResolvedValueOnce.
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
@@ -199,20 +214,18 @@ describe("EmailAdapter.deploy()", () => {
     // Step 1
     expect(ebMock.createCampaign).toHaveBeenCalledWith({ name: "Acme E1" });
 
-    // Step 2 — one createSequenceStep per sequence entry
-    expect(ebMock.createSequenceStep).toHaveBeenCalledTimes(2);
-    expect(ebMock.createSequenceStep).toHaveBeenNthCalledWith(1, 999, {
-      position: 1,
-      subject: "hi",
-      body: "hello",
-      delay_days: 0,
-    });
-    expect(ebMock.createSequenceStep).toHaveBeenNthCalledWith(2, 999, {
-      position: 2,
-      subject: "fu1",
-      body: "follow up",
-      delay_days: 3,
-    });
+    // Step 3 — BL-074 / Phase 6.5a: a SINGLE batched createSequenceSteps
+    // call for the whole sequence (replaces the per-step loop). Title
+    // uses the Campaign name so EB's UI can trace back to the Outsignal
+    // Campaign without a lookup. Per-step consumer shape is unchanged
+    // (position/subject/body/delay_days) — the client handles v1.1 wire
+    // transformation internally.
+    expect(ebMock.createSequenceStep).not.toHaveBeenCalled();
+    expect(ebMock.createSequenceSteps).toHaveBeenCalledTimes(1);
+    expect(ebMock.createSequenceSteps).toHaveBeenCalledWith(999, "Acme E1", [
+      { position: 1, subject: "hi", body: "hello", delay_days: 0 },
+      { position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
+    ]);
 
     // Step 3 — per-lead createLead
     expect(ebMock.createLead).toHaveBeenCalledTimes(2);
@@ -267,9 +280,20 @@ describe("EmailAdapter.deploy()", () => {
       callOrder.push("createCampaign");
       return { id: 999 };
     });
+    // BL-074 — Step 3 is now a SINGLE batched call to createSequenceSteps.
+    // We still register a stub on the legacy `createSequenceStep` mock so
+    // any accidental revert to the old method surfaces here (the assertion
+    // below asserts it NEVER appears in the call order).
     ebMock.createSequenceStep.mockImplementation(async () => {
       callOrder.push("createSequenceStep");
       return { id: 1 };
+    });
+    ebMock.createSequenceSteps.mockImplementation(async () => {
+      callOrder.push("createSequenceSteps");
+      return [
+        { id: 1, campaign_id: 999, position: 1, subject: "hi", body: "hello", delay_days: 1 },
+        { id: 2, campaign_id: 999, position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
+      ];
     });
     ebMock.createLead.mockImplementation(async () => {
       callOrder.push("createLead");
@@ -305,10 +329,11 @@ describe("EmailAdapter.deploy()", () => {
     await adapter.deploy(DEPLOY_PARAMS);
 
     // Phase 3 added Step 10 verify via getCampaign after resumeCampaign.
+    // BL-074 / Phase 6.5a — Step 3 collapsed from two per-step
+    // createSequenceStep POSTs into ONE batched createSequenceSteps call.
     expect(callOrder).toEqual([
       "createCampaign",
-      "createSequenceStep",
-      "createSequenceStep",
+      "createSequenceSteps",
       "createLead",
       "attachLeadsToCampaign",
       "createSchedule",

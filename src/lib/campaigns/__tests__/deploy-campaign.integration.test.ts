@@ -188,11 +188,25 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
           handler: () =>
             mockResponse({ data: { id: 10001, uuid: "uuid-10001" } }),
         },
-        // Step 3 — createSequenceStep (POST /campaigns/{id}/sequence-steps)
+        // Step 3 — createSequenceSteps batched POST to the v1.1 path.
+        // BL-074 / Phase 6.5a — EB requires the v1.1 batch envelope
+        // `{title, sequence_steps:[...]}`; the deprecated v1 per-step
+        // endpoint returns 422. Response is an array per spike notes.
         {
           method: "POST",
-          match: /\/api\/campaigns\/10001\/sequence-steps$/,
-          handler: () => mockResponse({ data: { id: 1 } }),
+          match: /\/api\/campaigns\/v1\.1\/10001\/sequence-steps$/,
+          handler: () =>
+            mockResponse({
+              data: [
+                {
+                  id: 1,
+                  email_subject: "hi",
+                  email_body: "hello",
+                  wait_in_days: 1,
+                  order: 1,
+                },
+              ],
+            }),
         },
         // Step 4 — createLead (POST /leads)
         {
@@ -384,10 +398,22 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
           handler: () =>
             mockResponse({ data: { id: 10002, uuid: "uuid-10002" } }),
         },
+        // BL-074 — v1.1 batch endpoint + array-shaped response.
         {
           method: "POST",
-          match: /\/api\/campaigns\/10002\/sequence-steps$/,
-          handler: () => mockResponse({ data: { id: 1 } }),
+          match: /\/api\/campaigns\/v1\.1\/10002\/sequence-steps$/,
+          handler: () =>
+            mockResponse({
+              data: [
+                {
+                  id: 1,
+                  email_subject: "hi",
+                  email_body: "hello",
+                  wait_in_days: 1,
+                  order: 1,
+                },
+              ],
+            }),
         },
         {
           method: "POST",

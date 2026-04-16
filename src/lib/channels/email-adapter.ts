@@ -340,14 +340,24 @@ export class EmailAdapter implements ChannelAdapter {
       }
 
       // -----------------------------------------------------------------
-      // Step 3 — Upsert sequence steps (idempotent)
+      // Step 3 — Upsert sequence steps (idempotent, batched)
       //
-      // The EB OpenAPI spec (docs/emailbison-dedi-api-reference.md lines
-      // 260-269, 1326-1334) does NOT document 409/422 behaviour on
-      // duplicate POST to /sequence-steps. Rather than guess, we use the
-      // safer GET-then-diff pattern: fetch existing steps, skip positions
-      // that are already present, POST only the missing ones. This makes
-      // re-runs no-ops on the step that has already been persisted.
+      // BL-074 (Phase 6.5a) — EB requires the v1.1 batched endpoint with
+      // envelope `{title, sequence_steps:[{email_subject, email_body,
+      // wait_in_days}]}`. Previous per-step POST to the deprecated v1 path
+      // with a flat `{position, subject, body, delay_days}` body returned
+      // 422 "title/sequence_steps required" on the Phase 6a canary and
+      // blocked every deploy that reached Step 3. `createSequenceSteps`
+      // (plural, batch) targets the v1.1 path and handles shape
+      // transformation internally.
+      //
+      // Idempotency preserved from Phase 3 via GET-then-diff: fetch
+      // existing steps, skip positions already present, include ONLY the
+      // missing positions in the single batched POST. Zero missing →
+      // `createSequenceSteps` short-circuits on empty input and skips the
+      // HTTP call entirely so re-runs never POST an empty batch (EB would
+      // 422). This preserves the Phase 3 integration-test idempotency
+      // invariant "POST /sequence-steps count === 0 on re-run".
       // -----------------------------------------------------------------
       currentStep = DEPLOY_STEP.UPSERT_SEQUENCE_STEPS;
       const existingSteps = preExistingEbId != null
@@ -355,22 +365,28 @@ export class EmailAdapter implements ChannelAdapter {
         : [];
       const existingPositions = new Set(existingSteps.map((s) => s.position));
 
-      let emailStepCount = existingSteps.length;
-      for (const step of emailSequence) {
-        if (existingPositions.has(step.position)) {
-          // Already persisted — skip to stay idempotent on re-run.
-          continue;
-        }
+      const missingSteps = emailSequence
+        .filter((step) => !existingPositions.has(step.position))
+        .map((step) => ({
+          position: step.position,
+          subject: step.subjectLine,
+          body: step.body ?? step.bodyText ?? "",
+          delay_days: step.delayDays ?? 1,
+        }));
+
+      if (missingSteps.length > 0) {
+        // Title parameter — EB docs describe it as "The title for the
+        // sequence." Use the Campaign name directly so operators can
+        // trace the sequence back to its Outsignal Campaign via EB's UI
+        // without further lookup. (Per spike notes the title is accepted
+        // but currently always stored as null in the response — we still
+        // send a meaningful value in case EB starts surfacing it.)
         await withRetry(() =>
-          ebClient.createSequenceStep(ebCampaignId, {
-            position: step.position,
-            subject: step.subjectLine,
-            body: step.body ?? step.bodyText ?? "",
-            delay_days: step.delayDays ?? 1,
-          }),
+          ebClient.createSequenceSteps(ebCampaignId, campaignName, missingSteps),
         );
-        emailStepCount++;
       }
+
+      const emailStepCount = existingSteps.length + missingSteps.length;
 
       // -----------------------------------------------------------------
       // Step 4 — Create leads + attach to campaign

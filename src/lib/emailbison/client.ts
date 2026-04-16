@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   PaginatedResponse,
   Campaign,
@@ -247,6 +248,28 @@ export class EmailBisonClient {
     }));
   }
 
+  /**
+   * @deprecated BL-074 — this method posts an EB-incorrect flat
+   * `{position, subject, body, delay_days}` body to the v1 (deprecated per
+   * EB docs) path `/campaigns/{id}/sequence-steps`. EmailBison actually
+   * requires the v1.1 batch envelope `{title, sequence_steps:[...]}` with
+   * entries shaped `{email_subject, email_body, wait_in_days}` (spike notes
+   * at .planning/spikes/emailbison-api.md lines 151-177; docs at
+   * docs/emailbison-dedi-api-reference.md lines 260-269 + 1326-1334).
+   *
+   * Phase 6a canary returned 422 "title/sequence_steps required" — this
+   * method is the root cause. New code MUST use `createSequenceSteps` (plural,
+   * batch) which targets the correct v1.1 endpoint and wire format.
+   *
+   * Kept for backwards compatibility because two production callers still
+   * reference it as of 2026-04-16:
+   *   - trigger/ooo-reengage.ts:229 (OOO re-engage campaigns)
+   *   - src/lib/agents/campaign.ts:310 (signal campaign activation)
+   * Both are known to be subject to the same 422 bug on next execution and
+   * will be migrated in a follow-up phase (Phase 6.5b scope). Removing this
+   * method in Phase 6.5a would leave a dead export pointing at broken
+   * callers, so we tag it @deprecated and migrate incrementally.
+   */
   async createSequenceStep(
     campaignId: number,
     step: CreateSequenceStepParams,
@@ -265,6 +288,130 @@ export class EmailBisonClient {
       },
     );
     return res.data;
+  }
+
+  /**
+   * Create one or more sequence steps in a single batched POST.
+   *
+   * Endpoint: `POST /api/campaigns/v1.1/{campaignId}/sequence-steps`
+   *   (docs/emailbison-dedi-api-reference.md lines 1326-1334 —
+   *   the v1 `/campaigns/{id}/sequence-steps` path is deprecated per EB docs).
+   *
+   * Wire format (REQUIRED):
+   *   {
+   *     "title": "<sequence title>",
+   *     "sequence_steps": [
+   *       {
+   *         "email_subject": "<subject>",
+   *         "email_body": "<HTML body>",
+   *         "wait_in_days": <int>=1>
+   *       },
+   *       ...
+   *     ]
+   *   }
+   *
+   * Consumer contract: callers pass the same EmailAdapter-friendly
+   * `CreateSequenceStepParams` shape (`{ position, subject, body, delay_days }`)
+   * they used with the deprecated `createSequenceStep`. This method handles
+   * transformation to EB's snake_case shape internally — keeping the consumer
+   * API stable while fixing the wire format.
+   *
+   * Behaviour:
+   *   - Empty `steps` array → returns `[]` without making a network call.
+   *     (Posting an empty batch would have EB reject with 422 and is
+   *     pointless idempotently.)
+   *   - Per EB docs, this endpoint APPENDS to any existing sequence on the
+   *     campaign (see spike notes). Callers that need idempotency MUST
+   *     pre-filter the batch via `getSequenceSteps(campaignId)` and only
+   *     include positions not already present — same pattern Phase 3
+   *     established in email-adapter.ts Step 3.
+   *   - Response is parsed through a Zod schema at the HTTP boundary. EB
+   *     returns the full sequence after append (pre-existing + newly added);
+   *     we filter down to the newly-created steps by position so callers
+   *     get only what they created. If the response shape drifts, the Zod
+   *     parse fails loud with a BL-068-style descriptive error rather than
+   *     silently casting.
+   *
+   * Phase 6.5a / BL-074: wire-format fix. Previous `createSequenceStep`
+   * posted a flat body to the deprecated v1 path and got 422 on every
+   * deploy that reached Step 3.
+   */
+  async createSequenceSteps(
+    campaignId: number,
+    title: string,
+    steps: CreateSequenceStepParams[],
+  ): Promise<SequenceStep[]> {
+    if (steps.length === 0) {
+      // Skip the HTTP call entirely — EB would 422 on an empty batch and
+      // there is nothing to create. Matches the defensive early-return
+      // pattern used elsewhere in the client (attachSenderEmails,
+      // attachTagsToCampaigns) though we return [] rather than throw
+      // because a batched caller building from a diff naturally hits the
+      // zero-missing-steps case on idempotent re-runs.
+      return [];
+    }
+
+    const body = {
+      title,
+      sequence_steps: steps.map((step) => ({
+        email_subject: step.subject ?? "",
+        email_body: step.body,
+        // EB docs: wait_in_days required, minimum 1 (NOT 0). Callers may
+        // pass delay_days=0 (day-0 initial email) — clamp to 1 here so the
+        // wire payload always satisfies EB validation. The consumer-facing
+        // position ordering still tells EB which step is first; wait_in_days
+        // only controls the inter-step delay.
+        wait_in_days: Math.max(1, step.delay_days ?? 1),
+      })),
+    };
+
+    const res = await this.request<unknown>(
+      `/campaigns/v1.1/${campaignId}/sequence-steps`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        revalidate: 0,
+      },
+    );
+
+    // Parse the response shape at the HTTP boundary — no silent `as` cast
+    // on response data. EB returns the full sequence after append, shape
+    // `{ data: [ { id, email_subject, email_body, wait_in_days, order, ... } ] }`
+    // per the spike notes. Extra fields are tolerated via passthrough.
+    const EbSequenceStepSchema = z
+      .object({
+        id: z.number(),
+        email_subject: z.string().nullable().optional(),
+        email_body: z.string().nullable().optional(),
+        wait_in_days: z.number().nullable().optional(),
+        order: z.number().nullable().optional(),
+        position: z.number().nullable().optional(),
+      })
+      .passthrough();
+    const EbResponseSchema = z.object({
+      data: z.array(EbSequenceStepSchema),
+    });
+
+    const parsed = EbResponseSchema.safeParse(res);
+    if (!parsed.success) {
+      throw new EmailBisonError(
+        "UNEXPECTED_RESPONSE",
+        200,
+        `createSequenceSteps response failed schema validation: ${parsed.error.message}. Raw: ${JSON.stringify(res).slice(0, 500)}`,
+      );
+    }
+
+    // Map EB's snake_case shape to the internal SequenceStep type.
+    // Position normalization matches the existing getSequenceSteps pattern
+    // in this client (falls back across order/position, 0 if absent).
+    return parsed.data.data.map((s) => ({
+      id: s.id,
+      campaign_id: campaignId,
+      position: (s.order ?? s.position ?? 0) as number,
+      subject: (s.email_subject ?? "") as string,
+      body: (s.email_body ?? "") as string,
+      delay_days: (s.wait_in_days ?? 0) as number,
+    }));
   }
 
   async testConnection(): Promise<boolean> {
