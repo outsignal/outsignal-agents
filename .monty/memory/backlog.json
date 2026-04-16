@@ -1122,7 +1122,51 @@
       "createdAt": "2026-04-16T18:32:34Z",
       "updatedAt": "2026-04-16T18:32:34Z",
       "notes": "BL-105 QA (commit cb5f6673) surfaced three medium-severity quality gaps worth addressing before the next LinkedIn render-boundary change: (F1) {EMAIL} maps to {{email}} in VAR_MAP but buildTemplateContext does NOT bind email \u2014 silent empty-render at that position with no warn (asymmetric vs unknown tokens which do warn). Fix: drop {EMAIL} from VAR_MAP OR bind person.email in buildTemplateContext. (F2) jobTitle is not normalised at the render boundary. Lime C4 and C5 active campaigns use {JOBTITLE}. A lead with 'Warehouse Manager UK Ltd' in jobTitle would leak the suffix. Fix: apply a lighter suffix stripper to jobTitle \u2014 use LEGAL-only variant (not GEO, since 'UK Sales Director' etc. is legitimate). Consider extracting a stripLegalSuffixes function from BL-103's normaliser. (F3) No test asserts every VAR_MAP right-hand-side Handlebars key exists in buildTemplateContext's returned keys. The dev's JSDoc at variable-transform.ts:33-35 explicitly warns about the coupling hazard; F1 is a direct consequence. Fix: add a lockstep test that catches future desync automatically. Also ties in BL-104 F5 \u2014 normalizeCompanyName namespace collision (three variants: normalize.ts, normalizer/company.ts, emailbison/company-normaliser.ts, plus BL-105 added a fourth consumer). Consider moving BL-103's normaliser to src/lib/common/ once both channel adapters consume it. Ref: QA findings at .monty/memory/incidents.md entry [2026-04-16T19:17:00Z]."
+    },
+    {
+      "id": "BL-107",
+      "title": "Apply company normaliser at THREE additional EB wire-call sites (BL-104 QA F1 HIGH)",
+      "type": "bug",
+      "severity": "high",
+      "priority": 2,
+      "status": "open",
+      "createdAt": "2026-04-17T01:50:00Z",
+      "updatedAt": "2026-04-17T01:50:00Z",
+      "notes": "BL-104 QA F1 (commit a9e06317) surfaced three additional `EmailBisonClient.createLead` call sites that ship `person.company` raw to the wire, bypassing `normalizeCompanyName` entirely. BL-104 only patched `src/lib/channels/email-adapter.ts:879` (static-campaign deploy path via `createOrUpdateLeadsMultiple`). The three unpatched paths are: (1) `src/lib/leads/operations.ts:828` (`exportListToEmailBison`, used by Leads agent and `scripts/cli/list-export.ts` \u2014 any list-export to EB ships raw legal names); (2) `src/mcp/leads-agent/tools/export.ts:197` (custom campaign export with template duplication); (3) `src/lib/pipeline/signal-campaigns.ts:375` (signal campaign lead deployment pipeline, evergreen). Signal campaigns in particular run indefinitely and will ship 'Sonnic Support Solutions Ltd' to EB despite BL-104 landing. The canary (EB 92) went through email-adapter and is covered; future signal-campaign lead deployments on 1210-solutions or similar workspaces will not benefit until this is fixed. Fix: wrap each `company:` line with `normalizeCompanyName(person.company, person.companyDomain ?? null) ?? undefined`; add `companyDomain: true` to the corresponding Prisma `select` blocks (operations.ts:271, 537; signal-campaigns.ts:363). Add companion unit tests. Ref: incidents.md entry [2026-04-17T01:30:00Z]."
+    },
+    {
+      "id": "BL-108",
+      "title": "Normaliser edge-case polish: trailing-comma bypass, warn dedup, protocol-prefix on domain (BL-104 QA F2/F3/F4)",
+      "type": "improvement",
+      "severity": "medium",
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-17T01:50:00Z",
+      "updatedAt": "2026-04-17T01:50:00Z",
+      "notes": "BL-104 QA found three non-blocking polish items against commit a9e06317: (F2 MEDIUM, src/lib/emailbison/company-normaliser.ts:462) `'Foo Ltd,'` (trailing comma, no whitespace) returns unchanged \u2014 entry-trim is `raw.trim()` (whitespace only); `trimTrailingPunct` only fires on a SUCCESSFUL strip, and the `\\s+SUFFIX\\.?$` regex anchors at `$` so the trailing comma blocks the match. DB audit today = 0 production rows affected, but CSV imports could reintroduce the shape. Fix: change entry-trim to `trimTrailingPunct(raw.trim())`; add tests for `'Foo Ltd,'`, `'Foo Ltd ,'`, `'Foo Inc ,  '`. (F3 MEDIUM, company-normaliser.ts:486) `console.warn` on MAX_ITERATIONS cap has zero deduplication \u2014 probe confirmed 1000 calls with same pathological input produce 1000 warn lines. Bulk 10K deploy with bad CSV would flood observability. Fix: module-level Set<string> or LRU to dedup by input hash OR rate-limit once-per-minute. Cross-check variable-transform.ts / sender-name-transform.ts for shared convention. (F4 LOW, company-normaliser.ts:379) `truncateByDomain` does not strip `http://` / `https://` protocol from the domain stem \u2014 `('Sonnic Support Solutions', 'https://sonnic.com')` returns unchanged because stem becomes `'https://sonnic'`. DB audit of 5000 rows = 0 affected today; silent-fail footgun for future enrichment paths. Fix: strip `https?://` before `www.` in domain-stem parser. Ref: incidents.md entry [2026-04-17T01:30:00Z]."
+    },
+    {
+      "id": "BL-109",
+      "title": "1210-solutions EB schedule timezone investigation + idempotent repair script",
+      "type": "bug",
+      "severity": "low",
+      "priority": 3,
+      "status": "done",
+      "createdAt": "2026-04-16T19:45:00Z",
+      "updatedAt": "2026-04-16T19:45:00Z",
+      "notes": "PM audit on 2026-04-16 reported EB 94/95/96 (1210-solutions Construction/Industrial/Healthcare) had timezone=Europe/Dublin while EB 92 (Facilities/Cleaning canary) was Europe/London. Investigation via live `ebClient.getSchedule` on all four: ALL FOUR are Europe/London today (schedules id=66/67/68/69, created_at == updated_at means no manual edits). `DEFAULT_SCHEDULE` at src/lib/channels/email-adapter.ts:150 has been 'Europe/London' stably; both canary and remainder stage-deploy scripts run `executeDeploy(..., {skipResume:true})` which triggers Step 5 UPSERT_SCHEDULE (skipResume only gates Step 9/10). No drift exists. Most likely source of PM's Dublin reading: UI widget rendering schedule in the viewer's local browser timezone. Deliverables: `scripts/maintenance/_bl109-fetch-1210-schedules.ts` (read-only fetch) + `scripts/maintenance/_bl109-fix-timezones.ts` (idempotent guard/repair; dry-run default; preserves every other field via verbatim spread of GET response, overrides timezone only, strips EB-returned HH:MM:SS to HH:MM). Dry-run showed all 4 skip with `already correct` \u2014 zero PUTs performed. Scripts kept as a reusable repair path for any future drift of this class. DONE at commit {SHA-placeholder}."
+    },
+    {
+      "id": "BL-110",
+      "title": "Make EB schedule timezone workspace-configurable",
+      "type": "feature",
+      "severity": null,
+      "priority": 3,
+      "status": "open",
+      "createdAt": "2026-04-16T19:45:00Z",
+      "updatedAt": "2026-04-16T19:45:00Z",
+      "notes": "Discovered while investigating BL-109. `DEFAULT_SCHEDULE.timezone` at src/lib/channels/email-adapter.ts:150 is hardcoded 'Europe/London'. Unblocks future Ireland/EU/US client onboarding without another code release. Proposed change (scope-locked, additive): (1) add `scheduleTimezone String? @default(\"Europe/London\")` column to `Workspace` in prisma/schema.prisma \u2014 nullable with a safe default, zero migration risk; (2) in src/lib/channels/email-adapter.ts:140-152, change DEFAULT_SCHEDULE into a function `buildSchedule(workspace)` that spreads the constant and overrides timezone from `workspace.scheduleTimezone ?? 'Europe/London'`; (3) at Step 5 call sites (email-adapter.ts:944/948/953/956/960/965), read `workspace.scheduleTimezone` from the Workspace row already loaded in `loadCampaignContext` and pass into `buildSchedule()`; (4) expose as a settings field on workspace admin UI (portal settings page). BLOCKED on: email-adapter.ts parallel-task ownership (br7jxqrhv chunking work in flight) \u2014 pick up AFTER that ships. Effort: ~1-2 hrs (schema + 1 code site + test update). No user-facing risk; defaults preserve current behaviour. Tests: extend src/__tests__/email-adapter-deploy.test.ts to verify `buildSchedule` returns workspace-overridden timezone when set, falls back to London otherwise."
     }
   ],
-  "updatedAt": "2026-04-17T01:45:00Z"
+  "updatedAt": "2026-04-16T19:45:00Z"
 }
