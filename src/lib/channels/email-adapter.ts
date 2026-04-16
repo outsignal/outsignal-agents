@@ -9,7 +9,8 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { EmailBisonClient, EmailBisonApiError } from "@/lib/emailbison/client";
+import { EmailBisonClient } from "@/lib/emailbison/client";
+import { isNotFoundError } from "@/lib/emailbison/errors";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { withRetry } from "@/lib/utils/retry";
 import { CHANNEL_TYPES } from "./constants";
@@ -194,11 +195,13 @@ export class EmailAdapter implements ChannelAdapter {
       // If campaign.emailBisonCampaignId is already set from a prior
       // deploy, GET it from EB to verify it still exists. Three outcomes:
       //   - GET succeeds → reuse the ID, skip createCampaign
-      //   - GET returns 404 (isRecordNotFound) → manual-delete case: FAIL
-      //     with failedAtStep=1. Do NOT silently create a new one — the
-      //     operator needs to explicitly decide (rollback
-      //     emailBisonCampaignId on Campaign, or delete the CampaignDeploy
-      //     row) before re-running.
+      //   - GET returns 404 (isNotFoundError — covers both
+      //     EmailBisonApiError with status=404/isRecordNotFound AND
+      //     EmailBisonError with code=CAMPAIGN_NOT_FOUND/statusCode=404,
+      //     BL-078): manual-delete case: FAIL with failedAtStep=1. Do NOT
+      //     silently create a new one — the operator needs to explicitly
+      //     decide (rollback emailBisonCampaignId on Campaign, or delete
+      //     the CampaignDeploy row) before re-running.
       //   - Any other error → rethrow so it's captured in the outer catch.
       // -----------------------------------------------------------------
       currentStep = DEPLOY_STEP.CREATE_OR_REUSE_CAMPAIGN;
@@ -223,9 +226,12 @@ export class EmailAdapter implements ChannelAdapter {
             `[email-adapter] Reusing existing EB campaign ${ebCampaignId} for '${campaignName}' (idempotent re-run)`,
           );
         } catch (err) {
-          // 404 with record_not_found → EB campaign was manually deleted.
+          // 404 / record_not_found → EB campaign was manually deleted.
           // Surface explicitly: the operator must roll back or decide.
-          if (err instanceof EmailBisonApiError && err.isRecordNotFound) {
+          // isNotFoundError covers both EmailBisonApiError (HTTP 404) and
+          // EmailBisonError (200-with-empty-data during EB's async DELETE
+          // queue window) — BL-078 / Phase 6a-rollback QA F1.
+          if (isNotFoundError(err)) {
             throw new Error(
               `EB campaign ${preExistingEbId} referenced by Campaign ${campaignId} no longer exists in EmailBison (manual delete?). Will not silently re-create — clear Campaign.emailBisonCampaignId first, then re-deploy.`,
             );
