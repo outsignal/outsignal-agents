@@ -68,9 +68,13 @@ const { txMock, prismaMock, getCampaignMock, adapterDeployMock } = vi.hoisted(()
         // BL-076 Bundle C: entry reads CampaignDeploy via findUniqueOrThrow
         // to detect Trigger.dev retry re-entry vs. fresh first-attempt.
         findUniqueOrThrow: vi.fn(),
+        // BL-107 pre-tx outer read — sibling-deploy check before EB delete.
+        findFirst: vi.fn(),
       },
       campaign: {
         updateMany: vi.fn(),
+        // BL-107 pre-tx outer read — snapshot for EB orphan delete.
+        findUnique: vi.fn(),
       },
       // $transaction invokes the callback with the tx client — any read or
       // write inside the rollback MUST hit `tx` not the outer client.
@@ -200,6 +204,11 @@ beforeEach(() => {
       emailBisonCampaignId: null,
     }),
   );
+  // BL-107 pre-tx outer reads (fire on failure path). Defaults cover the
+  // happy path no-ops: empty snapshot (no apiToken → skip EB delete) + no
+  // inflight sibling.
+  prismaMock.campaign.findUnique.mockResolvedValue(null);
+  prismaMock.campaignDeploy.findFirst.mockResolvedValue(null);
   // Adapter succeeds by default; individual tests override to throw.
   adapterDeployMock.mockResolvedValue(undefined);
 });
@@ -702,17 +711,14 @@ describe("executeDeploy — BL-076 Trigger.dev retry re-entry (Bundle C)", () =>
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it("defensive guard: retry with status='failed' but NO emailBisonCampaignId anchor refuses to proceed (prevents silent duplicate createCampaign)", async () => {
-    // Reset the beforeEach's default 'pending' implementation so this
-    // test's `mockImplementationOnce` fires on the FIRST entry-read call.
+  // -------------------------------------------------------------------------
+  // Defensive guard: status='running' (concurrent invocation) — throws
+  // before adapter runs.
+  // -------------------------------------------------------------------------
+  it("defensive guard: status='running' (concurrent task invocation) throws before adapter runs", async () => {
     prismaMock.campaignDeploy.findUniqueOrThrow.mockReset();
-    // Edge case: CampaignDeploy.status='failed' but emailBisonCampaignId=null.
-    // This means the prior attempt died BEFORE Step 2 could persist the EB
-    // ID. We have no retry anchor — proceeding would take the fresh-create
-    // path and potentially duplicate an EB campaign. Refuse to proceed so
-    // an operator can investigate.
     prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
-      Promise.resolve({ status: "failed", emailBisonCampaignId: null }),
+      Promise.resolve({ status: "running", emailBisonCampaignId: null }),
     );
 
     await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
@@ -720,5 +726,326 @@ describe("executeDeploy — BL-076 Trigger.dev retry re-entry (Bundle C)", () =>
     );
 
     expect(adapterDeployMock).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// BL-079 (2026-04-17) — Pre-anchor Step-1 failure retry re-entry coverage
+//
+// Prior to BL-079 the entry-branch on (status='failed', emailBisonCampaignId=null)
+// was a defensive throw — a transient Step-1 failure (network timeout pre-EB-
+// create, auth rotation mid-flight, Zod drift on createCampaign response,
+// transient 5xx) dead-ended the deploy: Trigger.dev would re-invoke
+// executeDeploy but the defensive guard refused to proceed, requiring manual
+// DB recovery (flip CampaignDeploy.status back to 'pending').
+//
+// These cases assert the retry contract for the PRE-ANCHOR branch: a
+// fresh-create Step-1 failure can be retried cleanly without duplicate EB
+// campaigns (safe because no anchor means no EB resource was persisted),
+// covering each realistic transient class:
+//   - network failure (TypeError)
+//   - auth 401 on EB API
+//   - Zod parse failure on EB response
+//   - transient 5xx (retries via Trigger.dev)
+//   - hard 4xx (does NOT retry — consistent with BL-086 status-aware withRetry;
+//     here we prove the deploy-level Trigger.dev retry re-entry works for
+//     each class the adapter itself might throw).
+//
+// The PRE-ANCHOR branch is strictly about retry-entry state transitions. The
+// retry LIFECYCLE (Trigger.dev re-invoking executeDeploy) is modelled by
+// calling executeDeploy twice with the same deployId, first failing the
+// adapter with the transient class under test, then succeeding the adapter
+// on the second call.
+// ===========================================================================
+
+describe("executeDeploy — BL-079 pre-anchor retry re-entry", () => {
+  function seedFirstAttemptEntry() {
+    // Fresh first attempt — status='pending', no anchor.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "pending", emailBisonCampaignId: null }),
+    );
+  }
+
+  function seedSecondAttemptEntry() {
+    // Retry re-entry — status='failed' (from Bundle B rollback), but NO
+    // anchor because Step 1 failed before Step 2 could persist it.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockImplementationOnce(() =>
+      Promise.resolve({ status: "failed", emailBisonCampaignId: null }),
+    );
+  }
+
+  function seedAttempt1RollbackTx() {
+    // Attempt 1 terminal failure: Bundle B rollback seeds. No anchor exists
+    // (Step 1 failed pre-persist) so the snapshot shows null emailBisonCampaignId.
+    txMock.campaignDeploy.findUnique.mockResolvedValueOnce({ status: "running" });
+    txMock.campaignDeploy.findFirst.mockResolvedValueOnce(null);
+    txMock.campaign.findUnique.mockResolvedValueOnce({
+      emailBisonCampaignId: null,
+      status: "deployed",
+    });
+    txMock.campaign.updateMany.mockResolvedValueOnce({ count: 1 });
+  }
+
+  function seedSuccessfulFinalize() {
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockResolvedValue({
+      status: "complete",
+      emailStatus: "complete",
+      linkedinStatus: null,
+    });
+    prismaMock.campaignDeploy.findUnique.mockResolvedValue({
+      status: "complete",
+      leadCount: 0,
+      emailStepCount: 0,
+      linkedinStepCount: 0,
+      emailStatus: "complete",
+      linkedinStatus: null,
+      error: null,
+    });
+    prismaMock.campaign.updateMany.mockResolvedValue({ count: 1 });
+  }
+
+  function seedHappyRetryCampaign() {
+    getCampaignMock.mockResolvedValueOnce({
+      id: CAMPAIGN_ID,
+      name: "BL-079 Retry Campaign",
+      workspaceSlug: "test-ws",
+      status: "deployed",
+      channels: ["email"],
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: the initial status→running write at executeDeploy entry always
+    // succeeds.
+    prismaMock.campaignDeploy.update.mockResolvedValue({});
+    prismaMock.campaignDeploy.updateMany.mockResolvedValue({ count: 1 });
+    adapterDeployMock.mockResolvedValue(undefined);
+    // Start with no default entry-read so each test scripts its own sequence.
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockReset();
+    // BL-107 pre-tx outer reads default to no-op on failure path.
+    prismaMock.campaign.findUnique.mockResolvedValue(null);
+    prismaMock.campaignDeploy.findFirst.mockResolvedValue(null);
+  });
+
+  it("case 1 — network failure (TypeError) on Step 1: first attempt fails → Bundle B rollback (anchor stays null) → retry enters pre-anchor branch → Campaign advanced approved→deployed → second attempt succeeds", async () => {
+    // --- Attempt 1 ---
+    seedFirstAttemptEntry();
+    seedHappyRetryCampaign();
+    // Adapter throws a network-layer error at Step 1 (before anchor).
+    // Emulate: TypeError from fetch (the class withRetry treats as retryable
+    // but Trigger.dev-level retry is what we're exercising here).
+    adapterDeployMock.mockRejectedValueOnce(
+      Object.assign(
+        new TypeError("[step:1] fetch failed — ECONNRESET on createCampaign"),
+        {},
+      ),
+    );
+    seedAttempt1RollbackTx();
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /fetch failed/,
+    );
+
+    // Bundle B rollback fired.
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(1);
+
+    // --- Attempt 2 (Trigger.dev retry) ---
+    seedSecondAttemptEntry();
+    seedHappyRetryCampaign();
+    adapterDeployMock.mockResolvedValueOnce(undefined);
+    seedSuccessfulFinalize();
+
+    await executeDeploy(CAMPAIGN_ID, DEPLOY_ID);
+
+    // Adapter invoked TWICE across both attempts (once per invocation,
+    // not once per retry-within-the-adapter).
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+
+    // BL-079 pre-anchor retry tx: Campaign updateMany guarded on
+    // status='approved' AND emailBisonCampaignId=null (the exact post-
+    // rollback shape). NO emailBisonCampaignId is written (we have none
+    // to restore) — only status and deployedAt advance.
+    expect(txMock.campaign.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: CAMPAIGN_ID,
+        status: "approved",
+        emailBisonCampaignId: null,
+      },
+      data: {
+        status: "deployed",
+        deployedAt: expect.any(Date),
+      },
+    });
+
+    // CampaignDeploy restored 'failed'→'running' with stale fields cleared.
+    expect(txMock.campaignDeploy.updateMany).toHaveBeenCalledWith({
+      where: { id: DEPLOY_ID, status: "failed" },
+      data: {
+        status: "running",
+        error: null,
+        completedAt: null,
+      },
+    });
+
+    // $transaction count = 2: attempt-1 rollback, attempt-2 pre-anchor
+    // restore. No anchor restoration step runs the post-anchor branch.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("case 2 — auth 401 on Step 1: first attempt fails → retry enters pre-anchor branch → second attempt succeeds", async () => {
+    // --- Attempt 1: auth 401 ---
+    seedFirstAttemptEntry();
+    seedHappyRetryCampaign();
+    // Emulate EmailBisonApiError-like shape: 401 on createCampaign. Per
+    // BL-086 status-aware withRetry, 401 is NOT in the retryable set — so
+    // the adapter surfaces it immediately, without a retry amplifier. The
+    // deploy-level retry (Trigger.dev) is what recovers.
+    const authErr = new Error(
+      "[step:1] EB auth 401 Unauthorized: token rotated mid-flight",
+    );
+    adapterDeployMock.mockRejectedValueOnce(authErr);
+    seedAttempt1RollbackTx();
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(/401/);
+
+    // --- Attempt 2 ---
+    seedSecondAttemptEntry();
+    seedHappyRetryCampaign();
+    adapterDeployMock.mockResolvedValueOnce(undefined);
+    seedSuccessfulFinalize();
+
+    await executeDeploy(CAMPAIGN_ID, DEPLOY_ID);
+
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+    // Pre-anchor tx ran (status='approved' guard, no emailBisonCampaignId
+    // write).
+    expect(txMock.campaign.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "approved",
+          emailBisonCampaignId: null,
+        }),
+        data: expect.not.objectContaining({ emailBisonCampaignId: expect.anything() }),
+      }),
+    );
+  });
+
+  it("case 3 — Zod parse failure on Step 1 createCampaign response: retry succeeds via pre-anchor path", async () => {
+    seedFirstAttemptEntry();
+    seedHappyRetryCampaign();
+    // Emulate EmailBisonError UNEXPECTED_RESPONSE shape: the adapter's
+    // createCampaign returned 200 but the Zod parser rejected the body.
+    // This is the exact class the brief calls out as a transient Step-1
+    // failure pre-BL-079.
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error(
+        "[step:1] EmailBisonError UNEXPECTED_RESPONSE: createCampaign Zod parse failed",
+      ),
+    );
+    seedAttempt1RollbackTx();
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(
+      /UNEXPECTED_RESPONSE/,
+    );
+
+    seedSecondAttemptEntry();
+    seedHappyRetryCampaign();
+    adapterDeployMock.mockResolvedValueOnce(undefined);
+    seedSuccessfulFinalize();
+
+    await executeDeploy(CAMPAIGN_ID, DEPLOY_ID);
+
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("case 4 — transient 5xx on Step 1 createCampaign: retry succeeds via pre-anchor path", async () => {
+    seedFirstAttemptEntry();
+    seedHappyRetryCampaign();
+    // Emulate transient 502 from EB. With BL-086's status-aware withRetry
+    // the inner adapter retries until exhaustion, then rethrows. The
+    // deploy-level (Trigger.dev) retry is the second-line defence — that's
+    // what BL-079 unblocks.
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error("[step:1] EB 502 Bad Gateway — exhausted withRetry attempts"),
+    );
+    seedAttempt1RollbackTx();
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(/502/);
+
+    seedSecondAttemptEntry();
+    seedHappyRetryCampaign();
+    adapterDeployMock.mockResolvedValueOnce(undefined);
+    seedSuccessfulFinalize();
+
+    await executeDeploy(CAMPAIGN_ID, DEPLOY_ID);
+
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("case 5 — hard 4xx on Step 1 (e.g. 422 validation): retry re-enters cleanly but surfaces the same error (NOT silently swallowed)", async () => {
+    // 4xx-class hard errors are still retryable at the deploy level in the
+    // sense that "the retry entry does not silently throw" — the adapter
+    // will fail the second time too (determinism), and Bundle B will roll
+    // back a second time. The critical contract is: no silent dead-end.
+    // Operator sees two failure audit records and can act.
+    seedFirstAttemptEntry();
+    seedHappyRetryCampaign();
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error("[step:1] EB 422 Unprocessable Entity — name field required"),
+    );
+    seedAttempt1RollbackTx();
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(/422/);
+
+    // --- Attempt 2: same 422 again (deterministic server response) ---
+    seedSecondAttemptEntry();
+    seedHappyRetryCampaign();
+    adapterDeployMock.mockRejectedValueOnce(
+      new Error("[step:1] EB 422 Unprocessable Entity — name field required"),
+    );
+    seedAttempt1RollbackTx();
+
+    await expect(executeDeploy(CAMPAIGN_ID, DEPLOY_ID)).rejects.toThrow(/422/);
+
+    // Both attempts invoked the adapter → BL-079 does NOT silently drop
+    // the retry. Two rollback audit rows confirm both failures surfaced.
+    expect(adapterDeployMock).toHaveBeenCalledTimes(2);
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(2);
+    // $transaction count = 4: attempt-1 rollback, attempt-2 pre-anchor
+    // restore, attempt-2 rollback, (and the pre-anchor entry counts as
+    // its own $transaction — see retry-path test above). Exact count:
+    //   attempt-1 rollback tx = 1
+    //   attempt-2 entry restore tx = 2
+    //   attempt-2 rollback tx = 3
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("case 6 — pre-anchor retry is idempotent: if the Campaign row was already advanced by a concurrent write, updateMany count=0 and we still enter adapter cleanly", async () => {
+    // Edge case: between Bundle B's rollback and Trigger.dev's retry
+    // re-invocation, some other actor advanced the Campaign row (e.g. a
+    // manual initiateCampaignDeploy re-run). The pre-anchor restore's
+    // updateMany will return count=0 because the where-guard (status=
+    // 'approved' AND emailBisonCampaignId=null) no longer matches. This
+    // must not crash — the retry should either succeed or fail based on
+    // the actual adapter call, not the entry restore.
+    seedSecondAttemptEntry();
+    seedHappyRetryCampaign();
+    // Concurrent mutation — status guard misses, updateMany=0.
+    txMock.campaign.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    adapterDeployMock.mockResolvedValueOnce(undefined);
+    seedSuccessfulFinalize();
+
+    await executeDeploy(CAMPAIGN_ID, DEPLOY_ID);
+
+    // Entry tx ran exactly once.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    // Adapter still ran.
+    expect(adapterDeployMock).toHaveBeenCalledTimes(1);
+    // No rollback fired (adapter succeeded).
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
   });
 });

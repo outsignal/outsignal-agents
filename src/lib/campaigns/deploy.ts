@@ -111,20 +111,32 @@ export async function executeDeploy(
   // The retry path needs to (a) transition CampaignDeploy 'failed'→'running'
   // cleanly (terminal→non-terminal is only legal for this exact Trigger.dev
   // retry case, and we must clear error/completedAt so the row doesn't show
-  // stale state), and (b) restore Campaign.emailBisonCampaignId +
-  // Campaign.status before the status guard below fires. The anchor we use
-  // is CampaignDeploy.emailBisonCampaignId — EmailAdapter Step 2 writes it
-  // immediately after createCampaign returns, BEFORE any step that can fail
-  // non-idempotently. So if the prior attempt got past Step 1, that column
-  // holds the EB ID we want the retry to reuse.
+  // stale state), and (b) return the Campaign row to a 'deployed' state
+  // that passes the Step-2 status guard below.
   //
-  // First attempt (happy path): current status='pending', no restore needed,
-  // flip to 'running' via updateMany guarded on status='pending'.
+  // Three legal states at entry:
   //
-  // Retry attempt: current status='failed', CampaignDeploy.emailBisonCampaignId
-  // set, Campaign state possibly rolled back by Bundle B. Restore Campaign
-  // state from CampaignDeploy then flip CampaignDeploy 'failed'→'running'
-  // with error/completedAt cleared.
+  //   1. status='pending', anchor=null → fresh first attempt. Flip to
+  //      'running' via updateMany guarded on status='pending'.
+  //
+  //   2. status='failed', anchor!=null → BL-076 POST-ANCHOR retry. Step 2
+  //      of the prior attempt persisted emailBisonCampaignId on
+  //      CampaignDeploy before the subsequent step failed. Restore
+  //      Campaign state from that anchor (emailBisonCampaignId + status
+  //      + deployedAt) and flip CampaignDeploy 'failed'→'running'. Step 1
+  //      will reuse the anchored EB campaign via its idempotency check.
+  //
+  //   3. status='failed', anchor=null → BL-079 PRE-ANCHOR retry. The prior
+  //      attempt failed BEFORE Step 2 could write the anchor (transient
+  //      network timeout pre-EB-create, auth rotation mid-flight, Zod
+  //      drift on createCampaign response, transient 5xx on Step 1's
+  //      reuse-branch GET). No EB resource exists; there's nothing to
+  //      reuse, nothing to duplicate. Safely advance Campaign
+  //      'approved'→'deployed' and flip CampaignDeploy 'failed'→'running'.
+  //      Step 1 takes the fresh-create path cleanly.
+  //
+  // Anything else (status='running', 'complete', or any other value) is a
+  // defensive throw.
   const currentDeploy = await prisma.campaignDeploy.findUniqueOrThrow({
     where: { id: deployId },
     select: {
@@ -143,9 +155,9 @@ export async function executeDeploy(
     currentDeploy.status === "failed" &&
     currentDeploy.emailBisonCampaignId != null
   ) {
-    // Trigger.dev retry re-entry. Step 1 of the prior attempt persisted
-    // emailBisonCampaignId; restore Campaign state that Bundle B's rollback
-    // may have cleared, then transition the row back to 'running'.
+    // Trigger.dev retry re-entry — POST-ANCHOR. Step 1 of the prior attempt
+    // persisted emailBisonCampaignId; restore Campaign state that Bundle B's
+    // rollback may have cleared, then transition the row back to 'running'.
     //
     // Wrap the two writes in a $transaction so a concurrent observer never
     // sees Campaign restored while CampaignDeploy still shows 'failed', or
@@ -183,13 +195,88 @@ export async function executeDeploy(
     });
 
     console.log(
-      `[deploy] BL-076 retry re-entry: restored Campaign ${campaignId} (emailBisonCampaignId=${restoredEbId}, status=deployed) + flipped CampaignDeploy ${deployId} 'failed'→'running' for Trigger.dev retry.`,
+      `[deploy] BL-076 retry re-entry (post-anchor): restored Campaign ${campaignId} (emailBisonCampaignId=${restoredEbId}, status=deployed) + flipped CampaignDeploy ${deployId} 'failed'→'running' for Trigger.dev retry.`,
+    );
+  } else if (
+    currentDeploy.status === "failed" &&
+    currentDeploy.emailBisonCampaignId == null
+  ) {
+    // BL-079 (2026-04-17): Trigger.dev retry re-entry — PRE-ANCHOR. The
+    // prior attempt's Step 1 (createCampaign OR GET-verify reuse) failed
+    // BEFORE email-adapter's Step 2 anchor write, so CampaignDeploy has no
+    // emailBisonCampaignId. Bundle B's rollback cleared
+    // Campaign.emailBisonCampaignId + Campaign.status back to 'approved'.
+    //
+    // Pre-BL-079 this fell through to the defensive throw, silently dead-
+    // ending any transient Step-1 failure (network timeout pre-EB-create,
+    // auth token rotation mid-flight, Zod parse drift on EB createCampaign
+    // response, getCampaign returning null on the reuse-branch verification,
+    // transient 5xx). Trigger.dev's task-level retry was inert — operator
+    // had to manually flip CampaignDeploy.status back to 'pending' to
+    // recover.
+    //
+    // Safety argument for allowing this retry path:
+    //   - emailBisonCampaignId=null on CampaignDeploy means no EB resource
+    //     exists from the prior attempt. There's nothing to reuse, nothing
+    //     to duplicate.
+    //   - Bundle B's rollback put Campaign back into the exact state of a
+    //     fresh initiateCampaignDeploy call: status='approved' (observed)
+    //     → status='deployed' (set below). The retry then runs Step 1
+    //     fresh-create path, just as if a new initiateCampaignDeploy was
+    //     triggered. No duplicate EB campaign risk: the failed first
+    //     attempt did not persist an EB ID.
+    //   - email-adapter Step 1 idempotency check reads
+    //     Campaign.emailBisonCampaignId (which we'll set to null-equivalent
+    //     via Campaign.emailBisonCampaignId remaining null on the adapter's
+    //     own getCampaign read — we don't need to restore an anchor we
+    //     don't have). The adapter takes the `preExistingEbId == null`
+    //     fresh-create branch. If that create succeeds this time, Step 2
+    //     writes the anchor; if it fails again, Bundle B rolls back again
+    //     and (if Trigger.dev has attempts left) we re-enter this branch.
+    //
+    // Implementation: advance Campaign 'approved'→'deployed' so the Step-2
+    // status guard below accepts the state, and flip CampaignDeploy
+    // 'failed'→'running'. Same atomic two-write $transaction as the post-
+    // anchor branch. No emailBisonCampaignId restore (we have nothing to
+    // restore).
+    //
+    // Idempotency: Campaign update is guarded on status='approved' +
+    // emailBisonCampaignId=null so a concurrent actor that already
+    // progressed the row won't be clobbered. CampaignDeploy update is
+    // guarded on status='failed' so a concurrent finalize can't be
+    // overwritten.
+    await prisma.$transaction(async (tx) => {
+      await tx.campaign.updateMany({
+        where: {
+          id: campaignId,
+          status: "approved",
+          emailBisonCampaignId: null,
+        },
+        data: {
+          status: "deployed",
+          deployedAt: new Date(),
+        },
+      });
+
+      await tx.campaignDeploy.updateMany({
+        where: { id: deployId, status: "failed" },
+        data: {
+          status: "running",
+          error: null,
+          completedAt: null,
+        },
+      });
+    });
+
+    console.log(
+      `[deploy] BL-079 retry re-entry (pre-anchor): advanced Campaign ${campaignId} 'approved'→'deployed' (no EB anchor to restore) + flipped CampaignDeploy ${deployId} 'failed'→'running' for Trigger.dev retry. Step 1 will take the fresh-create path.`,
     );
   } else {
     // Defensive guard — refuse to re-run on any other status. Legitimate
-    // states at entry are exactly 'pending' (fresh) or 'failed' (retry).
-    // 'running' implies concurrent task invocation; 'complete' / terminal
-    // implies a successful run we shouldn't re-run.
+    // states at entry are exactly 'pending' (fresh), 'failed' + anchor
+    // (BL-076 post-anchor retry), or 'failed' + null anchor (BL-079
+    // pre-anchor retry). 'running' implies concurrent task invocation;
+    // 'complete' / terminal implies a successful run we shouldn't re-run.
     throw new Error(
       `CampaignDeploy ${deployId} is in an unexpected status for executeDeploy entry: '${currentDeploy.status}' (emailBisonCampaignId=${currentDeploy.emailBisonCampaignId}). Refusing to proceed.`,
     );
