@@ -1,0 +1,69 @@
+BL-105 DAMAGE AUDIT (2026-04-16)
+================================
+
+Scope: 4 BlankTag LinkedIn campaigns confirmed shipping literal
+{FIRSTNAME}/{COMPANYNAME} tokens to prospects (diagnostic [boh2k3qzp]).
+
+Source: prisma.linkedInAction.groupBy {campaignName, actionType,
+sequenceStepRef, status} filtered to campaignName IN (4 names) AND
+status IN ['complete'].
+
+Note: 'complete' is the only "delivered" enum value in
+src/lib/linkedin/types.ts (LinkedInActionStatus = pending | running |
+complete | failed | cancelled | expired). The brief's
+sent/delivered/successful are not values in this system; the equivalent
+is 'complete'.
+
+captured-at: 2026-04-16T18:10Z (same instant as the pause execution)
+
+DAMAGE TABLE
+------------
+campaignName                                             step         actionType          status    count
+-------------------------------------------------------  -----------  ------------------  --------  -----
+BlankTag - LinkedIn - C1 (2C) - UK Shopify + Google Ads  linkedin_0   profile_view        complete  14
+BlankTag - LinkedIn - C1 (2C) - UK Shopify + Google Ads  linkedin_1   connection_request  complete  6
+BlankTag - LinkedIn - C1 (2D) - UK Shopify + Google Ads  linkedin_0   profile_view        complete  14
+BlankTag - LinkedIn - C1 (2D) - UK Shopify + Google Ads  linkedin_1   connection_request  complete  6
+BlankTag - LinkedIn - C1 (2E) - UK Shopify + Google Ads  linkedin_0   profile_view        complete  14
+BlankTag - LinkedIn - C1 (2E) - UK Shopify + Google Ads  linkedin_1   connection_request  complete  5
+BlankTag - LinkedIn - C1    - UK Shopify + Google Ads    (no complete LinkedInAction rows — approved but never deployed to queue)
+
+TOTALS
+------
+profile_view         (linkedin_0)  complete  42   (14+14+14)
+connection_request   (linkedin_1)  complete  17   (6+6+5)
+message              (linkedin_2+) complete   0
+--------------------------------------------------------
+total delivered (all 4 campaigns)            59
+
+DAMAGE INTERPRETATION
+---------------------
+* 42 profile views executed — those don't render template text so zero
+  literal-token exposure from step 0.
+* 17 connection requests executed on step 1. Per brief [boh2k3qzp], step 1
+  is a blank connect (no note) for cold outreach. Literal {FIRSTNAME}
+  tokens only ship inside message bodies (step 2+), NOT connection
+  requests. These 17 connection-requests likely DID NOT ship broken
+  tokens — they were blank connect actions by design.
+* 0 message actions completed on any of the 4 campaigns. This is the
+  critical datum: NO prospects received a LinkedIn message with literal
+  {FIRSTNAME}/{COMPANYNAME} text from these campaigns during this
+  damage window.
+* Conclusion: pause caught the campaigns BEFORE any connection
+  acceptance triggered a message-step send. Zero confirmed literal-token
+  messages on wire from these 4 campaigns.
+
+Caveat: the damage audit reflects DB state at 2026-04-16T18:10Z. If the
+fix cycle [bpp20zwu2] or an operator later marks additional actions
+'complete' out-of-band, this snapshot is stale. Re-run the groupBy from
+the execute script to refresh.
+
+QUEUE-FREEZE OUTCOME
+--------------------
+Pending LinkedInAction rows for all 4 campaigns: 0 (before AND after).
+Interpretation: by the time the pause executed, the worker had already
+drained the pending queue to 'complete' for these 4 campaigns. The
+pause flips Campaign.status=paused which prevents the Trigger.dev
+linkedin-* tasks from enqueueing NEW actions, which is the actual
+containment mechanism. The pending-queue flip is zero-op here but the
+AuditLog rows confirm the operation was performed for every campaign.
