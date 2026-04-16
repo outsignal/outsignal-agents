@@ -448,4 +448,4 @@ EB 89 left in draft for PM review. Workspace 1210-solutions EB state at session 
 
 **GATES**: tsc clean. vitest (3 test files): 20/20 pass. Execution of the live redeploy succeeded. No Nova / workspace-ops touches. No LinkedIn touches. No BlankTag touches. No resume. skipResume=true held throughout via the executeDeploy options chain.
 
-**COMMIT SHA**: pending — will update after push.
+**COMMIT SHA**: 8dd58ed1 (pushed to main 2026-04-17T04:05:00Z).
