@@ -8,6 +8,8 @@
  */
 import Handlebars from "handlebars";
 import { prisma } from "@/lib/db";
+import { normalizeCompanyName } from "@/lib/emailbison/company-normaliser";
+import { transformVariablesForLinkedIn } from "@/lib/linkedin/variable-transform";
 
 // ─── Template Engine ─────────────────────────────────────────────────────────
 
@@ -15,13 +17,24 @@ import { prisma } from "@/lib/db";
  * Compile a Handlebars template string against a context object.
  * Uses `noEscape: true` — LinkedIn messages are plain text, not HTML.
  * Gracefully returns the raw template string on compilation error.
+ *
+ * BL-105 (2026-04-16): writer copy emits canonical single-curly UPPERCASE
+ * tokens (`{FIRSTNAME}`, `{COMPANYNAME}`, ...) per copy-quality.ts
+ * BANNED_PATTERNS. Handlebars only substitutes `{{camelCase}}`. We
+ * rewrite the template BEFORE Handlebars.compile so the writer tokens
+ * resolve correctly without mutating stored DB state. Idempotent — a
+ * template that already contains `{{firstName}}` is unchanged. Unknown
+ * `{UPPERCASE}` tokens pass through + warn.
  */
 export function compileTemplate(
   template: string,
   context: Record<string, unknown>,
 ): string {
   try {
-    const compiled = Handlebars.compile(template, { noEscape: true });
+    // BL-105: transform canonical {UPPERCASE} → {{camelCase}} before
+    // Handlebars sees the template.
+    const transformed = transformVariablesForLinkedIn(template);
+    const compiled = Handlebars.compile(transformed, { noEscape: true });
     return compiled(context);
   } catch (err) {
     console.warn("[sequencing] Template compilation failed, returning raw template:", err);
@@ -55,7 +68,13 @@ export function buildTemplateContext(
     // Person fields
     firstName: person.firstName ?? "",
     lastName: person.lastName ?? "",
-    companyName: person.company ?? "",
+    // BL-105 (2026-04-16): normalise at the LinkedIn render boundary, same
+    // contract as BL-103 at the email wire boundary. DB Person.company
+    // stays raw (carries legal identity); we strip trailing legal suffixes
+    // (Ltd/Limited/Inc/...) and trailing geographic qualifiers (UK/USA/
+    // Scotland/...) only for the rendered message body so cold copy reads
+    // conversationally ("Groomi" not "Groomi Limited").
+    companyName: normalizeCompanyName(person.company) ?? "",
     jobTitle: person.jobTitle ?? "",
     linkedinUrl: person.linkedinUrl ?? "",
 
