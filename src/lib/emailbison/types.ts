@@ -277,6 +277,36 @@ export interface CreateSequenceStepParams {
   subject?: string;
   body: string;
   delay_days?: number;
+  /**
+   * BL-093 (2026-04-16): EB v1.1 sequence-steps boolean. Verified
+   * empirically 2026-04-16 against canary EB 87 + live Lime production
+   * campaigns 26/31/32/42/43/44/45.
+   *
+   * When `true`:
+   *   - EB emits RFC 5322 In-Reply-To / References headers so recipient
+   *     mail clients thread the message.
+   *   - EB AUTO-PREPENDS "Re: " to the email_subject value before storage.
+   *     Sending email_subject="X" + thread_reply=true results in EB
+   *     storing email_subject="Re: X". Callers must send the RAW step-1
+   *     subject (no Re: prefix) — sending "Re: X" would store as
+   *     "Re: Re: X" (double-Re).
+   *   - email_subject MUST still be non-empty (EB validation rejects empty
+   *     even with thread_reply=true).
+   *
+   * When `false` (or absent):
+   *   - Fresh email thread, no auto-prefix, subject sent verbatim.
+   *
+   * Outsignal convention (feedback_email_threading_subject memory):
+   *   - Step 1: thread_reply=false, populated subject (always).
+   *   - Follow-up step with empty subjectLine: thread_reply=true,
+   *     email_subject=<firstStepSubject> (RAW; EB prepends Re: at storage).
+   *   - Follow-up step with own subject: thread_reply=false, fresh thread.
+   *
+   * The email-adapter is responsible for selecting the correct subject
+   * based on the writer-supplied subjectLine; the client just forwards
+   * whatever the caller passes.
+   */
+  thread_reply?: boolean;
 }
 
 export interface PatchSenderEmailParams {

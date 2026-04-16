@@ -23,6 +23,7 @@ import type {
   ScheduleResponse,
 } from "./types";
 import { EmailBisonError } from "./types";
+import { transformVariablesForEB } from "./variable-transform";
 import type { RateLimits } from "@/lib/discovery/rate-limit";
 
 /**
@@ -404,14 +405,28 @@ export class EmailBisonClient {
     const body = {
       title,
       sequence_steps: steps.map((step) => ({
-        email_subject: step.subject ?? "",
-        email_body: step.body,
+        // BL-093 (2026-04-16): apply variable transform on the wire so
+        // writer-emitted `{FIRSTNAME}` / `{COMPANYNAME}` / etc. become EB's
+        // documented `{{first_name}}` / `{{company}}` syntax. EB renders
+        // double-curly snake_case lead built-ins; literal `FIRSTNAME` in the
+        // body would render as the string "FIRSTNAME" to the recipient.
+        // Transform is idempotent — safe on already-correct EB tokens.
+        email_subject: transformVariablesForEB(step.subject ?? ""),
+        email_body: transformVariablesForEB(step.body),
         // EB docs: wait_in_days required, minimum 1 (NOT 0). Callers may
         // pass delay_days=0 (day-0 initial email) — clamp to 1 here so the
         // wire payload always satisfies EB validation. The consumer-facing
         // position ordering still tells EB which step is first; wait_in_days
         // only controls the inter-step delay.
         wait_in_days: Math.max(1, step.delay_days ?? 1),
+        // BL-093: thread_reply boolean tells EB to auto-thread this step
+        // under the previous step's subject. When true, EB accepts an
+        // empty email_subject and threads via RFC 5322 In-Reply-To /
+        // References headers. Defaults to false at the wire if unset so
+        // existing callers that don't pass the field keep the
+        // pre-BL-093 behaviour (each step is a fresh thread, requires
+        // non-empty subject).
+        thread_reply: step.thread_reply ?? false,
       })),
     };
 

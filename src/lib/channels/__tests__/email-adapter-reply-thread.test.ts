@@ -1,31 +1,43 @@
 /**
- * BL-085 — reply-in-thread empty-subject handling in EmailAdapter.deploy.
+ * BL-085 / BL-093 — reply-in-thread handling in EmailAdapter.deploy.
+ *
+ * BL-093 (2026-04-16) — EB v1.1 behaviour, verified empirically against
+ * canary EB 87 + live Lime production campaigns (26/31/32/42/43/44/45):
+ *   (a) `thread_reply: true` (boolean on sequence_steps) — tells EB to
+ *       emit RFC 5322 In-Reply-To / References headers AND to AUTO-PREPEND
+ *       "Re: " to the email_subject value before storage. Sending
+ *       `email_subject="X"` with thread_reply=true results in EB storing
+ *       `email_subject="Re: X"`.
+ *   (b) `email_subject` MUST still be non-empty even with thread_reply=true
+ *       (validation rejects empty). Send the RAW firstStepSubject — EB
+ *       prepends the Re: prefix server-side.
  *
  * Outsignal convention (feedback_email_threading_subject memory):
  * follow-up email steps ship with an EMPTY subjectLine so recipient-side
- * clients thread the follow-up under step 1. EB v1.1 `POST
- * /campaigns/{id}/sequence-steps` REJECTS empty email_subject with 422
- * "email_subject required" (Phase 6a canary Step 3 failure) — the EB
- * reference docs do NOT document any inherit_subject / reply_in_thread
- * flag on sequence-step creation, only on the reply endpoints.
+ * clients thread the follow-up under step 1.
  *
- * Fix (Option 2) — adapter builds the batch POST body with a
- * `Re: {firstStepSubject}` fallback on empty-subject steps. EB
- * validates, EB sends, recipient-side email clients thread the
- * message under step 1 per RFC 5322 subject-match heuristics
- * (the `Re: ` prefix is stripped for threading).
+ * Adapter contract (post-BL-093):
+ *   - Step 1 (initial) → thread_reply=false, populated subject (verbatim).
+ *   - Follow-up step with empty subject → thread_reply=true,
+ *     email_subject=<firstStepSubject> (RAW, no Re: prefix — EB auto-prepends).
+ *   - Follow-up step with populated subject → thread_reply=false,
+ *     uses its own subject (fresh thread, no Re: injection).
+ *   - Defensive: step 1 with empty subject → thread_reply=false,
+ *     placeholder "(no subject)", warn emitted.
  *
  * Test cases:
  *   (a) happy path — 3-step sequence, step 2 empty subject. Batch POST
- *       contains non-empty email_subject on all 3 steps; step 2 is
- *       `Re: {step1 subject}`.
- *   (b) edge — step 1 itself has empty subject (defensive). Fallback
- *       uses "(no subject)" placeholder; no crash; warn emitted.
+ *       has thread_reply=true + email_subject='hello there' (RAW step 1
+ *       subject) for step 2; step 1 and step 3 have thread_reply=false
+ *       with their own subjects verbatim.
+ *   (b) edge — step 1 itself has empty subject (defensive). Step 1 gets
+ *       "(no subject)" placeholder + thread_reply=false; step 2 threads
+ *       with subject="(no subject)" (RAW) + thread_reply=true.
  *   (c) regression — all 3 subjects filled. Adapter preserves
- *       originals verbatim; no "Re: " prefix injected.
+ *       originals verbatim; thread_reply=false on every step.
  *   (d) real fixture — canary cmneqixpv's actual emailSequence JSON
- *       shape (canonical Phase 6.5c). Parses clean, batch builds
- *       with no empty email_subject; step 2 threaded.
+ *       shape (canonical Phase 6.5c). Parses clean, step 2 threads via
+ *       thread_reply=true + subject='cleaners across multiple sites'.
  *
  * Mock style mirrors email-adapter-race.test.ts.
  */
@@ -191,7 +203,7 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
   // (a) Happy path — step 2 empty, step 1 + 3 have subjects.
   // -------------------------------------------------------------------------
   it(
-    "(a) 3-step sequence with step 2 empty subject → batch POST has non-empty email_subject on all steps; step 2 is 'Re: <step1>'",
+    "(a) 3-step sequence with step 2 empty subject → step 2 has thread_reply=true + email_subject='hello there' (RAW; EB prepends Re:); step 1 + 3 have thread_reply=false with own subjects",
     async () => {
       getCampaignMock.mockResolvedValue({
         id: "camp-bl085",
@@ -224,23 +236,24 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
       expect(title).toBe("BL-085 Reply-Thread Campaign");
       expect(stepsArg).toHaveLength(3);
 
-      // All 3 step subjects are non-empty (defeats the 422).
-      for (const step of stepsArg) {
-        expect(step.subject).toBeDefined();
-        expect(String(step.subject).trim()).not.toBe("");
-      }
-
-      // Step 1 and 3 preserved verbatim.
+      // Step 1 — fresh thread, populated subject.
       expect(stepsArg[0].subject).toBe("hello there");
+      expect(stepsArg[0].thread_reply).toBe(false);
+
+      // Step 2 — threaded follow-up. Subject is the RAW step 1 subject
+      // (NOT prefixed with Re: — EB auto-prepends server-side when
+      // thread_reply=true). thread_reply=true on the wire.
+      expect(stepsArg[1].subject).toBe("hello there");
+      expect(stepsArg[1].thread_reply).toBe(true);
+
+      // Step 3 — own subject, fresh thread.
       expect(stepsArg[2].subject).toBe("fresh angle");
+      expect(stepsArg[2].thread_reply).toBe(false);
 
-      // Step 2 is threaded under step 1.
-      expect(stepsArg[1].subject).toBe("Re: hello there");
-
-      // No BL-085 warning — step 1 had a real subject so the placeholder
+      // No BL-093 warning — step 1 had a real subject so the placeholder
       // path did not fire.
       const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
-      expect(warned).not.toMatch(/BL-085/);
+      expect(warned).not.toMatch(/BL-093/);
     },
   );
 
@@ -248,7 +261,7 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
   // (b) Edge — step 1 itself empty. Defensive placeholder + warn.
   // -------------------------------------------------------------------------
   it(
-    "(b) step 1 has empty subjectLine (defensive edge) → uses '(no subject)' placeholder; emits BL-085 warning; does not crash",
+    "(b) step 1 has empty subjectLine (defensive edge) → step 1 gets '(no subject)' + thread_reply=false; warn emitted; step 2 threads with raw '(no subject)' + thread_reply=true",
     async () => {
       getCampaignMock.mockResolvedValue({
         id: "camp-bl085",
@@ -271,35 +284,33 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
       expect(ebMock.createSequenceSteps).toHaveBeenCalledTimes(1);
       const stepsArg = ebMock.createSequenceSteps.mock.calls[0][2];
 
-      // Step 1 gets `Re: (no subject)` (step 1's own empty subject also
-      // falls into the isEmptySubject branch — the first step has no
-      // preceding step to thread under, so the placeholder carries
-      // through via the Re: prefix chain. Not ideal aesthetically but
-      // it (1) satisfies EB validation, (2) never crashes, (3) is
-      // surfaced via a BL-085 warning so the operator notices the
-      // upstream writer drift).
-      expect(stepsArg[0].subject).toBe("Re: (no subject)");
-      expect(stepsArg[1].subject).toBe("Re: (no subject)");
+      // Step 1 — empty subject is a writer regression. We use placeholder
+      // and DO NOT thread (no prior step exists to thread under).
+      expect(stepsArg[0].subject).toBe("(no subject)");
+      expect(stepsArg[0].thread_reply).toBe(false);
+
+      // Step 2 — empty subject + has prior step → threads. Subject is
+      // the RAW placeholder from step 1 (EB will auto-prepend Re:).
+      expect(stepsArg[1].subject).toBe("(no subject)");
+      expect(stepsArg[1].thread_reply).toBe(true);
+
+      // Step 3 — own subject preserved, fresh thread.
       expect(stepsArg[2].subject).toBe("fresh angle");
+      expect(stepsArg[2].thread_reply).toBe(false);
 
-      // No empty subjects reached the wire (the whole point of this fix).
-      for (const step of stepsArg) {
-        expect(String(step.subject).trim()).not.toBe("");
-      }
-
-      // BL-085 warning fired because step 1 was empty.
+      // BL-093 warning fired because step 1 was empty.
       const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
-      expect(warned).toMatch(/BL-085/);
+      expect(warned).toMatch(/BL-093/);
       expect(warned).toMatch(/camp-bl085/);
     },
   );
 
   // -------------------------------------------------------------------------
-  // (c) Regression — all subjects filled. Adapter must NOT inject `Re: ` on
-  // any step; behaviour unchanged from pre-BL-085.
+  // (c) Regression — all subjects filled. Adapter must keep thread_reply=false
+  // on every step; subject preserved verbatim.
   // -------------------------------------------------------------------------
   it(
-    "(c) 3-step sequence with all subjects filled → adapter preserves originals verbatim; no 'Re: ' prefix injected on any step",
+    "(c) 3-step sequence with all subjects filled → adapter preserves originals verbatim; thread_reply=false on every step",
     async () => {
       getCampaignMock.mockResolvedValue({
         id: "camp-bl085",
@@ -332,27 +343,29 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
       expect(ebMock.createSequenceSteps).toHaveBeenCalledTimes(1);
       const stepsArg = ebMock.createSequenceSteps.mock.calls[0][2];
 
-      // All 3 subjects preserved verbatim — zero "Re: " injection.
+      // All 3 subjects preserved verbatim.
       expect(stepsArg[0].subject).toBe("first subject");
       expect(stepsArg[1].subject).toBe("second subject");
       expect(stepsArg[2].subject).toBe("third subject");
+
+      // No threading — every step has its own subject.
       for (const step of stepsArg) {
-        expect(String(step.subject).startsWith("Re: ")).toBe(false);
+        expect(step.thread_reply).toBe(false);
       }
 
-      // No BL-085 warning — nothing empty.
+      // No BL-093 warning — nothing empty.
       const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
-      expect(warned).not.toMatch(/BL-085/);
+      expect(warned).not.toMatch(/BL-093/);
     },
   );
 
   // -------------------------------------------------------------------------
   // (d) Real fixture — canary cmneqixpv's actual stored sequence shape.
-  // Parses clean through StoredEmailSequenceStepSchema, batch POST has
-  // non-empty subject on all 3 steps, step 2 threaded.
+  // Parses clean through StoredEmailSequenceStepSchema, step 2 threads via
+  // thread_reply=true + empty subject.
   // -------------------------------------------------------------------------
   it(
-    "(d) real canary fixture (cmneqixpv emailSequence) → parses clean; batch POST has non-empty subject on all 3 steps; step 2 is 'Re: cleaners across multiple sites'",
+    "(d) real canary fixture (cmneqixpv emailSequence) → parses clean; step 2 has thread_reply=true + email_subject='cleaners across multiple sites' (RAW; EB prepends Re: to render 'Re: cleaners across multiple sites')",
     async () => {
       getCampaignMock.mockResolvedValue({
         id: "camp-bl085",
@@ -367,22 +380,23 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
       const stepsArg = ebMock.createSequenceSteps.mock.calls[0][2];
       expect(stepsArg).toHaveLength(3);
 
-      // Step 1 verbatim.
+      // Step 1 verbatim — fresh thread.
       expect(stepsArg[0].subject).toBe("cleaners across multiple sites");
+      expect(stepsArg[0].thread_reply).toBe(false);
+
       // Step 2 — was undefined (no subjectLine field on fixture) —
-      // now threaded under step 1.
-      expect(stepsArg[1].subject).toBe("Re: cleaners across multiple sites");
-      // Step 3 verbatim.
+      // now threads via thread_reply=true. Subject is the RAW step 1
+      // value (EB auto-prepends "Re: " server-side when stored).
+      expect(stepsArg[1].subject).toBe("cleaners across multiple sites");
+      expect(stepsArg[1].thread_reply).toBe(true);
+
+      // Step 3 verbatim — fresh thread.
       expect(stepsArg[2].subject).toBe("winning contracts losing margin");
+      expect(stepsArg[2].thread_reply).toBe(false);
 
-      // All non-empty.
-      for (const step of stepsArg) {
-        expect(String(step.subject).trim()).not.toBe("");
-      }
-
-      // No BL-085 warning — step 1 had a real subject.
+      // No BL-093 warning — step 1 had a real subject.
       const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
-      expect(warned).not.toMatch(/BL-085/);
+      expect(warned).not.toMatch(/BL-093/);
 
       // delay_days propagated (step 1=0 clamped to 1 by client, but at
       // the adapter→client boundary we pass through delayDays ?? 1, so

@@ -150,13 +150,200 @@ const DEFAULT_SCHEDULE = {
  * Default campaign settings applied via PATCH /campaigns/{id}/update after
  * senders are attached — keeps EB state consistent with our deliverability
  * posture regardless of what createCampaign defaulted to.
+ *
+ * BL-093 (2026-04-16) — `can_unsubscribe` flipped true → false. Per the
+ * Outsignal cold-outreach copy rules ("no links/images in cold" — see
+ * writer-rules.md banned-pattern list), we MUST NOT include a one-click
+ * unsubscribe link in cold sequence steps. The link is itself a link
+ * (hurts deliverability + spam scores) and the prospect's relationship
+ * with the sender is too cold for a formal unsub UX. Recipients who want
+ * to opt out reply asking to be removed and the inbox monitor handles it.
+ *
+ * NB: the EB campaign-settings field is named `can_unsubscribe` (per
+ * docs/emailbison-dedi-api-reference.md line 146 — "Whether recipients
+ * can unsubscribe from the campaign using a one-click link. If nothing
+ * sent, false is assumed."). We send `false` explicitly so the setting
+ * is durable across re-deploys regardless of EB-side defaults drifting.
  */
 const DEFAULT_CAMPAIGN_SETTINGS = {
   plain_text: true,
   open_tracking: false,
   reputation_building: true,
-  can_unsubscribe: true,
+  can_unsubscribe: false,
 } as const;
+
+/**
+ * BL-093 (2026-04-16) — per-campaign sender allocation map.
+ *
+ * Hardcoded round-robin allocation across the 1210-solutions workspace's
+ * 58 healthy email senders, sorted by `Sender.emailBisonSenderId` ascending.
+ * Each of the 5 1210 email campaigns gets a stable disjoint subset of
+ * ~11-12 senders. The Allocation rule is `idx % 5 === bucketForCampaign`,
+ * where the campaign-to-bucket mapping is captured here.
+ *
+ * Pragmatic stop-gap until `Campaign.allocatedSenderIds` schema field +
+ * UI + migration land (BL-094). Add a campaignId here ONLY when an ops
+ * decision has been made about which senders own that campaign.
+ *
+ * The mapping is keyed by EmailBison senderEmailId (the int that EB uses
+ * for the attach-sender-emails API). Senders are pinned by EB-side ID so
+ * the allocation is durable across DB row CUID changes (e.g. if a Sender
+ * is deleted and recreated, its EB ID is preserved upstream).
+ *
+ * Verification: scripts/maintenance/_bl093-derive-allocation.ts reproduces
+ * this map by querying the live DB sender pool and applying:
+ *   ```
+ *   ids.forEach((id, idx) => buckets[idx % 5].push(id));
+ *   ```
+ * Bucket order: Construction=0, Green=1, Healthcare=2, Industrial=3,
+ * Facilities=4.
+ *
+ * Verified 2026-04-16 against live DB. Sender pool (58 EB IDs, EB-ID-asc):
+ *   631..660, then 661, 662, 663, 666..690.
+ * 664/665 are absent from the pool (not healthy / not channel-eligible /
+ * no EB ID); 661/662/663 ARE present. F1 correction (monty-qa BL-093
+ * review) — earlier draft of this map inverted buckets 0/1/2 by assuming
+ * 663/664/665 were the round-robin members at idx 30/31/32; live DB shows
+ * 661/662/663 instead. Run the derive script before editing this map.
+ */
+const CAMPAIGN_SENDER_ALLOCATION: Record<string, readonly number[]> = {
+  // 1210 Solutions — Construction (bucket 0)
+  cmneq92p20000p8p7dhqn8g42: [631, 636, 641, 646, 651, 656, 661, 668, 673, 678, 683, 688],
+  // 1210 Solutions — Green List Priority (bucket 1)
+  cmneq1sdj0001p8cg97lb9rhd: [632, 637, 642, 647, 652, 657, 662, 669, 674, 679, 684, 689],
+  // 1210 Solutions — Healthcare (bucket 2)
+  cmneqhwo50001p843r5hmsul3: [633, 638, 643, 648, 653, 658, 663, 670, 675, 680, 685, 690],
+  // 1210 Solutions — Industrial/Warehouse (bucket 3)
+  cmneqa5180001p8rkwyrrlkg8: [634, 639, 644, 649, 654, 659, 666, 671, 676, 681, 686],
+  // 1210 Solutions — Facilities/Cleaning (bucket 4 — CANARY EB 88)
+  cmneqixpv0001p8710bov1fga: [635, 640, 645, 650, 655, 660, 667, 672, 677, 682, 687],
+};
+
+/**
+ * Resolve the per-campaign sender subset for a given campaign ID.
+ *
+ * - If the campaign is in CAMPAIGN_SENDER_ALLOCATION → return the
+ *   intersection of (allocated EB IDs) ∩ (workspace's healthy senders).
+ *   The intersection guards against allocations that reference a sender
+ *   which has since been deleted, paused, or marked unhealthy — those
+ *   senders are silently dropped from the wire payload.
+ * - Else → return all workspace senders (pre-BL-093 behaviour). This is
+ *   the safe fallback for workspaces / campaigns not yet ops-allocated.
+ *
+ * Exported for unit-test visibility; not called externally.
+ */
+export function resolveAllocatedSenders(
+  campaignId: string,
+  allWorkspaceSenderIds: readonly number[],
+): number[] {
+  const allocated = CAMPAIGN_SENDER_ALLOCATION[campaignId];
+  if (!allocated) {
+    // No allocation declared for this campaign — fall back to all senders.
+    return [...allWorkspaceSenderIds];
+  }
+  const allowed = new Set(allWorkspaceSenderIds);
+  return allocated.filter((id) => allowed.has(id));
+}
+
+/**
+ * Build the EB v1.1 `sequence_steps` wire shape from a stored
+ * `emailSequence` array, applying the BL-093 thread_reply rules.
+ *
+ * Behaviour (verified 2026-04-16 against canary EB 87 + live Lime
+ * production campaigns 26/31/32/42/43/44/45):
+ *   - Step 1 (lowest `position`): `thread_reply=false`, populated subject
+ *     verbatim. Empty subject → `(no subject)` placeholder + console.warn.
+ *   - Follow-up step with empty `subjectLine`: `thread_reply=true`,
+ *     `subject = firstStepSubject` (RAW; EB auto-prepends "Re: " server
+ *     side). Sending "Re: <X>" yourself produces stored "Re: Re: <X>".
+ *   - Follow-up step with populated `subjectLine`: `thread_reply=false`,
+ *     own subject verbatim → fresh thread.
+ *
+ * Extracted into a shared helper (BL-093 monty-qa F2) so the two callers
+ * — `EmailAdapter.deploy` Step 3 and `agents/campaign.ts` signal-campaign
+ * pre-provisioning — produce identical wire payloads. Pre-extraction the
+ * signal path skipped `thread_reply` entirely, so a follow-up step with
+ * empty `subjectLine` 422'd EB on activation. Keep this helper in sync
+ * with the per-step decision documented at email-adapter Step 3.
+ *
+ * Note: idempotency / GET-then-diff is the CALLER'S responsibility. The
+ * caller passes the FULL stored sequence (so step 1 can be identified
+ * and its subject reused for threaded follow-ups) and a separate filter
+ * predicate identifying which steps to actually emit. The deploy-path
+ * caller filters out steps already-present in EB; the signal-campaign
+ * caller emits all steps. Filtering BEFORE this helper would lose the
+ * step-1 anchor and silently mis-thread follow-ups when a partial
+ * re-deploy sends only step 2.
+ *
+ * @param fullSequence - The complete stored sequence (used to identify
+ *   step 1 by lowest position and capture its subject).
+ * @param contextLabel - Human-readable label used in the "empty subject
+ *   on FIRST step" warn — typically "Campaign cmXXX ('Name')" so
+ *   operators can grep their logs.
+ * @param shouldEmit - Optional predicate; when omitted, all steps are
+ *   emitted. The deploy path passes a "not in EB yet" predicate.
+ */
+export function buildSequenceStepsForEB(
+  fullSequence: readonly EmailSequenceStep[],
+  contextLabel?: string,
+  shouldEmit?: (step: EmailSequenceStep) => boolean,
+): Array<{
+  position: number;
+  subject: string;
+  body: string;
+  delay_days: number;
+  thread_reply: boolean;
+}> {
+  const sortedByPosition = [...fullSequence].sort(
+    (a, b) => a.position - b.position,
+  );
+  const firstStepPosition = sortedByPosition[0]?.position;
+  const firstStepSubjectRaw = sortedByPosition[0]?.subjectLine;
+  const firstStepSubject =
+    firstStepSubjectRaw && firstStepSubjectRaw.trim() !== ""
+      ? firstStepSubjectRaw
+      : "(no subject)";
+
+  const emitFilter = shouldEmit ?? (() => true);
+
+  return fullSequence.filter(emitFilter).map((step) => {
+    const isEmptySubject =
+      !step.subjectLine || step.subjectLine.trim() === "";
+    const isFirstStep = step.position === firstStepPosition;
+
+    if (isFirstStep) {
+      // Initial step is always a fresh thread (there's nothing to thread
+      // under). Empty subject is a defensive edge case — emit a placeholder
+      // + warn so operators notice the upstream writer drift, but do NOT
+      // thread.
+      if (isEmptySubject) {
+        console.warn(
+          `[email-adapter] BL-093: ${contextLabel ?? "(no context)"} has empty subjectLine on its FIRST sequence step (position ${step.position}). Using placeholder '(no subject)' — review stored emailSequence shape.`,
+        );
+      }
+      return {
+        position: step.position,
+        subject: isEmptySubject ? "(no subject)" : (step.subjectLine as string),
+        body: step.body ?? step.bodyText ?? "",
+        delay_days: step.delayDays ?? 1,
+        thread_reply: false,
+      };
+    }
+
+    // Follow-up step. EB v1.1 auto-prepends "Re: " when thread_reply=true,
+    // so we send the RAW firstStepSubject to land on stored "Re: <X>"
+    // (single Re:). Populated subject → fresh thread, no auto-prefix.
+    return {
+      position: step.position,
+      subject: isEmptySubject
+        ? firstStepSubject // EB will auto-prepend "Re: "
+        : (step.subjectLine as string),
+      body: step.body ?? step.bodyText ?? "",
+      delay_days: step.delayDays ?? 1,
+      thread_reply: isEmptySubject,
+    };
+  });
+}
 
 export class EmailAdapter implements ChannelAdapter {
   readonly channel = CHANNEL_TYPES.EMAIL;
@@ -416,68 +603,25 @@ export class EmailAdapter implements ChannelAdapter {
         : [];
       const existingPositions = new Set(existingSteps.map((s) => s.position));
 
-      // BL-085 — reply-in-thread empty-subject handling.
+      // BL-093 (2026-04-16) — reply-in-thread via EB `thread_reply` flag.
       //
-      // Outsignal convention (see feedback_email_threading_subject memory):
-      // follow-up steps ship with an EMPTY subjectLine so recipient-side
-      // email clients thread the follow-up under step 1. EB v1.1
-      // `POST /campaigns/{id}/sequence-steps` REJECTS empty email_subject
-      // with 422 "email_subject required" (Phase 6a canary Step 3
-      // failure). The EB reference docs do NOT document any
-      // inherit_subject / reply_in_thread / is_followup flag on the
-      // sequence-step schema — only `email_subject`, `email_body`,
-      // `wait_in_days` per docs/emailbison-dedi-api-reference.md
-      // lines 1326-1334. Reply-threading flags exist only on the
-      // reply endpoints (`inject_previous_email_body` on
-      // POST /replies/{id}/reply, line 665), not on sequence-step
-      // creation.
+      // The per-step decision logic (which steps thread, which carry
+      // their own subject, when EB auto-prepends "Re: ") is shared
+      // between this deploy path AND the signal-campaign pre-provision
+      // path in `agents/campaign.ts`. Centralised in
+      // `buildSequenceStepsForEB` so both callsites produce identical
+      // wire payloads — see helper docstring for the verified rules and
+      // monty-qa BL-093 F2 for the drift bug that triggered the extract.
       //
-      // Fix — `Re: {firstStepSubject}` fallback. Email clients (Gmail,
-      // Outlook, Apple Mail) thread messages under the same
-      // normalized subject per RFC 5322 — the `Re: ` prefix is
-      // stripped for subject-match threading. So EB validates, EB
-      // sends, and the recipient still sees the follow-up threaded
-      // under step 1.
-      //
-      // firstStepSubject is picked by sorting emailSequence by
-      // position (the stored order is usually but not always
-      // position-ascending; the canonical Phase 6.5c writer is
-      // position-ascending, but historical 0-indexed sequences and
-      // future drifts should not break this). If step 1 itself has
-      // an empty subjectLine (shouldn't happen per the writer but
-      // defensive), fall back to a safe placeholder and emit a
-      // console.warn so operators notice the drift.
-      const sortedByPosition = [...emailSequence].sort(
-        (a, b) => a.position - b.position,
+      // The diff against `existingPositions` (idempotency / GET-then-diff)
+      // remains a local concern of this Step 3 — the helper takes the
+      // FULL stored sequence (so it can identify step 1 even on partial
+      // re-deploys) and a predicate that picks out the missing positions.
+      const missingSteps = buildSequenceStepsForEB(
+        emailSequence,
+        `Campaign ${campaignId} ('${campaignName}')`,
+        (step) => !existingPositions.has(step.position),
       );
-      const firstStepSubjectRaw = sortedByPosition[0]?.subjectLine;
-      const firstStepSubject =
-        firstStepSubjectRaw && firstStepSubjectRaw.trim() !== ""
-          ? firstStepSubjectRaw
-          : "(no subject)";
-      if (firstStepSubject === "(no subject)") {
-        console.warn(
-          `[email-adapter] BL-085: Campaign ${campaignId} ('${campaignName}') has empty subjectLine on its first sequence step (position ${sortedByPosition[0]?.position}). Using placeholder '(no subject)' — review stored emailSequence shape.`,
-        );
-      }
-
-      const missingSteps = emailSequence
-        .filter((step) => !existingPositions.has(step.position))
-        .map((step) => {
-          const isEmptySubject =
-            !step.subjectLine || step.subjectLine.trim() === "";
-          return {
-            position: step.position,
-            // Empty subjects on follow-up steps get `Re: <step1>`
-            // so EB accepts them AND recipient clients thread the
-            // reply under step 1. BL-085.
-            subject: isEmptySubject
-              ? `Re: ${firstStepSubject}`
-              : step.subjectLine,
-            body: step.body ?? step.bodyText ?? "",
-            delay_days: step.delayDays ?? 1,
-          };
-        });
 
       if (missingSteps.length > 0) {
         // Title parameter — EB docs describe it as "The title for the
@@ -664,9 +808,32 @@ export class EmailAdapter implements ChannelAdapter {
       //
       // Channel filter includes "both" because dual-channel senders still
       // send email. attach-sender-emails is EB-side idempotent (dedupes).
+      //
+      // BL-093 (2026-04-16) — per-campaign sender allocation. The previous
+      // implementation attached ALL workspace senders to every campaign,
+      // which (a) violates the PM intent of dedicating sender subsets to
+      // each campaign for better deliverability isolation and (b) breaks
+      // sender rotation balance — a workspace running 5 campaigns
+      // simultaneously would route every send through every sender,
+      // saturating each inbox 5× the intended volume and inviting
+      // bounce/spam flags.
+      //
+      // Pragmatic fix for the canary: hardcoded allocation map keyed by
+      // campaignId. The allocation is deterministic round-robin over the
+      // 1210-solutions workspace's 58 healthy email senders sorted by
+      // emailBisonSenderId, with each campaign owning roughly 1/5 of the
+      // pool (~11-12 senders each). Daniel Lazarus's other 1210 sending
+      // domains are split evenly across the 5 campaigns.
+      //
+      // PROPER FIX (BL-094, deferred): add `Campaign.allocatedSenderIds`
+      // (JSON array of Sender.id values) to prisma/schema.prisma + a
+      // workspace UI for ops to assign per-campaign allocations + a
+      // migration to backfill existing campaigns from this hardcoded map.
+      // For today's canary the allocation is correct, deterministic, and
+      // reversible.
       // -----------------------------------------------------------------
       currentStep = DEPLOY_STEP.ATTACH_SENDERS;
-      const senders = await prisma.sender.findMany({
+      const allSenders = await prisma.sender.findMany({
         where: {
           workspaceSlug,
           channel: { in: ["email", "both"] },
@@ -674,16 +841,33 @@ export class EmailAdapter implements ChannelAdapter {
           healthStatus: { in: ["healthy", "warning"] },
         },
         select: { emailBisonSenderId: true },
+        // Stable order so the hardcoded allocation map below is reproducible.
+        orderBy: { emailBisonSenderId: "asc" },
       });
-      const senderEmailIds = senders
+      const allSenderEmailIds = allSenders
         .map((s) => s.emailBisonSenderId)
         .filter((id): id is number => id != null);
 
+      // Resolve the per-campaign sender subset. If the campaign is in the
+      // hardcoded allocation map, use the explicit subset; otherwise fall
+      // back to all senders (preserves pre-BL-093 behaviour for
+      // non-allocated workspaces and keeps the change surgical for the
+      // 1210 canary cohort).
+      const senderEmailIds = resolveAllocatedSenders(campaignId, allSenderEmailIds);
+
       if (senderEmailIds.length === 0) {
         throw new Error(
-          `No EB-registered healthy senders found for workspace '${workspaceSlug}' — cannot attach senders.`,
+          `No EB-registered healthy senders found for workspace '${workspaceSlug}' (campaign ${campaignId}) — cannot attach senders. ${
+            allSenderEmailIds.length > 0
+              ? `Workspace has ${allSenderEmailIds.length} healthy senders but none are in this campaign's allocation map (BL-093 / BL-094).`
+              : "Workspace has zero healthy senders."
+          }`,
         );
       }
+
+      console.log(
+        `[email-adapter] BL-093: Campaign ${campaignId} allocated ${senderEmailIds.length}/${allSenderEmailIds.length} workspace senders.`,
+      );
 
       await withRetry(() =>
         ebClient.attachSenderEmails(ebCampaignId, senderEmailIds),

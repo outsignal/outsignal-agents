@@ -231,9 +231,12 @@ describe("EmailAdapter.deploy()", () => {
     // `not.toHaveBeenCalled()` tripwire is no longer necessary (the method
     // is gone at the type level).
     expect(ebMock.createSequenceSteps).toHaveBeenCalledTimes(1);
+    // BL-093 (2026-04-16): adapter now emits `thread_reply` per-step.
+    // Step 1 = false (always — initial step is fresh thread).
+    // Step 2 has its own subject ('fu1') so thread_reply=false (fresh thread).
     expect(ebMock.createSequenceSteps).toHaveBeenCalledWith(999, "Acme E1", [
-      { position: 1, subject: "hi", body: "hello", delay_days: 0 },
-      { position: 2, subject: "fu1", body: "follow up", delay_days: 3 },
+      { position: 1, subject: "hi", body: "hello", delay_days: 0, thread_reply: false },
+      { position: 2, subject: "fu1", body: "follow up", delay_days: 3, thread_reply: false },
     ]);
 
     // Step 4 — BL-088: single batch upsert (NOT per-lead createLead).
@@ -272,12 +275,16 @@ describe("EmailAdapter.deploy()", () => {
     // Step 5 — attach both sender IDs
     expect(ebMock.attachSenderEmails).toHaveBeenCalledWith(999, [501, 502]);
 
-    // Step 6 — campaign-level defaults
+    // Step 6 — campaign-level defaults.
+    // BL-093 (2026-04-16): can_unsubscribe flipped true → false (cold
+    // outreach must not include unsubscribe links — they're a link
+    // (deliverability hit) and the prospect relationship is too cold for
+    // a formal unsub UX). See DEFAULT_CAMPAIGN_SETTINGS in email-adapter.ts.
     expect(ebMock.updateCampaign).toHaveBeenCalledWith(999, {
       plain_text: true,
       open_tracking: false,
       reputation_building: true,
-      can_unsubscribe: true,
+      can_unsubscribe: false,
     });
 
     // Step 8 — launch
@@ -459,6 +466,10 @@ describe("EmailAdapter.deploy()", () => {
 
     await adapter.deploy(DEPLOY_PARAMS);
 
+    // BL-093 (2026-04-16): adapter now adds a stable `orderBy:
+    // emailBisonSenderId asc` so the per-campaign allocation map
+    // (CAMPAIGN_SENDER_ALLOCATION) reproduces deterministically against
+    // a known, stable sender ordering.
     expect(prismaMock.sender.findMany).toHaveBeenCalledWith({
       where: {
         workspaceSlug: "acme",
@@ -467,6 +478,7 @@ describe("EmailAdapter.deploy()", () => {
         healthStatus: { in: ["healthy", "warning"] },
       },
       select: { emailBisonSenderId: true },
+      orderBy: { emailBisonSenderId: "asc" },
     });
   });
 });

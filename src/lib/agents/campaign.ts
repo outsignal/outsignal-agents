@@ -304,6 +304,18 @@ const campaignTools = {
         // one batched POST with the EB-required `{title, sequence_steps:[...]}`
         // envelope — title reuses the campaign name already passed to
         // createCampaign above.
+        //
+        // BL-093 monty-qa F2 (2026-04-16): use the shared
+        // `buildSequenceStepsForEB` helper so this signal-campaign path
+        // applies the same `thread_reply` rules as `EmailAdapter.deploy`
+        // Step 3. Without it, a follow-up step with empty `subjectLine`
+        // would 422 EB on activation (email_subject="" + thread_reply
+        // unset → EB rejects empty subject) and signal-campaign launches
+        // would silently fail for any sequence that uses threaded
+        // follow-ups.
+        const { buildSequenceStepsForEB } = await import(
+          "@/lib/channels/email-adapter"
+        );
         const emailSeq = campaign.emailSequence as Array<{
           position: number;
           subjectLine?: string;
@@ -314,12 +326,10 @@ const campaignTools = {
         await ebClient.createSequenceSteps(
           ebCampaign.id,
           campaign.name,
-          emailSeq.map((step) => ({
-            position: step.position,
-            subject: step.subjectLine,
-            body: step.body ?? step.bodyText ?? "",
-            delay_days: step.delayDays ?? 1,
-          })),
+          buildSequenceStepsForEB(
+            emailSeq,
+            `Signal campaign ${campaignId} ('${campaign.name}')`,
+          ),
         );
       }
 

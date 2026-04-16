@@ -179,20 +179,27 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
     //    client handles transformation internally).
     const sequenceSteps = body.sequence_steps as Array<Record<string, unknown>>;
 
+    // BL-093 (2026-04-16): payload now includes `thread_reply` boolean.
+    // Default is false when callers don't pass thread_reply (matches the
+    // pre-BL-093 wire shape semantically — fresh thread, requires
+    // populated subject).
     expect(sequenceSteps[0]).toEqual({
       email_subject: "Hi there",
       email_body: "Email body 1",
       wait_in_days: 1,
+      thread_reply: false,
     });
     expect(sequenceSteps[1]).toEqual({
       email_subject: "Follow up",
       email_body: "Email body 2",
       wait_in_days: 3,
+      thread_reply: false,
     });
     expect(sequenceSteps[2]).toEqual({
       email_subject: "Final",
       email_body: "Email body 3",
       wait_in_days: 7,
+      thread_reply: false,
     });
 
     // 4. Defensive — NONE of the old flat-shape keys leak into the body
@@ -249,6 +256,66 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
     const body = readFetchBody(fetchMock.mock.calls[0]);
     const sequenceSteps = body.sequence_steps as Array<Record<string, unknown>>;
     expect(sequenceSteps[0].wait_in_days).toBe(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // BL-093 — thread_reply boolean + variable transform on the wire
+  // ---------------------------------------------------------------------------
+  //
+  // EB schema (verified 2026-04-16 against canary EB 87 + live Lime
+  // production campaigns): sequence_steps accept `thread_reply` boolean.
+  // When true, EB (i) emits RFC 5322 reply headers and (ii) AUTO-PREPENDS
+  // "Re: " to email_subject before storage. The client just forwards
+  // whatever the caller passes — the email-adapter is responsible for
+  // selecting the right subject (RAW step-1 subject for threaded follow-ups,
+  // own subject for fresh threads).
+  it("BL-093: thread_reply=true forwarded on the wire; canonical {FIRSTNAME} variable transformed to {{first_name}}", async () => {
+    fetchMock.mockResolvedValue(
+      mockResponse({
+        data: [
+          { id: 301, email_subject: "step 1", email_body: "body 1", wait_in_days: 1, order: 1 },
+          { id: 302, email_subject: "Re: step 1", email_body: "body 2", wait_in_days: 3, order: 2 },
+        ],
+      }),
+    );
+
+    await client.createSequenceSteps(CAMPAIGN_ID, TITLE, [
+      // Step 1 — fresh thread, populated subject, has variables.
+      {
+        position: 1,
+        subject: "Hi {FIRSTNAME}",
+        body: "Hello {FIRSTNAME}, about {COMPANYNAME}.\n\nCheers,\n{SENDER_FIRST_NAME}",
+        delay_days: 0,
+        thread_reply: false,
+      },
+      // Step 2 — threaded follow-up. Caller (email-adapter) passes the
+      // RAW step-1 subject; EB will auto-prepend "Re:" server-side.
+      // thread_reply=true tells EB to emit reply headers.
+      {
+        position: 2,
+        subject: "Hi {FIRSTNAME}",
+        body: "Following up, {FIRSTNAME}.",
+        delay_days: 3,
+        thread_reply: true,
+      },
+    ]);
+
+    const body = readFetchBody(fetchMock.mock.calls[0]);
+    const sequenceSteps = body.sequence_steps as Array<Record<string, unknown>>;
+    expect(sequenceSteps).toHaveLength(2);
+
+    // Step 1 — variables transformed at the wire boundary.
+    expect(sequenceSteps[0].email_subject).toBe("Hi {{first_name}}");
+    expect(sequenceSteps[0].email_body).toBe(
+      "Hello {{first_name}}, about {{company}}.\n\nCheers,\n{SENDER_FIRST_NAME}",
+    );
+    expect(sequenceSteps[0].thread_reply).toBe(false);
+
+    // Step 2 — RAW step-1 subject (NOT prefixed) AND thread_reply=true.
+    // Variable in the subject is also transformed.
+    expect(sequenceSteps[1].email_subject).toBe("Hi {{first_name}}");
+    expect(sequenceSteps[1].email_body).toBe("Following up, {{first_name}}.");
+    expect(sequenceSteps[1].thread_reply).toBe(true);
   });
 
   // ---------------------------------------------------------------------------
