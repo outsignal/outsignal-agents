@@ -118,6 +118,19 @@ type EmailSequenceStep = z.infer<typeof StoredEmailSequenceStepSchema>;
  * Default sending schedule for newly-deployed email campaigns: Mon-Fri
  * 09:00-17:00 Europe/London. No schema change — hardcoded constant to keep
  * Phase A scope tight. A future phase can expose this on Workspace.
+ *
+ * BL-087 (2026-04-16): `save_as_template` is REQUIRED on POST in EB v1.1
+ * (the EB docs at docs/emailbison-dedi-api-reference.md lines 152-169 still
+ * describe it as optional, but the live API rejected the fresh-deploy POST
+ * for canary EB 83 with 422 "The save as template field is required."). Always
+ * send `false` — per-campaign schedules are workspace-default and we don't
+ * want them polluting the workspace's schedule-template list. Doc comment
+ * updated to flag the drift; the docs file should be re-synced when EB ships
+ * an updated reference.
+ *
+ * The PUT (updateSchedule) path requires save_as_template per the spec
+ * (line 198), so the same value flows through both paths from this constant —
+ * removes the inline override that previously lived at the call site.
  */
 const DEFAULT_SCHEDULE = {
   monday: true,
@@ -130,6 +143,7 @@ const DEFAULT_SCHEDULE = {
   start_time: "09:00",
   end_time: "17:00",
   timezone: "Europe/London",
+  save_as_template: false,
 } as const;
 
 /**
@@ -601,10 +615,7 @@ export class EmailAdapter implements ChannelAdapter {
         );
         if (existingSchedule != null) {
           await withRetry(() =>
-            ebClient.updateSchedule(ebCampaignId, {
-              ...DEFAULT_SCHEDULE,
-              save_as_template: false,
-            }),
+            ebClient.updateSchedule(ebCampaignId, { ...DEFAULT_SCHEDULE }),
           );
         } else {
           await withRetry(() =>

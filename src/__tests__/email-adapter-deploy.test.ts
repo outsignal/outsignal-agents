@@ -232,7 +232,10 @@ describe("EmailAdapter.deploy()", () => {
     // Step 3b — attachLeadsToCampaign with the captured EB IDs
     expect(ebMock.attachLeadsToCampaign).toHaveBeenCalledWith(999, [1001, 1002]);
 
-    // Step 4 — createSchedule with Mon-Fri 09-17 Europe/London
+    // Step 4 — createSchedule with Mon-Fri 09-17 Europe/London.
+    // BL-087: EB v1.1 requires save_as_template on POST (despite docs marking
+    // it optional). Always sent as `false` so per-campaign schedules don't
+    // pollute the workspace template list.
     expect(ebMock.createSchedule).toHaveBeenCalledWith(999, {
       monday: true,
       tuesday: true,
@@ -244,6 +247,7 @@ describe("EmailAdapter.deploy()", () => {
       start_time: "09:00",
       end_time: "17:00",
       timezone: "Europe/London",
+      save_as_template: false,
     });
 
     // Step 5 — attach both sender IDs
