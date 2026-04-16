@@ -17,6 +17,7 @@ import type { ChannelType } from "@/lib/channels";
 import { getCampaign } from "@/lib/campaigns/operations";
 import { notifyDeploy, notifyCampaignLive } from "@/lib/notifications";
 import { SYSTEM_ADMIN_EMAIL } from "@/lib/audit";
+import { EmailBisonClient } from "@/lib/emailbison/client";
 
 // CAMP-03 audit (Phase 73): emailBisonCampaignId writes moved to EmailAdapter.deploy().
 // Remaining raw EB ID references in portal/analytics files are Phase 74/75 scope.
@@ -324,6 +325,35 @@ export async function executeDeploy(
     //      CampaignDeploy write is preserved — a channel-level handler
     //      (email-adapter.ts, linkedin-adapter.ts) may have already written
     //      the terminal state; we MUST NOT clobber that.
+    //
+    // BL-107 (2026-04-17): orphan EB draft cleanup. When terminal failure
+    // occurs AFTER Step 1 createCampaign but BEFORE the campaign is resumed
+    // (e.g. Step 4 lead upload 422'd on Green List Priority on 2026-04-17
+    // pre-BL-108), the EB draft would linger indefinitely — DB rollback
+    // cleared Campaign.emailBisonCampaignId but EB itself held the orphan
+    // until manually deleted (see decisions log 2026-04-17T02:30:00Z, where
+    // EB 93 was cleaned up via an ad-hoc ebClient.deleteCampaign call
+    // after the Green List failure). The rollback now deletes the EB
+    // campaign itself.
+    //
+    // Key design points:
+    //   - EB delete runs BEFORE the $transaction. Prisma $transaction has a
+    //     wall-clock timeout (default 5s) — an EB request timeout or slow
+    //     response would abort the whole tx, losing the DB rollback. EB
+    //     calls belong outside.
+    //   - The EB delete is wrapped in its own try/catch. DB consistency is
+    //     the priority — if EB delete fails (network blip, 500, whatever),
+    //     the DB rollback MUST still run. A lingering EB draft is a lesser
+    //     evil than a DB row stuck in `deployed` with a dangling EB ID.
+    //   - Only fires on the path where we actually need to roll back: post
+    //     inflight-sibling check. We match the tx's retry-awareness gate by
+    //     doing the sibling check OUTSIDE the tx first (best-effort — the
+    //     in-tx gate still runs as the final authoritative check before
+    //     the DB rollback commits).
+    //   - Accepts EB's async delete semantic per BL-078/BL-100: the API
+    //     returns 200 with status='pending deletion', which the client's
+    //     deleteCampaign method treats as success. Only hard 4xx/5xx
+    //     errors from the DELETE hit our catch.
     const message = err instanceof Error ? err.message : String(err);
 
     // Extract [step:N] tag if the failing adapter encoded one (email-adapter
@@ -333,6 +363,67 @@ export async function executeDeploy(
 
     // Clip the error message for the audit metadata to keep the JSONB small.
     const reason = message.length > 500 ? message.slice(0, 500) : message;
+
+    // --------------------------------------------------------------------
+    // BL-107 pre-tx EB orphan delete
+    //
+    // Read Campaign snapshot + workspace API token OUTSIDE the tx. We need
+    // both to construct an EmailBisonClient and issue the DELETE. Best-
+    // effort check for an inflight sibling so we skip the EB delete when a
+    // retry is clearly in flight (the retry will own the EB campaign).
+    // --------------------------------------------------------------------
+    let ebOrphanDeleted = false;
+    let ebOrphanDeleteError: string | null = null;
+    let preTxEbCampaignId: number | null = null;
+
+    try {
+      const preTxSnapshot = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: {
+          emailBisonCampaignId: true,
+          workspace: { select: { apiToken: true } },
+        },
+      });
+
+      const siblingExists = await prisma.campaignDeploy.findFirst({
+        where: {
+          campaignId,
+          status: { in: ["pending", "running"] },
+          id: { not: deployId },
+        },
+        select: { id: true },
+      });
+
+      preTxEbCampaignId = preTxSnapshot?.emailBisonCampaignId ?? null;
+      const apiToken = preTxSnapshot?.workspace?.apiToken ?? null;
+
+      if (!siblingExists && preTxEbCampaignId != null && apiToken) {
+        try {
+          const ebClient = new EmailBisonClient(apiToken);
+          await ebClient.deleteCampaign(preTxEbCampaignId);
+          ebOrphanDeleted = true;
+          console.log(
+            `[deploy] BL-107: deleted orphan EB campaign ${preTxEbCampaignId} for Campaign ${campaignId} (deployId=${deployId}) post terminal failure`,
+          );
+        } catch (ebErr) {
+          const ebMsg = ebErr instanceof Error ? ebErr.message : String(ebErr);
+          ebOrphanDeleteError =
+            ebMsg.length > 500 ? ebMsg.slice(0, 500) : ebMsg;
+          console.warn(
+            `[deploy] BL-107: failed to delete orphan EB campaign ${preTxEbCampaignId} for Campaign ${campaignId}: ${ebMsg}. DB rollback will still proceed.`,
+          );
+        }
+      }
+    } catch (snapshotErr) {
+      // If the snapshot read itself fails, log and proceed with the DB
+      // rollback anyway. The in-tx read will still get the authoritative
+      // clearedEmailBisonCampaignId value for the audit metadata.
+      console.warn(
+        `[deploy] BL-107: pre-tx snapshot read failed, skipping EB orphan delete: ${
+          snapshotErr instanceof Error ? snapshotErr.message : String(snapshotErr)
+        }`,
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
       const currentDeploy = await tx.campaignDeploy.findUnique({
@@ -414,6 +505,13 @@ export async function executeDeploy(
             campaignDeployId: deployId,
             clearedEmailBisonCampaignId,
             reason,
+            // BL-107: record whether the EB draft was successfully cleaned
+            // up as part of this rollback. `ebOrphanDeleted=false` with a
+            // non-null error means manual intervention may be needed to
+            // clear the lingering draft from EB.
+            ebOrphanDeleted,
+            ebOrphanDeleteError,
+            ebOrphanCampaignId: preTxEbCampaignId,
           },
         },
       });

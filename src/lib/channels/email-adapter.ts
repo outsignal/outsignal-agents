@@ -847,15 +847,23 @@ export class EmailAdapter implements ChannelAdapter {
       const createdLeadIds: number[] = [];
       let leadCount = 0;
       if (eligibleLeads.length > 0) {
-        // Single batch POST. withRetry stays — BL-086 made it status-aware
-        // so transient 5xx still retries while non-retryable 4xx (e.g. a
-        // wholly different 422 like personal-domain rejection on a stricter
-        // EB instance) surfaces immediately.
+        // Chunk the upsert in 500-lead batches. EB enforces a hardcoded
+        // 500-lead cap on `POST /api/leads/create-or-update/multiple`
+        // (docs/emailbison-dedi-api-reference.md:1599 "The leads field
+        // must not have more than 500 items"). Prior to BL-108 (2026-04-17)
+        // this path sent `eligibleLeads` in a single request, which 422'd
+        // on Green List Priority (579 leads) during the 1210-solutions
+        // canary remainder stage-deploy (see decisions log entry at
+        // 2026-04-17T02:30:00Z).
         //
-        // Note: EB caps this endpoint at 500 leads/request (docs line 1599).
-        // Current canary TargetLists are well under that. If a future
-        // workspace exceeds 500, chunk here in 500-lead batches; the
-        // upsert is naturally idempotent so a partial-batch retry is safe.
+        // Each chunk is independently retried via withRetry — BL-086
+        // makes the wrapper status-aware (transient 5xx retries, hard 4xx
+        // surfaces immediately). Partial-batch retries are safe because
+        // BL-088 made this endpoint idempotent: existing_lead_behavior is
+        // "patch" server-side, so a chunk that succeeds once and then
+        // retries returns the same lead IDs rather than 422'ing on
+        // duplicate email.
+        //
         // BL-103 (2026-04-16) — normalise company names at the EB wire
         // boundary. Strips trailing legal suffixes (Ltd / Inc / GmbH / ...)
         // AND trailing geographic qualifiers (UK / USA / Scotland / ...) so
@@ -876,25 +884,29 @@ export class EmailAdapter implements ChannelAdapter {
         // legal+geo+bracket ladder output). Person.companyDomain is
         // schema-level nullable (prisma/schema.prisma:149), so we `?? null`
         // to produce a uniform call signature.
-        const upserted = await withRetry(() =>
-          ebClient.createOrUpdateLeadsMultiple(
-            eligibleLeads.map((entry) => ({
-              email: entry.person.email!,
-              firstName: entry.person.firstName ?? undefined,
-              lastName: entry.person.lastName ?? undefined,
-              jobTitle: entry.person.jobTitle ?? undefined,
-              company:
-                normalizeCompanyName(
-                  entry.person.company,
-                  entry.person.companyDomain ?? null,
-                ) ?? undefined,
-            })),
-          ),
-        );
+        const LEAD_UPSERT_CHUNK_SIZE = 500;
+        for (let i = 0; i < eligibleLeads.length; i += LEAD_UPSERT_CHUNK_SIZE) {
+          const chunk = eligibleLeads.slice(i, i + LEAD_UPSERT_CHUNK_SIZE);
+          const upserted = await withRetry(() =>
+            ebClient.createOrUpdateLeadsMultiple(
+              chunk.map((entry) => ({
+                email: entry.person.email!,
+                firstName: entry.person.firstName ?? undefined,
+                lastName: entry.person.lastName ?? undefined,
+                jobTitle: entry.person.jobTitle ?? undefined,
+                company:
+                  normalizeCompanyName(
+                    entry.person.company,
+                    entry.person.companyDomain ?? null,
+                  ) ?? undefined,
+              })),
+            ),
+          );
 
-        for (const lead of upserted) {
-          createdLeadIds.push(lead.id);
-          leadCount++;
+          for (const lead of upserted) {
+            createdLeadIds.push(lead.id);
+            leadCount++;
+          }
         }
       }
 
