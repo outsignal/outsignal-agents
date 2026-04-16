@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { isNotFoundError } from "@/lib/emailbison/errors";
+import { normalizeCompanyName } from "@/lib/emailbison/company-normaliser";
 import {
   transformSenderNames,
   type SenderRoster,
@@ -855,6 +856,18 @@ export class EmailAdapter implements ChannelAdapter {
         // Current canary TargetLists are well under that. If a future
         // workspace exceeds 500, chunk here in 500-lead batches; the
         // upsert is naturally idempotent so a partial-batch retry is safe.
+        // BL-103 (2026-04-16) — normalise company names at the EB wire
+        // boundary. Strips trailing legal suffixes (Ltd / Inc / GmbH / ...)
+        // AND trailing geographic qualifiers (UK / USA / Scotland / ...) so
+        // cold-email body copy reads conversationally ("Abby Cleaning keeps
+        // placing workers" not "Abby Cleaning Scotland Ltd keeps placing
+        // workers"). The DB value (Person.company) is unchanged — we only
+        // transform the outbound EB payload, same vendor-edge pattern as
+        // variable-transform.ts (BL-093) and sender-name-transform.ts
+        // (BL-100). See src/lib/emailbison/company-normaliser.ts for the
+        // strip-until-stable algorithm and the full PM-authorized suffix
+        // list. `??` ensures null/undefined pass through to EB unchanged
+        // (createOrUpdateLeadsMultiple omits the field on undefined).
         const upserted = await withRetry(() =>
           ebClient.createOrUpdateLeadsMultiple(
             eligibleLeads.map((entry) => ({
@@ -862,7 +875,8 @@ export class EmailAdapter implements ChannelAdapter {
               firstName: entry.person.firstName ?? undefined,
               lastName: entry.person.lastName ?? undefined,
               jobTitle: entry.person.jobTitle ?? undefined,
-              company: entry.person.company ?? undefined,
+              company:
+                normalizeCompanyName(entry.person.company) ?? undefined,
             })),
           ),
         );
