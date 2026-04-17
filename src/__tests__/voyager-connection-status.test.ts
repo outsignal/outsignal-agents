@@ -49,25 +49,95 @@ describe("VoyagerClient.checkConnectionStatus", () => {
     expect(status).toBe("unknown");
     expect(requestSpy).toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("checkpoint redirect"),
+      expect.stringContaining("checkpoint on profile resolve"),
     );
   });
 
   it("logs unknown response shapes with a body preview", async () => {
-    const body = JSON.stringify({ memberRelationship: { distanceOfConnection: "DISTANCE_99" } });
-    fetchMock.mockResolvedValue(
-      new Response(body, {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-
     const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
+    vi.spyOn(
+      client as unknown as {
+        request: (path: string) => Promise<Response>;
+      },
+      "request",
+    )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              "*elements": ["urn:li:fsd_profile:ACoAAResolved123"],
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            memberRelationship: { distanceOfConnection: "DISTANCE_99" },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
     const status = await client.checkConnectionStatus("https://www.linkedin.com/in/jane-doe/");
 
     expect(status).toBe("unknown");
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("unknown relationship shape"),
+    );
+  });
+
+  it("resolves member ID before hitting the relationship endpoint", async () => {
+    const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
+    const requestSpy = vi
+      .spyOn(
+        client as unknown as {
+          request: (path: string) => Promise<Response>;
+        },
+        "request",
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              "*elements": ["urn:li:fsd_profile:ACoAAResolved123"],
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            memberRelationship: { distanceOfConnection: "DISTANCE_1" },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    const result = await client.checkConnectionStatusDetailed(
+      "https://www.linkedin.com/in/jane-doe/",
+    );
+
+    expect(result).toEqual({ status: "connected" });
+    expect(requestSpy.mock.calls[0]?.[0]).toContain(
+      "memberIdentity=jane-doe",
+    );
+    expect(requestSpy.mock.calls[1]?.[0]).toBe(
+      "/identity/profiles/ACoAAResolved123/relationships",
     );
   });
 

@@ -59,6 +59,14 @@ export interface ConnectionCheckResult {
   shouldBrowserFallback?: boolean;
 }
 
+interface MemberResolutionResult {
+  ok: boolean;
+  profileId?: string;
+  memberId?: string;
+  reason?: "invalid_profile_url" | "checkpoint_detected" | "urn_not_found";
+  responseUrl?: string;
+}
+
 export interface ActionResult {
   success: boolean;
   error?: string;
@@ -309,6 +317,50 @@ export class VoyagerClient {
     return match ? match[1] : null;
   }
 
+  private async resolveMemberId(
+    profileUrl: string,
+  ): Promise<MemberResolutionResult> {
+    const profileId = this.extractProfileId(profileUrl);
+    if (!profileId) {
+      return { ok: false, reason: "invalid_profile_url" };
+    }
+
+    const response = await this.request(
+      `/identity/dash/profiles?q=memberIdentity&memberIdentity=${profileId}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.WebTopCardCore-6`,
+    );
+
+    if (
+      response.url.includes("/checkpoint/") ||
+      response.url.includes("/challenge/")
+    ) {
+      return {
+        ok: false,
+        reason: "checkpoint_detected",
+        profileId,
+        responseUrl: response.url,
+      };
+    }
+
+    const data = (await response.json()) as Record<string, unknown>;
+    const elements = (data as Record<string, unknown[]>).data
+      ? ((data as Record<string, Record<string, unknown[]>>).data?.[
+          "*elements"
+        ] ?? [])
+      : [];
+
+    const entityUrn = (elements[0] as string) ?? null;
+    if (!entityUrn) {
+      return { ok: false, reason: "urn_not_found", profileId };
+    }
+
+    return {
+      ok: true,
+      profileId,
+      memberId: entityUrn.replace("urn:li:fsd_profile:", ""),
+      responseUrl: response.url,
+    };
+  }
+
   /**
    * View a LinkedIn profile and extract the memberUrn.
    *
@@ -319,49 +371,35 @@ export class VoyagerClient {
    */
   async viewProfile(profileUrl: string): Promise<ActionResult> {
     try {
-      const profileId = this.extractProfileId(profileUrl);
-      if (!profileId) {
-        return { success: false, error: "invalid_profile_url" };
-      }
-
-      // Use /identity/dash/profiles endpoint (the old /identity/profiles/{id}/profileView
-      // was deprecated by LinkedIn, returning 410 Gone)
-      const response = await this.request(
-        `/identity/dash/profiles?q=memberIdentity&memberIdentity=${profileId}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.WebTopCardCore-6`
-      );
-
-      // Checkpoint detection
-      if (
-        response.url.includes("/checkpoint/") ||
-        response.url.includes("/challenge/")
-      ) {
-        return {
-          success: false,
-          error: "checkpoint_detected",
-          details: { retry: false },
-        };
-      }
-
-      const data = (await response.json()) as Record<string, unknown>;
-
-      // Response is a collection — extract first element's entityUrn from included entities
-      // The elements array contains URNs like "urn:li:fsd_profile:ACoAAA..."
-      const elements = (data as Record<string, unknown[]>).data
-        ? ((data as Record<string, Record<string, unknown[]>>).data?.["*elements"] ?? [])
-        : [];
-
-      const entityUrn = (elements[0] as string) ?? null;
-
-      if (!entityUrn) {
+      const resolved = await this.resolveMemberId(profileUrl);
+      if (!resolved.ok) {
+        if (resolved.reason === "invalid_profile_url") {
+          return { success: false, error: "invalid_profile_url" };
+        }
+        if (resolved.reason === "checkpoint_detected") {
+          return {
+            success: false,
+            error: "checkpoint_detected",
+            details: { retry: false },
+          };
+        }
         return {
           success: false,
           error: "urn_not_found",
-          details: { profileId },
+          details: { profileId: resolved.profileId ?? null },
         };
       }
-
-      const memberUrn = entityUrn.replace("urn:li:fsd_profile:", "");
-      return { success: true, details: { memberUrn, profileId } };
+      if (!resolved.memberId || !resolved.profileId) {
+        return {
+          success: false,
+          error: "urn_not_found",
+          details: { profileId: resolved.profileId ?? null },
+        };
+      }
+      return {
+        success: true,
+        details: { memberUrn: resolved.memberId, profileId: resolved.profileId },
+      };
     } catch (err) {
       return this.handleError(err);
     }
@@ -606,16 +644,33 @@ export class VoyagerClient {
     profileUrl: string,
   ): Promise<ConnectionCheckResult> {
     try {
-      const profileId = this.extractProfileId(profileUrl);
-      if (!profileId) {
+      const resolved = await this.resolveMemberId(profileUrl);
+      if (!resolved.ok) {
+        if (resolved.reason === "invalid_profile_url") {
+          console.warn(
+            `[VoyagerClient] checkConnectionStatus: failed to extract profileId from ${profileUrl}`,
+          );
+        } else if (resolved.reason === "checkpoint_detected") {
+          console.warn(
+            `[VoyagerClient] checkConnectionStatus checkpoint on profile resolve for ${resolved.profileId}: url=${resolved.responseUrl}`,
+          );
+        } else if (resolved.reason === "urn_not_found") {
+          console.warn(
+            `[VoyagerClient] checkConnectionStatus: could not resolve member ID for ${resolved.profileId}`,
+          );
+        }
+        return { status: "unknown" };
+      }
+
+      if (!resolved.memberId || !resolved.profileId) {
         console.warn(
-          `[VoyagerClient] checkConnectionStatus: failed to extract profileId from ${profileUrl}`,
+          `[VoyagerClient] checkConnectionStatus: incomplete member resolution for ${profileUrl}`,
         );
         return { status: "unknown" };
       }
 
       const response = await this.request(
-        `/identity/profiles/${profileId}/relationships`
+        `/identity/profiles/${resolved.memberId}/relationships`
       );
 
       // Checkpoint detection
@@ -624,7 +679,7 @@ export class VoyagerClient {
         response.url.includes("/challenge/")
       ) {
         console.warn(
-          `[VoyagerClient] checkConnectionStatus checkpoint redirect for ${profileId}: status=${response.status} url=${response.url}`,
+          `[VoyagerClient] checkConnectionStatus checkpoint redirect for ${resolved.profileId} (member ${resolved.memberId}): status=${response.status} url=${response.url}`,
         );
         return { status: "unknown" };
       }
@@ -635,7 +690,7 @@ export class VoyagerClient {
         data = JSON.parse(rawBody) as Record<string, unknown>;
       } catch (err) {
         console.warn(
-          `[VoyagerClient] checkConnectionStatus invalid JSON for ${profileId}: status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
+          `[VoyagerClient] checkConnectionStatus invalid JSON for ${resolved.profileId} (member ${resolved.memberId}): status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
         );
         throw err;
       }
@@ -659,7 +714,7 @@ export class VoyagerClient {
       }
 
       console.warn(
-        `[VoyagerClient] checkConnectionStatus unknown relationship shape for ${profileId}: status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
+        `[VoyagerClient] checkConnectionStatus unknown relationship shape for ${resolved.profileId} (member ${resolved.memberId}): status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
       );
       return { status: "unknown" };
     } catch (err) {
