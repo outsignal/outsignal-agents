@@ -365,11 +365,17 @@ export class VoyagerClient {
       `[VoyagerClient] resolveMemberId RESPONSE for ${profileId}: topKeys=[${topKeys.join(",")}] includedTypes=[${includedTypes.slice(0, 10).join(",")}] hasRelationship=${hasRelationship} hasInvitation=${hasInvitation} hasDistance=${hasDistance} bodyLen=${rawBody.length}`,
     );
 
-    // If relationship data found, log the relevant portion
-    if (hasRelationship || hasDistance) {
-      console.log(
-        `[VoyagerClient] resolveMemberId HAS RELATIONSHIP DATA for ${profileId}: ${this.truncateDiagnostic(rawBody, 1000)}`,
-      );
+    // Extract and log the MemberRelationship + Connection + Invitation objects specifically
+    if (included) {
+      const relEntities = (included as Record<string, unknown>[]).filter((item) => {
+        const t = (item as Record<string, unknown>)["$type"] as string ?? "";
+        return t.includes("MemberRelationship") || t.includes("Connection") || t.includes("Invitation");
+      });
+      if (relEntities.length > 0) {
+        console.log(
+          `[VoyagerClient] resolveMemberId RELATIONSHIP ENTITIES for ${profileId}: ${JSON.stringify(relEntities).slice(0, 2000)}`,
+        );
+      }
     }
 
     const elements = (data as Record<string, unknown[]>).data
