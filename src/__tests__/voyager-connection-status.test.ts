@@ -49,7 +49,7 @@ describe("VoyagerClient.checkConnectionStatus", () => {
     expect(status).toBe("unknown");
     expect(requestSpy).toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("checkpoint on profile resolve"),
+      expect.stringContaining("STEP 1 checkpoint"),
     );
   });
 
@@ -90,7 +90,7 @@ describe("VoyagerClient.checkConnectionStatus", () => {
 
     expect(status).toBe("unknown");
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("unknown relationship shape"),
+      expect.stringContaining("STEP 2 unknown shape"),
     );
   });
 

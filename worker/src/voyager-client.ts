@@ -667,99 +667,123 @@ export class VoyagerClient {
   async checkConnectionStatusDetailed(
     profileUrl: string,
   ): Promise<ConnectionCheckResult> {
+    // Step 1: resolve vanity slug → member ID
+    let resolved: MemberResolutionResult;
     try {
-      const resolved = await this.resolveMemberId(profileUrl);
-      if (!resolved.ok) {
-        if (resolved.reason === "invalid_profile_url") {
-          console.warn(
-            `[VoyagerClient] checkConnectionStatus: failed to extract profileId from ${profileUrl}`,
-          );
-        } else if (resolved.reason === "checkpoint_detected") {
-          console.warn(
-            `[VoyagerClient] checkConnectionStatus checkpoint on profile resolve for ${resolved.profileId}: url=${resolved.responseUrl}`,
-          );
-        } else if (resolved.reason === "urn_not_found") {
-          console.warn(
-            `[VoyagerClient] checkConnectionStatus: could not resolve member ID for ${resolved.profileId}`,
-          );
-        }
-        return { status: "unknown" };
-      }
-
-      if (!resolved.memberId || !resolved.profileId) {
-        console.warn(
-          `[VoyagerClient] checkConnectionStatus: incomplete member resolution for ${profileUrl}`,
-        );
-        return { status: "unknown" };
-      }
-
-      const response = await this.request(
-        `/identity/profiles/${resolved.memberId}/relationships`
-      );
-
-      // Checkpoint detection
-      if (
-        response.url.includes("/checkpoint/") ||
-        response.url.includes("/challenge/")
-      ) {
-        console.warn(
-          `[VoyagerClient] checkConnectionStatus checkpoint redirect for ${resolved.profileId} (member ${resolved.memberId}): status=${response.status} url=${response.url}`,
-        );
-        return { status: "unknown" };
-      }
-
-      const rawBody = await response.text();
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(rawBody) as Record<string, unknown>;
-      } catch (err) {
-        console.warn(
-          `[VoyagerClient] checkConnectionStatus invalid JSON for ${resolved.profileId} (member ${resolved.memberId}): status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
-        );
-        throw err;
-      }
-
-      // Parse memberRelationship.distanceOfConnection
-      const memberRelationship = data.memberRelationship as
-        | Record<string, unknown>
-        | undefined;
-      const distance = memberRelationship?.distanceOfConnection as
-        | string
-        | undefined;
-
-      if (distance === "DISTANCE_1") {
-        return { status: "connected" };
-      }
-
-      if (distance === "DISTANCE_2" || distance === "DISTANCE_3") {
-        // Check for pending invitation
-        const invitation = memberRelationship?.invitation;
-        return { status: invitation ? "pending" : "not_connected" };
-      }
-
-      console.warn(
-        `[VoyagerClient] checkConnectionStatus unknown relationship shape for ${resolved.profileId} (member ${resolved.memberId}): status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
-      );
-      return { status: "unknown" };
+      resolved = await this.resolveMemberId(profileUrl);
     } catch (err) {
       if (err instanceof VoyagerError) {
         console.warn(
-          `[VoyagerClient] checkConnectionStatus request failed for ${profileUrl}: status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
+          `[VoyagerClient] checkConnectionStatus STEP 1 (resolveMemberId) FAILED for ${profileUrl}: status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
         );
         if (err.status === 404) {
           return { status: "unknown", shouldBrowserFallback: true };
         }
-      } else if (err instanceof Error) {
-        console.warn(
-          `[VoyagerClient] checkConnectionStatus threw for ${profileUrl}: ${err.message}`,
-        );
       } else {
         console.warn(
-          `[VoyagerClient] checkConnectionStatus threw for ${profileUrl}: ${String(err)}`,
+          `[VoyagerClient] checkConnectionStatus STEP 1 (resolveMemberId) THREW for ${profileUrl}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
       return { status: "unknown" };
     }
+
+    if (!resolved.ok) {
+      if (resolved.reason === "invalid_profile_url") {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus: failed to extract profileId from ${profileUrl}`,
+        );
+      } else if (resolved.reason === "checkpoint_detected") {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus STEP 1 checkpoint for ${resolved.profileId}: url=${resolved.responseUrl}`,
+        );
+      } else if (resolved.reason === "urn_not_found") {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus STEP 1: resolved but no URN found for ${resolved.profileId}`,
+        );
+      }
+      return { status: "unknown" };
+    }
+
+    if (!resolved.memberId || !resolved.profileId) {
+      console.warn(
+        `[VoyagerClient] checkConnectionStatus: incomplete member resolution for ${profileUrl}`,
+      );
+      return { status: "unknown" };
+    }
+
+    console.log(
+      `[VoyagerClient] checkConnectionStatus STEP 1 OK: ${resolved.profileId} → member=${resolved.memberId}`,
+    );
+
+    // Step 2: relationship lookup with resolved member ID
+    let response: Response;
+    try {
+      response = await this.request(
+        `/identity/profiles/${resolved.memberId}/relationships`
+      );
+    } catch (err) {
+      if (err instanceof VoyagerError) {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus STEP 2 (relationship) FAILED for member=${resolved.memberId} (${resolved.profileId}): status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
+        );
+        if (err.status === 404) {
+          return { status: "unknown", shouldBrowserFallback: true };
+        }
+      } else {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus STEP 2 (relationship) THREW for member=${resolved.memberId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return { status: "unknown" };
+    }
+
+    // Step 2 response parsing
+    if (
+      response.url.includes("/checkpoint/") ||
+      response.url.includes("/challenge/")
+    ) {
+      console.warn(
+        `[VoyagerClient] checkConnectionStatus STEP 2 checkpoint redirect for member=${resolved.memberId} (${resolved.profileId}): url=${response.url}`,
+      );
+      return { status: "unknown" };
+    }
+
+    let rawBody: string;
+    let data: Record<string, unknown>;
+    try {
+      rawBody = await response.text();
+      data = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch (err) {
+      console.warn(
+        `[VoyagerClient] checkConnectionStatus STEP 2 invalid JSON for member=${resolved.memberId} (${resolved.profileId}): status=${response.status}`,
+      );
+      return { status: "unknown" };
+    }
+
+    // Parse memberRelationship.distanceOfConnection
+    const memberRelationship = data.memberRelationship as
+      | Record<string, unknown>
+      | undefined;
+    const distance = memberRelationship?.distanceOfConnection as
+      | string
+      | undefined;
+
+    if (distance === "DISTANCE_1") {
+      console.log(
+        `[VoyagerClient] checkConnectionStatus STEP 2 → CONNECTED for member=${resolved.memberId} (${resolved.profileId})`,
+      );
+      return { status: "connected" };
+    }
+
+    if (distance === "DISTANCE_2" || distance === "DISTANCE_3") {
+      const invitation = memberRelationship?.invitation;
+      return { status: invitation ? "pending" : "not_connected" };
+    }
+
+    console.warn(
+      `[VoyagerClient] checkConnectionStatus STEP 2 unknown shape for member=${resolved.memberId} (${resolved.profileId}): status=${response.status} body=${this.truncateDiagnostic(rawBody)}`,
+    );
+    return { status: "unknown" };
   }
 
   async checkConnectionStatus(profileUrl: string): Promise<ConnectionStatus> {
