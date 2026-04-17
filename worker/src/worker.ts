@@ -1213,27 +1213,10 @@ export class Worker {
           break;
 
         case "check_connection": {
-          let browserFallback: LinkedInBrowser | null = null;
-          const voyagerResult = await client.checkConnectionStatusDetailed(
-            profileUrl,
-          );
-          if (voyagerResult.shouldBrowserFallback) {
-            browserFallback = await this.getBrowserForConnectionFallback(sender);
-          }
-          const status = await this.checkConnectionStatusWithFallback(
-            voyagerResult,
-            sender,
-            profileUrl,
-            browserFallback,
-          );
-          if (browserFallback) {
-            await browserFallback.close().catch((err) => {
-              console.error(
-                `[Worker] Failed to close browser fallback for ${sender.name}:`,
-                err,
-              );
-            });
-          }
+          // Note: browser fallback disabled in executeAction — no SenderConfig available,
+          // only senderId. Use plain Voyager check; connection polling handles fallback.
+          const checkResult = await client.checkConnectionStatusDetailed(profileUrl);
+          const status = checkResult.status;
           result = {
             success: true,
             details: { connectionStatus: status },
