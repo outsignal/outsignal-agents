@@ -688,6 +688,10 @@ export class Worker {
     const interval = this.nextConnectionPollInterval.get(workspaceSlug)
       ?? Worker.getJitteredConnectionPollInterval();
 
+    console.log(
+      `[Worker] maybePollConnections(${workspaceSlug}): lastPoll=${lastPoll} interval=${Math.round(interval / 1000)}s elapsed=${lastPoll > 0 ? Math.round((now - lastPoll) / 1000) : 'first-run'}s`,
+    );
+
     if (lastPoll > 0 && now - lastPoll < interval) {
       return; // Not yet time to poll
     }
