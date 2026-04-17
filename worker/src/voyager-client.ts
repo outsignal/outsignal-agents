@@ -54,6 +54,11 @@ export type ConnectionStatus =
   | "not_connectable"
   | "unknown";
 
+export interface ConnectionCheckResult {
+  status: ConnectionStatus;
+  shouldBrowserFallback?: boolean;
+}
+
 export interface ActionResult {
   success: boolean;
   error?: string;
@@ -597,14 +602,16 @@ export class VoyagerClient {
    * Extracts profileId from URL, GETs /identity/profiles/{id}/relationships,
    * and parses distanceOfConnection from the response.
    */
-  async checkConnectionStatus(profileUrl: string): Promise<ConnectionStatus> {
+  async checkConnectionStatusDetailed(
+    profileUrl: string,
+  ): Promise<ConnectionCheckResult> {
     try {
       const profileId = this.extractProfileId(profileUrl);
       if (!profileId) {
         console.warn(
           `[VoyagerClient] checkConnectionStatus: failed to extract profileId from ${profileUrl}`,
         );
-        return "unknown";
+        return { status: "unknown" };
       }
 
       const response = await this.request(
@@ -619,7 +626,7 @@ export class VoyagerClient {
         console.warn(
           `[VoyagerClient] checkConnectionStatus checkpoint redirect for ${profileId}: status=${response.status} url=${response.url}`,
         );
-        return "unknown";
+        return { status: "unknown" };
       }
 
       const rawBody = await response.text();
@@ -642,24 +649,27 @@ export class VoyagerClient {
         | undefined;
 
       if (distance === "DISTANCE_1") {
-        return "connected";
+        return { status: "connected" };
       }
 
       if (distance === "DISTANCE_2" || distance === "DISTANCE_3") {
         // Check for pending invitation
         const invitation = memberRelationship?.invitation;
-        return invitation ? "pending" : "not_connected";
+        return { status: invitation ? "pending" : "not_connected" };
       }
 
       console.warn(
         `[VoyagerClient] checkConnectionStatus unknown relationship shape for ${profileId}: status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
       );
-      return "unknown";
+      return { status: "unknown" };
     } catch (err) {
       if (err instanceof VoyagerError) {
         console.warn(
           `[VoyagerClient] checkConnectionStatus request failed for ${profileUrl}: status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
         );
+        if (err.status === 404) {
+          return { status: "unknown", shouldBrowserFallback: true };
+        }
       } else if (err instanceof Error) {
         console.warn(
           `[VoyagerClient] checkConnectionStatus threw for ${profileUrl}: ${err.message}`,
@@ -669,8 +679,13 @@ export class VoyagerClient {
           `[VoyagerClient] checkConnectionStatus threw for ${profileUrl}: ${String(err)}`,
         );
       }
-      return "unknown";
+      return { status: "unknown" };
     }
+  }
+
+  async checkConnectionStatus(profileUrl: string): Promise<ConnectionStatus> {
+    const result = await this.checkConnectionStatusDetailed(profileUrl);
+    return result.status;
   }
 
   /**

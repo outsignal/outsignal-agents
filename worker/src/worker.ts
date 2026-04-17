@@ -12,7 +12,13 @@
 
 import { ApiClient } from "./api-client.js";
 import { VoyagerClient } from "./voyager-client.js";
-import type { ActionResult, ConnectionStatus, VoyagerConversation, VoyagerMessage } from "./voyager-client.js";
+import type {
+  ActionResult,
+  ConnectionCheckResult,
+  ConnectionStatus,
+  VoyagerConversation,
+  VoyagerMessage,
+} from "./voyager-client.js";
 import { LinkedInBrowser } from "./linkedin-browser.js";
 import {
   isWithinBusinessHours,
@@ -87,10 +93,14 @@ export class Worker {
   /** Timestamp of last stuck-action recovery attempt. */
   private lastStuckRecoveryAt = 0;
   private static readonly STUCK_RECOVERY_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
+  private static readonly CONNECTION_STATUS_BROWSER_FALLBACK_COOLDOWN_MS =
+    30 * 60 * 1000;
   /** Timestamp of last connection polling run per workspace. */
   private lastConnectionPoll: Map<string, number> = new Map();
   /** Next connection poll interval per workspace (jittered). */
   private nextConnectionPollInterval: Map<string, number> = new Map();
+  /** Last browser-fallback attempt per sender for connection status. */
+  private lastConnectionBrowserFallback: Map<string, number> = new Map();
   /** Last date (YYYY-MM-DD) daily planning was run per workspace. */
   private lastPlanDate: Map<string, string> = new Map();
   /** Last date (YYYY-MM-DD) mid-day top-up was run per workspace. */
@@ -140,6 +150,7 @@ export class Worker {
     this.conversationBackoff.clear();
     this.lastConnectionPoll.clear();
     this.nextConnectionPollInterval.clear();
+    this.lastConnectionBrowserFallback.clear();
   }
 
   /**
@@ -165,6 +176,65 @@ export class Worker {
       console.error("[Worker] Failed to fetch workspace slugs:", err);
       return this.cachedSlugs;
     }
+  }
+
+  private async getBrowserForConnectionFallback(
+    sender: SenderConfig,
+  ): Promise<LinkedInBrowser | null> {
+    const browser = new LinkedInBrowser([], sender.proxyUrl ?? undefined);
+    browser.setSenderId(sender.id);
+
+    const launched = await browser.launch();
+    if (!launched.success || launched.needsLogin) {
+      console.warn(
+        `[Worker] Browser fallback session unavailable for ${sender.name}: success=${launched.success} needsLogin=${launched.needsLogin}`,
+      );
+      await browser.close().catch(() => {});
+      return null;
+    }
+
+    return browser;
+  }
+
+  private async checkConnectionStatusWithFallback(
+    voyagerResult: ConnectionCheckResult,
+    sender: SenderConfig,
+    profileUrl: string,
+    browser?: LinkedInBrowser | null,
+  ): Promise<ConnectionStatus> {
+    if (!voyagerResult.shouldBrowserFallback) {
+      return voyagerResult.status;
+    }
+
+    if (!browser) {
+      const lastFallbackAt =
+        this.lastConnectionBrowserFallback.get(sender.id) ?? 0;
+      const now = Date.now();
+      if (
+        now - lastFallbackAt <
+        Worker.CONNECTION_STATUS_BROWSER_FALLBACK_COOLDOWN_MS
+      ) {
+        console.warn(
+          `[Worker] Browser fallback cooldown active for ${sender.name}; keeping ${profileUrl} as pending after Voyager 404`,
+        );
+        return voyagerResult.status;
+      }
+      console.warn(
+        `[Worker] Browser fallback unavailable for ${sender.name}; keeping ${profileUrl} as pending after Voyager 404`,
+      );
+      return voyagerResult.status;
+    }
+
+    const now = Date.now();
+    console.log(
+      `[Worker] Voyager returned 404 for ${profileUrl}; falling back to browser connection check for ${sender.name}`,
+    );
+    const browserStatus = await browser.checkConnectionStatus(profileUrl);
+    this.lastConnectionBrowserFallback.set(sender.id, now);
+    console.log(
+      `[Worker] Browser fallback connection status for ${profileUrl}: ${browserStatus}`,
+    );
+    return browserStatus;
   }
 
   /**
@@ -678,6 +748,7 @@ export class Worker {
       if (!senderConfig) continue;
 
       let client: VoyagerClient;
+      let browserFallback: LinkedInBrowser | null | undefined;
       try {
         client = await this.getOrCreateVoyagerClient(senderConfig);
       } catch (error) {
@@ -692,9 +763,24 @@ export class Worker {
         if (!this.running) break;
 
         try {
-          const rawStatus: ConnectionStatus = await client.checkConnectionStatus(
+          const voyagerPreview = await client.checkConnectionStatusDetailed(
             conn.personLinkedinUrl,
           );
+          let rawStatus: ConnectionStatus;
+          if (voyagerPreview.shouldBrowserFallback) {
+            if (browserFallback === undefined) {
+              browserFallback =
+                await this.getBrowserForConnectionFallback(senderConfig);
+            }
+            rawStatus = await this.checkConnectionStatusWithFallback(
+              voyagerPreview,
+              senderConfig,
+              conn.personLinkedinUrl,
+              browserFallback,
+            );
+          } else {
+            rawStatus = voyagerPreview.status;
+          }
 
           console.log(
             `[Worker] Connection ${conn.connectionId} (person ${conn.personId}): ${rawStatus}`,
@@ -734,6 +820,15 @@ export class Worker {
         if (this.running) {
           await sleep(3000 + Math.random() * 2000);
         }
+      }
+
+      if (browserFallback) {
+        await browserFallback.close().catch((err) => {
+          console.error(
+            `[Worker] Failed to close browser fallback for ${senderConfig.name}:`,
+            err,
+          );
+        });
       }
     }
   }
@@ -1114,7 +1209,27 @@ export class Worker {
           break;
 
         case "check_connection": {
-          const status = await client.checkConnectionStatus(profileUrl);
+          let browserFallback: LinkedInBrowser | null = null;
+          const voyagerResult = await client.checkConnectionStatusDetailed(
+            profileUrl,
+          );
+          if (voyagerResult.shouldBrowserFallback) {
+            browserFallback = await this.getBrowserForConnectionFallback(sender);
+          }
+          const status = await this.checkConnectionStatusWithFallback(
+            voyagerResult,
+            sender,
+            profileUrl,
+            browserFallback,
+          );
+          if (browserFallback) {
+            await browserFallback.close().catch((err) => {
+              console.error(
+                `[Worker] Failed to close browser fallback for ${sender.name}:`,
+                err,
+              );
+            });
+          }
           result = {
             success: true,
             details: { connectionStatus: status },

@@ -87,4 +87,26 @@ describe("VoyagerClient.checkConnectionStatus", () => {
       expect.stringContaining("status=403 body=checkpoint_detected"),
     );
   });
+
+  it("flags 404s for browser fallback", async () => {
+    const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
+    vi.spyOn(
+      client as unknown as {
+        request: (path: string) => Promise<Response>;
+      },
+      "request",
+    ).mockRejectedValue(new VoyagerError(404, '{"status":404}'));
+
+    const result = await client.checkConnectionStatusDetailed(
+      "https://www.linkedin.com/in/jane-doe/",
+    );
+
+    expect(result).toEqual({
+      status: "unknown",
+      shouldBrowserFallback: true,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("status=404 body={\"status\":404}"),
+    );
+  });
 });
