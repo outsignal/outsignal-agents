@@ -416,17 +416,22 @@ export class Worker {
       activeSenders.map((sender) => {
         if (!this.running) return Promise.resolve();
         const senderWork = this.processSender(sender);
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
         const timeout = new Promise<void>((resolve) => {
-          setTimeout(() => {
+          timeoutId = setTimeout(() => {
             console.error(
               `[Worker] processSender timed out after ${PER_SENDER_TIMEOUT_MS / 60000}min for ${sender.name} — abandoning this tick`,
             );
             resolve();
           }, PER_SENDER_TIMEOUT_MS);
         });
-        return Promise.race([senderWork, timeout]).catch((err) => {
-          console.error(`[Worker] processSender failed for ${sender.name}:`, err);
-        });
+        return Promise.race([senderWork, timeout])
+          .catch((err) => {
+            console.error(`[Worker] processSender failed for ${sender.name}:`, err);
+          })
+          .finally(() => {
+            if (timeoutId) clearTimeout(timeoutId);
+          });
       }),
     );
 

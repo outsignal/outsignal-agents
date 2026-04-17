@@ -114,6 +114,10 @@ export class VoyagerClient {
   private readonly baseUrl = "https://www.linkedin.com/voyager/api";
   private selfUrn: string | null = null;
 
+  private truncateDiagnostic(value: string, maxLength: number = 500): string {
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+  }
+
   constructor(liAt: string, jsessionId: string, proxyUrl?: string) {
     this.liAt = liAt;
     // Normalize JSESSIONID — strip surrounding quotes if present.
@@ -597,6 +601,9 @@ export class VoyagerClient {
     try {
       const profileId = this.extractProfileId(profileUrl);
       if (!profileId) {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus: failed to extract profileId from ${profileUrl}`,
+        );
         return "unknown";
       }
 
@@ -609,10 +616,22 @@ export class VoyagerClient {
         response.url.includes("/checkpoint/") ||
         response.url.includes("/challenge/")
       ) {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus checkpoint redirect for ${profileId}: status=${response.status} url=${response.url}`,
+        );
         return "unknown";
       }
 
-      const data = (await response.json()) as Record<string, unknown>;
+      const rawBody = await response.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(rawBody) as Record<string, unknown>;
+      } catch (err) {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus invalid JSON for ${profileId}: status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
+        );
+        throw err;
+      }
 
       // Parse memberRelationship.distanceOfConnection
       const memberRelationship = data.memberRelationship as
@@ -632,8 +651,24 @@ export class VoyagerClient {
         return invitation ? "pending" : "not_connected";
       }
 
+      console.warn(
+        `[VoyagerClient] checkConnectionStatus unknown relationship shape for ${profileId}: status=${response.status} url=${response.url} body=${this.truncateDiagnostic(rawBody)}`,
+      );
       return "unknown";
-    } catch {
+    } catch (err) {
+      if (err instanceof VoyagerError) {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus request failed for ${profileUrl}: status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
+        );
+      } else if (err instanceof Error) {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus threw for ${profileUrl}: ${err.message}`,
+        );
+      } else {
+        console.warn(
+          `[VoyagerClient] checkConnectionStatus threw for ${profileUrl}: ${String(err)}`,
+        );
+      }
       return "unknown";
     }
   }
