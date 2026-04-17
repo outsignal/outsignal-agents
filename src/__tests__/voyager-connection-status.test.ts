@@ -29,13 +29,6 @@ describe("VoyagerClient.checkConnectionStatus", () => {
   });
 
   it("logs checkpoint redirects with status and url", async () => {
-    fetchMock.mockResolvedValue(
-      new Response("checkpoint", {
-        status: 200,
-        headers: { "Content-Type": "text/html" },
-      }),
-    );
-
     const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
     const requestSpy = vi
       .spyOn(client as unknown as { request: (path: string) => Promise<Response> }, "request")
@@ -67,6 +60,11 @@ describe("VoyagerClient.checkConnectionStatus", () => {
             data: {
               "*elements": ["urn:li:fsd_profile:ACoAAResolved123"],
             },
+            included: [
+              {
+                $type: "com.linkedin.voyager.dash.identity.profile.Profile",
+              },
+            ],
           }),
           {
             status: 200,
@@ -90,11 +88,11 @@ describe("VoyagerClient.checkConnectionStatus", () => {
 
     expect(status).toBe("unknown");
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("STEP 2 unknown shape"),
+      expect.stringContaining("unknown relationship shape"),
     );
   });
 
-  it("resolves member ID before hitting the relationship endpoint", async () => {
+  it("resolves member ID and returns connected when Connection is included", async () => {
     const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
     const requestSpy = vi
       .spyOn(
@@ -109,17 +107,19 @@ describe("VoyagerClient.checkConnectionStatus", () => {
             data: {
               "*elements": ["urn:li:fsd_profile:ACoAAResolved123"],
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            memberRelationship: { distanceOfConnection: "DISTANCE_1" },
+            included: [
+              {
+                $type: "com.linkedin.voyager.dash.relationships.MemberRelationship",
+                memberRelationshipUnion: {
+                  connection: {
+                    $type: "com.linkedin.voyager.dash.relationships.Connection",
+                  },
+                },
+              },
+              {
+                $type: "com.linkedin.voyager.dash.relationships.Connection",
+              },
+            ],
           }),
           {
             status: 200,
@@ -136,9 +136,91 @@ describe("VoyagerClient.checkConnectionStatus", () => {
     expect(requestSpy.mock.calls[0]?.[0]).toContain(
       "memberIdentity=jane-doe",
     );
-    expect(requestSpy.mock.calls[1]?.[0]).toBe(
-      "/identity/profiles/ACoAAResolved123/relationships",
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns pending when Invitation is included", async () => {
+    const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
+    vi.spyOn(
+      client as unknown as {
+        request: (path: string) => Promise<Response>;
+      },
+      "request",
+    ).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: {
+            "*elements": ["urn:li:fsd_profile:ACoAAResolved123"],
+          },
+          included: [
+            {
+              $type: "com.linkedin.voyager.dash.relationships.MemberRelationship",
+              memberRelationshipUnion: {
+                noConnection: {
+                  memberDistance: "DISTANCE_3",
+                  invitationUnion: {
+                    "*invitation": "urn:li:fsd_invitation:123",
+                  },
+                },
+              },
+            },
+            {
+              $type: "com.linkedin.voyager.dash.relationships.invitation.Invitation",
+              invitationState: "PENDING",
+              invitationType: "SENT",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
+
+    const result = await client.checkConnectionStatusDetailed(
+      "https://www.linkedin.com/in/jane-doe/",
+    );
+
+    expect(result).toEqual({ status: "pending" });
+  });
+
+  it("returns not_connected when noConnection is present without invitation", async () => {
+    const client = new VoyagerClient("li_at", '"ajax:123"', undefined);
+    vi.spyOn(
+      client as unknown as {
+        request: (path: string) => Promise<Response>;
+      },
+      "request",
+    ).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: {
+            "*elements": ["urn:li:fsd_profile:ACoAAResolved123"],
+          },
+          included: [
+            {
+              $type: "com.linkedin.voyager.dash.relationships.MemberRelationship",
+              memberRelationshipUnion: {
+                noConnection: {
+                  memberDistance: "DISTANCE_2",
+                },
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    const result = await client.checkConnectionStatusDetailed(
+      "https://www.linkedin.com/in/jane-doe/",
+    );
+
+    expect(result).toEqual({ status: "not_connected" });
   });
 
   it("logs thrown Voyager errors with status and body preview", async () => {

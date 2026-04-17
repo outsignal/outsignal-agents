@@ -246,67 +246,80 @@ export async function processConnectionCheckResult(
     });
 
     if (campaignAction?.campaignName) {
-      // Load person details for template context
-      const person = await prisma.person.findUnique({
-        where: { id: conn.personId },
-        select: {
-          firstName: true,
-          lastName: true,
-          company: true,
-          jobTitle: true,
-          linkedinUrl: true,
-          email: true,
-        },
-      });
+      // GATE: auto follow-up messages temporarily disabled while we verify
+      // acceptance detection + rendered message bodies. Connection status IS
+      // flipped above (status=connected, counters updated). Follow-up messages
+      // will be enabled once variable rendering is verified in production.
+      //
+      // To re-enable: remove this gate and uncomment the block below.
+      // See: docs/briefs/2026-04-17-linkedin-codex-response.md
+      const FOLLOW_UP_GATE_ENABLED = process.env.LINKEDIN_FOLLOWUP_GATE !== "off";
 
-      if (person) {
-        // Evaluate rules triggered by connection_accepted
-        const actionDescriptors = await evaluateSequenceRules({
-          workspaceSlug: conn.sender.workspaceSlug,
-          campaignName: campaignAction.campaignName,
-          triggerEvent: "connection_accepted",
-          personId: conn.personId,
-          person,
+      if (FOLLOW_UP_GATE_ENABLED) {
+        console.log(
+          `[connection-poller] Connection accepted for person ${conn.personId} in ${conn.sender.workspaceSlug} — follow-up messages GATED (set LINKEDIN_FOLLOWUP_GATE=off to enable)`,
+        );
+      } else {
+        // Load person details for template context
+        const person = await prisma.person.findUnique({
+          where: { id: conn.personId },
+          select: {
+            firstName: true,
+            lastName: true,
+            company: true,
+            jobTitle: true,
+            linkedinUrl: true,
+            email: true,
+          },
         });
 
-        for (const descriptor of actionDescriptors) {
-          const scheduledFor = new Date(
-            Date.now() + descriptor.delayMinutes * 60 * 1000,
-          );
+        if (person) {
+          // Evaluate rules triggered by connection_accepted
+          const actionDescriptors = await evaluateSequenceRules({
+            workspaceSlug: conn.sender.workspaceSlug,
+            campaignName: campaignAction.campaignName,
+            triggerEvent: "connection_accepted",
+            personId: conn.personId,
+            person,
+          });
 
-          // Determine which sender to use for the follow-up
-          let senderId = conn.senderId;
-
-          // If original sender is no longer healthy, try to reassign
-          if (conn.sender.healthStatus !== "healthy") {
-            const newSender = await assignSenderForPerson(
-              conn.sender.workspaceSlug,
-              { mode: "linkedin_only" },
+          for (const descriptor of actionDescriptors) {
+            const scheduledFor = new Date(
+              Date.now() + descriptor.delayMinutes * 60 * 1000,
             );
 
-            if (newSender) {
-              senderId = newSender.id;
-            } else {
-              // No healthy sender available — log warning and hold
-              // Action won't be enqueued; will be retried when a sender recovers
-              console.warn(
-                `[connection-poller] No healthy sender available for workspace ${conn.sender.workspaceSlug}. Follow-up for person ${conn.personId} is on hold.`,
-              );
-              continue;
-            }
-          }
+            // Determine which sender to use for the follow-up
+            let senderId = conn.senderId;
 
-          await enqueueAction({
-            senderId,
-            personId: conn.personId,
-            workspaceSlug: conn.sender.workspaceSlug,
-            actionType: descriptor.actionType as "connect" | "message" | "profile_view" | "check_connection",
-            messageBody: descriptor.messageBody ?? undefined,
-            scheduledFor,
-            campaignName: campaignAction.campaignName,
-            sequenceStepRef: descriptor.sequenceStepRef,
-            variantKey: descriptor.variantKey ?? undefined,
-          });
+            // If original sender is no longer healthy, try to reassign
+            if (conn.sender.healthStatus !== "healthy") {
+              const newSender = await assignSenderForPerson(
+                conn.sender.workspaceSlug,
+                { mode: "linkedin_only" },
+              );
+
+              if (newSender) {
+                senderId = newSender.id;
+              } else {
+                console.warn(
+                  `[connection-poller] No healthy sender available for workspace ${conn.sender.workspaceSlug}. Follow-up for person ${conn.personId} is on hold.`,
+                );
+                continue;
+              }
+            }
+
+            await enqueueAction({
+              senderId,
+              personId: conn.personId,
+              workspaceSlug: conn.sender.workspaceSlug,
+              actionType: descriptor.actionType as "connect" | "message" | "profile_view" | "check_connection",
+              messageBody: descriptor.messageBody ?? undefined,
+              scheduledFor,
+              campaignName: campaignAction.campaignName,
+              sequenceStepRef: descriptor.sequenceStepRef,
+              variantKey: descriptor.variantKey ?? undefined,
+            });
+          }
         }
       }
     }

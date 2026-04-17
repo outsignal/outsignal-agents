@@ -65,6 +65,7 @@ interface MemberResolutionResult {
   memberId?: string;
   reason?: "invalid_profile_url" | "checkpoint_detected" | "urn_not_found";
   responseUrl?: string;
+  included?: Array<Record<string, unknown>>;
 }
 
 export interface ActionResult {
@@ -317,6 +318,55 @@ export class VoyagerClient {
     return match ? match[1] : null;
   }
 
+  private parseConnectionStatusFromDecoratedProfile(
+    included?: Array<Record<string, unknown>>,
+  ): ConnectionStatus {
+    if (!included?.length) return "unknown";
+
+    const memberRelationship = included.find(
+      (item) =>
+        item["$type"] ===
+        "com.linkedin.voyager.dash.relationships.MemberRelationship",
+    );
+    const invitation = included.find(
+      (item) =>
+        item["$type"] ===
+        "com.linkedin.voyager.dash.relationships.invitation.Invitation",
+    );
+    const connection = included.find(
+      (item) =>
+        item["$type"] ===
+        "com.linkedin.voyager.dash.relationships.Connection",
+    );
+
+    const union = memberRelationship?.memberRelationshipUnion as
+      | Record<string, unknown>
+      | undefined;
+    const noConnection = union?.noConnection as
+      | Record<string, unknown>
+      | undefined;
+    const invitationUnion = noConnection?.invitationUnion as
+      | Record<string, unknown>
+      | undefined;
+
+    if (connection || union?.connection) {
+      return "connected";
+    }
+
+    if (
+      invitationUnion?.["*invitation"] ||
+      invitation?.invitationState === "PENDING"
+    ) {
+      return "pending";
+    }
+
+    if (noConnection) {
+      return "not_connected";
+    }
+
+    return "unknown";
+  }
+
   private async resolveMemberId(
     profileUrl: string,
   ): Promise<MemberResolutionResult> {
@@ -343,40 +393,7 @@ export class VoyagerClient {
 
     const rawBody = await response.text();
     const data = JSON.parse(rawBody) as Record<string, unknown>;
-
-    // DIAGNOSTIC: log the full response keys + any relationship-related fields
-    // to determine if the decorated profile already contains connection state
-    const topKeys = Object.keys(data);
-    const included = data.included as unknown[] | undefined;
-    const includedTypes = included
-      ? [...new Set(included.map((item: unknown) => {
-          const obj = item as Record<string, unknown>;
-          return (obj["$type"] as string) ?? (obj["entityUrn"] as string)?.split(":")[2] ?? "unknown";
-        }))]
-      : [];
-
-    // Search for relationship-related fields anywhere in the response
-    const bodyStr = rawBody.toLowerCase();
-    const hasRelationship = bodyStr.includes("memberrelationship") || bodyStr.includes("distanceofconnection");
-    const hasInvitation = bodyStr.includes("invitation");
-    const hasDistance = bodyStr.includes("distance_1") || bodyStr.includes("distance_2") || bodyStr.includes("distance_3");
-
-    console.log(
-      `[VoyagerClient] resolveMemberId RESPONSE for ${profileId}: topKeys=[${topKeys.join(",")}] includedTypes=[${includedTypes.slice(0, 10).join(",")}] hasRelationship=${hasRelationship} hasInvitation=${hasInvitation} hasDistance=${hasDistance} bodyLen=${rawBody.length}`,
-    );
-
-    // Extract and log the MemberRelationship + Connection + Invitation objects specifically
-    if (included) {
-      const relEntities = (included as Record<string, unknown>[]).filter((item) => {
-        const t = (item as Record<string, unknown>)["$type"] as string ?? "";
-        return t.includes("MemberRelationship") || t.includes("Connection") || t.includes("Invitation");
-      });
-      if (relEntities.length > 0) {
-        console.log(
-          `[VoyagerClient] resolveMemberId RELATIONSHIP ENTITIES for ${profileId}: ${JSON.stringify(relEntities).slice(0, 2000)}`,
-        );
-      }
-    }
+    const included = (data.included as Array<Record<string, unknown>> | undefined) ?? [];
 
     const elements = (data as Record<string, unknown[]>).data
       ? ((data as Record<string, Record<string, unknown[]>>).data?.[
@@ -394,6 +411,7 @@ export class VoyagerClient {
       profileId,
       memberId: entityUrn.replace("urn:li:fsd_profile:", ""),
       responseUrl: response.url,
+      included,
     };
   }
 
@@ -697,13 +715,12 @@ export class VoyagerClient {
   /**
    * Check the connection status with a LinkedIn profile.
    *
-   * Extracts profileId from URL, GETs /identity/profiles/{id}/relationships,
-   * and parses distanceOfConnection from the response.
+   * Resolves the profile via the decorated dash response and parses the
+   * relationship entities embedded in the included array.
    */
   async checkConnectionStatusDetailed(
     profileUrl: string,
   ): Promise<ConnectionCheckResult> {
-    // Step 1: resolve vanity slug → member ID
     let resolved: MemberResolutionResult;
     try {
       resolved = await this.resolveMemberId(profileUrl);
@@ -747,79 +764,21 @@ export class VoyagerClient {
       return { status: "unknown" };
     }
 
-    console.log(
-      `[VoyagerClient] checkConnectionStatus STEP 1 OK: ${resolved.profileId} → member=${resolved.memberId}`,
+    const status = this.parseConnectionStatusFromDecoratedProfile(
+      resolved.included,
     );
 
-    // Step 2: relationship lookup with resolved member ID
-    let response: Response;
-    try {
-      response = await this.request(
-        `/identity/profiles/${resolved.memberId}/relationships`
-      );
-    } catch (err) {
-      if (err instanceof VoyagerError) {
-        console.warn(
-          `[VoyagerClient] checkConnectionStatus STEP 2 (relationship) FAILED for member=${resolved.memberId} (${resolved.profileId}): status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
-        );
-        if (err.status === 404) {
-          return { status: "unknown", shouldBrowserFallback: true };
-        }
-      } else {
-        console.warn(
-          `[VoyagerClient] checkConnectionStatus STEP 2 (relationship) THREW for member=${resolved.memberId}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      return { status: "unknown" };
-    }
-
-    // Step 2 response parsing
-    if (
-      response.url.includes("/checkpoint/") ||
-      response.url.includes("/challenge/")
-    ) {
+    if (status === "unknown") {
+      const includedTypes =
+        resolved.included
+          ?.map((item) => item["$type"] as string)
+          .filter(Boolean) ?? [];
       console.warn(
-        `[VoyagerClient] checkConnectionStatus STEP 2 checkpoint redirect for member=${resolved.memberId} (${resolved.profileId}): url=${response.url}`,
+        `[VoyagerClient] checkConnectionStatus unknown relationship shape for ${resolved.profileId} (member ${resolved.memberId}): includedTypes=[${includedTypes.join(",")}]`,
       );
-      return { status: "unknown" };
     }
 
-    let rawBody: string;
-    let data: Record<string, unknown>;
-    try {
-      rawBody = await response.text();
-      data = JSON.parse(rawBody) as Record<string, unknown>;
-    } catch (err) {
-      console.warn(
-        `[VoyagerClient] checkConnectionStatus STEP 2 invalid JSON for member=${resolved.memberId} (${resolved.profileId}): status=${response.status}`,
-      );
-      return { status: "unknown" };
-    }
-
-    // Parse memberRelationship.distanceOfConnection
-    const memberRelationship = data.memberRelationship as
-      | Record<string, unknown>
-      | undefined;
-    const distance = memberRelationship?.distanceOfConnection as
-      | string
-      | undefined;
-
-    if (distance === "DISTANCE_1") {
-      console.log(
-        `[VoyagerClient] checkConnectionStatus STEP 2 → CONNECTED for member=${resolved.memberId} (${resolved.profileId})`,
-      );
-      return { status: "connected" };
-    }
-
-    if (distance === "DISTANCE_2" || distance === "DISTANCE_3") {
-      const invitation = memberRelationship?.invitation;
-      return { status: invitation ? "pending" : "not_connected" };
-    }
-
-    console.warn(
-      `[VoyagerClient] checkConnectionStatus STEP 2 unknown shape for member=${resolved.memberId} (${resolved.profileId}): status=${response.status} body=${this.truncateDiagnostic(rawBody)}`,
-    );
-    return { status: "unknown" };
+    return { status };
   }
 
   async checkConnectionStatus(profileUrl: string): Promise<ConnectionStatus> {
