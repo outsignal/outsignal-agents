@@ -419,11 +419,17 @@ export class VoyagerClient {
       // Always view profile first to extract memberUrn
       const profileResult = await this.viewProfile(profileUrl);
       if (!profileResult.success) {
+        console.warn(
+          `[VoyagerClient] sendConnectionRequest: resolveMemberId failed for ${profileUrl}: error=${profileResult.error}`,
+        );
         return profileResult;
       }
 
       const memberUrn = profileResult.details?.memberUrn as string;
       const profileId = profileResult.details?.profileId as string;
+      console.log(
+        `[VoyagerClient] sendConnectionRequest: resolved ${profileUrl} → member=${memberUrn}`,
+      );
 
       // Validate note length (LinkedIn max is 300 characters)
       if (note && note.length > 300) {
@@ -456,6 +462,9 @@ export class VoyagerClient {
         response.url.includes("/checkpoint/") ||
         response.url.includes("/challenge/")
       ) {
+        console.warn(
+          `[VoyagerClient] sendConnectionRequest: checkpoint redirect for ${profileUrl}: url=${response.url}`,
+        );
         return {
           success: false,
           error: "checkpoint_detected",
@@ -463,11 +472,26 @@ export class VoyagerClient {
         };
       }
 
+      console.log(
+        `[VoyagerClient] sendConnectionRequest: success for ${profileUrl} → member=${memberUrn}`,
+      );
       return { success: true, details: { memberUrn } };
     } catch (err) {
       // CANT_RESEND_YET = already sent an invite to this person
       if (err instanceof VoyagerError && err.status === 400) {
+        console.warn(
+          `[VoyagerClient] sendConnectionRequest: already_invited for ${profileUrl}: status=400 body=${this.truncateDiagnostic(err.body)}`,
+        );
         return { success: false, error: "already_invited" };
+      }
+      if (err instanceof VoyagerError) {
+        console.warn(
+          `[VoyagerClient] sendConnectionRequest: POST failed for ${profileUrl}: status=${err.status} body=${this.truncateDiagnostic(err.body)}`,
+        );
+      } else {
+        console.warn(
+          `[VoyagerClient] sendConnectionRequest: threw for ${profileUrl}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       return this.handleError(err);
     }
