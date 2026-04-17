@@ -1,15 +1,11 @@
 /**
- * BL-093 (2026-04-16) — per-campaign sender allocation helper.
+ * BL-093 (2026-04-16) + BL-110 (2026-04-17) — per-campaign sender allocation.
  *
- * Validates `resolveAllocatedSenders(campaignId, allWorkspaceSenderIds)`:
- *   - Allocated campaign → returns the intersection of allocated EB IDs
- *     and workspace's currently-healthy senders.
- *   - Unknown campaign → returns ALL workspace sender IDs (fallback to
- *     pre-BL-093 behaviour for unallocated workspaces).
- *   - Allocated sender that's no longer healthy → silently dropped.
- *
- * Pin the canary cmneqixpv allocation explicitly so a future allocation
- * map edit doesn't silently change the canary's sender count.
+ * Validates `resolveAllocatedSenders(campaignId, allWorkspaceSenderIds, workspaceSlug?)`:
+ *   - 1210-solutions: 5 campaigns, 58 senders, exact key match
+ *   - lime-recruitment: 5 campaigns, 33 senders, prefix key match
+ *   - Unknown campaign → returns ALL workspace sender IDs (fallback)
+ *   - Allocated sender that's no longer healthy → silently dropped
  */
 
 import { describe, it, expect } from "vitest";
@@ -147,11 +143,6 @@ describe("resolveAllocatedSenders (BL-093)", () => {
   });
 
   it("the union of all 5 buckets equals the full 1210 sender pool (no sender unallocated)", () => {
-    // Defence-in-depth against the F1 inversion class of bug — if the
-    // map references EB IDs that aren't in the live pool (e.g. 664/665
-    // back when buckets 1/2 were inverted), the union loses a sender
-    // and this assertion fails. Equivalent to asserting the map fully
-    // partitions the pool.
     const allocatedUnion = new Set<number>([
       ...resolveAllocatedSenders("cmneq92p20000p8p7dhqn8g42", ALL_1210_SENDER_IDS),
       ...resolveAllocatedSenders("cmneq1sdj0001p8cg97lb9rhd", ALL_1210_SENDER_IDS),
@@ -163,5 +154,101 @@ describe("resolveAllocatedSenders (BL-093)", () => {
     for (const id of ALL_1210_SENDER_IDS) {
       expect(allocatedUnion.has(id)).toBe(true);
     }
+  });
+});
+
+// =========================================================================
+// BL-110 — Lime Recruitment allocation (33 available inboxes, 5 campaigns)
+// =========================================================================
+
+const ALL_LIME_AVAILABLE_IDS = [
+  454, 455, 456, 457, 458, 459, 460, 461, 462, 463,
+  484, 485, 486, 487, 488, 489, 490, 491,
+  494, 495, 496, 497, 498, 499, 500, 501,
+  552, 556, 557, 558, 559, 560, 561,
+];
+
+// Full Lime workspace pool (59 senders) — allocation must NOT match
+// unavailable IDs from active EB campaigns 31/42/43/44/45.
+const LIME_UNAVAILABLE_IDS = [
+  453, 464, 465, 466, 467, 468, 469, 470, 471, 472,
+  473, 474, 475, 476, 477, 478, 479, 480, 481, 482,
+  483, 492, 493, 553, 554, 555,
+];
+
+const LIME_CAMPAIGNS = [
+  { prefix: "cmnpwzv9e", label: "E1 Mfg+Whse", expected: [454, 459, 484, 489, 496, 501, 559] },
+  { prefix: "cmnpwzwi5", label: "E2 Trans+Log", expected: [455, 460, 485, 490, 497, 552, 560] },
+  { prefix: "cmnpwzxmg", label: "E3 Eng", expected: [456, 461, 486, 491, 498, 556, 561] },
+  { prefix: "cmnpwzym5", label: "E4 Factory", expected: [457, 462, 487, 494, 499, 557] },
+  { prefix: "cmnpx037s", label: "E5 Shift", expected: [458, 463, 488, 495, 500, 558] },
+];
+
+describe("resolveAllocatedSenders — Lime (BL-110)", () => {
+  for (const { prefix, label, expected } of LIME_CAMPAIGNS) {
+    it(`returns correct allocation for ${label} (${prefix}) via prefix match`, () => {
+      // Simulate a full campaign ID that starts with the prefix
+      const fullId = `${prefix}010np8itsf3f35oy`;
+      const result = resolveAllocatedSenders(fullId, ALL_LIME_AVAILABLE_IDS, "lime-recruitment");
+      expect(result).toEqual(expected);
+    });
+  }
+
+  it("buckets 0-2 have 7 senders, buckets 3-4 have 6 (7/7/7/6/6 = 33)", () => {
+    const counts = LIME_CAMPAIGNS.map((c) =>
+      resolveAllocatedSenders(`${c.prefix}xxxxx`, ALL_LIME_AVAILABLE_IDS, "lime-recruitment").length,
+    );
+    expect(counts).toEqual([7, 7, 7, 6, 6]);
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(33);
+  });
+
+  it("the 5 Lime buckets are mutually disjoint", () => {
+    const sets = LIME_CAMPAIGNS.map(
+      (c) =>
+        new Set(resolveAllocatedSenders(`${c.prefix}xxxxx`, ALL_LIME_AVAILABLE_IDS, "lime-recruitment")),
+    );
+    for (let i = 0; i < sets.length; i++) {
+      for (let j = i + 1; j < sets.length; j++) {
+        const overlap = [...sets[i]].filter((id) => sets[j].has(id));
+        expect(overlap).toEqual([]);
+      }
+    }
+  });
+
+  it("the union of all 5 Lime buckets equals the available pool", () => {
+    const union = new Set<number>();
+    for (const c of LIME_CAMPAIGNS) {
+      for (const id of resolveAllocatedSenders(`${c.prefix}xxxxx`, ALL_LIME_AVAILABLE_IDS, "lime-recruitment")) {
+        union.add(id);
+      }
+    }
+    expect(union.size).toBe(ALL_LIME_AVAILABLE_IDS.length);
+    for (const id of ALL_LIME_AVAILABLE_IDS) {
+      expect(union.has(id)).toBe(true);
+    }
+  });
+
+  it("no Lime bucket contains any unavailable ID", () => {
+    const unavailSet = new Set(LIME_UNAVAILABLE_IDS);
+    for (const c of LIME_CAMPAIGNS) {
+      const ids = resolveAllocatedSenders(`${c.prefix}xxxxx`, ALL_LIME_AVAILABLE_IDS, "lime-recruitment");
+      for (const id of ids) {
+        expect(unavailSet.has(id)).toBe(false);
+      }
+    }
+  });
+
+  it("falls back to all senders for a non-Lime campaign in lime-recruitment workspace", () => {
+    const result = resolveAllocatedSenders("cm_unknown_xyz", ALL_LIME_AVAILABLE_IDS, "lime-recruitment");
+    expect(result).toEqual(ALL_LIME_AVAILABLE_IDS);
+  });
+
+  it("1210 campaigns still resolve without workspaceSlug (backwards compat)", () => {
+    // Existing callers that don't pass workspaceSlug should still work
+    const result = resolveAllocatedSenders(
+      "cmneqixpv0001p8710bov1fga",
+      ALL_1210_SENDER_IDS,
+    );
+    expect(result).toEqual([635, 640, 645, 650, 655, 660, 667, 672, 677, 682, 687]);
   });
 });

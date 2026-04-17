@@ -211,7 +211,7 @@ const DEFAULT_CAMPAIGN_SETTINGS = {
  * 663/664/665 were the round-robin members at idx 30/31/32; live DB shows
  * 661/662/663 instead. Run the derive script before editing this map.
  */
-const CAMPAIGN_SENDER_ALLOCATION: Record<string, readonly number[]> = {
+const CAMPAIGN_SENDER_ALLOCATION_1210: Record<string, readonly number[]> = {
   // 1210 Solutions — Construction (bucket 0)
   cmneq92p20000p8p7dhqn8g42: [631, 636, 641, 646, 651, 656, 661, 668, 673, 678, 683, 688],
   // 1210 Solutions — Green List Priority (bucket 1)
@@ -222,6 +222,45 @@ const CAMPAIGN_SENDER_ALLOCATION: Record<string, readonly number[]> = {
   cmneqa5180001p8rkwyrrlkg8: [634, 639, 644, 649, 654, 659, 666, 671, 676, 681, 686],
   // 1210 Solutions — Facilities/Cleaning (bucket 4 — CANARY EB 88)
   cmneqixpv0001p8710bov1fga: [635, 640, 645, 650, 655, 660, 667, 672, 677, 682, 687],
+};
+
+/**
+ * BL-110 (2026-04-17) — per-campaign sender allocation for lime-recruitment.
+ *
+ * 33 available inboxes (59 total minus 26 used by active/paused EB campaigns
+ * 31/42/43/44/45). Round-robin `idx % 5` over the 33 available EB sender IDs
+ * sorted ascending: buckets 0-2 get 7 senders, buckets 3-4 get 6.
+ *
+ * Domain diversity per bucket (verified 2026-04-17 against live DB):
+ *   E1: limerecuk=2, limerecruiting=4, limerecgroup=1
+ *   E2: limerecuk=3, limerecruiting=3, limerecgroup=1
+ *   E3: limerecuk=2, limerecruiting=3, limerecruiters=1, limerecgroup=1
+ *   E4: limerecuk=2, limerecruiting=3, limerecruiters=1
+ *   E5: limerecuk=2, limerecruiting=3, limerecruiters=1
+ *
+ * Excluded EB IDs (26): EB 31 (453,477-480,553), EB 42 (469-476),
+ * EB 43 (467,468,481-483), EB 44 (492,493,554,555), EB 45 (453,464-466).
+ */
+const CAMPAIGN_SENDER_ALLOCATION_LIME: Record<string, readonly number[]> = {
+  // Lime — E1 Manufacturing + Warehousing (bucket 0)
+  cmnpwzv9e: [454, 459, 484, 489, 496, 501, 559],
+  // Lime — E2 Transportation + Logistics (bucket 1)
+  cmnpwzwi5: [455, 460, 485, 490, 497, 552, 560],
+  // Lime — E3 Engineering (bucket 2)
+  cmnpwzxmg: [456, 461, 486, 491, 498, 556, 561],
+  // Lime — E4 Factory Manager (bucket 3)
+  cmnpwzym5: [457, 462, 487, 494, 499, 557],
+  // Lime — E5 Shift Manager (bucket 4)
+  cmnpx037s: [458, 463, 488, 495, 500, 558],
+};
+
+/**
+ * Per-workspace allocation routing. Maps workspace slugs to their allocation
+ * maps. Workspaces not listed here fall through to the all-inboxes default.
+ */
+const WORKSPACE_ALLOCATION_MAPS: Record<string, Record<string, readonly number[]>> = {
+  "1210-solutions": CAMPAIGN_SENDER_ALLOCATION_1210,
+  "lime-recruitment": CAMPAIGN_SENDER_ALLOCATION_LIME,
 };
 
 /**
@@ -240,8 +279,38 @@ const CAMPAIGN_SENDER_ALLOCATION: Record<string, readonly number[]> = {
 export function resolveAllocatedSenders(
   campaignId: string,
   allWorkspaceSenderIds: readonly number[],
+  workspaceSlug?: string,
 ): number[] {
-  const allocated = CAMPAIGN_SENDER_ALLOCATION[campaignId];
+  // Try workspace-specific map first (if slug provided), then fall back to
+  // a linear search across all maps for backwards compat (existing callers
+  // that don't pass workspaceSlug).
+  let allocated: readonly number[] | undefined;
+  if (workspaceSlug) {
+    const wsMap = WORKSPACE_ALLOCATION_MAPS[workspaceSlug];
+    if (wsMap) {
+      // Lime campaign IDs are stored as prefixes (e.g. "cmnpwzv9e") —
+      // match if the campaignId starts with the map key.
+      allocated = wsMap[campaignId];
+      if (!allocated) {
+        for (const [key, ids] of Object.entries(wsMap)) {
+          if (campaignId.startsWith(key)) {
+            allocated = ids;
+            break;
+          }
+        }
+      }
+    }
+  }
+  // Backwards-compat: search all maps by exact key (covers 1210 callers
+  // that don't pass workspaceSlug).
+  if (!allocated) {
+    for (const wsMap of Object.values(WORKSPACE_ALLOCATION_MAPS)) {
+      if (wsMap[campaignId]) {
+        allocated = wsMap[campaignId];
+        break;
+      }
+    }
+  }
   if (!allocated) {
     // No allocation declared for this campaign — fall back to all senders.
     return [...allWorkspaceSenderIds];
@@ -725,7 +794,7 @@ export class EmailAdapter implements ChannelAdapter {
         .map((s) => s.emailBisonSenderId)
         .filter((id): id is number => id != null);
       const allocatedRosterIds = new Set(
-        resolveAllocatedSenders(campaignId, rosterSenderIds),
+        resolveAllocatedSenders(campaignId, rosterSenderIds, workspaceSlug),
       );
       const senderRoster = buildSenderRoster(
         rosterSenders.filter(
@@ -1016,7 +1085,7 @@ export class EmailAdapter implements ChannelAdapter {
       // back to all senders (preserves pre-BL-093 behaviour for
       // non-allocated workspaces and keeps the change surgical for the
       // 1210 canary cohort).
-      const senderEmailIds = resolveAllocatedSenders(campaignId, allSenderEmailIds);
+      const senderEmailIds = resolveAllocatedSenders(campaignId, allSenderEmailIds, workspaceSlug);
 
       if (senderEmailIds.length === 0) {
         throw new Error(
