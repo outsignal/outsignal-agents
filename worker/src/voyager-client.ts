@@ -341,7 +341,37 @@ export class VoyagerClient {
       };
     }
 
-    const data = (await response.json()) as Record<string, unknown>;
+    const rawBody = await response.text();
+    const data = JSON.parse(rawBody) as Record<string, unknown>;
+
+    // DIAGNOSTIC: log the full response keys + any relationship-related fields
+    // to determine if the decorated profile already contains connection state
+    const topKeys = Object.keys(data);
+    const included = data.included as unknown[] | undefined;
+    const includedTypes = included
+      ? [...new Set(included.map((item: unknown) => {
+          const obj = item as Record<string, unknown>;
+          return (obj["$type"] as string) ?? (obj["entityUrn"] as string)?.split(":")[2] ?? "unknown";
+        }))]
+      : [];
+
+    // Search for relationship-related fields anywhere in the response
+    const bodyStr = rawBody.toLowerCase();
+    const hasRelationship = bodyStr.includes("memberrelationship") || bodyStr.includes("distanceofconnection");
+    const hasInvitation = bodyStr.includes("invitation");
+    const hasDistance = bodyStr.includes("distance_1") || bodyStr.includes("distance_2") || bodyStr.includes("distance_3");
+
+    console.log(
+      `[VoyagerClient] resolveMemberId RESPONSE for ${profileId}: topKeys=[${topKeys.join(",")}] includedTypes=[${includedTypes.slice(0, 10).join(",")}] hasRelationship=${hasRelationship} hasInvitation=${hasInvitation} hasDistance=${hasDistance} bodyLen=${rawBody.length}`,
+    );
+
+    // If relationship data found, log the relevant portion
+    if (hasRelationship || hasDistance) {
+      console.log(
+        `[VoyagerClient] resolveMemberId HAS RELATIONSHIP DATA for ${profileId}: ${this.truncateDiagnostic(rawBody, 1000)}`,
+      );
+    }
+
     const elements = (data as Record<string, unknown[]>).data
       ? ((data as Record<string, Record<string, unknown[]>>).data?.[
           "*elements"
