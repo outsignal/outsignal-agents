@@ -353,6 +353,29 @@ export class Worker {
     // Recover stuck actions — throttled to every 60 minutes
     await this.recoverStuckActions();
 
+    // Connection polling — runs 24/7, NOT gated by business hours.
+    // Polling is read-only (checks if connections have been accepted).
+    // Detecting acceptances outside business hours lets follow-up messages
+    // queue immediately and fire as soon as business hours resume.
+    for (const slug of slugs) {
+      if (!this.running) break;
+      try {
+        const senders = await this.api.getSenders(slug);
+        const activeSenders = senders.filter(
+          (s) =>
+            s.status === "active" &&
+            s.healthStatus !== "blocked" &&
+            s.healthStatus !== "session_expired" &&
+            s.sessionStatus === "active",
+        );
+        if (activeSenders.length > 0) {
+          await this.maybePollConnections(slug, activeSenders);
+        }
+      } catch (err) {
+        console.error(`[Worker] Connection poll failed for ${slug}:`, err);
+      }
+    }
+
     // Check business hours (default schedule) — actions only during business hours
     if (!isWithinBusinessHours()) {
       const waitMs = msUntilBusinessHours();
@@ -505,8 +528,7 @@ export class Worker {
       }),
     );
 
-    // After processing action queues, poll pending connections (throttled with jitter)
-    await this.maybePollConnections(workspaceSlug, activeSenders);
+    // Connection polling moved to tick() — runs 24/7 before business hours gate.
   }
 
   /**
