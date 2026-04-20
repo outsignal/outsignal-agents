@@ -79,9 +79,9 @@ function readFetchBody(call: unknown[]): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 
 const HAPPY_STEPS = [
-  { position: 1, subject: "Hi there", body: "Email body 1", delay_days: 1 },
-  { position: 2, subject: "Follow up", body: "Email body 2", delay_days: 3 },
-  { position: 3, subject: "Final", body: "Email body 3", delay_days: 7 },
+  { position: 1, subject: "Hi there", body: "Email body 1", delay_days: 3 },
+  { position: 2, subject: "Follow up", body: "Email body 2", delay_days: 4 },
+  { position: 3, subject: "Final", body: "Email body 3", delay_days: 0 },
 ];
 
 /**
@@ -95,7 +95,7 @@ const HAPPY_RESPONSE = {
       id: 101,
       email_subject: "Hi there",
       email_body: "Email body 1",
-      wait_in_days: 1,
+      wait_in_days: 3,
       order: 1,
       variant: false,
     },
@@ -103,7 +103,7 @@ const HAPPY_RESPONSE = {
       id: 102,
       email_subject: "Follow up",
       email_body: "Email body 2",
-      wait_in_days: 3,
+      wait_in_days: 4,
       order: 2,
       variant: false,
     },
@@ -111,7 +111,7 @@ const HAPPY_RESPONSE = {
       id: 103,
       email_subject: "Final",
       email_body: "Email body 3",
-      wait_in_days: 7,
+      wait_in_days: 1,
       order: 3,
       variant: false,
     },
@@ -186,19 +186,19 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
     expect(sequenceSteps[0]).toEqual({
       email_subject: "Hi there",
       email_body: "Email body 1",
-      wait_in_days: 1,
+      wait_in_days: 3,
       thread_reply: false,
     });
     expect(sequenceSteps[1]).toEqual({
       email_subject: "Follow up",
       email_body: "Email body 2",
-      wait_in_days: 3,
+      wait_in_days: 4,
       thread_reply: false,
     });
     expect(sequenceSteps[2]).toEqual({
       email_subject: "Final",
       email_body: "Email body 3",
-      wait_in_days: 7,
+      wait_in_days: 1,
       thread_reply: false,
     });
 
@@ -232,15 +232,11 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
       position: 1,
       subject: "Hi there",
       body: "Email body 1",
-      delay_days: 1,
+      delay_days: 3,
     });
   });
 
-  it("(a') HAPPY edge: delay_days=0 is clamped to wait_in_days=1 on the wire", async () => {
-    // EB rejects wait_in_days<1 (spike notes line 170: "wait_in_days:
-    // required, minimum 1 (NOT 0)"). Callers passing the consumer-facing
-    // `delay_days: 0` for a day-0 initial email must still produce a
-    // valid wire payload. The client clamps at the boundary.
+  it("(a') HAPPY edge: semantic final-step gap 0 is clamped to wait_in_days=1 on the wire", async () => {
     fetchMock.mockResolvedValue(
       mockResponse({
         data: [
@@ -256,6 +252,22 @@ describe("EmailBisonClient.createSequenceSteps — wire-format contract (BL-074)
     const body = readFetchBody(fetchMock.mock.calls[0]);
     const sequenceSteps = body.sequence_steps as Array<Record<string, unknown>>;
     expect(sequenceSteps[0].wait_in_days).toBe(1);
+  });
+
+  it("(a'') clamps semantic zero gaps at any position to EB's minimum wait_in_days=1", async () => {
+    fetchMock.mockResolvedValue(mockResponse(HAPPY_RESPONSE));
+
+    await client.createSequenceSteps(CAMPAIGN_ID, TITLE, [
+      { position: 1, subject: "s1", body: "b1", delay_days: 3 },
+      { position: 2, subject: "s2", body: "b2", delay_days: 0 },
+      { position: 3, subject: "s3", body: "b3", delay_days: 1 },
+    ]);
+
+    const body = readFetchBody(fetchMock.mock.calls[0]);
+    const sequenceSteps = body.sequence_steps as Array<Record<string, unknown>>;
+    expect(sequenceSteps[0].wait_in_days).toBe(3);
+    expect(sequenceSteps[1].wait_in_days).toBe(1);
+    expect(sequenceSteps[2].wait_in_days).toBe(1);
   });
 
   // ---------------------------------------------------------------------------

@@ -424,6 +424,31 @@ export function buildSequenceStepsForEB(
   const sortedByPosition = [...fullSequence].sort(
     (a, b) => a.position - b.position,
   );
+  const absoluteDelayDaysByPosition = new Map<number, number>();
+  let previousAbsoluteDelayDays = 0;
+  for (const [index, step] of sortedByPosition.entries()) {
+    const absoluteDelayDays =
+      step.delayDays ??
+      (index === 0 ? 0 : previousAbsoluteDelayDays + 1);
+    absoluteDelayDaysByPosition.set(step.position, absoluteDelayDays);
+    previousAbsoluteDelayDays = absoluteDelayDays;
+  }
+  const ebGapDelayDaysByPosition = new Map<number, number>();
+  for (const [index, step] of sortedByPosition.entries()) {
+    const currentAbsoluteDelayDays =
+      absoluteDelayDaysByPosition.get(step.position) ?? 0;
+    const nextStep = sortedByPosition[index + 1];
+    const nextAbsoluteDelayDays = nextStep
+      ? (absoluteDelayDaysByPosition.get(nextStep.position) ??
+        currentAbsoluteDelayDays)
+      : currentAbsoluteDelayDays;
+    ebGapDelayDaysByPosition.set(
+      step.position,
+      nextStep
+        ? Math.max(0, nextAbsoluteDelayDays - currentAbsoluteDelayDays)
+        : 0,
+    );
+  }
   const firstStepPosition = sortedByPosition[0]?.position;
   const firstStepSubjectRaw = sortedByPosition[0]?.subjectLine;
   const firstStepSubject =
@@ -452,7 +477,7 @@ export function buildSequenceStepsForEB(
         position: step.position,
         subject: isEmptySubject ? "(no subject)" : (step.subjectLine as string),
         body: step.body ?? step.bodyText ?? "",
-        delay_days: step.delayDays ?? 1,
+        delay_days: ebGapDelayDaysByPosition.get(step.position) ?? 0,
         thread_reply: false,
       };
     }
@@ -466,7 +491,7 @@ export function buildSequenceStepsForEB(
         ? firstStepSubject // EB will auto-prepend "Re: "
         : (step.subjectLine as string),
       body: step.body ?? step.bodyText ?? "",
-      delay_days: step.delayDays ?? 1,
+      delay_days: ebGapDelayDaysByPosition.get(step.position) ?? 0,
       thread_reply: isEmptySubject,
     };
   });

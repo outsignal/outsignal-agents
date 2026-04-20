@@ -69,7 +69,7 @@ describe("buildSequenceStepsForEB (BL-093 F2 shared helper)", () => {
       position: 1,
       subject: "hello there",
       body: "body 1",
-      delay_days: 0,
+      delay_days: 3,
       thread_reply: false,
     });
     // Step 2 — RAW step-1 subject, thread_reply true. Pre-helper this
@@ -78,14 +78,14 @@ describe("buildSequenceStepsForEB (BL-093 F2 shared helper)", () => {
       position: 2,
       subject: "hello there",
       body: "body 2",
-      delay_days: 3,
+      delay_days: 4,
       thread_reply: true,
     });
     expect(out[2]).toEqual({
       position: 3,
       subject: "fresh angle",
       body: "body 3",
-      delay_days: 7,
+      delay_days: 0,
       thread_reply: false,
     });
     expect(warnSpy).not.toHaveBeenCalled();
@@ -104,8 +104,10 @@ describe("buildSequenceStepsForEB (BL-093 F2 shared helper)", () => {
 
     expect(out[0].subject).toBe("(no subject)");
     expect(out[0].thread_reply).toBe(false);
+    expect(out[0].delay_days).toBe(3);
     expect(out[1].subject).toBe("(no subject)");
     expect(out[1].thread_reply).toBe(true);
+    expect(out[1].delay_days).toBe(0);
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const warnMsg = String(warnSpy.mock.calls[0][0]);
@@ -168,6 +170,7 @@ describe("buildSequenceStepsForEB (BL-093 F2 shared helper)", () => {
     expect(out[0].position).toBe(2);
     expect(out[0].subject).toBe("anchor subject");
     expect(out[0].thread_reply).toBe(true);
+    expect(out[0].delay_days).toBe(4);
   });
 
   it("deploy-path predicate: nothing to emit → returns empty array (helper short-circuits via filter)", () => {
@@ -218,14 +221,14 @@ describe("buildSequenceStepsForEB (BL-093 F2 shared helper)", () => {
     expect(out[0].body).toBe("fallback body");
   });
 
-  it("defaults delay_days to 1 when delayDays is undefined", () => {
+  it("defaults an unspecified next-step gap to 1 day while keeping the final step at 0", () => {
     const emailSeq = [
       { position: 1, subjectLine: "x", body: "b1" },
       { position: 2, subjectLine: "", body: "b2" },
     ];
     const out = buildSequenceStepsForEB(emailSeq, "ctx");
     expect(out[0].delay_days).toBe(1);
-    expect(out[1].delay_days).toBe(1);
+    expect(out[1].delay_days).toBe(0);
   });
 
   it("preserves delayDays=0 (nullish coalescing semantics)", () => {
@@ -234,5 +237,17 @@ describe("buildSequenceStepsForEB (BL-093 F2 shared helper)", () => {
     ];
     const out = buildSequenceStepsForEB(emailSeq, "ctx");
     expect(out[0].delay_days).toBe(0);
+  });
+
+  it("translates a 2-step absolute schedule [0, 3] into EB gap semantics [3, 0]", () => {
+    const emailSeq = [
+      { position: 1, subjectLine: "first", body: "b1", delayDays: 0 },
+      { position: 2, subjectLine: "", body: "b2", delayDays: 3 },
+    ];
+
+    const out = buildSequenceStepsForEB(emailSeq, "ctx");
+
+    expect(out[0].delay_days).toBe(3);
+    expect(out[1].delay_days).toBe(0);
   });
 });

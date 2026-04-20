@@ -400,19 +400,12 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
       const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
       expect(warned).not.toMatch(/BL-093/);
 
-      // delay_days propagated (step 1=0 clamped to 1 by client, but at
-      // the adapter→client boundary we pass through delayDays ?? 1, so
-      // at this level step 1 has delay_days=1 due to the ?? fallback in
-      // the adapter's map step. Step 2=3, step 3=7.
-      //
-      // Actually — reading the adapter, delayDays is passed as
-      // `step.delayDays ?? 1`, so step 1 (delayDays=0) becomes… 0,
-      // because `0 ?? 1` is 0 (nullish coalescing preserves 0). The
-      // client then clamps to max(1, 0) = 1 on the wire. The adapter
-      // test sees the pre-clamp value, which is 0 for step 1.
-      expect(stepsArg[0].delay_days).toBe(0);
-      expect(stepsArg[1].delay_days).toBe(3);
-      expect(stepsArg[2].delay_days).toBe(7);
+      // BL-113 (2026-04-20): writer delays are absolute-from-start
+      // semantics ([0,3,7]) but EmailBison expects gap-to-next semantics.
+      // Adapter translates before the client wire boundary.
+      expect(stepsArg[0].delay_days).toBe(3);
+      expect(stepsArg[1].delay_days).toBe(4);
+      expect(stepsArg[2].delay_days).toBe(0);
     },
   );
 });

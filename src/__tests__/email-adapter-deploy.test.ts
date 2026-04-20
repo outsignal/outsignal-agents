@@ -241,8 +241,8 @@ describe("EmailAdapter.deploy()", () => {
     // Step 1 = false (always — initial step is fresh thread).
     // Step 2 has its own subject ('fu1') so thread_reply=false (fresh thread).
     expect(ebMock.createSequenceSteps).toHaveBeenCalledWith(999, "Acme E1", [
-      { position: 1, subject: "hi", body: "hello", delay_days: 0, thread_reply: false },
-      { position: 2, subject: "fu1", body: "follow up", delay_days: 3, thread_reply: false },
+      { position: 1, subject: "hi", body: "hello", delay_days: 3, thread_reply: false },
+      { position: 2, subject: "fu1", body: "follow up", delay_days: 0, thread_reply: false },
     ]);
 
     // Step 4 — BL-088: single batch upsert (NOT per-lead createLead).

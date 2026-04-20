@@ -431,11 +431,12 @@ export class EmailBisonClient {
         // UPPER_SNAKE) — already-correct EB tokens pass through unchanged.
         email_subject: transformVariablesForEB(step.subject ?? ""),
         email_body: transformVariablesForEB(step.body),
-        // EB docs: wait_in_days required, minimum 1 (NOT 0). Callers may
-        // pass delay_days=0 (day-0 initial email) — clamp to 1 here so the
-        // wire payload always satisfies EB validation. The consumer-facing
-        // position ordering still tells EB which step is first; wait_in_days
-        // only controls the inter-step delay.
+        // BL-113 (2026-04-20): callers pass semantic gap-to-next-step
+        // values, including legitimate semantic 0s. Live EB v1.1 rejects
+        // wait_in_days=0 at ANY position with 422 ("must be at least 1"),
+        // so clamp the WIRE value universally to the vendor's minimum.
+        // That keeps semantic translation centralized at the adapter/helper
+        // layer while satisfying the API's stricter constraint.
         wait_in_days: Math.max(1, step.delay_days ?? 1),
         // BL-093: thread_reply boolean tells EB to auto-thread this step
         // under the previous step's subject. When true, EB accepts an

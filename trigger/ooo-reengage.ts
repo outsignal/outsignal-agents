@@ -4,6 +4,7 @@ import { getClientForWorkspace } from "@/lib/workspaces";
 import { notifyOooReengaged } from "@/lib/notifications";
 import { runWriterAgent } from "@/lib/agents/writer";
 import type { WriterInput } from "@/lib/agents/types";
+import { buildSequenceStepsForEB } from "@/lib/channels/email-adapter";
 import { emailBisonQueue } from "./queues";
 
 // PrismaClient at module scope — not inside run() (pattern from smoke-test.ts)
@@ -226,20 +227,14 @@ export const oooReengage = task({
         ebCampaignId = ebCampaign.id;
         console.log("[ooo-reengage] Created EB campaign", { ebCampaignId, campaignName });
 
-        // Add sequence steps via the v1.1 batch endpoint (BL-074 follow-through).
-        // The deprecated singular `createSequenceStep` posted a flat body to the
-        // v1 path and hit EB 422 "title/sequence_steps required". We now send
-        // one batched POST with the EB-required `{title, sequence_steps:[...]}`
-        // envelope — title reuses the campaign name already computed above.
+        // Add sequence steps via the shared adapter helper so this path uses
+        // the same absolute-day -> EB gap semantics as normal campaign deploys.
+        // Without this, OOO re-engagement would still leak raw absolute delays
+        // straight into createSequenceSteps and diverge from the main adapter.
         await ebClient.createSequenceSteps(
           ebCampaignId,
           campaignName,
-          emailSteps.map((step) => ({
-            position: step.position,
-            subject: step.subjectLine,
-            body: step.body,
-            delay_days: step.delayDays,
-          })),
+          buildSequenceStepsForEB(emailSteps, `OOO re-engage ${campaignName}`),
         );
 
         // Assign sending inbox — prefer original campaign's inboxes
