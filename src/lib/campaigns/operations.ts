@@ -165,6 +165,41 @@ function sequencesEqualParsed(
 }
 
 /**
+ * Guard against legacy zero-based email positions leaking back into storage.
+ * Reply attribution and downstream analytics assume email sequence positions
+ * are canonical 1..N, even though a small older Lime subset was historically
+ * stored as 0..N-1. Rejecting non-canonical saves here prevents new drift.
+ */
+function assertCanonicalEmailSequencePositions(emailSequence: unknown[]): void {
+  if (emailSequence.length === 0) return;
+
+  const positions = emailSequence
+    .map((step) =>
+      step && typeof step === "object"
+        ? (step as Record<string, unknown>).position
+        : undefined,
+    )
+    .slice()
+    .sort((a, b) => Number(a) - Number(b));
+
+  const expected = Array.from({ length: emailSequence.length }, (_, idx) => idx + 1);
+  const valid =
+    positions.length === expected.length &&
+    positions.every(
+      (position, idx) =>
+        Number.isInteger(position) &&
+        typeof position === "number" &&
+        position === expected[idx],
+    );
+
+  if (!valid) {
+    throw new Error(
+      `emailSequence positions must be canonical 1-indexed steps ${JSON.stringify(expected)}; received ${JSON.stringify(positions)}`,
+    );
+  }
+}
+
+/**
  * Shape a raw Prisma Campaign record into CampaignDetail.
  */
 function formatCampaignDetail(
@@ -776,6 +811,10 @@ export async function saveCampaignSequences(
   data: { emailSequence?: unknown[]; linkedinSequence?: unknown[]; copyStrategy?: string },
 ): Promise<CampaignDetail> {
   const { emailSequence, linkedinSequence } = data;
+
+  if (emailSequence !== undefined) {
+    assertCanonicalEmailSequencePositions(emailSequence);
+  }
 
   const updateData: Record<string, unknown> = {};
   if (emailSequence !== undefined) {

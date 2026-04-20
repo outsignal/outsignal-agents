@@ -355,6 +355,23 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
+  it("rejects zero-based email sequence positions so new drift cannot be persisted", async () => {
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 0, subjectLine: "step 1", body: "body 1", delayDays: 0 },
+          { position: 1, subjectLine: "step 2", body: "body 2", delayDays: 3 },
+          { position: 2, subjectLine: "step 3", body: "body 3", delayDays: 7 },
+        ],
+      }),
+    ).rejects.toThrow(/emailSequence positions must be canonical 1-indexed steps/);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
   // ---------------------------------------------------------------------------
   // Finding 3: copyStrategy-only saves are metadata, must NOT reset
   // ---------------------------------------------------------------------------

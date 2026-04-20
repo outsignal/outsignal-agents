@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db";
 import { classifyReply } from "@/lib/classification/classify-reply";
 import { notifyReply } from "@/lib/notifications";
 import { extractOooDetails } from "@/lib/ooo/extract-ooo";
-import { lookupOutboundCopy } from "@/lib/outbound-copy-lookup";
+import {
+  findStepForReplySequence,
+  lookupOutboundCopy,
+  type StoredEmailSequenceCopyStep,
+} from "@/lib/outbound-copy-lookup";
 import { anthropicQueue } from "./queues";
 
 export interface ProcessReplyPayload {
@@ -85,12 +89,8 @@ export const processReply = task({
           outsignalCampaignName = campaign.name;
           if (campaign.emailSequence && sequenceStep != null) {
             try {
-              const steps = JSON.parse(campaign.emailSequence) as {
-                position: number;
-                subjectLine?: string;
-                body?: string;
-              }[];
-              const matchedStep = steps.find((s) => s.position === sequenceStep);
+              const steps = JSON.parse(campaign.emailSequence) as StoredEmailSequenceCopyStep[];
+              const matchedStep = findStepForReplySequence(steps, sequenceStep);
               if (matchedStep) {
                 outboundSubject = matchedStep.subjectLine ?? null;
                 outboundBody = matchedStep.body ?? null;

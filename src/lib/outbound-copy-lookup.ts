@@ -36,6 +36,65 @@ export function clearStepCache(): void {
   stepCache.clear();
 }
 
+export interface StoredEmailSequenceCopyStep {
+  position: number;
+  subjectLine?: string;
+  body?: string;
+}
+
+function hasContiguousPositions(positions: number[]): boolean {
+  if (positions.length === 0) return false;
+  return positions.every((position, idx) =>
+    idx === 0 ? true : position === positions[idx - 1] + 1,
+  );
+}
+
+/**
+ * Match a reply's 1-indexed EmailBison sequence step against locally stored
+ * Campaign.emailSequence rows.
+ *
+ * Most campaigns store positions 1..N, but a small legacy Lime subset was
+ * saved as 0..N-1. We try the canonical exact match first, then an off-by-one
+ * fallback for those legacy rows. This keeps reply context correct without
+ * mutating historical campaign data in the hot path.
+ */
+export function findStepForReplySequence<T extends { position: number }>(
+  steps: T[],
+  sequenceStep: number | null,
+): T | null {
+  if (sequenceStep == null || sequenceStep <= 0) return null;
+
+  const positions = steps.map((s) => s.position).sort((a, b) => a - b);
+  const maxPosition = positions.length > 0 ? positions[positions.length - 1] : null;
+  if (maxPosition == null) return null;
+
+  const isContiguous = hasContiguousPositions(positions);
+  const isZeroBased =
+    positions.length > 0 &&
+    isContiguous &&
+    positions.every((position, idx) => position === idx);
+  const maxSequenceStep = isZeroBased ? maxPosition + 1 : maxPosition;
+  if (sequenceStep > maxSequenceStep) return null;
+
+  if (isZeroBased) {
+    return steps.find((s) => s.position === sequenceStep - 1) ?? null;
+  }
+
+  const exactMatch = steps.find((s) => s.position === sequenceStep);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  // Defensive fallback for any mixed/legacy edge case that doesn't neatly fit
+  // the expected scheme but is still only off by one. Only allow it when the
+  // positions are contiguous; sparse sets like [1,3,5] should fail closed.
+  if (isContiguous) {
+    return steps.find((s) => s.position === sequenceStep - 1) ?? null;
+  }
+
+  return null;
+}
+
 /**
  * Look up the outbound copy that was sent to a lead before they replied.
  *
@@ -61,12 +120,8 @@ export async function lookupOutboundCopy(
   // --- Fast path: local emailSequence ---
   if (campaign.emailSequence && sequenceStep != null) {
     try {
-      const steps = JSON.parse(campaign.emailSequence) as {
-        position: number;
-        subjectLine?: string;
-        body?: string;
-      }[];
-      const match = steps.find((s) => s.position === sequenceStep);
+      const steps = JSON.parse(campaign.emailSequence) as StoredEmailSequenceCopyStep[];
+      const match = findStepForReplySequence(steps, sequenceStep);
       if (match) {
         return {
           subject: match.subjectLine ?? null,
@@ -95,12 +150,7 @@ export async function lookupOutboundCopy(
     );
 
     if (sequenceStep != null) {
-      // Try exact position match first
-      let match = steps.find((s) => s.position === sequenceStep);
-      // Off-by-one fallback (EB API may be 0-indexed while webhook is 1-indexed)
-      if (!match) {
-        match = steps.find((s) => s.position === sequenceStep - 1);
-      }
+      const match = findStepForReplySequence(steps, sequenceStep);
       if (match) {
         return { subject: match.subject || null, body: match.body || null };
       }
