@@ -208,21 +208,15 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
       severity = "critical";
     }
 
-    // Check session expiry (alert on state transition only)
+    let shouldAlertSessionDrop = false;
+
+    // Check session expiry (alert on successful state transition only)
     if (!newStatus && sender.sessionStatus === "expired" && sender.healthStatus !== "session_expired") {
       newStatus = "session_expired";
       reason = "session_expired";
       detail = "LinkedIn session cookie has expired. Re-authentication required.";
       severity = "critical";
-
-      // Alert on transition to expired
-      notifySessionDrop({
-        senderName: sender.name,
-        senderEmail: sender.emailAddress ?? null,
-        workspaceSlug: sender.workspaceSlug,
-        workspaceName: sender.workspace?.name ?? sender.workspaceSlug,
-        sessionDownSince: sender.lastActiveAt,
-      }).catch((err) => console.error("[HealthCheck] Session drop alert failed:", err));
+      shouldAlertSessionDrop = true;
     }
 
     // Check bounce rate (only if no harder flag already detected)
@@ -247,13 +241,45 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
     // --- Step 6: Apply flag and record event ---
     const isSoftFlag = severity === "warning";
 
-    await prisma.sender.update({
-      where: { id: sender.id },
-      data: {
-        healthStatus: newStatus,
-        healthFlaggedAt: isSoftFlag ? now : sender.healthFlaggedAt, // only set for soft flags
-      },
-    });
+    const updateData = {
+      healthStatus: newStatus,
+      healthFlaggedAt: isSoftFlag ? now : sender.healthFlaggedAt, // only set for soft flags
+      ...(newStatus === "session_expired" ? { sessionStatus: "expired" as const } : {}),
+    };
+
+    if (newStatus === "session_expired") {
+      const updateResult = await prisma.sender.updateMany({
+        where: {
+          id: sender.id,
+          sessionStatus: "expired",
+        },
+        data: updateData,
+      });
+
+      // A keepalive or reconnect healed the session after we read it.
+      // Skip stale overwrite, event creation, and notifications.
+      if (updateResult.count === 0) {
+        console.log(
+          `[HealthCheck] Skipped stale session_expired overwrite for sender ${sender.id} because a concurrent keepalive or reconnect healed the session during the read window.`,
+        );
+        continue;
+      }
+    } else {
+      await prisma.sender.update({
+        where: { id: sender.id },
+        data: updateData,
+      });
+    }
+
+    if (shouldAlertSessionDrop) {
+      notifySessionDrop({
+        senderName: sender.name,
+        senderEmail: sender.emailAddress ?? null,
+        workspaceSlug: sender.workspaceSlug,
+        workspaceName: sender.workspace?.name ?? sender.workspaceSlug,
+        sessionDownSince: sender.lastActiveAt,
+      }).catch((err) => console.error("[HealthCheck] Session drop alert failed:", err));
+    }
 
     await prisma.senderHealthEvent.create({
       data: {

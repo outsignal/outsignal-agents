@@ -55,13 +55,28 @@ export async function refreshStaleSessions(): Promise<{
       ? `keepalive stale: last at ${sender.lastKeepaliveAt.toISOString()}, >12h ago`
       : `session last updated ${sender.updatedAt.toISOString()}, >6 days ago`;
 
-    await prisma.sender.update({
-      where: { id: sender.id },
+    const updateResult = await prisma.sender.updateMany({
+      where: {
+        id: sender.id,
+        sessionStatus: "active",
+        OR: [
+          { lastKeepaliveAt: { not: null, lt: TWELVE_HOURS_AGO } },
+          { lastKeepaliveAt: null, updatedAt: { lt: SIX_DAYS_AGO } },
+        ],
+      },
       data: {
         sessionStatus: "expired",
         healthStatus: "session_expired",
       },
     });
+
+    // A keepalive or reconnect landed after we read this sender — skip the stale overwrite.
+    if (updateResult.count === 0) {
+      console.log(
+        `[Session Refresh] Skipped stale overwrite for sender ${sender.id} because a concurrent keepalive or reconnect refreshed the session during the read window.`,
+      );
+      continue;
+    }
 
     // Create a health event for audit trail
     await prisma.senderHealthEvent.create({
