@@ -408,4 +408,30 @@ describe("EmailAdapter.deploy() — BL-085 reply-in-thread empty-subject handlin
       expect(stepsArg[2].delay_days).toBe(0);
     },
   );
+
+  it("(e) BL-068 shape: zero-based email step positions fail loud before EB state is touched", async () => {
+    getCampaignMock.mockResolvedValue({
+      id: "camp-bl085",
+      targetListId: "tl-1",
+      emailBisonCampaignId: null,
+      emailSequence: [
+        {
+          position: 0,
+          subjectLine: "hello there",
+          body: "body 1",
+          delayDays: 0,
+        },
+      ],
+    });
+
+    const deploy = adapter.deploy(DEPLOY_PARAMS);
+
+    await expect(deploy).rejects.toThrow(/BL-068/);
+    await expect(deploy).rejects.toThrow(
+      /Email step positions must start at 1/,
+    );
+
+    expect(ebMock.getSequenceSteps).not.toHaveBeenCalled();
+    expect(ebMock.createSequenceSteps).not.toHaveBeenCalled();
+  });
 });

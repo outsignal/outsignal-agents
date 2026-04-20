@@ -1026,6 +1026,26 @@ describe("progressWarmup", () => {
     expect(prisma.sender.update).toHaveBeenCalled();
   });
 
+  it("advances when acceptanceRate is null even above the min sample threshold", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      warmupDay: 7,
+      acceptanceRate: null,
+      warmupStartedAt: null,
+    });
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await progressWarmup("sender-1");
+
+    expect(prisma.linkedInConnection.count).not.toHaveBeenCalled();
+    expect(prisma.sender.update).toHaveBeenCalledWith({
+      where: { id: "sender-1" },
+      data: expect.objectContaining({
+        warmupDay: 8,
+      }),
+    });
+  });
+
   it("does nothing for senders not in warmup (day 0)", async () => {
     (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "sender-1",

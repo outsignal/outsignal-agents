@@ -92,21 +92,23 @@ const LAUNCHED_STATUSES: ReadonlySet<string> = new Set([
  * (Prisma `unknown[] | null`). Mirrors the Phase 2 `LinkedInSequenceStepSchema`
  * discipline: parse at the DB boundary, no silent `as` casts.
  *
- * BL-068 shape-drift guard — `position` is REQUIRED. The email Step 3 loop
- * keys idempotency on `step.position` via `existingPositions.has(...)`. If
- * a future writer drifts to `stepNumber` on the email side, `position`
- * would be undefined and `.has(undefined)` would always return false —
- * causing every step to be re-POSTed on every re-run (silent EB
- * duplication → double-send to every lead). By requiring `position` at
- * the parse boundary, we fail loud at deploy entry rather than silently
- * at the critical section.
+ * BL-068 shape-drift guard — `position` is REQUIRED and must stay 1-based.
+ * The email Step 3 loop keys idempotency on `step.position` via
+ * `existingPositions.has(...)`. If a future writer drifts to `stepNumber`
+ * on the email side, `position` would be undefined and `.has(undefined)`
+ * would always return false — causing every step to be re-POSTed on every
+ * re-run (silent EB duplication → double-send to every lead). Likewise, a
+ * zero-based `position: 0` sequence would drift away from EB's stored
+ * position contract and re-introduce duplicate-step risk on re-deploy. By
+ * requiring canonical 1-based positions at the parse boundary, we fail loud
+ * at deploy entry rather than silently at the critical section.
  *
  * Fields validated are exactly those the Step 3 loop consumes; extras
  * survive via passthrough().
  */
 const StoredEmailSequenceStepSchema = z
   .object({
-    position: z.number().int(),
+    position: z.number().int().min(1, "Email step positions must start at 1"),
     subjectLine: z.string().optional(),
     subjectVariantB: z.string().optional(),
     body: z.string().optional(),
