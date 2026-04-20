@@ -50,6 +50,13 @@ const CIRCUIT_BREAKER_THRESHOLD = 5;
 const P1_DAILY_CAP = 5;
 
 /**
+ * Minimum lifetime connection sample before warmup progression trusts
+ * acceptance-rate gating. Below this threshold, cold-start variance is too
+ * noisy and can deadlock warmup at day 1.
+ */
+const WARMUP_ACCEPTANCE_MIN_SAMPLE = 30;
+
+/**
  * Daily volume randomisation — actual limit = base × (1 - factor) where
  * factor ∈ [0, VOLUME_JITTER_FRACTION). Jitter ONLY REDUCES below the base
  * (BL-058 Bug 2). Prior behaviour allowed `1 + factor` which could push the
@@ -491,7 +498,8 @@ export async function getSenderBudget(senderId: string) {
 /**
  * Progress warm-up for a sender. Call daily.
  * Increments warmupDay, updates daily limits based on the schedule,
- * but only if acceptance rate isn't declining.
+ * but only slows progression when a sender has enough connection volume for
+ * acceptance-rate gating to be statistically meaningful.
  */
 export async function progressWarmup(senderId: string): Promise<void> {
   const sender = await prisma.sender.findUnique({ where: { id: senderId } });
@@ -507,9 +515,16 @@ export async function progressWarmup(senderId: string): Promise<void> {
     if (sender.warmupDay >= expectedDay) return;
   }
 
-  // Don't increase if acceptance rate is below 20%
+  // Don't increase if acceptance rate is below 20%, but only once the sender
+  // has enough lifetime connection volume for that signal to be meaningful.
   if (sender.acceptanceRate !== null && sender.acceptanceRate < 0.2) {
-    return;
+    const lifetimeConnections = await prisma.linkedInConnection.count({
+      where: { senderId, status: { not: "none" } },
+    });
+
+    if (lifetimeConnections >= WARMUP_ACCEPTANCE_MIN_SAMPLE) {
+      return;
+    }
   }
 
   const newDay = sender.warmupDay + 1;

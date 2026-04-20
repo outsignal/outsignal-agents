@@ -938,17 +938,92 @@ describe("progressWarmup", () => {
     });
   });
 
-  it("does not increase limits if acceptance rate is below 20%", async () => {
+  it("skips the acceptance-rate gate during cold start when lifetime connections are below 30", async () => {
     (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "sender-1",
       warmupDay: 7,
-      acceptanceRate: 0.15, // below 20%
+      acceptanceRate: 0, // cold start: 0/3
       warmupStartedAt: null,
     });
+    (prisma.linkedInConnection.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await progressWarmup("sender-1");
+
+    expect(prisma.linkedInConnection.count).toHaveBeenCalledWith({
+      where: { senderId: "sender-1", status: { not: "none" } },
+    });
+    expect(prisma.sender.update).toHaveBeenCalled();
+  });
+
+  it("skips the gate at 29 lifetime connections, but engages it at 30", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      warmupDay: 7,
+      acceptanceRate: 0.1,
+      warmupStartedAt: null,
+    });
+    (prisma.linkedInConnection.count as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(29)
+      .mockResolvedValueOnce(30);
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await progressWarmup("sender-1");
+    expect(prisma.sender.update).toHaveBeenCalledTimes(1);
+
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockClear();
+
+    await progressWarmup("sender-1");
+    expect(prisma.sender.update).not.toHaveBeenCalled();
+  });
+
+  it("skips the gate for Daniel's current low-sample case (17 lifetime, 8.3% acceptance)", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      warmupDay: 1,
+      acceptanceRate: 1 / 12,
+      warmupStartedAt: null,
+    });
+    (prisma.linkedInConnection.count as ReturnType<typeof vi.fn>).mockResolvedValue(17);
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await progressWarmup("sender-1");
+
+    expect(prisma.sender.update).toHaveBeenCalledWith({
+      where: { id: "sender-1" },
+      data: expect.objectContaining({
+        warmupDay: 2,
+      }),
+    });
+  });
+
+  it("blocks warmup progression for a statistically significant bad sender", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      warmupDay: 7,
+      acceptanceRate: 0.08,
+      warmupStartedAt: null,
+    });
+    (prisma.linkedInConnection.count as ReturnType<typeof vi.fn>).mockResolvedValue(50);
 
     await progressWarmup("sender-1");
 
     expect(prisma.sender.update).not.toHaveBeenCalled();
+  });
+
+  it("advances a statistically significant healthy sender", async () => {
+    (prisma.sender.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sender-1",
+      warmupDay: 7,
+      acceptanceRate: 0.22,
+      warmupStartedAt: null,
+    });
+    (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    await progressWarmup("sender-1");
+
+    expect(prisma.linkedInConnection.count).not.toHaveBeenCalled();
+    expect(prisma.sender.update).toHaveBeenCalled();
   });
 
   it("does nothing for senders not in warmup (day 0)", async () => {
