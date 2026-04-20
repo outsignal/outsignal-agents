@@ -36,9 +36,32 @@ export async function PATCH(
       );
     }
 
+    const sender =
+      body.healthStatus || body.lastKeepaliveAt
+        ? await prisma.sender.findUnique({
+            where: { id },
+            select: { sessionStatus: true, healthStatus: true },
+          })
+        : null;
+
     const updateData: Record<string, unknown> = {};
-    if (body.healthStatus) updateData.healthStatus = body.healthStatus;
+    if (body.healthStatus) {
+      updateData.healthStatus = body.healthStatus;
+      if (body.healthStatus === "session_expired" || body.healthStatus === "blocked") {
+        updateData.sessionStatus = "expired";
+      } else if (body.healthStatus === "healthy" && sender?.sessionStatus === "expired") {
+        updateData.sessionStatus = "active";
+      }
+    }
     if (body.lastKeepaliveAt) updateData.lastKeepaliveAt = new Date(body.lastKeepaliveAt);
+    if (
+      body.lastKeepaliveAt &&
+      !body.healthStatus &&
+      sender?.sessionStatus === "active" &&
+      (sender.healthStatus === "session_expired" || sender.healthStatus === "blocked")
+    ) {
+      updateData.healthStatus = "healthy";
+    }
     if (body.linkedinProfileUrl) updateData.linkedinProfileUrl = body.linkedinProfileUrl;
 
     await prisma.sender.update({

@@ -65,7 +65,12 @@ export async function getSendersForWorkspace(workspaceSlug: string) {
 }
 
 /**
- * Get all active senders for a workspace.
+ * Get all operational LinkedIn senders for a workspace.
+ *
+ * We intentionally require an active LinkedIn session here, not just
+ * `status="active"`. Historical debris rows can remain marked active while
+ * still being `sessionStatus="not_setup"`; the worker ignores them, but the
+ * planner and sender-assignment flows should not see them as eligible.
  */
 export async function getActiveSenders(workspaceSlug: string) {
   return prisma.sender.findMany({
@@ -73,6 +78,21 @@ export async function getActiveSenders(workspaceSlug: string) {
       workspaceSlug,
       status: "active",
       channel: { in: ["linkedin", "both"] },
+      sessionStatus: "active",
+      healthStatus: { notIn: ["blocked", "session_expired"] },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+async function getRefreshableSenders(workspaceSlug: string) {
+  return prisma.sender.findMany({
+    where: {
+      workspaceSlug,
+      status: "active",
+      channel: { in: ["linkedin", "both"] },
+      sessionStatus: { in: ["active", "expired"] },
+      healthStatus: { not: "blocked" },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -95,23 +115,30 @@ export async function assignSenderForPerson(
   },
 ) {
   const activeSenders = await getActiveSenders(workspaceSlug);
-  if (activeSenders.length === 0) return null;
+  let candidateSenders = activeSenders;
+  if (candidateSenders.length === 0) {
+    candidateSenders = await getRefreshableSenders(workspaceSlug);
+  }
+  if (candidateSenders.length === 0) return null;
 
   if (options.mode === "email_linkedin" && options.emailSenderAddress) {
     // Match by email address
-    const matched = activeSenders.find(
+    const matched = candidateSenders.find(
       (s) => s.emailAddress?.toLowerCase() === options.emailSenderAddress!.toLowerCase(),
     );
-    return matched ?? null;
+    if (matched) {
+      return matched;
+    }
   }
 
-  // LinkedIn-only: round-robin based on least actions today
-  // Pick the sender with the fewest total actions today
+  // Fall back to least-used eligible sender when an exact email match is
+  // unavailable. This keeps email+LinkedIn actions moving during transient
+  // sender refresh windows instead of dropping them on the floor.
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
   const sendersWithUsage = await Promise.all(
-    activeSenders.map(async (sender) => {
+    candidateSenders.map(async (sender) => {
       const usage = await prisma.linkedInDailyUsage.findUnique({
         where: { senderId_date: { senderId: sender.id, date: today } },
       });

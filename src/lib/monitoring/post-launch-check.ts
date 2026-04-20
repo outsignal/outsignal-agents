@@ -154,6 +154,7 @@ export async function runPostLaunchCheck(): Promise<PostLaunchCheckResult> {
           where: {
             workspaceSlug: campaign.workspaceSlug,
             channel: { in: ["linkedin", "both"] },
+            status: { not: "disabled" },
           },
           select: { id: true },
         });

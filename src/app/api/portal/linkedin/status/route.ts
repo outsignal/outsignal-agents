@@ -22,6 +22,7 @@ export async function GET() {
     where: {
       workspaceSlug: session.workspaceSlug,
       channel: { in: ["linkedin", "both"] },
+      status: { not: "disabled" },
     },
     select: {
       id: true,

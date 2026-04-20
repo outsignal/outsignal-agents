@@ -26,15 +26,10 @@ import { EmailBisonClient } from "@/lib/emailbison/client";
 // Finalize — compute overall status from per-channel outcomes
 // ---------------------------------------------------------------------------
 
-async function finalizeDeployStatus(
-  deployId: string,
+function computeOverallDeployStatus(
+  deploy: { emailStatus: string | null; linkedinStatus: string | null },
   channels: string[],
-): Promise<void> {
-  const deploy = await prisma.campaignDeploy.findUniqueOrThrow({
-    where: { id: deployId },
-    select: { emailStatus: true, linkedinStatus: true },
-  });
-
+): string {
   const channelStatuses = channels.map((ch) => {
     if (ch === "email") return deploy.emailStatus ?? "skipped";
     if (ch === "linkedin") return deploy.linkedinStatus ?? "skipped";
@@ -45,21 +40,76 @@ async function finalizeDeployStatus(
   const allFailed = channelStatuses.every((s) => s === "failed");
   const anyFailed = channelStatuses.some((s) => s === "failed");
 
-  let overallStatus: string;
-  if (allComplete) {
-    overallStatus = "complete";
-  } else if (allFailed) {
-    overallStatus = "failed";
-  } else if (anyFailed) {
-    overallStatus = "partial_failure";
-  } else {
-    overallStatus = "complete";
+  if (allComplete) return "complete";
+  if (allFailed) return "failed";
+  if (anyFailed) return "partial_failure";
+  return "complete";
+}
+
+function deriveOverallDeployError(args: {
+  deploy: {
+    emailStatus: string | null;
+    linkedinStatus: string | null;
+    emailError?: string | null;
+    linkedinError?: string | null;
+  };
+  channels: string[];
+  overallStatus: string;
+  failureMessage?: string;
+}): string | null {
+  const { deploy, channels, overallStatus, failureMessage } = args;
+  if (overallStatus === "complete") return null;
+
+  const failedChannelErrors: string[] = [];
+  if (
+    channels.includes("email") &&
+    deploy.emailStatus === "failed" &&
+    deploy.emailError
+  ) {
+    failedChannelErrors.push(`email: ${deploy.emailError}`);
   }
+  if (
+    channels.includes("linkedin") &&
+    deploy.linkedinStatus === "failed" &&
+    deploy.linkedinError
+  ) {
+    failedChannelErrors.push(`linkedin: ${deploy.linkedinError}`);
+  }
+
+  if (failedChannelErrors.length > 0) {
+    return failedChannelErrors.join(" | ");
+  }
+
+  return failureMessage ?? null;
+}
+
+async function finalizeDeployStatus(
+  deployId: string,
+  channels: string[],
+  failureMessage?: string,
+): Promise<void> {
+  const deploy = await prisma.campaignDeploy.findUniqueOrThrow({
+    where: { id: deployId },
+    select: {
+      emailStatus: true,
+      linkedinStatus: true,
+      emailError: true,
+      linkedinError: true,
+    },
+  });
+  const overallStatus = computeOverallDeployStatus(deploy, channels);
+  const overallError = deriveOverallDeployError({
+    deploy,
+    channels,
+    overallStatus,
+    failureMessage,
+  });
 
   await prisma.campaignDeploy.update({
     where: { id: deployId },
     data: {
       status: overallStatus,
+      error: overallError,
       completedAt: new Date(),
     },
   });
@@ -630,39 +680,93 @@ export async function retryDeployChannel(
 
   const channels = JSON.parse(deploy.channels) as string[];
 
-  // Reset the target channel
-  if (channel === "email") {
-    await prisma.campaignDeploy.update({
-      where: { id: deployId },
-      data: { emailStatus: "pending", emailError: null, retryChannel: "email" },
-    });
-  } else {
-    await prisma.campaignDeploy.update({
-      where: { id: deployId },
-      data: {
-        linkedinStatus: "pending",
-        linkedinError: null,
-        retryChannel: "linkedin",
-      },
-    });
-  }
-
-  const campaign = await getCampaign(deploy.campaignId);
-  if (!campaign) {
-    throw new Error(`Campaign not found: ${deploy.campaignId}`);
-  }
-
-  const adapter = getAdapter(channel as ChannelType);
-  await adapter.deploy({
-    deployId,
-    campaignId: deploy.campaignId,
-    campaignName: deploy.campaignName,
-    workspaceSlug: deploy.workspaceSlug,
-    channels,
+  const claimedRetry = await prisma.campaignDeploy.updateMany({
+    where:
+      channel === "email"
+        ? {
+            id: deployId,
+            status: { in: ["failed", "partial_failure"] },
+            emailStatus: "failed",
+          }
+        : {
+            id: deployId,
+            status: { in: ["failed", "partial_failure"] },
+            linkedinStatus: "failed",
+          },
+    data:
+      channel === "email"
+        ? {
+            status: "running",
+            emailStatus: "pending",
+            emailError: null,
+            retryChannel: "email",
+            completedAt: null,
+            error: null,
+          }
+        : {
+            status: "running",
+            linkedinStatus: "pending",
+            linkedinError: null,
+            retryChannel: "linkedin",
+            completedAt: null,
+            error: null,
+          },
   });
 
-  // Recompute overall status
-  await finalizeDeployStatus(deployId, channels);
+  if (claimedRetry.count === 0) {
+    throw new Error(
+      `Deploy ${deployId} is not eligible for ${channel} retry (already retrying or no failed ${channel} channel).`,
+    );
+  }
+
+  try {
+    const campaign = await getCampaign(deploy.campaignId);
+    if (!campaign) {
+      throw new Error(`Campaign not found: ${deploy.campaignId}`);
+    }
+
+    const adapter = getAdapter(channel as ChannelType);
+    await adapter.deploy({
+      deployId,
+      campaignId: deploy.campaignId,
+      campaignName: deploy.campaignName,
+      workspaceSlug: deploy.workspaceSlug,
+      channels,
+    });
+
+    // Recompute overall status
+    await finalizeDeployStatus(deployId, channels);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      await prisma.campaignDeploy.update({
+        where: { id: deployId },
+        data:
+          channel === "email"
+            ? {
+                emailStatus: "failed",
+                emailError: message,
+                retryChannel: null,
+                completedAt: new Date(),
+              }
+            : {
+                linkedinStatus: "failed",
+                linkedinError: message,
+                retryChannel: null,
+                completedAt: new Date(),
+              },
+      });
+      await finalizeDeployStatus(deployId, channels, message);
+    } catch (cleanupErr) {
+      const cleanupMessage =
+        cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+      throw new Error(
+        `[deploy] Retry cleanup failed after original error "${message}": ${cleanupMessage}`,
+        err instanceof Error ? { cause: err } : undefined,
+      );
+    }
+    throw err;
+  }
 }
 
 /**

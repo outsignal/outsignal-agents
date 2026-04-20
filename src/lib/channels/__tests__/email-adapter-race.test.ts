@@ -37,6 +37,7 @@ const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
     // BL-088 — Step 4 routes through this batch upsert; createLead kept
     // on the mock as a tripwire (assertions confirm no per-lead call).
     createOrUpdateLeadsMultiple: vi.fn(),
+    ensureCustomVariables: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     getSchedule: vi.fn(),
     createSchedule: vi.fn(),
@@ -145,6 +146,7 @@ describe("EmailAdapter.deploy() — BL-070 concurrent-deploy race guard", () => 
     ebMock.createSequenceSteps.mockResolvedValue([
       { id: 1, campaign_id: 0, position: 1, subject: "hi", body: "hello", delay_days: 1 },
     ]);
+    ebMock.ensureCustomVariables.mockResolvedValue(undefined);
     prismaMock.targetListPerson.findMany.mockResolvedValue([
       {
         person: {

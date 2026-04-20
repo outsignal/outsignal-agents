@@ -1,19 +1,12 @@
 import { prisma } from "@/lib/db";
 import { VoyagerConversation } from "@/lib/linkedin/types";
+import {
+  buildLinkedinProfileUrlCandidates,
+  normalizeLinkedinProfileUrl,
+} from "@/lib/linkedin/url";
 
 const WORKER_URL = process.env.LINKEDIN_WORKER_URL;
 const WORKER_SECRET = process.env.WORKER_API_SECRET;
-
-/**
- * Normalize a LinkedIn profile URL to the canonical /in/username format.
- * Returns null if the URL is null/empty or does not contain an /in/ segment.
- */
-function normalizeLinkedinUrl(url: string | null): string | null {
-  if (!url) return null;
-  const match = url.match(/\/in\/([^/?#]+)/);
-  if (!match) return null;
-  return `/in/${match[1].toLowerCase()}`;
-}
 
 /**
  * Sync LinkedIn conversations for a given sender from the Railway worker.
@@ -75,12 +68,21 @@ export async function syncLinkedInConversations(senderId: string): Promise<void>
 
     for (const conv of conversations) {
       // Match participant to Person record by LinkedIn URL
-      const normalizedUrl = normalizeLinkedinUrl(conv.participantProfileUrl);
+      const normalizedUrl = normalizeLinkedinProfileUrl(
+        conv.participantProfileUrl,
+      );
 
       let personId: string | null = null;
       if (normalizedUrl) {
+        const exactUrlCandidates = buildLinkedinProfileUrlCandidates(
+          conv.participantProfileUrl,
+        );
         const person = await prisma.person.findFirst({
-          where: { linkedinUrl: { contains: normalizedUrl } },
+          where: {
+            OR: exactUrlCandidates.map((candidate) => ({
+              linkedinUrl: { equals: candidate, mode: "insensitive" },
+            })),
+          },
           select: { id: true },
         });
         if (person) {

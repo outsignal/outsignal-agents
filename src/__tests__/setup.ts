@@ -1,8 +1,8 @@
 import { vi } from "vitest";
 
 // Mock Prisma client globally
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", () => {
+  const prismaMock = {
     workspace: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -24,6 +24,12 @@ vi.mock("@/lib/db", () => ({
       upsert: vi.fn(),
     },
     webhookEvent: {
+      create: vi.fn(),
+    },
+    notification: {
+      create: vi.fn(),
+    },
+    notificationAuditLog: {
       create: vi.fn(),
     },
     onboardingInvite: {
@@ -65,6 +71,11 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
+    },
+    member: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     linkedInAction: {
@@ -110,6 +121,7 @@ vi.mock("@/lib/db", () => ({
     },
     campaign: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
@@ -130,5 +142,10 @@ vi.mock("@/lib/db", () => ({
     },
     $executeRaw: vi.fn(),
     $queryRaw: vi.fn(),
-  },
-}));
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn(prismaMock),
+    ),
+  };
+
+  return { prisma: prismaMock };
+});

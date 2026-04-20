@@ -32,6 +32,7 @@ export async function GET(
         id: true,
         sessionData: true,
         sessionStatus: true,
+        proxyUrl: true,
       },
     });
 
@@ -61,7 +62,10 @@ export async function GET(
         (c: Record<string, unknown>) => c?.type === "voyager" && c?.liAt && c?.jsessionId,
       );
       if (voyagerEntry) {
-        return NextResponse.json({ cookies: [voyagerEntry] });
+        return NextResponse.json({
+          cookies: [voyagerEntry],
+          proxyUrl: sender.proxyUrl,
+        });
       }
 
       // Bridge: Chrome extension saves cookies as browser array
@@ -87,11 +91,15 @@ export async function GET(
 
       return NextResponse.json({
         cookies: [{ type: "voyager" as const, liAt, jsessionId }],
+        proxyUrl: sender.proxyUrl,
       });
     }
 
     // Already in expected format — return as-is
-    return NextResponse.json({ cookies: Array.isArray(parsed) ? parsed : [parsed] });
+    return NextResponse.json({
+      cookies: Array.isArray(parsed) ? parsed : [parsed],
+      proxyUrl: sender.proxyUrl,
+    });
   } catch (error) {
     console.error("Get cookies error:", error);
     return NextResponse.json(

@@ -256,11 +256,21 @@ export async function updateInvoiceStatus(
       });
 
       if (workspace?.billingRenewalDate) {
-        const nextRenewalDate = advanceRenewalDate(workspace.billingRenewalDate);
-        await tx.workspace.update({
-          where: { slug: invoice.workspaceSlug },
+        const expectedRenewalDate =
+          invoice.renewalDate ?? workspace.billingRenewalDate;
+        const nextRenewalDate = advanceRenewalDate(expectedRenewalDate);
+        const renewalAdvance = await tx.workspace.updateMany({
+          where: {
+            slug: invoice.workspaceSlug,
+            billingRenewalDate: expectedRenewalDate,
+          },
           data: { billingRenewalDate: nextRenewalDate },
         });
+        if (renewalAdvance.count === 0) {
+          throw new Error(
+            `Workspace ${invoice.workspaceSlug} billing renewal date changed concurrently during payment finalization`,
+          );
+        }
       }
     }
 

@@ -49,11 +49,10 @@ describe("linkedin/plan raw SQL — table name regression guard", () => {
 
 describe("linkedin/plan raw SQL — BL-054 cooldown semantics", () => {
   // The planner must enforce a 21-day workspace-wide cooldown on any
-  // connect/connection_request regardless of status, because LinkedIn
-  // holds the live invitation in its own 3-week retention window even
-  // after Outsignal marks the row cancelled/expired. Prior to BL-054 the
-  // planner excluded only cancelled/expired rows, which re-enqueued the
-  // same person and produced `already_invited` rejections or throttling.
+  // connect/connection_request that actually reached LinkedIn, because
+  // LinkedIn holds the live invitation in its own 3-week retention
+  // window. Cancelled rows with attempts=0 are planner debris and must
+  // not block re-planning.
 
   it("connect/connection_request uses a 21-day workspace-wide cooldown", () => {
     // Both the SELECT-count and SELECT-rows blocks must check
@@ -78,22 +77,25 @@ describe("linkedin/plan raw SQL — BL-054 cooldown semantics", () => {
     expect(matches!.length).toBe(2);
   });
 
-  it("does NOT filter connect/connection_request by status", () => {
-    // Prior to BL-054 the dedup said: la."status" NOT IN ('cancelled',
-    // 'expired'). That clause must NOT wrap the connect branch any more,
-    // or the planner will re-enqueue people behind a cancelled-but-still-
-    // live invite.
-    //
-    // The only remaining status filter in the SQL belongs to the
-    // profile_view branch — assert THAT is still present but scoped to
-    // profile_view.
+  it("excludes planner-debris cancels from the connect cooldown branch", () => {
+    // Connect rows still cool down for 21 days, but migration-debris
+    // rows cancelled before any attempt should not block re-planning.
+    // The branch should contain the explicit attempts=0 cancelled carve-out.
+    const connectBranches = ROUTE_SOURCE.match(
+      /la\."actionType"\s+IN\s+\('connect',\s*'connection_request'\)[\s\S]*?INTERVAL\s+'21 days'[\s\S]*?\)\s+OR/g,
+    );
+    expect(connectBranches).not.toBeNull();
+    for (const branch of connectBranches!) {
+      expect(branch).toMatch(
+        /NOT\s+\(la\."status"\s*=\s*'cancelled'\s+AND\s+la\."attempts"\s*=\s*0\)/,
+      );
+    }
+
+    // The only remaining status-NOT-IN filter belongs to the profile_view
+    // branch — assert THAT is still present but scoped to profile_view.
     expect(ROUTE_SOURCE).toMatch(
       /la\."actionType"\s*=\s*'profile_view'[\s\S]*?la\."status"\s+NOT IN\s+\('cancelled',\s*'expired'\)/,
     );
-    // Negative: a bare `la."status" NOT IN (...)` with no nearby
-    // actionType='profile_view' guard would mean the old broad filter
-    // is back. We check this by ensuring every status-NOT-IN occurrence
-    // is within 200 chars of an actionType='profile_view' clause.
     const statusRegex = /la\."status"\s+NOT IN\s+\('cancelled',\s*'expired'\)/g;
     let match;
     while ((match = statusRegex.exec(ROUTE_SOURCE)) !== null) {
@@ -143,8 +145,8 @@ describe("linkedin/plan raw SQL — BL-054 cooldown semantics", () => {
 
 describe("linkedin/plan raw SQL — BL-054 behavioural semantics (documented)", () => {
   // These tests codify the behavioural outcomes the brief requires:
-  //   1. Prior `cancelled` connect within 21d on same person → NOT planned
-  //   2. Prior `complete` connect within 21d on same person → NOT planned
+  //   1. Prior `cancelled` connect within 21d with attempts=0 → IS planned
+  //   2. Prior `cancelled`/`complete` connect within 21d with attempts>0 → NOT planned
   //   3. Prior connect older than 21d → IS planned
   //   4. Profile_view dedup stays campaign-scoped (different campaign can
   //      still plan a profile_view on same person)
@@ -155,29 +157,29 @@ describe("linkedin/plan raw SQL — BL-054 behavioural semantics (documented)", 
   // follow-up live-integration test against staging is tracked separately
   // (see monty decisions log).
 
-  it("(1) cancelled connect within 21d blocks new plan — status filter is absent on connect branch", () => {
-    // Find the connect branch in the SQL and confirm no `status` clause
-    // narrows it. Cancelled rows therefore count as blockers.
+  it("(1) cancelled connect within 21d with attempts=0 does NOT block new plan", () => {
+    // Find the connect branch in the SQL and confirm it explicitly carves
+    // out cancelled rows that never attempted a live send.
     const connectBranch = ROUTE_SOURCE.match(
-      /la\."actionType"\s+IN\s+\('connect',\s*'connection_request'\)[\s\S]*?INTERVAL\s+'21 days'\)/g,
+      /la\."actionType"\s+IN\s+\('connect',\s*'connection_request'\)[\s\S]*?INTERVAL\s+'21 days'[\s\S]*?\)/g,
     );
     expect(connectBranch).not.toBeNull();
     for (const branch of connectBranch!) {
-      expect(branch).not.toMatch(/la\."status"/);
+      expect(branch).toMatch(
+        /NOT\s+\(la\."status"\s*=\s*'cancelled'\s+AND\s+la\."attempts"\s*=\s*0\)/,
+      );
     }
   });
 
-  it("(2) complete connect within 21d blocks new plan — same branch, no status filter", () => {
-    // Same underlying mechanism as (1). Complete rows obviously count,
-    // but this test guards against a misguided future optimisation that
-    // adds `status='pending'` or similar to the connect branch.
+  it("(2) attempted connects within 21d still block new plan", () => {
+    // The carve-out must stay narrow: only never-attempted cancelled rows
+    // escape the cooldown. Attempted rows remain blockers.
     const connectBranch = ROUTE_SOURCE.match(
-      /la\."actionType"\s+IN\s+\('connect',\s*'connection_request'\)[\s\S]*?INTERVAL\s+'21 days'\)/g,
+      /la\."actionType"\s+IN\s+\('connect',\s*'connection_request'\)[\s\S]*?INTERVAL\s+'21 days'[\s\S]*?\)/g,
     );
     expect(connectBranch).not.toBeNull();
     for (const branch of connectBranch!) {
-      // No status=X or status IN (...) filter anywhere in the connect branch.
-      expect(branch).not.toMatch(/la\."status"/);
+      expect(branch).toMatch(/la\."attempts"\s*=\s*0/);
     }
   });
 

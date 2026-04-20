@@ -6,6 +6,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
+import { isPortalRole, type PortalRole } from "@/lib/portal-role";
 
 const COOKIE_NAME = "portal_session";
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
@@ -13,7 +14,7 @@ const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
 export interface PortalSession {
   workspaceSlug: string;
   email: string;
-  role: string; // "owner" | "admin" | "viewer"
+  role: PortalRole;
   exp: number; // unix timestamp (seconds)
 }
 
@@ -60,11 +61,13 @@ export function verifySession(cookieValue: string): PortalSession | null {
     const raw = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf-8"),
     );
+    if (!isPortalRole(raw.role)) {
+      return null;
+    }
 
-    // Backwards compatibility: old cookies without role default to "viewer"
     const session: PortalSession = {
       ...raw,
-      role: raw.role ?? "viewer",
+      role: raw.role,
     };
 
     // Check expiry

@@ -20,6 +20,7 @@ import { getClientForWorkspace } from "@/lib/workspaces";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
 import { validatePeopleForChannel } from "@/lib/validation/channel-gate";
 import { getExclusionDomains, getExclusionEmails } from "@/lib/exclusions";
+import { detectOverlaps } from "@/lib/campaigns/overlap-detection";
 import type { TargetList, Person, Workspace } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -413,7 +414,7 @@ export async function addPeopleToList(
   // campaign's channels before inserting.
   const linkedCampaign = await prisma.campaign.findFirst({
     where: { targetListId: listId },
-    select: { channels: true },
+    select: { id: true, channels: true },
   });
 
   let validPersonIds = activePersonIds;
@@ -478,6 +479,38 @@ export async function addPeopleToList(
         `[addPeopleToList] list=${listId} channel-validation: ` +
           `${validPersonIds.length} valid, ${rejectedCount} rejected — ${rejectionSummary}`,
       );
+    }
+
+    // --- Cross-campaign overlap gate (BL-112) ---
+    // Prevent the same person being silently added to multiple active/recent
+    // campaigns in the same workspace.
+    if (validPersonIds.length > 0 && targetList) {
+      const overlaps = await detectOverlaps({
+        workspaceSlug: targetList.workspaceSlug,
+        candidatePersonIds: validPersonIds,
+        excludeCampaignId: linkedCampaign.id,
+      });
+
+      if (overlaps.length > 0) {
+        const overlappingIds = new Set(overlaps.map((o) => o.personId));
+        const overlapCampaignNames = [...new Set(overlaps.map((o) => o.overlappingCampaignName))];
+        validPersonIds = validPersonIds.filter((id) => !overlappingIds.has(id));
+        rejectedCount += overlappingIds.size;
+
+        const overlapReason =
+          overlapCampaignNames.length > 0
+            ? `already present in another active or recently completed campaign (${overlapCampaignNames.join(", ")})`
+            : "already present in another active or recently completed campaign";
+
+        rejectionSummary = rejectionSummary
+          ? `${rejectionSummary}; ${overlappingIds.size}× ${overlapReason}`
+          : `${overlappingIds.size}× ${overlapReason}`;
+
+        console.info(
+          `[addPeopleToList] list=${listId} overlap-gate: ` +
+            `${overlappingIds.size} people rejected due to active/recent campaign overlap`,
+        );
+      }
     }
   }
 

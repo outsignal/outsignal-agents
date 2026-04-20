@@ -289,9 +289,11 @@ export class SessionServer {
         return;
       }
 
-      // Create VoyagerClient without proxy for now
-      // TODO: Add proxy support — need getSenderById() on ApiClient to retrieve proxyUrl
-      const voyager = new VoyagerClient(cookies.liAt, cookies.jsessionId);
+      const voyager = new VoyagerClient(
+        cookies.liAt,
+        cookies.jsessionId,
+        cookies.proxyUrl ?? undefined,
+      );
       const conversations = await voyager.fetchConversations(20);
       this.jsonResponse(res, 200, {
         conversations,
@@ -352,8 +354,11 @@ export class SessionServer {
         return;
       }
 
-      // TODO: Add proxy support (same as handleGetConversations)
-      const voyager = new VoyagerClient(cookies.liAt, cookies.jsessionId);
+      const voyager = new VoyagerClient(
+        cookies.liAt,
+        cookies.jsessionId,
+        cookies.proxyUrl ?? undefined,
+      );
       const messages = await voyager.fetchMessages(conversationId, 20);
       this.jsonResponse(res, 200, {
         messages,

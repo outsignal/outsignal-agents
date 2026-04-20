@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       billingPeriodStart,
       billingPeriodEnd,
       issueDate,
+      renewalDate,
     } = result.data;
 
     const invoice = await createInvoice({
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       billingPeriodStart: billingPeriodStart ? new Date(billingPeriodStart) : undefined,
       billingPeriodEnd: billingPeriodEnd ? new Date(billingPeriodEnd) : undefined,
       issueDate: issueDate ? new Date(issueDate) : undefined,
+      renewalDate: renewalDate ? new Date(renewalDate) : undefined,
     });
 
     return NextResponse.json({ invoice }, { status: 201 });

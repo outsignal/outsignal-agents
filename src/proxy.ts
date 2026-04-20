@@ -105,6 +105,7 @@ export async function proxy(req: NextRequest) {
         const requestHeaders = new Headers(req.headers);
         requestHeaders.set("x-portal-workspace", "outsignal");
         requestHeaders.set("x-portal-email", "dev@localhost");
+        requestHeaders.set("x-portal-role", "owner");
         return NextResponse.next({ request: { headers: requestHeaders } });
       }
     }
@@ -126,6 +127,7 @@ export async function proxy(req: NextRequest) {
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set("x-portal-workspace", session.workspaceSlug);
     requestHeaders.set("x-portal-email", session.email);
+    requestHeaders.set("x-portal-role", session.role);
 
     return NextResponse.next({
       request: { headers: requestHeaders },

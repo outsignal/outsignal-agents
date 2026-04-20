@@ -216,12 +216,13 @@ export async function POST(request: NextRequest) {
 
           // Dedup rules (BL-054):
           //   - connect / connection_request: workspace-wide cooldown of
-          //     21 days regardless of status. Cancelled/expired rows count
-          //     toward the cooldown because LinkedIn still holds the live
-          //     invitation in its own 3-week retention window, so re-
-          //     inviting yields `already_invited` rejections or triggers
-          //     throttling. The 21-day cut-off matches LinkedIn's own
-          //     re-invite restriction.
+          //     21 days for actions that actually reached LinkedIn.
+          //     Cancelled rows with attempts=0 are planner debris (for
+          //     example the push→pull migration teardown) and must NOT
+          //     block re-planning because no live invitation exists.
+          //     Cancelled/failed rows with attempts>0 still count toward
+          //     the cooldown because LinkedIn holds the live invitation in
+          //     its own 3-week retention window.
           //   - profile_view: campaign-scoped dedup only. Different
           //     campaigns can still profile-view the same person; the
           //     cancelled/expired filter stays so withdrawn/expired views
@@ -239,7 +240,8 @@ export async function POST(request: NextRequest) {
                   AND la."actionType" IN ('profile_view', 'connect', 'connection_request')
                   AND (
                     (la."actionType" IN ('connect', 'connection_request')
-                       AND la."createdAt" > NOW() - INTERVAL '21 days')
+                       AND la."createdAt" > NOW() - INTERVAL '21 days'
+                       AND NOT (la."status" = 'cancelled' AND la."attempts" = 0))
                     OR (la."actionType" = 'profile_view'
                         AND la."campaignName" = ${campaign.name}
                         AND la."status" NOT IN ('cancelled', 'expired'))
@@ -302,8 +304,9 @@ export async function POST(request: NextRequest) {
             continue;
           }
           // Same dedup contract as 4a (BL-054): connect/connection_request
-          // are workspace-wide with a 21-day cooldown irrespective of
-          // status; profile_view stays campaign-scoped and respects the
+          // are workspace-wide with a 21-day cooldown once they actually
+          // hit LinkedIn; planner-debris cancels (attempts=0) do not block.
+          // profile_view stays campaign-scoped and respects the
           // cancelled/expired filter.
           const people = await tx.$queryRaw<Array<{ personId: string }>>`
             SELECT tlp."personId"
@@ -318,7 +321,8 @@ export async function POST(request: NextRequest) {
                   AND la."actionType" IN ('profile_view', 'connect', 'connection_request')
                   AND (
                     (la."actionType" IN ('connect', 'connection_request')
-                       AND la."createdAt" > NOW() - INTERVAL '21 days')
+                       AND la."createdAt" > NOW() - INTERVAL '21 days'
+                       AND NOT (la."status" = 'cancelled' AND la."attempts" = 0))
                     OR (la."actionType" = 'profile_view'
                         AND la."campaignName" = ${cu.campaign.name}
                         AND la."status" NOT IN ('cancelled', 'expired'))

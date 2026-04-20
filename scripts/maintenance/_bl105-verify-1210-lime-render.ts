@@ -30,6 +30,7 @@ import { prisma } from "@/lib/db";
 import {
   buildTemplateContext,
   compileTemplate,
+  resolveLastEmailMonth,
 } from "@/lib/linkedin/sequencing";
 
 const TARGET_SLUGS = ["1210-solutions", "lime-recruitment"] as const;
@@ -72,6 +73,7 @@ type CampaignRow = {
   channels: string;
   targetListId: string | null;
   linkedinSequence: string | null;
+  description: string | null;
 };
 
 type StepRenderResult = {
@@ -82,6 +84,12 @@ type StepRenderResult = {
   residueTokens: string[];
   suffixLeaks: string[];
   hardcodedSenderHits: string[];
+};
+
+// Per-campaign resolved outreachContext, captured for report output so the
+// reader can see exactly what {LASTEMAILMONTH} resolved to for each campaign.
+type ResolvedOutreachContext = {
+  lastEmailMonth: string;
 };
 
 type CampaignResult = {
@@ -100,6 +108,7 @@ type CampaignResult = {
   overallResidueFail: boolean;
   overallSuffixFail: boolean;
   overallSenderHits: string[];
+  resolvedOutreachContext?: ResolvedOutreachContext;
 };
 
 function hr(label: string) {
@@ -125,6 +134,7 @@ async function main() {
       channels: true,
       targetListId: true,
       linkedinSequence: true,
+      description: true,
       createdAt: true,
     },
     orderBy: [{ workspaceSlug: "asc" }, { createdAt: "asc" }],
@@ -208,6 +218,16 @@ async function main() {
     result.sampleLead = p;
 
     // Build render context once per campaign.
+    //
+    // PM-confirmed source of truth for {LASTEMAILMONTH}: parse
+    // `Campaign.description` via the same `resolveLastEmailMonth` helper
+    // production uses in `evaluateSequenceRules` (src/lib/linkedin/
+    // sequencing.ts). We do NOT pass webhook/emailContext here -- 96-100% of
+    // leads in prod lack that data, so this verifier deliberately simulates
+    // the real-world case where only the description-parser populates
+    // {LASTEMAILMONTH}.
+    const lastEmailMonth = resolveLastEmailMonth(campaign.description);
+    result.resolvedOutreachContext = { lastEmailMonth };
     const context = buildTemplateContext(
       {
         firstName: p.firstName,
@@ -217,7 +237,7 @@ async function main() {
         linkedinUrl: p.linkedinUrl,
       },
       undefined,
-      undefined,
+      { lastEmailMonth },
     );
 
     const senderNamesToCheck =
@@ -297,6 +317,18 @@ async function main() {
     const p = r.sampleLead!;
     console.log(
       `Sample lead: ${p.firstName ?? "(no firstName)"} @ ${p.company ?? "(no company)"}  (personId=${p.id})`,
+    );
+    console.log(
+      `Campaign.description: ${
+        r.campaign.description === null
+          ? "(null)"
+          : JSON.stringify(r.campaign.description)
+      }`,
+    );
+    console.log(
+      `Resolved outreachContext.lastEmailMonth: "${
+        r.resolvedOutreachContext?.lastEmailMonth ?? ""
+      }"`,
     );
 
     for (const s of r.steps) {

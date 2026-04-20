@@ -54,18 +54,20 @@ export const oooReengage = task({
 
     const record = await prisma.oooReengagement.findFirst({
       where: {
+        id: payload.reengagementId,
         personEmail,
         workspaceSlug,
-        status: "pending",
+        status: { in: ["pending", "failed"] },
       },
     });
 
     if (!record) {
-      console.log("[ooo-reengage] No pending record found — already processed or cancelled", {
+      console.log("[ooo-reengage] No retryable record found — already processed or cancelled", {
         personEmail,
         workspaceSlug,
+        reengagementId: payload.reengagementId,
       });
-      return { success: false, reason: "no-pending-record" };
+      return { success: false, reason: "no-retryable-record" };
     }
 
     // ----------------------------------------------------------------
@@ -285,8 +287,8 @@ export const oooReengage = task({
     // ----------------------------------------------------------------
 
     try {
-      // Ensure ooo_greeting custom variable exists in EB
-      await ebClient.ensureCustomVariables(["ooo_greeting"]);
+      // Ensure OOO_GREETING custom variable exists in EB
+      await ebClient.ensureCustomVariables(["OOO_GREETING"]);
 
       // Load person details for the upsert
       const person = await prisma.person.findFirst({
@@ -300,7 +302,7 @@ export const oooReengage = task({
         firstName: person?.firstName ?? undefined,
         lastName: person?.lastName ?? undefined,
         jobTitle: person?.jobTitle ?? undefined,
-        customVariables: [{ name: "ooo_greeting", value: reasonOpener }],
+        customVariables: [{ name: "OOO_GREETING", value: reasonOpener }],
       });
 
       // Use the upserted lead ID (may differ if lead was recreated)
@@ -311,7 +313,16 @@ export const oooReengage = task({
         greeting: reasonOpener,
       });
     } catch (err) {
-      console.warn("[ooo-reengage] Failed to set ooo_greeting custom variable, enrolling anyway:", err);
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("[ooo-reengage] Failed to set ooo_greeting custom variable:", err);
+      await prisma.oooReengagement.update({
+        where: { id: record.id },
+        data: {
+          status: "failed",
+          failureReason: `OOO greeting upsert failed: ${reason}`,
+        },
+      });
+      throw new Error(`OOO greeting upsert failed: ${reason}`);
     }
 
     // ----------------------------------------------------------------
@@ -410,23 +421,23 @@ async function generateReengageSequence(opts: {
 
 CONTEXT:
 - This is a shared re-engagement campaign — multiple people will be enrolled
-- Each person has a custom variable {{ooo_greeting}} set to a personalised greeting
-- Use {{first_name}} for the person's name
+- Each person has a custom variable {OOO_GREETING} set to a personalised greeting
+- Use {FIRSTNAME} for the person's name
 - Original campaign: "${originalCampaignName ?? "Unknown"}"
 - People in this campaign received step 1 before going OOO
 
 STEP 1 - WELCOME BACK EMAIL:
 Write a warm welcome-back email that:
-- Start the body with {{ooo_greeting}} followed by a space, then the rest of the message
-- Use {{first_name}} to address the person
+- Start the body with {OOO_GREETING} followed by a space, then the rest of the message
+- Use {FIRSTNAME} to address the person
 - Bridges into the original campaign's value proposition
 - Feels like a genuine follow-up, not automated
-- Does NOT hardcode any specific OOO reason (the {{ooo_greeting}} variable handles personalisation)
+- Does NOT hardcode any specific OOO reason (the {OOO_GREETING} variable handles personalisation)
 
 ${missedSteps.length > 0 ? `STEPS 2-${totalSteps} - MISSED FOLLOW-UPS:
 Rewrite these original campaign steps to flow naturally after the welcome back email. They should:
 - NOT reference the OOO or absence again
-- Use {{first_name}} for personalisation
+- Use {FIRSTNAME} for personalisation
 - Maintain the original campaign's messaging and value props
 - Adjust delay_days: step 2 = 2 days, step 3 = 3 days, step 4+ = 4 days
 - Keep the same subject line themes but make them fresh` : "Generate only a single welcome back email (step 1)."}
@@ -458,7 +469,7 @@ ${missedStepsRef}`,
     emailSteps = [{
       position: 1,
       subjectLine: "Following up",
-      body: `{{ooo_greeting}} {{first_name}}, I wanted to reach back out and continue our conversation. Would love to reconnect when you have a moment.`,
+      body: `{OOO_GREETING} {FIRSTNAME}, I wanted to reach back out and continue our conversation. Would love to reconnect when you have a moment.`,
       delayDays: 0,
     }];
     console.log("[ooo-reengage] Using fallback single-step");

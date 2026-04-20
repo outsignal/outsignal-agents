@@ -54,6 +54,7 @@ const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
     createLead: vi.fn(),
     // BL-088 — Step 4 routes through this batch upsert.
     createOrUpdateLeadsMultiple: vi.fn(),
+    ensureCustomVariables: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     getSchedule: vi.fn(),
     createSchedule: vi.fn(),
@@ -120,6 +121,7 @@ function primeHappyPathTail() {
   ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([
     { id: 1001, email: "a@acme.com", status: "active" },
   ]);
+  ebMock.ensureCustomVariables.mockResolvedValue(undefined);
   ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
   ebMock.getSchedule.mockResolvedValue(null);
   ebMock.createSchedule.mockResolvedValue({});

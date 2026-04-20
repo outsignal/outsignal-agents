@@ -10,6 +10,8 @@ const personCreateMock = vi.fn();
 const personWorkspaceUpsertMock = vi.fn();
 const workspaceFindUniqueOrThrowMock = vi.fn();
 const companyFindManyMock = vi.fn();
+const exclusionEntryFindManyMock = vi.fn();
+const exclusionEmailFindManyMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -31,6 +33,12 @@ vi.mock("@/lib/db", () => ({
     },
     company: {
       findMany: (...args: unknown[]) => companyFindManyMock(...args),
+    },
+    exclusionEntry: {
+      findMany: (...args: unknown[]) => exclusionEntryFindManyMock(...args),
+    },
+    exclusionEmail: {
+      findMany: (...args: unknown[]) => exclusionEmailFindManyMock(...args),
     },
   },
 }));
@@ -70,6 +78,8 @@ beforeEach(() => {
   enqueueJobMock.mockResolvedValue("job-123");
   prefetchDomainsMock.mockResolvedValue({ cached: 0, crawled: 0, failed: 0 });
   companyFindManyMock.mockResolvedValue([]);
+  exclusionEntryFindManyMock.mockResolvedValue([]);
+  exclusionEmailFindManyMock.mockResolvedValue([]);
 });
 
 function makeStagedRecord(overrides: Record<string, unknown> = {}) {
@@ -180,7 +190,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     expect(result.scoredRejected).toBe(1);
   });
 
-  it("fail-open: promotes when scoring throws an error", async () => {
+  it("fails closed when scoring throws an error", async () => {
     workspaceFindUniqueOrThrowMock.mockResolvedValue({
       slug: "test",
       icpCriteriaPrompt: "ICP: B2B SaaS",
@@ -191,11 +201,11 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     scoreStagedPersonIcpBatchMock.mockRejectedValue(new Error("API rate limit"));
 
-    const result = await deduplicateAndPromote("test", ["run-1"]);
-
-    // Should still promote — fail-open on scoring errors
-    expect(result.promoted).toBe(1);
-    expect(result.scoredRejected).toBe(0);
+    await expect(deduplicateAndPromote("test", ["run-1"])).rejects.toThrow(
+      /refusing to promote unscored candidates/i,
+    );
+    expect(personUpsertMock).not.toHaveBeenCalled();
+    expect(personCreateMock).not.toHaveBeenCalled();
   });
 
   it("pre-fetches domains before scoring loop", async () => {
@@ -224,5 +234,41 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     const domains = prefetchDomainsMock.mock.calls[0][0];
     expect(domains).toContain("acme.com");
     expect(domains).toContain("beta.com");
+  });
+
+  it("creates a PersonWorkspace link for duplicates found in another workspace", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+
+    discoveredPersonFindManyMock.mockResolvedValue([
+      makeStagedRecord({ id: "dp-duplicate", email: "shared@acme.com" }),
+    ]);
+    personFindManyMock.mockResolvedValue([
+      { id: "person-existing", email: "shared@acme.com" },
+    ]);
+
+    const result = await deduplicateAndPromote("test", ["run-1"]);
+
+    expect(result.promoted).toBe(0);
+    expect(result.duplicates).toBe(1);
+    expect(personUpsertMock).not.toHaveBeenCalled();
+    expect(personCreateMock).not.toHaveBeenCalled();
+    expect(personWorkspaceUpsertMock).toHaveBeenCalledWith({
+      where: {
+        personId_workspace: {
+          personId: "person-existing",
+          workspace: "test",
+        },
+      },
+      create: {
+        personId: "person-existing",
+        workspace: "test",
+        sourceId: null,
+      },
+      update: {},
+    });
   });
 });

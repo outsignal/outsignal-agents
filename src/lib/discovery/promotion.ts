@@ -244,6 +244,65 @@ interface PromotionScore {
   icpScoredAt: Date;
 }
 
+function recordRichnessScore(dp: StagedRecord): number {
+  let score = 0;
+  const values = [
+    dp.email,
+    dp.firstName,
+    dp.lastName,
+    dp.jobTitle,
+    dp.company,
+    dp.companyDomain,
+    dp.linkedinUrl,
+    dp.phone,
+    dp.location,
+  ];
+
+  for (const value of values) {
+    if (!value) continue;
+    score += 100;
+    score += Math.min(value.trim().length, 40);
+  }
+
+  return score;
+}
+
+async function ensurePersonWorkspaceLink(
+  personId: string,
+  workspaceSlug: string,
+  rawResponse: string | null,
+  score?: PromotionScore,
+): Promise<void> {
+  const discoverySourceId = extractSourceId(rawResponse);
+  const scorePayload = score
+    ? {
+        icpScore: score.icpScore,
+        icpReasoning: score.icpReasoning,
+        icpConfidence: score.icpConfidence,
+        icpScoredAt: score.icpScoredAt,
+      }
+    : {};
+
+  await prisma.personWorkspace.upsert({
+    where: {
+      personId_workspace: {
+        personId,
+        workspace: workspaceSlug,
+      },
+    },
+    create: {
+      personId,
+      workspace: workspaceSlug,
+      sourceId: discoverySourceId,
+      ...scorePayload,
+    },
+    update: {
+      ...(discoverySourceId ? { sourceId: discoverySourceId } : {}),
+      ...scorePayload,
+    },
+  });
+}
+
 /**
  * Promote a staged DiscoveredPerson to the Person table.
  * Creates (or finds) the Person record and ensures a PersonWorkspace junction exists.
@@ -328,40 +387,12 @@ async function promoteToPerson(
   // recent signal, and we want DiscoveredPerson.icpScore and
   // PersonWorkspace.icpScore to stay in sync (INV2). When `score` is omitted,
   // the spread is empty so existing fields are left untouched.
-  const discoverySourceId = extractSourceId(dp.rawResponse);
-  const scorePayload = score
-    ? {
-        icpScore: score.icpScore,
-        icpReasoning: score.icpReasoning,
-        icpConfidence: score.icpConfidence,
-        icpScoredAt: score.icpScoredAt,
-      }
-    : {};
-
   // TODO(BL-future): When PersonWorkspace gains an `icpScoreSource` enum
   // (e.g. "auto" | "manual"), gate the score update on
   // `existing.icpScoreSource !== "manual"` to avoid clobbering hand-edited
   // ICP scores during a re-discovery / re-promotion. Tracked in Finding 3.1
   // — schema migration deferred so we don't ship an unmigrated column today.
-  await prisma.personWorkspace.upsert({
-    where: {
-      personId_workspace: {
-        personId: person.id,
-        workspace: workspaceSlug,
-      },
-    },
-    create: {
-      personId: person.id,
-      workspace: workspaceSlug,
-      sourceId: discoverySourceId,
-      ...scorePayload,
-    },
-    update: {
-      // Only set sourceId if not already populated (don't overwrite)
-      ...(discoverySourceId ? { sourceId: discoverySourceId } : {}),
-      ...scorePayload,
-    },
-  });
+  await ensurePersonWorkspaceLink(person.id, workspaceSlug, dp.rawResponse, score);
 
   return person;
 }
@@ -552,20 +583,6 @@ export async function deduplicateAndPromote(
   const seenLinkedins = new Map<string, number>();
   const skipIndices = new Set<number>();
 
-  function countNonNullFields(dp: StagedRecord): number {
-    let count = 0;
-    if (dp.email) count++;
-    if (dp.firstName) count++;
-    if (dp.lastName) count++;
-    if (dp.jobTitle) count++;
-    if (dp.company) count++;
-    if (dp.companyDomain) count++;
-    if (dp.linkedinUrl) count++;
-    if (dp.phone) count++;
-    if (dp.location) count++;
-    return count;
-  }
-
   for (let i = 0; i < staged.length; i++) {
     const dp = staged[i];
     const email = dp.email ? dp.email.toLowerCase() : null;
@@ -576,7 +593,7 @@ export async function deduplicateAndPromote(
       const prevIdx = seenEmails.get(email)!;
       if (!skipIndices.has(prevIdx)) {
         // Keep the record with more data
-        if (countNonNullFields(dp) > countNonNullFields(staged[prevIdx])) {
+        if (recordRichnessScore(dp) > recordRichnessScore(staged[prevIdx])) {
           skipIndices.add(prevIdx);
           seenEmails.set(email, i);
         } else {
@@ -590,7 +607,7 @@ export async function deduplicateAndPromote(
     if (linkedin && seenLinkedins.has(linkedin)) {
       const prevIdx = seenLinkedins.get(linkedin)!;
       if (!skipIndices.has(prevIdx)) {
-        if (countNonNullFields(dp) > countNonNullFields(staged[prevIdx])) {
+        if (recordRichnessScore(dp) > recordRichnessScore(staged[prevIdx])) {
           skipIndices.add(prevIdx);
           seenLinkedins.set(linkedin, i);
         } else {
@@ -650,7 +667,8 @@ export async function deduplicateAndPromote(
 
   // --- Batch ICP scoring (BL-038 fix: batch instead of sequential) ---
   // Score all non-duplicate candidates in one batch call before the promotion loop.
-  // Fail-open: if batch scoring throws, scoreMap stays empty and all candidates promote.
+  // Fail closed: if scoring fails or returns partial results, promotion aborts
+  // rather than silently promoting unscored candidates.
   const scoreMap = new Map<string, { score: number; reasoning: string; confidence: "high" | "medium" | "low" }>();
   if (icpScoringEnabled && candidatesForScoring.length > 0) {
     try {
@@ -668,14 +686,22 @@ export async function deduplicateAndPromote(
       for (const [id, result] of batchResults) {
         scoreMap.set(id, result);
       }
+      const missingIds = candidatesForScoring
+        .map(({ dp }) => dp.id)
+        .filter((id) => !scoreMap.has(id));
+      if (missingIds.length > 0) {
+        throw new Error(
+          `ICP batch scoring returned partial results (${missingIds.length} of ${candidatesForScoring.length} missing)`,
+        );
+      }
       console.log(
         `[promotion] Batch ICP scored ${scoreMap.size}/${candidatesForScoring.length} candidates`,
       );
     } catch (err) {
-      // Fail-open: batch scoring error should not block promotion
-      console.warn(
-        `[promotion] Batch ICP scoring failed — promoting all candidates without scores:`,
-        err instanceof Error ? err.message : String(err),
+      throw new Error(
+        `[promotion] Batch ICP scoring failed — refusing to promote unscored candidates: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
       );
     }
   }
@@ -698,6 +724,7 @@ export async function deduplicateAndPromote(
     // Duplicate check (already resolved above)
     if (duplicateIndices.has(i)) {
       const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps)!;
+      await ensurePersonWorkspaceLink(existingPersonId, workspaceSlug, dp.rawResponse);
       await prisma.discoveredPerson.update({
         where: { id: dp.id },
         data: {
@@ -722,7 +749,9 @@ export async function deduplicateAndPromote(
 
     // --- ICP scoring gate (BL-038) ---
     // Scores were pre-computed in batch above. Look up from scoreMap.
-    // Fail-open: if score not found (batch failed for this person), promote anyway.
+    // Defensive fallback only. The batch scorer above now rejects partial or
+    // failed scoring, so under normal conditions every candidate here should
+    // already have a score result.
     let promotionScore: PromotionScore | undefined;
     if (icpScoringEnabled) {
       const scoreResult = scoreMap.get(dp.id);

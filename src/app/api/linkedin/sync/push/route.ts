@@ -3,6 +3,10 @@ import { verifyWorkerAuth } from "@/lib/linkedin/auth";
 import { prisma } from "@/lib/db";
 import { notifyLinkedInMessage } from "@/lib/notifications";
 import { cancelActionsForPerson } from "@/lib/linkedin/queue";
+import {
+  buildLinkedinProfileUrlCandidates,
+  normalizeLinkedinProfileUrl,
+} from "@/lib/linkedin/url";
 
 export const maxDuration = 30;
 
@@ -35,17 +39,6 @@ interface PushedConversation {
 interface PushPayload {
   senderId: string;
   conversations: PushedConversation[];
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function normalizeLinkedinUrl(url: string | null): string | null {
-  if (!url) return null;
-  const match = url.match(/\/in\/([^/?#]+)/);
-  if (!match) return null;
-  return `/in/${match[1].toLowerCase()}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,13 +78,22 @@ export async function POST(request: NextRequest) {
     let totalNewInbound = 0;
 
     for (const conv of conversations) {
-      const normalizedUrl = normalizeLinkedinUrl(conv.participantProfileUrl);
+      const normalizedUrl = normalizeLinkedinProfileUrl(
+        conv.participantProfileUrl,
+      );
 
       // Match participant to Person — try LinkedIn URL first, then name via LinkedInAction
       let personId: string | null = null;
       if (normalizedUrl) {
+        const exactUrlCandidates = buildLinkedinProfileUrlCandidates(
+          conv.participantProfileUrl,
+        );
         const person = await prisma.person.findFirst({
-          where: { linkedinUrl: { contains: normalizedUrl } },
+          where: {
+            OR: exactUrlCandidates.map((candidate) => ({
+              linkedinUrl: { equals: candidate, mode: "insensitive" },
+            })),
+          },
           select: { id: true },
         });
         personId = person?.id ?? null;
@@ -106,6 +108,11 @@ export async function POST(request: NextRequest) {
             where: {
               firstName: { equals: firstName, mode: "insensitive" },
               lastName: { equals: lastName, mode: "insensitive" },
+              workspaces: {
+                some: {
+                  workspace: workspaceSlug,
+                },
+              },
             },
             select: { id: true },
           });

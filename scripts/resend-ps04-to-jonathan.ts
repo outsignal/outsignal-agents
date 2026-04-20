@@ -21,7 +21,10 @@ async function main() {
   console.log(`  Status: ${invoice.status}`);
   console.log(`  Sending copy to: ${RECIPIENT}`);
 
-  await sendInvoiceEmail(invoice, RECIPIENT);
+  const delivery = await sendInvoiceEmail(invoice, RECIPIENT);
+  if (!delivery.delivered) {
+    throw new Error("Invoice email delivery is not configured");
+  }
   console.log("Email sent successfully.");
 
   await prisma.$disconnect();

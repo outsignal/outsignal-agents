@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { AISuggestionCard } from "@/components/portal/ai-suggestion-card";
 import { EmailReplyComposer } from "@/components/portal/email-reply-composer";
+import { isDestructiveEmailInboxAction } from "@/lib/email-inbox-actions";
 import { cn } from "@/lib/utils";
 
 /** Render URLs in text as clickable links */
@@ -424,10 +425,16 @@ export function EmailThreadView({
                   <Mail className="h-4 w-4" /> Mark unread
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleAction("blacklist_domain")} disabled={!!actionLoading}>
+                <DropdownMenuItem
+                  onClick={() => setConfirmAction({ action: "blacklist_domain", label: "Blacklist this domain from future outreach? This affects all leads on the domain." })}
+                  disabled={!!actionLoading}
+                >
                   <Shield className="h-4 w-4" /> Blacklist domain
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAction("blacklist_email")} disabled={!!actionLoading}>
+                <DropdownMenuItem
+                  onClick={() => setConfirmAction({ action: "blacklist_email", label: "Blacklist this email from future outreach? This cannot be undone from the inbox." })}
+                  disabled={!!actionLoading}
+                >
                   <Shield className="h-4 w-4" /> Blacklist email
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -472,7 +479,10 @@ export function EmailThreadView({
             >
               <MailX className="h-4 w-4" /> Unsubscribe
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleAction("blacklist_email")} disabled={!!actionLoading}>
+            <DropdownMenuItem
+              onClick={() => setConfirmAction({ action: "blacklist_email", label: "Blacklist this email from future outreach? This cannot be undone from the inbox." })}
+              disabled={!!actionLoading}
+            >
               <Shield className="h-4 w-4" /> Add to blacklist
             </DropdownMenuItem>
             <DropdownMenuItem disabled>
@@ -540,7 +550,12 @@ export function EmailThreadView({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={!!actionLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => confirmAction && handleAction(confirmAction.action)}
+              onClick={() =>
+                confirmAction &&
+                handleAction(confirmAction.action, {
+                  confirmed: isDestructiveEmailInboxAction(confirmAction.action),
+                })
+              }
               disabled={!!actionLoading}
               className="bg-destructive text-white hover:bg-destructive/90"
             >

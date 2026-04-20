@@ -32,6 +32,7 @@ export default async function PortalLinkedInPage() {
     where: {
       workspaceSlug,
       channel: { in: ["linkedin", "both"] },
+      status: { not: "disabled" },
     },
     orderBy: { createdAt: "desc" },
   });

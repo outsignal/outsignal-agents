@@ -1,0 +1,54 @@
+[bl-resume-1210] Scope: 4 campaigns in workspace '1210-solutions'. Tier 3 mutation — flipping EB drafts to active + DB status=deployed -> active.
+
+[step 1] Pre-check — loading DB rows and resolving workspace apiToken…
+
+BEFORE:
+ebId  campaignId                 EB status  DB status  channels   name                                                      
+----  -------------------------  ---------  ---------  ---------  ----------------------------------------------------------
+94    cmneq92p20000p8p7dhqn8g42  draft      deployed   ["email"]  1210 Solutions - Email - Construction - April 2026        
+95    cmneqa5180001p8rkwyrrlkg8  draft      deployed   ["email"]  1210 Solutions - Email - Industrial/Warehouse - April 2026
+96    cmneqhwo50001p843r5hmsul3  draft      deployed   ["email"]  1210 Solutions - Email - Healthcare - April 2026          
+97    cmneq1sdj0001p8cg97lb9rhd  draft      deployed   ["email"]  1210 Solutions - Email - Green List Priority - April 2026 
+
+[step 2] Sequential per-campaign resume + DB flip…
+
+  [eb 94] 1210 Solutions - Email - Construction - April 2026
+    calling resumeCampaign(94)…
+    verified EB status='launching' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo1wsuvv0000zxwnypipz0f4, total 3167ms
+
+  [eb 95] 1210 Solutions - Email - Industrial/Warehouse - April 2026
+    calling resumeCampaign(95)…
+    verified EB status='active' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo1wsxn80001zxwn862t7yin, total 3144ms
+
+  [eb 96] 1210 Solutions - Email - Healthcare - April 2026
+    calling resumeCampaign(96)…
+    verified EB status='active' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo1wt0cu0002zxwnk8xk1mkg, total 3155ms
+
+  [eb 97] 1210 Solutions - Email - Green List Priority - April 2026
+    calling resumeCampaign(97)…
+    verified EB status='launching' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo1wt35i0003zxwnbsmmjtr6, total 3201ms
+
+[step 3] Post-verify…
+
+AFTER:
+ebId  campaignId                 EB status  DB status  name                                                      
+----  -------------------------  ---------  ---------  ----------------------------------------------------------
+94    cmneq92p20000p8p7dhqn8g42  active     active     1210 Solutions - Email - Construction - April 2026        
+95    cmneqa5180001p8rkwyrrlkg8  active     active     1210 Solutions - Email - Industrial/Warehouse - April 2026
+96    cmneqhwo50001p843r5hmsul3  active     active     1210 Solutions - Email - Healthcare - April 2026          
+97    cmneq1sdj0001p8cg97lb9rhd  launching  active     1210 Solutions - Email - Green List Priority - April 2026 
+
+## Final report
+
+| campaignId | ebId | EB before | EB after | DB before | DB after | resume ms |
+|---|---|---|---|---|---|---|
+| cmneq92p20000p8p7dhqn8g42 | 94 | draft | launching | deployed | active | 3167 |
+| cmneqa5180001p8rkwyrrlkg8 | 95 | draft | active | deployed | active | 3144 |
+| cmneqhwo50001p843r5hmsul3 | 96 | draft | active | deployed | active | 3155 |
+| cmneq1sdj0001p8cg97lb9rhd | 97 | draft | launching | deployed | active | 3201 |
+
+[bl-resume-1210] DONE. 4/4 1210-solutions email campaigns resumed — EB draft->active, DB deployed->active, 4 AuditLog rows written.

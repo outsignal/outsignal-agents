@@ -13,6 +13,7 @@ export const createInvoiceSchema = z.object({
   billingPeriodStart: z.string().optional(),
   billingPeriodEnd: z.string().optional(),
   issueDate: z.string().optional(),
+  renewalDate: z.string().optional(),
 });
 
 // PATCH /api/invoices/[id]

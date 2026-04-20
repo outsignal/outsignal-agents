@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { getPortalSession } from "@/lib/portal-session";
 import { linkedinLoginSchema } from "@/lib/validations/linkedin";
+import { canManageSenders } from "@/lib/member-permissions";
 
 const WORKER_URL = process.env.LINKEDIN_WORKER_URL;
 const WORKER_SECRET = process.env.WORKER_API_SECRET;
@@ -21,6 +22,10 @@ export async function POST(
     session = await getPortalSession();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!canManageSenders(session.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
@@ -50,22 +55,6 @@ export async function POST(
     }
     const { email, password, totpSecret, verificationCode, method } = result.data;
 
-    // Store encrypted credentials on the sender
-    const updateData: Record<string, string> = {
-      linkedinEmail: email,
-      linkedinPassword: encrypt(password),
-      loginMethod: method || "credentials",
-    };
-
-    if (totpSecret) {
-      updateData.totpSecret = encrypt(totpSecret);
-    }
-
-    await prisma.sender.update({
-      where: { id },
-      data: updateData,
-    });
-
     // Call the worker's headless login endpoint
     const workerResponse = await fetch(`${WORKER_URL}/sessions/login`, {
       method: "POST",
@@ -89,6 +78,23 @@ export async function POST(
         { success: false, error: workerResult.error || "Worker login failed" },
         { status: 200 },
       );
+    }
+
+    if (workerResult?.success === true) {
+      const updateData: Record<string, string> = {
+        linkedinEmail: email,
+        linkedinPassword: encrypt(password),
+        loginMethod: method || "credentials",
+      };
+
+      if (totpSecret) {
+        updateData.totpSecret = encrypt(totpSecret);
+      }
+
+      await prisma.sender.update({
+        where: { id },
+        data: updateData,
+      });
     }
 
     return NextResponse.json(workerResult);

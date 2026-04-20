@@ -183,6 +183,7 @@ export default async function PortalSenderHealthPage() {
     where: {
       workspaceSlug,
       channel: { in: ["linkedin", "both"] },
+      status: { not: "disabled" },
     },
     orderBy: { createdAt: "desc" },
   });

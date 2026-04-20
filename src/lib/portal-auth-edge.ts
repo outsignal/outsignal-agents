@@ -5,9 +5,12 @@
  * Import this in middleware.ts, NOT portal-auth.ts.
  */
 
+import { isPortalRole, type PortalRole } from "@/lib/portal-role";
+
 export interface PortalSession {
   workspaceSlug: string;
   email: string;
+  role: PortalRole;
   exp: number; // unix timestamp (seconds)
 }
 
@@ -51,7 +54,14 @@ export async function verifySessionEdge(
 
   try {
     const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    const session: PortalSession = JSON.parse(decoded);
+    const raw = JSON.parse(decoded);
+    if (!isPortalRole(raw.role)) {
+      return null;
+    }
+    const session: PortalSession = {
+      ...raw,
+      role: raw.role,
+    };
 
     if (session.exp < Date.now() / 1000) return null;
 

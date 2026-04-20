@@ -4,6 +4,7 @@ import {
   createSessionCookie,
   type PortalSession,
 } from "@/lib/portal-auth";
+import { isPortalRole } from "@/lib/portal-role";
 import { rateLimit } from "@/lib/rate-limit";
 
 const verifyLimiter = rateLimit({ windowMs: 60_000, max: 10 });
@@ -38,41 +39,61 @@ export async function GET(req: NextRequest) {
     where: { token },
   });
 
-  if (!record || record.used || record.expiresAt < new Date()) {
+  const now = new Date();
+  if (!record || record.used || record.expiresAt < now) {
     return redirectToLogin(req, "expired");
   }
 
-  // Mark as used
-  await prisma.magicLinkToken.update({
-    where: { id: record.id },
-    data: { used: true },
-  });
-
-  // Look up the Member record and update login tracking
-  const member = await prisma.member.findUnique({
-    where: {
-      email_workspaceSlug: {
-        email: record.email,
-        workspaceSlug: record.workspaceSlug,
+  const { member, consumed } = await prisma.$transaction(async (tx) => {
+    const consumed = await tx.magicLinkToken.updateMany({
+      where: {
+        id: record.id,
+        used: false,
+        expiresAt: { gt: now },
       },
-    },
-  });
+      data: { used: true },
+    });
 
-  if (member) {
-    await prisma.member.update({
-      where: { id: member.id },
-      data: {
-        lastLoginAt: new Date(),
-        status: "active",
+    if (consumed.count !== 1) {
+      return { member: null, consumed: false };
+    }
+
+    const member = await tx.member.findUnique({
+      where: {
+        email_workspaceSlug: {
+          email: record.email,
+          workspaceSlug: record.workspaceSlug,
+        },
       },
     });
+
+    if (member) {
+      await tx.member.update({
+        where: { id: member.id },
+        data: {
+          lastLoginAt: now,
+          status: "active",
+        },
+      });
+    }
+
+    return { member, consumed: true };
+  });
+
+  if (!consumed) {
+    return redirectToLogin(req, "expired");
+  }
+
+  const role = member?.role ?? "viewer";
+  if (!isPortalRole(role)) {
+    return redirectToLogin(req, "expired");
   }
 
   // Create session
   const session: PortalSession = {
     workspaceSlug: record.workspaceSlug,
     email: record.email,
-    role: member?.role ?? "viewer",
+    role,
     exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
   };
 

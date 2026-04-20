@@ -127,7 +127,7 @@ describe("sendNotificationEmail", () => {
 
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "Outsignal <notifications@outsignal.ai>",
+        from: "Outsignal <notifications@notification.outsignal.ai>",
       }),
     );
   });
@@ -180,6 +180,7 @@ describe("sendOnboardingInviteEmail", () => {
 
 describe("notifyReply", () => {
   const mockFindUnique = prisma.workspace.findUnique as Mock;
+  const mockMemberFindMany = prisma.member.findMany as Mock;
 
   const defaultParams = {
     workspaceSlug: "acme",
@@ -202,6 +203,7 @@ describe("notifyReply", () => {
     process.env = { ...originalEnv };
     setEnv({ RESEND_API_KEY: "re_test_123" });
     delete process.env.RESEND_FROM;
+    mockMemberFindMany.mockResolvedValue([]);
   });
 
   it("returns early when workspace is not found", async () => {
@@ -224,12 +226,23 @@ describe("notifyReply", () => {
     expect(mockPostMessage).toHaveBeenCalledOnce();
     expect(mockPostMessage).toHaveBeenCalledWith(
       "C12345",
-      `New reply from ${defaultParams.leadEmail}`,
-      expect.any(Array),
+      `New Reply from ${defaultParams.leadEmail}`,
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "header",
+          text: expect.objectContaining({
+            text: "[Acme Workspace] New Reply Received",
+          }),
+        }),
+      ]),
     );
   });
 
   it("sends email notification when notificationEmails exists", async () => {
+    mockMemberFindMany.mockResolvedValue([
+      { email: "client1@acme.com" },
+      { email: "client2@acme.com" },
+    ]);
     mockFindUnique.mockResolvedValue({
       ...baseWorkspace,
       notificationEmails: JSON.stringify(["admin@acme.com", "ops@acme.com"]),
@@ -240,8 +253,8 @@ describe("notifyReply", () => {
     expect(mockSend).toHaveBeenCalledOnce();
     expect(mockSend).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: ["admin@acme.com", "ops@acme.com"],
-        subject: `[Outsignal] Reply from ${defaultParams.leadEmail} - Acme Workspace`,
+        to: ["client1@acme.com", "client2@acme.com"],
+        subject: `[Acme Workspace] New Reply from ${defaultParams.leadEmail}`,
       }),
     );
   });
@@ -260,7 +273,7 @@ describe("notifyReply", () => {
     await notifyReply(defaultParams);
 
     expect(errorSpy).toHaveBeenCalledWith(
-      "Slack notification failed:",
+      "Slack client notification failed:",
       slackError,
     );
 
@@ -270,6 +283,7 @@ describe("notifyReply", () => {
   it("handles email error gracefully (catches and logs)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const emailError = new Error("Resend API error");
+    mockMemberFindMany.mockResolvedValue([{ email: "client1@acme.com" }]);
 
     mockFindUnique.mockResolvedValue({
       ...baseWorkspace,
@@ -281,7 +295,7 @@ describe("notifyReply", () => {
     await notifyReply(defaultParams);
 
     expect(errorSpy).toHaveBeenCalledWith(
-      "Email notification failed:",
+      "Email client notification failed:",
       expect.any(Error),
     );
 
@@ -299,7 +313,7 @@ describe("notifyReply", () => {
 
     // The Slack message blocks should contain the truncated preview
     const slackBlocks = mockPostMessage.mock.calls[0][2];
-    const blockText = slackBlocks[0].text.text as string;
+    const blockText = slackBlocks[3].text.text as string;
     // The preview in the block should be exactly 300 chars of "A"
     expect(blockText).toContain("A".repeat(300));
     expect(blockText).not.toContain("A".repeat(301));
@@ -314,7 +328,7 @@ describe("notifyReply", () => {
     await notifyReply({ ...defaultParams, bodyPreview: null });
 
     const slackBlocks = mockPostMessage.mock.calls[0][2];
-    const blockText = slackBlocks[0].text.text as string;
+    const blockText = slackBlocks[3].text.text as string;
     expect(blockText).toContain("(no body)");
   });
 

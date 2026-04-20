@@ -246,21 +246,24 @@ describe("EmailBisonClient", () => {
     it("passes campaignId as query parameter and returns steps", async () => {
       const campaignId = 42;
       const steps = [
-        { id: 1, campaign_id: 42, position: 1, subject: "Intro", delay_days: 0 },
-        { id: 2, campaign_id: 42, position: 2, subject: "Follow-up", delay_days: 3 },
+        { id: 1, campaign_id: 42, position: 1, subject: "Intro", body: "", delay_days: 0 },
+        { id: 2, campaign_id: 42, position: 2, subject: "Follow-up", body: "", delay_days: 3 },
       ];
 
       fetchMock.mockResolvedValueOnce(
-        mockFetchResponse(makePaginatedResponse(steps, 1, 1)),
+        mockFetchResponse({
+          data: {
+            sequence_id: 123,
+            sequence_steps: steps,
+          },
+        }),
       );
 
       const result = await client.getSequenceSteps(campaignId);
 
       expect(result).toEqual(steps);
-      // The endpoint already contains "?campaign_id=42", so pagination
-      // should append with "&page=1" (not "?page=1").
       expect(fetchMock.mock.calls[0][0]).toBe(
-        `${BASE_URL}/campaigns/sequence-steps?campaign_id=${campaignId}&page=1`,
+        `${BASE_URL}/campaigns/v1.1/${campaignId}/sequence-steps`,
       );
     });
   });
@@ -309,29 +312,19 @@ describe("EmailBisonClient", () => {
   // -----------------------------------------------------------------------
   describe("rate limiting", () => {
     it("throws RateLimitError with retry-after header value on 429", async () => {
-      fetchMock.mockResolvedValueOnce(
+      fetchMock.mockResolvedValue(
         mockFetchResponse("Too Many Requests", 429, { "retry-after": "30" }),
       );
 
-      await expect(client.getCampaigns()).rejects.toThrow(
-        /Rate limited/,
-      );
-
-      try {
-        // Reset mock for a second call to inspect the error shape
-        fetchMock.mockResolvedValueOnce(
-          mockFetchResponse("Too Many Requests", 429, { "retry-after": "30" }),
-        );
-        await client.getCampaigns();
-      } catch (error: unknown) {
-        expect((error as any).name).toBe("RateLimitError");
-        expect((error as any).retryAfter).toBe(30);
-        expect((error as any).status).toBe(429);
-      }
+      await expect(client.getCampaigns()).rejects.toMatchObject({
+        name: "RateLimitError",
+        retryAfter: 30,
+        status: 429,
+      });
     });
 
     it("defaults retryAfter to 60 when retry-after header is missing", async () => {
-      fetchMock.mockResolvedValueOnce(
+      fetchMock.mockResolvedValue(
         mockFetchResponse("Too Many Requests", 429),
       );
 
@@ -349,25 +342,15 @@ describe("EmailBisonClient", () => {
   // -----------------------------------------------------------------------
   describe("API errors", () => {
     it("throws EmailBisonApiError on 500 response", async () => {
-      fetchMock.mockResolvedValueOnce(
+      fetchMock.mockResolvedValue(
         mockFetchResponse("Internal Server Error", 500),
       );
 
-      await expect(client.getCampaigns()).rejects.toThrow(
-        /Email Bison API error 500/,
-      );
-
-      // Verify the error properties
-      fetchMock.mockResolvedValueOnce(
-        mockFetchResponse("Internal Server Error", 500),
-      );
-      try {
-        await client.getCampaigns();
-      } catch (error: unknown) {
-        expect((error as any).name).toBe("EmailBisonApiError");
-        expect((error as any).status).toBe(500);
-        expect((error as any).body).toBe("Internal Server Error");
-      }
+      await expect(client.getCampaigns()).rejects.toMatchObject({
+        name: "EmailBisonApiError",
+        status: 500,
+        body: "Internal Server Error",
+      });
     });
 
     it("throws EmailBisonApiError on 403 response", async () => {
@@ -395,56 +378,61 @@ describe("EmailBisonClient", () => {
   // 13. Pagination with query params – uses & when endpoint already has ?
   // -----------------------------------------------------------------------
   describe("pagination with existing query params", () => {
-    it("uses & for page param when endpoint already contains ?", async () => {
+    it("uses the v1.1 sequence-steps endpoint without pagination query params", async () => {
       const steps = [
-        { id: 1, campaign_id: 99, position: 1 },
+        { id: 1, campaign_id: 99, position: 1, body: "", subject: "", delay_days: 0 },
       ];
 
       fetchMock.mockResolvedValueOnce(
-        mockFetchResponse(makePaginatedResponse(steps, 1, 1)),
+        mockFetchResponse({
+          data: {
+            sequence_id: 456,
+            sequence_steps: steps,
+          },
+        }),
       );
 
-      await client.getSequenceSteps(99);
+      const result = await client.getSequenceSteps(99);
 
-      // The endpoint is /campaigns/sequence-steps?campaign_id=99
-      // so the paginator must append &page=1, not ?page=1
+      expect(result).toEqual(steps);
       const calledUrl = fetchMock.mock.calls[0][0] as string;
       expect(calledUrl).toBe(
-        `${BASE_URL}/campaigns/sequence-steps?campaign_id=99&page=1`,
+        `${BASE_URL}/campaigns/v1.1/99/sequence-steps`,
       );
-      // Ensure there is exactly one "?" in the URL
-      expect(calledUrl.split("?").length).toBe(2);
     });
 
-    it("uses & for page param on subsequent pages when endpoint has ?", async () => {
-      const page1 = [{ id: 1, campaign_id: 7, position: 1 }];
-      const page2 = [{ id: 2, campaign_id: 7, position: 2 }];
-
-      fetchMock
-        .mockResolvedValueOnce(
-          mockFetchResponse(makePaginatedResponse(page1, 1, 2)),
-        )
-        .mockResolvedValueOnce(
-          mockFetchResponse(makePaginatedResponse(page2, 2, 2)),
-        );
+    it("normalizes nested v1.1 sequence step fields into the internal shape", async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockFetchResponse({
+          data: {
+            sequence_id: 777,
+            sequence_steps: [
+              {
+                id: 1,
+                campaign_id: 7,
+                order: 1,
+                email_subject: "Hello",
+                email_body: "<p>Body</p>",
+                wait_in_days: 2,
+              },
+            ],
+          },
+        }),
+      );
 
       const result = await client.getSequenceSteps(7);
 
-      expect(result).toEqual([...page1, ...page2]);
-
-      const url1 = fetchMock.mock.calls[0][0] as string;
-      const url2 = fetchMock.mock.calls[1][0] as string;
-
-      expect(url1).toBe(
-        `${BASE_URL}/campaigns/sequence-steps?campaign_id=7&page=1`,
-      );
-      expect(url2).toBe(
-        `${BASE_URL}/campaigns/sequence-steps?campaign_id=7&page=2`,
-      );
-
-      // Both URLs should have exactly one "?"
-      expect(url1.split("?").length).toBe(2);
-      expect(url2.split("?").length).toBe(2);
+      expect(result).toEqual([
+        {
+          id: 1,
+          campaign_id: 7,
+          position: 1,
+          subject: "Hello",
+          body: "<p>Body</p>",
+          delay_days: 2,
+        },
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("uses ? for page param when endpoint has no query string", async () => {

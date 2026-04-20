@@ -37,6 +37,7 @@ const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
     createSequenceSteps: vi.fn(),
     createLead: vi.fn(),
     createOrUpdateLeadsMultiple: vi.fn(),
+    ensureCustomVariables: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     getSchedule: vi.fn(),
     createSchedule: vi.fn(),
@@ -135,6 +136,7 @@ describe("EmailAdapter.deploy Step 4 — batch upsert (BL-088)", () => {
     ebMock.createSequenceSteps.mockResolvedValue([
       { id: 1, campaign_id: 9999, position: 1, subject: "hi", body: "hello", delay_days: 1 },
     ]);
+    ebMock.ensureCustomVariables.mockResolvedValue(undefined);
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
     ebMock.getSchedule.mockResolvedValue(null);

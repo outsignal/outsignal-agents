@@ -1,3 +1,5 @@
+import { EMAILBISON_CUSTOM_VARIABLE_NAME_SET } from "./custom-variable-names";
+
 /**
  * BL-093 (2026-04-16) — variable transformer for the EmailBison wire boundary.
  *
@@ -38,13 +40,14 @@
  * vendor-documented set or our defensive sender pass-through set) do NOT
  * warn — those are valid second-pass-idempotent values.
  *
- * **LOCATION / LASTEMAILMONTH:** PM has NOT re-affirmed vendor mappings for
- * these tokens (2026-04-16 correction scope). Neither is in the vendor set.
- * We intentionally leave them UNMAPPED — they pass through as single-curly
- * UPPER tokens, which will trigger the BL-099 warn. This surfaces the gap
- * to PM without silently corrupting copy via a wrong mapping. Backlog BL-095
- * (proper vendor decision for LOCATION) + a new BL item for LASTEMAILMONTH
- * will resolve these properly.
+ * **Custom variables:** EB workspaces support custom lead variables. We use
+ * single-curly UPPER tokens for the custom values we populate on leads at the
+ * wire boundary today:
+ *   - `{LOCATION}`
+ *   - `{LASTEMAILMONTH}`
+ *   - `{OOO_GREETING}`
+ *
+ * These are preserved verbatim here and intentionally do NOT warn.
  *
  * Symmetry — apply at the EB wire boundary ONLY (createSequenceSteps). Do
  * NOT mutate stored copy or writer prompts; the canonical format stays
@@ -63,10 +66,10 @@
  *     `{EMAIL}` so the mapping is a no-op, but listing it here makes the
  *     vendor coverage complete and documents intent).
  *
- * Omitted intentionally:
- *   - LOCATION: no vendor-documented EB lead.location field. Pass through
- *     unchanged + trigger BL-099 warn so writer prompts can be updated.
- *   - LASTEMAILMONTH: no vendor-documented EB built-in. Same treatment.
+ * Omitted intentionally from the built-in map:
+ *   - LOCATION / LASTEMAILMONTH / OOO_GREETING: these are EB custom lead
+ *     variables, not built-ins. They pass through verbatim via the custom
+ *     variable allowlist below.
  */
 const VAR_MAP_UPPER: Record<string, string> = {
   FIRSTNAME: "{FIRST_NAME}",
@@ -141,7 +144,10 @@ export function transformVariablesForEB(text: string): string {
     if (token in VAR_MAP_UPPER) {
       return VAR_MAP_UPPER[token];
     }
-    if (KNOWN_EB_TOKENS.has(token)) {
+    if (
+      KNOWN_EB_TOKENS.has(token) ||
+      EMAILBISON_CUSTOM_VARIABLE_NAME_SET.has(token)
+    ) {
       // Known-good EB token (vendor-confirmed or defensive). Preserve verbatim,
       // do NOT warn — this is the idempotent second-pass case or an already-
       // correct writer token.

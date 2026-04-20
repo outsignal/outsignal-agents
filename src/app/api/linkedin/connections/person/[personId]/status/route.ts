@@ -17,9 +17,17 @@ export async function GET(
 
   try {
     const { personId } = await params;
+    const senderId = request.nextUrl.searchParams.get("senderId");
+
+    if (!senderId) {
+      return NextResponse.json(
+        { error: "senderId is required" },
+        { status: 400 },
+      );
+    }
 
     const connection = await prisma.linkedInConnection.findFirst({
-      where: { personId },
+      where: { personId, senderId },
       orderBy: { updatedAt: "desc" },
       select: { status: true },
     });

@@ -19,17 +19,18 @@ interface AuditOptions {
  * On success: writes a "sent" audit row (fire-and-forget).
  * On failure: writes a "failed" audit row + fires ops Slack alert, then re-throws.
  */
-export async function audited(
+export async function audited<T>(
   entry: AuditEntry,
-  sendFn: () => Promise<void>,
+  sendFn: () => Promise<T>,
   opts?: AuditOptions,
-): Promise<void> {
+): Promise<T> {
   const start = Date.now();
   try {
-    await sendFn();
+    const result = await sendFn();
     writeAudit({ ...entry, status: "sent", durationMs: Date.now() - start }).catch(
       (err) => auditFallbackLog({ ...entry, status: "sent", durationMs: Date.now() - start }, err),
     );
+    return result;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     writeAudit({

@@ -8,6 +8,10 @@ export function canManageCampaigns(role: string): boolean {
   return role === "owner" || role === "admin";
 }
 
+export function canManageInbox(role: string): boolean {
+  return canManageCampaigns(role);
+}
+
 export function canManageSenders(role: string): boolean {
   return role === "owner" || role === "admin";
 }

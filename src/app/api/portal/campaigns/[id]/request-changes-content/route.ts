@@ -3,6 +3,7 @@ import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, rejectCampaignContent } from "@/lib/campaigns/operations";
 import { notifyApproval } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
+import { canManageCampaigns } from "@/lib/member-permissions";
 
 export async function POST(
   req: Request,
@@ -22,6 +23,9 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   if (campaign.workspaceSlug !== session.workspaceSlug) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!canManageCampaigns(session.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

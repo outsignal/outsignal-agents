@@ -54,18 +54,24 @@ describe("transformVariablesForEB (vendor-authoritative spec)", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Unmapped vendor-undocumented tokens — pass through + BL-099 warn
+  // Supported custom variables — pass through unchanged
   // -------------------------------------------------------------------------
 
-  it("passes {LOCATION} through unchanged (no vendor-documented EB field)", () => {
+  it("passes {LOCATION} through unchanged", () => {
     expect(transformVariablesForEB("based in {LOCATION}")).toBe(
       "based in {LOCATION}",
     );
   });
 
-  it("passes {LASTEMAILMONTH} through unchanged (no vendor-documented EB field)", () => {
+  it("passes {LASTEMAILMONTH} through unchanged", () => {
     expect(transformVariablesForEB("since {LASTEMAILMONTH}")).toBe(
       "since {LASTEMAILMONTH}",
+    );
+  });
+
+  it("passes {OOO_GREETING} through unchanged", () => {
+    expect(transformVariablesForEB("{OOO_GREETING} {FIRSTNAME}")).toBe(
+      "{OOO_GREETING} {FIRST_NAME}",
     );
   });
 
@@ -235,12 +241,9 @@ describe("transformVariablesForEB (vendor-authoritative spec)", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it("BL-099: does warn for {LOCATION} and {LASTEMAILMONTH} (vendor undocumented)", () => {
-    transformVariablesForEB("{LOCATION} and {LASTEMAILMONTH}");
-    expect(warnSpy).toHaveBeenCalledTimes(2);
-    const msgs = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
-    expect(msgs.some((m: string) => m.includes("{LOCATION}"))).toBe(true);
-    expect(msgs.some((m: string) => m.includes("{LASTEMAILMONTH}"))).toBe(true);
+  it("BL-099: does NOT warn for supported custom variables", () => {
+    transformVariablesForEB("{LOCATION} {LASTEMAILMONTH} {OOO_GREETING}");
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it("BL-099: does NOT warn when Outsignal canonical tokens are successfully mapped", () => {

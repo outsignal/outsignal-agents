@@ -31,6 +31,7 @@ export default async function LinkedInPage({ params }: LinkedInPageProps) {
       senders: {
         where: {
           channel: { in: ["linkedin", "both"] },
+          status: { not: "disabled" },
         },
         orderBy: { createdAt: "desc" },
       },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWorkerAuth } from "@/lib/linkedin/auth";
-import { getNextBatch } from "@/lib/linkedin/queue";
+import { claimNextBatch } from "@/lib/linkedin/queue";
 import { prisma } from "@/lib/db";
 
 /**
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       data: { lastPolledAt: new Date() },
     });
 
-    const actions = await getNextBatch(senderId, perTypeLimit);
+    const actions = await claimNextBatch(senderId, perTypeLimit);
 
     if (actions.length === 0) {
       // Check if there are pending actions — if so, budget or circuit breaker is blocking
@@ -50,21 +50,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ actions: [] });
     }
 
-    const actionIds = actions.map((a) => a.id);
     const personIds = [...new Set(actions.map((a) => a.personId).filter(Boolean))] as string[];
     const conversationIds = [
       ...new Set(actions.map((a) => a.linkedInConversationId).filter(Boolean)),
     ] as string[];
-
-    // Batch mark all actions as running (single UPDATE instead of N)
-    await prisma.linkedInAction.updateMany({
-      where: { id: { in: actionIds } },
-      data: {
-        status: "running",
-        attempts: { increment: 1 },
-        lastAttemptAt: new Date(),
-      },
-    });
 
     // Batch fetch all person LinkedIn URLs (single SELECT instead of N)
     const people = personIds.length > 0

@@ -106,7 +106,7 @@ function seedPostDeploySnapshot() {
     linkedinStepCount: 0,
     emailStatus: "complete",
     linkedinStatus: null,
-    error: null,
+    error: "stale error from prior failed attempt",
   });
   // Auto-transition deployed→active (should NOT fire on skipResume path).
   prismaMock.campaign.updateMany.mockResolvedValue({ count: 1 });
@@ -153,6 +153,16 @@ describe("executeDeploy — skipResume stage-deploy option", () => {
     // 3. Happy path: no rollback $transaction.
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(txMock.auditLog.create).not.toHaveBeenCalled();
+
+    // 4. Finalizer clears stale overall CampaignDeploy.error on success.
+    expect(prismaMock.campaignDeploy.update).toHaveBeenCalledWith({
+      where: { id: DEPLOY_ID },
+      data: {
+        status: "complete",
+        error: null,
+        completedAt: expect.any(Date),
+      },
+    });
   });
 
   it("default (no opts): adapter receives skipResume=false AND Campaign.status auto-transition deployed→active DOES fire", async () => {
@@ -174,6 +184,16 @@ describe("executeDeploy — skipResume stage-deploy option", () => {
     expect(prismaMock.campaign.updateMany).toHaveBeenCalledWith({
       where: { id: CAMPAIGN_ID, status: "deployed" },
       data: { status: "active" },
+    });
+
+    // Finalizer clears stale overall CampaignDeploy.error on success.
+    expect(prismaMock.campaignDeploy.update).toHaveBeenCalledWith({
+      where: { id: DEPLOY_ID },
+      data: {
+        status: "complete",
+        error: null,
+        completedAt: expect.any(Date),
+      },
     });
   });
 });

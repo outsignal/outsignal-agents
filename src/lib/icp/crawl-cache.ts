@@ -1,8 +1,9 @@
 /**
  * Crawl cache — caches homepage scrapes on the Company record.
  * Cascade: free fetch → LinkedIn company page → Firecrawl (last resort, costs credits).
- * Checks Company.crawledAt before scraping. Cache is permanent
- * (no TTL) — use force_recrawl parameter to refresh.
+ * Checks Company.crawledAt before scraping. Cache expires after 7 days
+ * unless forceRecrawl is set, so ICP scoring does not rely on stale
+ * website evidence indefinitely.
  *
  * Includes in-memory inflight dedup to prevent duplicate scrape calls
  * when multiple concurrent scorers request the same domain.
@@ -11,6 +12,11 @@ import { prisma } from "@/lib/db";
 import { scrapeUrl } from "@/lib/firecrawl/client";
 
 const MAX_MARKDOWN_LENGTH = 50_000;
+const CRAWL_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isFreshCrawl(crawledAt: Date | null | undefined): crawledAt is Date {
+  return !!crawledAt && Date.now() - crawledAt.getTime() < CRAWL_CACHE_TTL_MS;
+}
 
 /**
  * Convert raw HTML to readable plain text without external dependencies.
@@ -78,9 +84,11 @@ async function getCrawlMarkdownInner(
 ): Promise<string | null> {
   // Check cache first
   const company = await prisma.company.findUnique({ where: { domain } });
+  const staleFallbackMarkdown =
+    !forceRecrawl && company?.crawlMarkdown ? company.crawlMarkdown : null;
 
-  if (company?.crawledAt && !forceRecrawl) {
-    // Cache hit — return stored markdown
+  if (!forceRecrawl && isFreshCrawl(company?.crawledAt)) {
+    // Fresh cache hit — return stored markdown
     return company.crawlMarkdown ?? null;
   }
 
@@ -125,6 +133,10 @@ async function getCrawlMarkdownInner(
   }
 
   if (!markdown) {
+    if (staleFallbackMarkdown) {
+      console.log(`[crawl-cache] ${domain}: refresh failed, using stale cache fallback`);
+      return staleFallbackMarkdown;
+    }
     return null;
   }
 
@@ -326,7 +338,7 @@ function decodeEntities(str: string): string {
 
 /**
  * Pre-crawl all unique domains before batch scoring begins.
- * Checks the DB cache first, then crawls uncached domains in parallel
+ * Checks the DB cache first, then crawls uncached or stale domains in parallel
  * with a concurrency limit to avoid hammering Firecrawl.
  *
  * @param domains - array of domain strings (may contain nulls/duplicates)
@@ -342,11 +354,13 @@ export async function prefetchDomains(
     return { cached: 0, crawled: 0, failed: 0 };
   }
 
-  // Check which domains already have cached crawl data
+  const freshCutoff = new Date(Date.now() - CRAWL_CACHE_TTL_MS);
+
+  // Check which domains already have fresh cached crawl data
   const companies = await prisma.company.findMany({
     where: {
       domain: { in: unique },
-      crawledAt: { not: null },
+      crawledAt: { gte: freshCutoff },
       crawlMarkdown: { not: null },
     },
     select: { domain: true },

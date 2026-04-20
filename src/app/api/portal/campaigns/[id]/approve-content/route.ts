@@ -7,6 +7,7 @@ import {
   runFullSequenceValidation,
   type CopyStrategy,
 } from "@/lib/copy-quality";
+import { canManageCampaigns } from "@/lib/member-permissions";
 
 export async function POST(
   _req: Request,
@@ -26,6 +27,9 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   if (campaign.workspaceSlug !== session.workspaceSlug) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!canManageCampaigns(session.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

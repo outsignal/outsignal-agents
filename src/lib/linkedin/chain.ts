@@ -1,5 +1,6 @@
 import { enqueueAction } from "./queue";
 import { applyTimingJitter } from "./jitter";
+import { normalizeToLondonBusinessHours } from "./business-hours";
 import type { LinkedInActionType } from "./types";
 
 /**
@@ -58,22 +59,27 @@ export async function chainActions(params: ChainActionsParams): Promise<string[]
   const { sequence, baseScheduledFor, ...common } = params;
   const sorted = [...sequence].sort((a, b) => a.position - b.position);
   const actionIds: string[] = [];
-  let cumulativeMs = 0;
   let previousActionId: string | undefined;
+  let previousScheduledFor: Date | undefined;
 
   const MIN_GAP_MS = 4 * 60 * 60 * 1000; // 4 hours minimum between steps
-  const MAX_DELAY_DAYS = 2;
 
   for (const step of sorted) {
-    if (step.position > sorted[0].position) {
+    let scheduledCandidate = baseScheduledFor;
+
+    if (previousScheduledFor && step.position > sorted[0].position) {
       // Delay between steps: use step.delayDays if specified (jittered +-20%),
       // otherwise default to 1 day (jittered). Minimum gap enforced below.
       const baseDays = step.delayDays ?? 1;
       const delayMs = applyTimingJitter(baseDays * 24 * 60 * 60 * 1000);
-      cumulativeMs += Math.max(delayMs, MIN_GAP_MS);
+      scheduledCandidate = new Date(
+        previousScheduledFor.getTime() + Math.max(delayMs, MIN_GAP_MS),
+      );
     }
 
-    const scheduledFor = new Date(baseScheduledFor.getTime() + cumulativeMs);
+    const scheduledFor = normalizeToLondonBusinessHours(
+      new Date(scheduledCandidate),
+    );
 
     const actionId = await enqueueAction({
       ...common,
@@ -86,6 +92,7 @@ export async function chainActions(params: ChainActionsParams): Promise<string[]
 
     actionIds.push(actionId);
     previousActionId = actionId;
+    previousScheduledFor = scheduledFor;
   }
 
   return actionIds;

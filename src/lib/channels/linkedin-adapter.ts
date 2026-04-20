@@ -119,7 +119,11 @@ export class LinkedInAdapter implements ChannelAdapter {
       if (linkedinSequence.length === 0) {
         await prisma.campaignDeploy.update({
           where: { id: deployId },
-          data: { linkedinStatus: "complete", linkedinStepCount: 0 },
+          data: {
+            linkedinStatus: "complete",
+            linkedinStepCount: 0,
+            linkedinError: null,
+          },
         });
         // Still call createSequenceRulesForCampaign with empty array to clean up
         // any stale rules from a previous deploy (idempotent redeploy support)

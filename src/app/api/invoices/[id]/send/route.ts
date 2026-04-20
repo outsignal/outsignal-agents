@@ -42,7 +42,13 @@ export async function POST(
     const ccEmails = workspace?.billingCcEmails
       ? workspace.billingCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
       : [];
-    await sendInvoiceEmail(invoice, recipientEmail, ccEmails);
+    const delivery = await sendInvoiceEmail(invoice, recipientEmail, ccEmails);
+    if (!delivery.delivered) {
+      return NextResponse.json(
+        { error: "Invoice email delivery is not configured" },
+        { status: 503 },
+      );
+    }
 
     // Update invoice status to "sent" (also sets sentAt timestamp)
     await updateInvoiceStatus(id, "sent");
@@ -52,7 +58,13 @@ export async function POST(
       entityType: "Invoice",
       entityId: id,
       adminEmail: session.email,
-      metadata: { invoiceNumber: invoice.invoiceNumber, workspaceSlug: invoice.workspaceSlug, recipientEmail, ccEmails },
+      metadata: {
+        invoiceNumber: invoice.invoiceNumber,
+        workspaceSlug: invoice.workspaceSlug,
+        recipientEmail,
+        ccEmails,
+        providerId: delivery.providerId ?? null,
+      },
     });
 
     return NextResponse.json({ sent: true, to: recipientEmail, cc: ccEmails });

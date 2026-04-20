@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { createSessionCookie } from "@/lib/portal-auth";
 import { prisma } from "@/lib/db";
+import { isPortalRole } from "@/lib/portal-role";
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +25,9 @@ export async function POST(request: Request) {
 
     if (!member || member.workspace.status !== "active") {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
+    }
+    if (!isPortalRole(member.role)) {
+      return NextResponse.json({ error: "Workspace role is invalid" }, { status: 403 });
     }
 
     // Create new session cookie for the target workspace (include role)

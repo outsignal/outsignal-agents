@@ -5,6 +5,13 @@
  */
 import { prisma } from "@/lib/db";
 
+function isBlank(value: unknown): boolean {
+  return (
+    value == null ||
+    (typeof value === "string" && value.trim() === "")
+  );
+}
+
 /**
  * Merge provider data into a Person record.
  * Only fills null/empty fields — never overwrites existing data.
@@ -29,7 +36,7 @@ export async function mergePersonData(
   const fieldsWritten: string[] = [];
 
   for (const [key, value] of Object.entries(data)) {
-    if (value != null && value !== "" && (person as Record<string, unknown>)[key] == null) {
+    if (!isBlank(value) && isBlank((person as Record<string, unknown>)[key])) {
       updates[key] = value;
       fieldsWritten.push(key);
     }
@@ -65,7 +72,7 @@ export async function mergeCompanyData(
   const fieldsWritten: string[] = [];
 
   for (const [key, value] of Object.entries(data)) {
-    if (value != null && value !== "" && (company as Record<string, unknown>)[key] == null) {
+    if (!isBlank(value) && isBlank((company as Record<string, unknown>)[key])) {
       updates[key] = value;
       fieldsWritten.push(key);
     }

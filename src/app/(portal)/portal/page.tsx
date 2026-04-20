@@ -45,7 +45,11 @@ async function getLinkedInWorkspaceStats(
 ) {
   const linkedInSenderIds = (
     await prisma.sender.findMany({
-      where: { workspaceSlug, channel: { in: ["linkedin", "both"] } },
+      where: {
+        workspaceSlug,
+        channel: { in: ["linkedin", "both"] },
+        status: { not: "disabled" },
+      },
       select: { id: true },
     })
   ).map((s) => s.id);

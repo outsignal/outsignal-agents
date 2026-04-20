@@ -1,0 +1,55 @@
+[bl105-resume-execute] Scope: 4 campaigns in workspace 'blanktag'. Tier 3 mutation. Inverting BL-105 pause after render fix cb5f6673 validated.
+
+[step 1] Pre-check — loading all 4 campaigns…
+
+BEFORE:
+id                         status  target    channels      workspaceSlug  name                                                   
+-------------------------  ------  --------  ------------  -------------  -------------------------------------------------------
+cmnspob3g004ep8xxhm8grecl  paused  active    ["linkedin"]  blanktag       BlankTag - LinkedIn - C1 (2C) - UK Shopify + Google Ads
+cmnspobho008tp8xxrddnwyeu  paused  active    ["linkedin"]  blanktag       BlankTag - LinkedIn - C1 (2D) - UK Shopify + Google Ads
+cmnspobtf00d8p8xx8v4ew4jg  paused  active    ["linkedin"]  blanktag       BlankTag - LinkedIn - C1 (2E) - UK Shopify + Google Ads
+cmmwei70q0007zxgpvyhwwmua  paused  approved  ["linkedin"]  blanktag       BlankTag - LinkedIn - C1 - UK Shopify + Google Ads     
+
+[step 2] Flipping Campaign.status paused → target (3× active, 1× approved) in single tx…
+  flipped 4 campaigns, wrote 4 AuditLog rows
+    cmnspob3g004ep8xxhm8grecl: paused → active
+    cmnspobho008tp8xxrddnwyeu: paused → active
+    cmnspobtf00d8p8xx8v4ew4jg: paused → active
+    cmmwei70q0007zxgpvyhwwmua: paused → approved
+
+[step 3] Re-enabling LinkedInAction queue (cancelled → pending) per campaign, with pause-audit cross-check…
+[bl105-resume-execute] FATAL: Error: REFUSE: Campaign cmnspob3g004ep8xxhm8grecl (BlankTag - LinkedIn - C1 (2C) - UK Shopify + Google Ads) has 298 cancelled actions but BL-105 only cancelled 0. 298 extra historical cancellations would be touched by this resume — aborting. Manual inspection required.
+    at main (/Users/jjay/programs/outsignal-agents/scripts/maintenance/_bl105-resume-execute.ts:308:15)
+[bl105-resume-finish] Closing out BL-105 resume — writing 4 no-op queue-resume audit rows (Mutation A already landed).
+
+[step 1] Pre-check…
+
+PRE-CHECK SNAPSHOT:
+campaignId                 name                                                     pause-cancelledCount  cur-cancelled  cur-pending
+-------------------------  -------------------------------------------------------  --------------------  -------------  -----------
+cmnspob3g004ep8xxhm8grecl  BlankTag - LinkedIn - C1 (2C) - UK Shopify + Google Ads  0                     298            0          
+cmnspobho008tp8xxrddnwyeu  BlankTag - LinkedIn - C1 (2D) - UK Shopify + Google Ads  0                     297            0          
+cmnspobtf00d8p8xx8v4ew4jg  BlankTag - LinkedIn - C1 (2E) - UK Shopify + Google Ads  0                     300            0          
+cmmwei70q0007zxgpvyhwwmua  BlankTag - LinkedIn - C1 - UK Shopify + Google Ads       0                     0              0          
+
+  All 4 BL-105 pause audits show cancelledCount=0 — resume is a documented no-op.
+  Current 'cancelled' rows (298 / 297 / 300 / 0) are historical, predate BL-105, NOT touched by this script.
+
+[step 2] Writing 4 no-op linkedin.action.bl105_resume audit rows (single tx)…
+  wrote 4 AuditLog rows
+    cmnspob3g004ep8xxhm8grecl → audit cmo1v40vg0000zxuek7kqs3jn
+    cmnspobho008tp8xxrddnwyeu → audit cmo1v41090001zxue7k876fog
+    cmnspobtf00d8p8xx8v4ew4jg → audit cmo1v412t0002zxue1ffgmrqm
+    cmmwei70q0007zxgpvyhwwmua → audit cmo1v41570003zxuefynm0aaf
+
+[step 3] Post-verify…
+
+AFTER:
+id                         status    target    bl105_cancel audits  bl105_resume audits  pending  cancelled
+-------------------------  --------  --------  -------------------  -------------------  -------  ---------
+cmnspob3g004ep8xxhm8grecl  active    active    1                    1                    0        298      
+cmnspobho008tp8xxrddnwyeu  active    active    1                    1                    0        297      
+cmnspobtf00d8p8xx8v4ew4jg  active    active    1                    1                    0        300      
+cmmwei70q0007zxgpvyhwwmua  approved  approved  1                    1                    0        0        
+
+[bl105-resume-finish] DONE. 4 campaigns at target status, 4 bl105_resume audit rows written (no-op matching pause). LinkedInAction state untouched; historical cancelled rows (895 total) are pre-BL-105 and out of scope.

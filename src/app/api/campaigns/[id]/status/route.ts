@@ -5,6 +5,45 @@ import { updateCampaignStatus } from "@/lib/campaigns/operations";
 import { pauseCampaignChannels, resumeCampaignChannels } from "@/lib/campaigns/lifecycle";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 
+async function createFirstLinkedInDeployIfNeeded(args: {
+  campaignId: string;
+  campaignName: string;
+  workspaceSlug: string;
+  channels: string[];
+}): Promise<{ id: string } | null> {
+  const { campaignId, campaignName, workspaceSlug, channels } = args;
+
+  return prisma.$transaction(async (tx) => {
+    const claimedActivation = await tx.campaign.updateMany({
+      where: {
+        id: campaignId,
+        status: "active",
+        deployedAt: null,
+      },
+      data: {
+        deployedAt: new Date(),
+      },
+    });
+
+    if (claimedActivation.count === 0) {
+      return null;
+    }
+
+    return tx.campaignDeploy.create({
+      data: {
+        campaignId,
+        campaignName,
+        workspaceSlug,
+        status: "pending",
+        channels: JSON.stringify(channels),
+        emailStatus: channels.includes("email") ? "pending" : "skipped",
+        linkedinStatus: channels.includes("linkedin") ? "pending" : "skipped",
+      },
+      select: { id: true },
+    });
+  });
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -30,41 +69,18 @@ export async function POST(
 
     // Handle channel-level side effects after the status transition.
     if (status === "active") {
-      const existingDeploy = await prisma.campaignDeploy.findFirst({
-        where: { campaignId: id },
-        select: { id: true },
-      });
+      // First activation for LinkedIn campaigns creates the initial deploy exactly once.
+      // Re-activations after pause already have deployedAt / prior deploy history and
+      // should just resume channels instead of creating duplicate deploy rows.
+      if (campaign.channels.includes("linkedin")) {
+        const deploy = await createFirstLinkedInDeployIfNeeded({
+          campaignId: id,
+          campaignName: campaign.name,
+          workspaceSlug: campaign.workspaceSlug,
+          channels: campaign.channels,
+        });
 
-      if (existingDeploy) {
-        // Resuming from paused — restart channel sending via adapters
-        resumeCampaignChannels(id).catch((err) =>
-          console.error(`[campaign-status] Resume channels failed for ${id}:`, err),
-        );
-      } else {
-        // First activation — auto-trigger deploy for LinkedIn campaigns
-        const hasLinkedIn = campaign.channels.includes("linkedin");
-
-        if (hasLinkedIn) {
-          const channels: string[] = campaign.channels;
-
-          const deploy = await prisma.campaignDeploy.create({
-            data: {
-              campaignId: id,
-              campaignName: campaign.name,
-              workspaceSlug: campaign.workspaceSlug,
-              status: "pending",
-              channels: JSON.stringify(channels),
-              emailStatus: channels.includes("email") ? "pending" : "skipped",
-              linkedinStatus: "pending",
-            },
-          });
-
-          // Set deployedAt if not already set
-          await prisma.campaign.update({
-            where: { id },
-            data: { deployedAt: new Date() },
-          });
-
+        if (deploy) {
           await tasks.trigger("campaign-deploy", {
             campaignId: id,
             deployId: deploy.id,
@@ -73,7 +89,16 @@ export async function POST(
           console.log(
             `[campaign-status] Auto-triggered deploy ${deploy.id} for LinkedIn campaign ${id}`,
           );
+        } else {
+          // Re-activation / duplicate request — restart channel sending via adapters.
+          resumeCampaignChannels(id).catch((err) =>
+            console.error(`[campaign-status] Resume channels failed for ${id}:`, err),
+          );
         }
+      } else {
+        resumeCampaignChannels(id).catch((err) =>
+          console.error(`[campaign-status] Resume channels failed for ${id}:`, err),
+        );
       }
     }
 
@@ -90,6 +115,10 @@ export async function POST(
 
     if (message.includes("Invalid status transition")) {
       return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    if (message.includes("modified concurrently")) {
+      return NextResponse.json({ error: message }, { status: 409 });
     }
 
     console.error("Failed to update campaign status:", error);

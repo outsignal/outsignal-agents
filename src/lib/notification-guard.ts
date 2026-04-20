@@ -18,10 +18,15 @@ export function verifyEmailRecipients(
   context: string, // e.g. "notifyReply" or "notifyInboxDisconnect" for logging
 ): string[] {
   const adminEmail = process.env.ADMIN_EMAIL;
+  const normalizedAdminEmail = adminEmail?.toLowerCase();
 
   if (intent === "admin") {
-    const allowed = recipients.filter((r) => r === adminEmail);
-    const blocked = recipients.filter((r) => r !== adminEmail);
+    const allowed = normalizedAdminEmail
+      ? recipients.filter((r) => r.toLowerCase() === normalizedAdminEmail)
+      : [];
+    const blocked = normalizedAdminEmail
+      ? recipients.filter((r) => r.toLowerCase() !== normalizedAdminEmail)
+      : recipients;
     if (blocked.length > 0) {
       console.error(
         `[notification-guard] BLOCKED ${context}: attempted to send admin notification to non-admin emails: ${blocked.join(", ")}`,
@@ -36,8 +41,18 @@ export function verifyEmailRecipients(
   }
 
   // Client intent — block admin-only email from receiving client notifications
-  // (not strictly needed but good hygiene)
-  return recipients;
+  const allowed = normalizedAdminEmail
+    ? recipients.filter((r) => r.toLowerCase() !== normalizedAdminEmail)
+    : recipients;
+  const blocked = normalizedAdminEmail
+    ? recipients.filter((r) => r.toLowerCase() === normalizedAdminEmail)
+    : [];
+  if (blocked.length > 0) {
+    console.error(
+      `[notification-guard] BLOCKED ${context}: attempted to send client notification to admin email: ${blocked.join(", ")}`,
+    );
+  }
+  return allowed;
 }
 
 /**

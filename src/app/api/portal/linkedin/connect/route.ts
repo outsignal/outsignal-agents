@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
+import { canManageSenders } from "@/lib/member-permissions";
 
 /**
  * POST /api/portal/linkedin/connect
@@ -16,6 +17,10 @@ export async function POST(request: NextRequest) {
     session = await getPortalSession();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!canManageSenders(session.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // 2. Validate worker env vars

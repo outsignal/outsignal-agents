@@ -146,11 +146,18 @@ export async function GET(request: NextRequest) {
     // 2. LinkedIn KPIs from LinkedInDailyUsage (canonical source)
     const linkedInSenderIds = workspaceFilter !== "all"
       ? (await prisma.sender.findMany({
-          where: { workspaceSlug: workspaceFilter, channel: { in: ["linkedin", "both"] } },
+          where: {
+            workspaceSlug: workspaceFilter,
+            channel: { in: ["linkedin", "both"] },
+            status: { not: "disabled" },
+          },
           select: { id: true },
         })).map((s) => s.id)
       : (await prisma.sender.findMany({
-          where: { channel: { in: ["linkedin", "both"] } },
+          where: {
+            channel: { in: ["linkedin", "both"] },
+            status: { not: "disabled" },
+          },
           select: { id: true },
         })).map((s) => s.id);
 
@@ -229,6 +236,7 @@ export async function GET(request: NextRequest) {
       where: {
         ...wsFilterSlug,
         channel: { in: ["linkedin", "both"] },
+        status: { not: "disabled" },
       },
       _count: { sessionStatus: true },
     });
@@ -332,7 +340,10 @@ export async function GET(request: NextRequest) {
 
     // Session health summary
     const allSenders = await prisma.sender.findMany({
-      where: workspaceFilter !== "all" ? { workspaceSlug: workspaceFilter } : undefined,
+      where:
+        workspaceFilter !== "all"
+          ? { workspaceSlug: workspaceFilter, status: { not: "disabled" } }
+          : { status: { not: "disabled" } },
       select: { sessionStatus: true },
     });
     const sessionHealth = {
@@ -503,6 +514,7 @@ export async function GET(request: NextRequest) {
       where: {
         ...wsFilterSlug,
         channel: { in: ["linkedin", "both"] },
+        status: { not: "disabled" },
         sessionStatus: "expired",
       },
       select: { id: true, name: true, workspaceSlug: true },

@@ -4,7 +4,7 @@ import React from "react";
 import { InvoicePdfDocument } from "./pdf";
 import { InvoiceWithLineItems } from "./types";
 import { formatGBP, formatInvoiceDate } from "./format";
-import { audited } from "@/lib/notification-audit";
+import { auditSkipped, audited } from "@/lib/notification-audit";
 import { emailLayout, emailButton, emailNotice } from "@/lib/email-template";
 
 function getBaseUrl(): string {
@@ -68,11 +68,22 @@ export async function sendInvoiceEmail(
   invoice: InvoiceWithLineItems,
   recipientEmail: string,
   ccEmails?: string[],
-): Promise<void> {
+): Promise<InvoiceEmailDeliveryResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn("[sendInvoiceEmail] RESEND_API_KEY not set, skipping email");
-    return;
+    auditSkipped({
+      notificationType: "invoice",
+      channel: "email",
+      recipient: recipientEmail,
+      workspaceSlug: invoice.workspaceSlug,
+      metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, reason: "resend_not_configured" },
+    });
+    return {
+      delivered: false,
+      providerId: null,
+      reason: "resend_not_configured",
+    };
   }
 
   const resend = new Resend(apiKey);
@@ -86,21 +97,62 @@ export async function sendInvoiceEmail(
     React.createElement(InvoicePdfDocument, { invoice }) as any,
   );
 
-  await audited(
+  const response = await audited(
     { notificationType: "invoice", channel: "email", recipient: recipientEmail },
-    async () => { await resend.emails.send({
-      from,
-      to: [recipientEmail],
-      ...(ccEmails?.length ? { cc: ccEmails } : {}),
-      bcc: ["jonathan@outsignal.ai"],
-      subject: `Invoice ${invoice.invoiceNumber} from Outsignal`,
-      html: invoiceEmailHtml(invoice),
-      attachments: [
-        {
-          filename: `${invoice.invoiceNumber}.pdf`,
-          content: pdfBuffer,
-        },
-      ],
-    }); },
+    async () => {
+      const response = await resend.emails.send({
+        from,
+        to: [recipientEmail],
+        ...(ccEmails?.length ? { cc: ccEmails } : {}),
+        bcc: ["jonathan@outsignal.ai"],
+        subject: `Invoice ${invoice.invoiceNumber} from Outsignal`,
+        html: invoiceEmailHtml(invoice),
+        attachments: [
+          {
+            filename: `${invoice.invoiceNumber}.pdf`,
+            content: pdfBuffer,
+          },
+        ],
+      });
+
+      const error =
+        response &&
+        typeof response === "object" &&
+        "error" in response &&
+        response.error
+          ? String((response as { error?: { message?: string } }).error?.message ?? "Resend send failed")
+          : null;
+      if (error) {
+        throw new Error(error);
+      }
+
+      return response;
+    },
   );
+
+  const providerId =
+    response &&
+    typeof response === "object" &&
+    "id" in response &&
+    typeof response.id === "string"
+      ? response.id
+      : response &&
+          typeof response === "object" &&
+          "data" in response &&
+          response.data &&
+          typeof response.data === "object" &&
+          "id" in response.data &&
+          typeof response.data.id === "string"
+        ? response.data.id
+        : null;
+
+  return {
+    delivered: true,
+    providerId,
+  };
+}
+export interface InvoiceEmailDeliveryResult {
+  delivered: boolean;
+  providerId?: string | null;
+  reason?: "resend_not_configured";
 }

@@ -1,0 +1,62 @@
+[bl-resume-lime] Scope: 5 campaigns in workspace 'lime-recruitment'. Tier 3 mutation — flipping EB drafts to active + DB status=deployed -> active.
+
+[step 1] Pre-check — loading DB rows and resolving workspace apiToken...
+
+BEFORE:
+Label               ebId  campaignId                 EB status  DB status  channels   name                                                       
+------------------  ----  -------------------------  ---------  ---------  ---------  -----------------------------------------------------------
+E1 Manufacturing    104   cmnpwzv9e010np8itsf3f35oy  draft      deployed   ["email"]  Lime Recruitment - Email - E1 - Manufacturing + Warehousing
+E2 Transport        105   cmnpwzwi5011sp8itj20w1foq  draft      deployed   ["email"]  Lime Recruitment - Email - E2 - Transportation + Logistics 
+E3 Engineering      106   cmnpwzxmg012gp8itxv4dvmyb  draft      deployed   ["email"]  Lime Recruitment - Email - E3 - Engineering                
+E4 Factory Manager  109   cmnpwzym5014op8it2cpupfwx  draft      deployed   ["email"]  Lime Recruitment - Email - E4 - Factory Manager            
+E5 Shift Manager    108   cmnpx037s01dcp8itzzilfdfb  draft      deployed   ["email"]  Lime Recruitment - Email - E5 - Shift Manager              
+
+[step 2] Sequential per-campaign resume + DB flip...
+
+  [eb 104] E1 Manufacturing: Lime Recruitment - Email - E1 - Manufacturing + Warehousing
+    calling resumeCampaign(104)...
+    verified EB status='launching' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo2y5vtw0000p85k0dyur5o8, total 3146ms
+
+  [eb 105] E2 Transport: Lime Recruitment - Email - E2 - Transportation + Logistics
+    calling resumeCampaign(105)...
+    verified EB status='queued' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo2y5yqq0001p85k4rj9it61, total 3267ms
+
+  [eb 106] E3 Engineering: Lime Recruitment - Email - E3 - Engineering
+    calling resumeCampaign(106)...
+    verified EB status='queued' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo2y61n00002p85kmuty8eol, total 3263ms
+
+  [eb 109] E4 Factory Manager: Lime Recruitment - Email - E4 - Factory Manager
+    calling resumeCampaign(109)...
+    verified EB status='queued' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo2y64jy0003p85kqosm3v3o, total 3194ms
+
+  [eb 108] E5 Shift Manager: Lime Recruitment - Email - E5 - Shift Manager
+    calling resumeCampaign(108)...
+    verified EB status='queued' after 1 poll (3000ms)
+    DB flipped deployed -> active, auditId=cmo2y67hk0004p85kgc3p5jlh, total 3210ms
+
+[step 3] Post-verify...
+
+AFTER:
+Label               ebId  campaignId                 EB status  DB status  name                                                       
+------------------  ----  -------------------------  ---------  ---------  -----------------------------------------------------------
+E1 Manufacturing    104   cmnpwzv9e010np8itsf3f35oy  active     active     Lime Recruitment - Email - E1 - Manufacturing + Warehousing
+E2 Transport        105   cmnpwzwi5011sp8itj20w1foq  queued     active     Lime Recruitment - Email - E2 - Transportation + Logistics 
+E3 Engineering      106   cmnpwzxmg012gp8itxv4dvmyb  active     active     Lime Recruitment - Email - E3 - Engineering                
+E4 Factory Manager  109   cmnpwzym5014op8it2cpupfwx  queued     active     Lime Recruitment - Email - E4 - Factory Manager            
+E5 Shift Manager    108   cmnpx037s01dcp8itzzilfdfb  queued     active     Lime Recruitment - Email - E5 - Shift Manager              
+
+## Final report
+
+| Label | EB ID | DB ID | EB Before -> After | DB Before -> After | Audit Log ID | Duration |
+|---|---|---|---|---|---|---|
+| E1 Manufacturing | 104 | cmnpwzv9e010np8itsf3f35oy | draft -> launching | deployed -> active | cmo2y5vtw0000p85k0dyur5o8 | 3146ms |
+| E2 Transport | 105 | cmnpwzwi5011sp8itj20w1foq | draft -> queued | deployed -> active | cmo2y5yqq0001p85k4rj9it61 | 3267ms |
+| E3 Engineering | 106 | cmnpwzxmg012gp8itxv4dvmyb | draft -> queued | deployed -> active | cmo2y61n00002p85kmuty8eol | 3263ms |
+| E4 Factory Manager | 109 | cmnpwzym5014op8it2cpupfwx | draft -> queued | deployed -> active | cmo2y64jy0003p85kqosm3v3o | 3194ms |
+| E5 Shift Manager | 108 | cmnpx037s01dcp8itzzilfdfb | draft -> queued | deployed -> active | cmo2y67hk0004p85kgc3p5jlh | 3210ms |
+
+[bl-resume-lime] DONE. 5/5 lime-recruitment email campaigns resumed — EB draft->active, DB deployed->active, 5 AuditLog rows written.

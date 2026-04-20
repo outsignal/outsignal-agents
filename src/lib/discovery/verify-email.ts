@@ -43,7 +43,7 @@ async function verifySingleEmail(email: string): Promise<VerifySingleResult> {
   try {
     const bbResult = await bouncebanVerify(email);
 
-    if (bbResult.status === "valid" || bbResult.status === "valid_catch_all") {
+    if (bbResult.status === "valid") {
       return { isValid: true, costUsd: BOUNCEBAN_COST };
     }
 

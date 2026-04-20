@@ -84,6 +84,7 @@ const { getCampaignMock, prismaMock, txMock } = vi.hoisted(() => {
         updateMany: vi.fn(),
         findUnique: vi.fn(),
         findUniqueOrThrow: vi.fn(),
+        findFirst: vi.fn(),
       },
       targetListPerson: { findMany: vi.fn() },
       webhookEvent: { findFirst: vi.fn() },
@@ -233,6 +234,19 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
 
     fetchMock.mockImplementation(
       routeFetch([
+        {
+          method: "GET",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: () => mockResponse({ data: [], meta: { last_page: 1 } }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: (_url, options) => {
+            const body = JSON.parse(String(options.body ?? "{}"));
+            return mockResponse({ data: { id: 1, name: body.name } });
+          },
+        },
         // Step 1 — createCampaign (POST /campaigns, no suffix)
         {
           method: "POST",
@@ -372,6 +386,13 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
       const method = (options.method ?? "GET").toUpperCase();
       const stripped = url.replace(EB_BASE, "");
 
+      if (method === "GET" && /^\/custom-variables(\?.*)?$/.test(stripped)) {
+        return mockResponse({ data: [], meta: { last_page: 1 } });
+      }
+      if (method === "POST" && /^\/custom-variables(\?.*)?$/.test(stripped)) {
+        const body = JSON.parse(String(options.body ?? "{}"));
+        return mockResponse({ data: { id: 1, name: body.name } });
+      }
       if (method === "GET" && stripped === "/campaigns/10001") {
         getCampaignHits += 1;
         return mockResponse({
@@ -456,6 +477,19 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
 
     fetchMock.mockImplementation(
       routeFetch([
+        {
+          method: "GET",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: () => mockResponse({ data: [], meta: { last_page: 1 } }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: (_url, options) => {
+            const body = JSON.parse(String(options.body ?? "{}"));
+            return mockResponse({ data: { id: 1, name: body.name } });
+          },
+        },
         {
           method: "POST",
           match: /\/api\/campaigns$/,
@@ -569,6 +603,13 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
       const method = (options.method ?? "GET").toUpperCase();
       const stripped = url.replace(EB_BASE, "");
 
+      if (method === "GET" && /^\/custom-variables(\?.*)?$/.test(stripped)) {
+        return mockResponse({ data: [], meta: { last_page: 1 } });
+      }
+      if (method === "POST" && /^\/custom-variables(\?.*)?$/.test(stripped)) {
+        const body = JSON.parse(String(options.body ?? "{}"));
+        return mockResponse({ data: { id: 1, name: body.name } });
+      }
       if (method === "GET" && stripped === "/campaigns/10002") {
         getCampaignCalls += 1;
         return mockResponse({
@@ -702,6 +743,19 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
 
     fetchMock.mockImplementation(
       routeFetch([
+        {
+          method: "GET",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: () => mockResponse({ data: [], meta: { last_page: 1 } }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: (_url, options) => {
+            const body = JSON.parse(String(options.body ?? "{}"));
+            return mockResponse({ data: { id: 1, name: body.name } });
+          },
+        },
         {
           method: "POST",
           match: /\/api\/campaigns$/,

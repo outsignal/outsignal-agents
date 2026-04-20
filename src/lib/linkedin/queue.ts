@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/db";
 import { WITHDRAWAL_COOLDOWN_MS } from "./types";
 import type { EnqueueActionParams, LinkedInActionType } from "./types";
+import { isTerminalActionError } from "./action-errors";
 import {
   BUDGET_BUCKETS,
   bucketKeyFor,
@@ -266,17 +267,67 @@ export async function getNextBatch(
 }
 
 /**
+ * Atomically claim the next ready batch for a sender.
+ *
+ * Race fix: `getNextBatch()` is a read-only candidate selector. Two workers
+ * can read the same pending rows concurrently. Claiming must therefore be a
+ * compare-and-swap on each action (`status: "pending" -> "running"`), and
+ * only successfully claimed rows should be returned to the caller.
+ */
+export async function claimNextBatch(
+  senderId: string,
+  perTypeLimit: number = 5,
+): Promise<Array<{
+  id: string;
+  personId: string | null;
+  actionType: LinkedInActionType;
+  messageBody: string | null;
+  priority: number;
+  workspaceSlug: string;
+  campaignName: string | null;
+  linkedInConversationId: string | null;
+}>> {
+  const candidates = await getNextBatch(senderId, perTypeLimit);
+  if (candidates.length === 0) return [];
+
+  const claimed: typeof candidates = [];
+  const claimedAt = new Date();
+
+  for (const action of candidates) {
+    const update = await prisma.linkedInAction.updateMany({
+      where: {
+        id: action.id,
+        senderId,
+        status: "pending",
+      },
+      data: {
+        status: "running",
+        attempts: { increment: 1 },
+        lastAttemptAt: claimedAt,
+      },
+    });
+
+    if (update.count === 1) {
+      claimed.push(action);
+    }
+  }
+
+  return claimed;
+}
+
+/**
  * Mark an action as running (worker has picked it up).
  */
-export async function markRunning(actionId: string): Promise<void> {
-  await prisma.linkedInAction.update({
-    where: { id: actionId },
+export async function markRunning(actionId: string): Promise<boolean> {
+  const updated = await prisma.linkedInAction.updateMany({
+    where: { id: actionId, status: "pending" },
     data: {
       status: "running",
       attempts: { increment: 1 },
       lastAttemptAt: new Date(),
     },
   });
+  return updated.count === 1;
 }
 
 /**
@@ -287,148 +338,167 @@ export async function markRunning(actionId: string): Promise<void> {
  * - withdraw_connection (withdrawal_pre_retry): schedule retry after 21-day cooldown
  * - withdraw_connection (withdrawal_final): decrement pending count
  */
-export async function markComplete(actionId: string, result?: string): Promise<void> {
-  const action = await prisma.linkedInAction.findUniqueOrThrow({
-    where: { id: actionId },
-  });
+export async function markComplete(
+  actionId: string,
+  result?: string,
+): Promise<{ transitionedFromRunning: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const action = await tx.linkedInAction.findUniqueOrThrow({
+      where: { id: actionId },
+    });
 
-  await prisma.linkedInAction.update({
-    where: { id: actionId },
-    data: {
-      status: "complete",
-      completedAt: new Date(),
-      result: result ?? null,
-    },
-  });
-
-  // Post-completion hook: track pending connection count for new connection requests
-  if (action.actionType === "connect" || action.actionType === "connection_request") {
-    await prisma.sender.update({
-      where: { id: action.senderId },
+    const completedAt = new Date();
+    const transition = await tx.linkedInAction.updateMany({
+      where: { id: actionId, status: "running" },
       data: {
-        pendingConnectionCount: { increment: 1 },
-        pendingCountUpdatedAt: new Date(),
+        status: "complete",
+        completedAt,
+        result: result ?? null,
       },
     });
-  }
 
-  // Post-completion hook: withdrawal lifecycle callbacks
-  if (action.actionType === "withdraw_connection") {
-    if (action.sequenceStepRef === "withdrawal_pre_retry") {
-      // Guard: only decrement pending count if the connection is still "pending".
-      // If the poller already moved it to "connected", it handled the decrement.
-      const stillPending = await prisma.linkedInConnection.count({
-        where: {
-          senderId: action.senderId,
-          personId: action.personId!,
-          status: "pending",
+    const transitionedFromRunning = transition.count === 1;
+
+    if (!transitionedFromRunning) {
+      return { transitionedFromRunning: false };
+    }
+
+    // Post-completion hook: track pending connection count for new connection requests
+    if (
+      action.actionType === "connect" ||
+      action.actionType === "connection_request"
+    ) {
+      await tx.sender.update({
+        where: { id: action.senderId },
+        data: {
+          pendingConnectionCount: { increment: 1 },
+          pendingCountUpdatedAt: new Date(),
         },
       });
+    }
 
-      if (stillPending > 0) {
-        // Withdrawal before retry: update connection status, decrement pending count,
-        // then schedule a retry connection_request after 21-day cooldown.
-        await prisma.$executeRaw`
+    // Post-completion hook: withdrawal lifecycle callbacks
+    if (action.actionType === "withdraw_connection") {
+      if (action.sequenceStepRef === "withdrawal_pre_retry") {
+        const stillPending = await tx.linkedInConnection.count({
+          where: {
+            senderId: action.senderId,
+            personId: action.personId!,
+            status: "pending",
+          },
+        });
+
+        if (stillPending > 0) {
+          await tx.$executeRaw`
+            UPDATE "Sender"
+            SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
+                "pendingCountUpdatedAt" = NOW()
+            WHERE "id" = ${action.senderId}
+          `;
+
+          await tx.linkedInConnection.updateMany({
+            where: {
+              senderId: action.senderId,
+              personId: action.personId!,
+              status: "pending",
+            },
+            data: { status: "withdrawn" },
+          });
+
+          const retryTime = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
+
+          await tx.linkedInAction.create({
+            data: {
+              senderId: action.senderId,
+              personId: action.personId!,
+              workspaceSlug: action.workspaceSlug,
+              actionType: "connection_request",
+              priority: 5,
+              scheduledFor: retryTime,
+              status: "pending",
+              sequenceStepRef: "connection_retry",
+            },
+          });
+
+          await tx.linkedInConnection.updateMany({
+            where: {
+              senderId: action.senderId,
+              personId: action.personId!,
+              status: "withdrawn",
+            },
+            data: {
+              status: "pending",
+              requestSentAt: retryTime,
+            },
+          });
+
+          await tx.sender.update({
+            where: { id: action.senderId },
+            data: {
+              pendingConnectionCount: { increment: 1 },
+              pendingCountUpdatedAt: new Date(),
+            },
+          });
+        }
+      } else if (action.sequenceStepRef === "withdrawal_final") {
+        await tx.$executeRaw`
           UPDATE "Sender"
           SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
               "pendingCountUpdatedAt" = NOW()
           WHERE "id" = ${action.senderId}
         `;
 
-        await prisma.linkedInConnection.updateMany({
+        await tx.linkedInConnection.updateMany({
           where: {
             senderId: action.senderId,
             personId: action.personId!,
-            status: "pending",
+            status: { in: ["pending", "withdrawn"] },
           },
-          data: { status: "withdrawn" },
-        });
-
-        // Schedule retry after 21-day cooldown (LinkedIn re-invite restriction)
-        const retryTime = new Date(Date.now() + WITHDRAWAL_COOLDOWN_MS);
-
-        await enqueueAction({
-          senderId: action.senderId,
-          personId: action.personId!,
-          workspaceSlug: action.workspaceSlug,
-          actionType: "connection_request",
-          priority: 5,
-          scheduledFor: retryTime,
-          sequenceStepRef: "connection_retry",
-        });
-
-        // Reset connection to pending with new requestSentAt for the retry
-        await prisma.linkedInConnection.updateMany({
-          where: {
-            senderId: action.senderId,
-            personId: action.personId!,
-            status: "withdrawn",
-          },
-          data: {
-            status: "pending",
-            requestSentAt: retryTime,
-          },
-        });
-
-        // Increment pending count for the retry
-        await prisma.sender.update({
-          where: { id: action.senderId },
-          data: {
-            pendingConnectionCount: { increment: 1 },
-            pendingCountUpdatedAt: new Date(),
-          },
+          data: { status: "failed" },
         });
       }
-    } else if (action.sequenceStepRef === "withdrawal_final") {
-      // Final withdrawal: decrement pending count (with floor guard) and mark connection as failed
-      await prisma.$executeRaw`
-        UPDATE "Sender"
-        SET "pendingConnectionCount" = GREATEST(0, "pendingConnectionCount" - 1),
-            "pendingCountUpdatedAt" = NOW()
-        WHERE "id" = ${action.senderId}
-      `;
-
-      // Mark connection as failed (the poller already set it to "failed",
-      // but if it's still pending for some reason, update it)
-      await prisma.linkedInConnection.updateMany({
-        where: {
-          senderId: action.senderId,
-          personId: action.personId!,
-          status: { in: ["pending", "withdrawn"] },
-        },
-        data: { status: "failed" },
-      });
     }
-  }
+
+    return { transitionedFromRunning: true };
+  });
 }
 
 /**
  * Mark an action as failed. If retries remain, schedule the next retry
  * with exponential backoff (5 min, 30 min, 2 hours).
  */
-export async function markFailed(actionId: string, error: string): Promise<void> {
+export async function markFailed(
+  actionId: string,
+  error: string,
+): Promise<boolean> {
   const action = await prisma.linkedInAction.findUniqueOrThrow({
     where: { id: actionId },
   });
 
-  const retriesExhausted = action.attempts >= action.maxAttempts;
+  if (action.status === "complete") {
+    return false;
+  }
+
+  const retriesExhausted =
+    action.attempts >= action.maxAttempts || isTerminalActionError(error);
 
   if (retriesExhausted) {
-    await prisma.linkedInAction.update({
-      where: { id: actionId },
+    const updated = await prisma.linkedInAction.updateMany({
+      where: { id: actionId, status: action.status },
       data: {
         status: "failed",
         result: JSON.stringify({ error }),
       },
     });
+    return updated.count === 1;
   } else {
     // Exponential backoff: 5 min, 30 min, 2 hours
     const backoffMinutes = [5, 30, 120];
     const delayMinutes = backoffMinutes[Math.min(action.attempts, backoffMinutes.length - 1)];
     const nextRetry = new Date(Date.now() + delayMinutes * 60 * 1000);
 
-    await prisma.linkedInAction.update({
-      where: { id: actionId },
+    const updated = await prisma.linkedInAction.updateMany({
+      where: { id: actionId, status: action.status },
       data: {
         status: "pending", // back to pending for retry
         nextRetryAt: nextRetry,
@@ -436,7 +506,58 @@ export async function markFailed(actionId: string, error: string): Promise<void>
         result: JSON.stringify({ error, retryAt: nextRetry.toISOString() }),
       },
     });
+    return updated.count === 1;
   }
+}
+
+/**
+ * Mark an action as failed only if it is still in "running" status.
+ *
+ * Used by worker timeout cleanup so late completions or already-cleaned rows
+ * are not clobbered back into failed/pending.
+ */
+export async function markFailedIfRunning(
+  actionId: string,
+  error: string,
+): Promise<boolean> {
+  const action = await prisma.linkedInAction.findUniqueOrThrow({
+    where: { id: actionId },
+  });
+
+  if (action.status !== "running") {
+    return false;
+  }
+
+  const retriesExhausted =
+    action.attempts >= action.maxAttempts || isTerminalActionError(error);
+
+  if (retriesExhausted) {
+    const updated = await prisma.linkedInAction.updateMany({
+      where: { id: actionId, status: "running" },
+      data: {
+        status: "failed",
+        result: JSON.stringify({ error }),
+      },
+    });
+    return updated.count === 1;
+  }
+
+  const backoffMinutes = [5, 30, 120];
+  const delayMinutes =
+    backoffMinutes[Math.min(action.attempts, backoffMinutes.length - 1)];
+  const nextRetry = new Date(Date.now() + delayMinutes * 60 * 1000);
+
+  const updated = await prisma.linkedInAction.updateMany({
+    where: { id: actionId, status: "running" },
+    data: {
+      status: "pending",
+      nextRetryAt: nextRetry,
+      scheduledFor: nextRetry,
+      result: JSON.stringify({ error, retryAt: nextRetry.toISOString() }),
+    },
+  });
+
+  return updated.count === 1;
 }
 
 /**

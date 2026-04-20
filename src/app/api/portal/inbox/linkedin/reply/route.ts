@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { enqueueAction } from "@/lib/linkedin/queue";
+import { canManageInbox } from "@/lib/member-permissions";
 
 /**
  * POST /api/portal/inbox/linkedin/reply
@@ -15,6 +16,9 @@ export async function POST(request: NextRequest) {
   let workspaceSlug: string;
   try {
     const session = await getPortalSession();
+    if (!canManageInbox(session.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     workspaceSlug = session.workspaceSlug;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

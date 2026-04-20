@@ -40,7 +40,10 @@ async function main() {
 
   // 3. Send the email with PDF attachment
   console.log("\nSending invoice email...");
-  await sendInvoiceEmail(invoice, recipientEmail);
+  const delivery = await sendInvoiceEmail(invoice, recipientEmail);
+  if (!delivery.delivered) {
+    throw new Error("Invoice email delivery is not configured");
+  }
   console.log("Email sent successfully.");
 
   // 4. Update status to "sent" (sets sentAt)

@@ -3,11 +3,13 @@ import { prisma } from "@/lib/db";
 import {
   createSender,
   getSendersForWorkspace,
+  getActiveSenders,
   assignSenderForPerson,
   activateSender,
   pauseSender,
   updateAcceptanceRate,
 } from "@/lib/linkedin/sender";
+import { getWarmupLimits } from "@/lib/linkedin/rate-limiter";
 
 describe("createSender", () => {
   beforeEach(() => {
@@ -66,6 +68,31 @@ describe("getSendersForWorkspace", () => {
   });
 });
 
+describe("getActiveSenders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns only operational linkedin senders", async () => {
+    const mockSenders = [{ id: "s1", name: "Alice" }];
+    (prisma.sender.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(mockSenders);
+
+    const result = await getActiveSenders("rise");
+
+    expect(result).toEqual(mockSenders);
+    expect(prisma.sender.findMany).toHaveBeenCalledWith({
+      where: {
+        workspaceSlug: "rise",
+        status: "active",
+        channel: { in: ["linkedin", "both"] },
+        sessionStatus: "active",
+        healthStatus: { notIn: ["blocked", "session_expired"] },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  });
+});
+
 describe("assignSenderForPerson", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,18 +113,53 @@ describe("assignSenderForPerson", () => {
     expect(result?.id).toBe("s2");
   });
 
-  it("returns null when no email match found", async () => {
+  it("falls back to the least-used eligible sender when no email match is found", async () => {
     const senders = [
-      { id: "s1", emailAddress: "alice@rise.com", status: "active" },
+      { id: "s1", name: "Alice", emailAddress: "alice@rise.com", status: "active" },
+      { id: "s2", name: "Bob", emailAddress: "bob@rise.com", status: "active" },
     ];
     (prisma.sender.findMany as ReturnType<typeof vi.fn>).mockResolvedValue(senders);
+    (prisma.linkedInDailyUsage.findUnique as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ connectionsSent: 7, messagesSent: 2, profileViews: 9 })
+      .mockResolvedValueOnce({ connectionsSent: 1, messagesSent: 0, profileViews: 2 });
 
     const result = await assignSenderForPerson("rise", {
       emailSenderAddress: "unknown@rise.com",
       mode: "email_linkedin",
     });
 
-    expect(result).toBeNull();
+    expect(result?.id).toBe("s2");
+  });
+
+  it("falls back to a refreshable expired sender for email_linkedin mode instead of dropping the action", async () => {
+    (prisma.sender.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "s-expired",
+          emailAddress: "alice@rise.com",
+          status: "active",
+          sessionStatus: "expired",
+          healthStatus: "session_expired",
+        },
+      ]);
+
+    const result = await assignSenderForPerson("rise", {
+      emailSenderAddress: "alice@rise.com",
+      mode: "email_linkedin",
+    });
+
+    expect(result?.id).toBe("s-expired");
+    expect(prisma.sender.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        workspaceSlug: "rise",
+        status: "active",
+        channel: { in: ["linkedin", "both"] },
+        sessionStatus: { in: ["active", "expired"] },
+        healthStatus: { not: "blocked" },
+      },
+      orderBy: { createdAt: "asc" },
+    });
   });
 
   it("round-robins for linkedin_only mode based on least usage", async () => {
@@ -137,6 +199,7 @@ describe("activateSender", () => {
 
   it("sets status to active and starts warmup at day 1", async () => {
     (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    const limits = getWarmupLimits(1, "sender-1");
 
     await activateSender("sender-1");
 
@@ -146,9 +209,9 @@ describe("activateSender", () => {
         status: "active",
         warmupDay: 1,
         warmupStartedAt: expect.any(Date),
-        dailyConnectionLimit: 5, // week 1
-        dailyMessageLimit: 10,
-        dailyProfileViewLimit: 15,
+        dailyConnectionLimit: limits.connections,
+        dailyMessageLimit: limits.messages,
+        dailyProfileViewLimit: limits.profileViews,
       }),
     });
   });

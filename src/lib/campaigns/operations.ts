@@ -471,11 +471,29 @@ export async function updateCampaignStatus(
     }
   }
 
-  const campaign = await prisma.campaign.update({
-    where: { id },
+  const transitioned = await prisma.campaign.updateMany({
+    where: { id, status: currentStatus },
     data: { status: newStatus },
+  });
+
+  if (transitioned.count === 0) {
+    const latest = await prisma.campaign.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    throw new Error(
+      `Campaign ${id} was modified concurrently while changing status from '${currentStatus}' to '${newStatus}'. Latest status is '${latest?.status ?? "unknown"}'. Reload and retry.`,
+    );
+  }
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { id },
     include: targetListInclude,
   });
+
+  if (!campaign) {
+    throw new Error(`Campaign not found after status transition: '${id}'`);
+  }
 
   return formatCampaignDetail(campaign);
 }
@@ -779,6 +797,7 @@ export async function saveCampaignSequences(
         workspaceSlug: true,
         name: true,
         status: true,
+        updatedAt: true,
         contentApproved: true,
         emailSequence: true,
         linkedinSequence: true,
@@ -858,11 +877,41 @@ export async function saveCampaignSequences(
       }
     }
 
-    const campaign = await tx.campaign.update({
-      where: { id },
-      data: updateData,
-      include: targetListInclude,
-    });
+    let campaign;
+    const txCampaign = tx.campaign as typeof tx.campaign & {
+      updateMany?: (args: {
+        where: { id: string; updatedAt: Date };
+        data: Record<string, unknown>;
+      }) => Promise<{ count: number }>;
+    };
+
+    if (typeof txCampaign.updateMany === "function") {
+      const updated = await txCampaign.updateMany({
+        where: { id, updatedAt: current.updatedAt },
+        data: updateData,
+      });
+
+      if (updated.count === 0) {
+        throw new Error(
+          `Campaign ${id} was modified concurrently while saving sequences. Reload and retry.`,
+        );
+      }
+
+      campaign = await tx.campaign.findUnique({
+        where: { id },
+        include: targetListInclude,
+      });
+      if (!campaign) {
+        throw new Error(`Campaign not found after update: '${id}'`);
+      }
+    } else {
+      // Test fallback for focused unit suites that still stub only `update`.
+      campaign = await tx.campaign.update({
+        where: { id },
+        data: updateData,
+        include: targetListInclude,
+      });
+    }
 
     if (shouldResetApproval) {
       // Direct tx.auditLog.create (not the shared auditLog() helper) because

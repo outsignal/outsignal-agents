@@ -65,11 +65,20 @@ export function getUnverifiedRoutingSuggestion(
   noEmailCount: number;
   suggestion: string;
 } {
+  const isPlaceholderEmail = (email: string | null | undefined): boolean => {
+    if (!email) return false;
+    const normalized = email.toLowerCase();
+    return (
+      normalized.includes("@discovery.internal") ||
+      normalized.includes("@discovered.local")
+    );
+  };
+
   let totalWithEmail = 0;
   let noEmailCount = 0;
 
   for (const person of people) {
-    if (person.email) {
+    if (person.email && !isPlaceholderEmail(person.email)) {
       totalWithEmail++;
     } else {
       noEmailCount++;

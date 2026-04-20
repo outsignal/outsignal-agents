@@ -3,6 +3,9 @@ import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient, EmailBisonApiError } from "@/lib/emailbison/client";
 import { EmailBisonError } from "@/lib/emailbison/types";
+import { canManageInbox } from "@/lib/member-permissions";
+import { auditLog } from "@/lib/audit";
+import { isDestructiveEmailInboxAction } from "@/lib/email-inbox-actions";
 
 // POST /api/portal/inbox/email/actions — proxy actions to EmailBison
 export async function POST(request: NextRequest) {
@@ -10,16 +13,22 @@ export async function POST(request: NextRequest) {
   let parsedReplyId: number | undefined;
 
   try {
-    const { workspaceSlug } = await getPortalSession();
+    const session = await getPortalSession();
+    const { workspaceSlug, email } = session;
     parsedWorkspaceSlug = workspaceSlug;
 
+    if (!canManageInbox(session.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const body = await request.json();
-    const { action, replyId, leadId, value, leadEmail } = body as {
+    const { action, replyId, leadId, value, leadEmail, confirmed } = body as {
       action: string;
       replyId?: number;
       leadId?: number;
       value?: string;
       leadEmail?: string;
+      confirmed?: boolean;
     };
     parsedReplyId = replyId;
 
@@ -43,7 +52,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (isDestructiveEmailInboxAction(action) && confirmed !== true) {
+      return NextResponse.json(
+        { error: "Confirmation required for destructive inbox actions" },
+        { status: 400 },
+      );
+    }
+
     const ebClient = new EmailBisonClient(workspace.apiToken);
+    let destructiveAudit:
+      | {
+          entityType: string;
+          entityId: string;
+          metadata: Record<string, unknown>;
+        }
+      | undefined;
 
     switch (action) {
       case "mark_unread":
@@ -124,6 +147,17 @@ export async function POST(request: NextRequest) {
           blacklistLead.id,
           action === "blacklist_domain" ? "domain" : "email",
         );
+        destructiveAudit = {
+          entityType: "Lead",
+          entityId: resolvedEmail.toLowerCase(),
+          metadata: {
+            workspaceSlug,
+            leadId: blacklistLead.id,
+            leadEmail: leadEmail ?? null,
+            value: resolvedEmail,
+            blacklistType: action === "blacklist_domain" ? "domain" : "email",
+          },
+        };
         break;
       }
 
@@ -141,6 +175,14 @@ export async function POST(request: NextRequest) {
           where: { emailBisonReplyId: replyId, workspaceSlug },
           data: { deletedAt: new Date() },
         });
+        destructiveAudit = {
+          entityType: "Reply",
+          entityId: String(replyId),
+          metadata: {
+            workspaceSlug,
+            replyId,
+          },
+        };
         break;
       }
 
@@ -177,6 +219,16 @@ export async function POST(request: NextRequest) {
           );
         }
         await ebClient.deleteLead(resolvedLeadId);
+        destructiveAudit = {
+          entityType: "Lead",
+          entityId: String(resolvedLeadId),
+          metadata: {
+            workspaceSlug,
+            leadId: resolvedLeadId,
+            leadEmail: leadEmail ?? null,
+            value: value ?? null,
+          },
+        };
         break;
       }
 
@@ -185,6 +237,16 @@ export async function POST(request: NextRequest) {
           { error: "Unknown action" },
           { status: 400 },
         );
+    }
+
+    if (destructiveAudit) {
+      auditLog({
+        action: `portal.inbox.email.${action}`,
+        entityType: destructiveAudit.entityType,
+        entityId: destructiveAudit.entityId,
+        adminEmail: email,
+        metadata: destructiveAudit.metadata,
+      });
     }
 
     return NextResponse.json({ success: true });

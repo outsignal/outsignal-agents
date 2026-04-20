@@ -167,4 +167,47 @@ describe("stageDiscoveredPeople — rawResponse preservation (BL-027)", () => {
     expect(parsed.content[0].id).toBe("aiark-abc");
     expect(parsed._discoverySourceId).toBe("aiark-abc");
   });
+
+  it("keeps the richer intra-batch duplicate record and avoids per-person duplicate queries", async () => {
+    const people: DiscoveredPersonResult[] = [
+      {
+        firstName: "J.",
+        lastName: "Smith",
+        company: "Acme",
+        companyDomain: "acme.com",
+        linkedinUrl: "https://linkedin.com/in/j-smith",
+      },
+      {
+        firstName: "John",
+        lastName: "Smith",
+        jobTitle: "Head of Sales",
+        company: "Acme",
+        companyDomain: "acme.com",
+        linkedinUrl: "https://linkedin.com/in/j-smith",
+        location: "London",
+      },
+    ];
+
+    createManyMock.mockResolvedValueOnce({ count: 1 });
+
+    await stageDiscoveredPeople({
+      people,
+      discoverySource: "apollo",
+      workspaceSlug: "test-ws",
+    });
+
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(createManyMock).toHaveBeenCalledTimes(1);
+    const data = createManyMock.mock.calls[0][0].data as Array<{
+      firstName: string | null;
+      jobTitle: string | null;
+      location: string | null;
+    }>;
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({
+      firstName: "John",
+      jobTitle: "Head of Sales",
+      location: "London",
+    });
+  });
 });

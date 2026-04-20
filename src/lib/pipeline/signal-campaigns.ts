@@ -27,6 +27,8 @@ import { deduplicateAndPromote } from "@/lib/discovery/promotion";
 import { scorePersonIcp } from "@/lib/icp/scorer";
 import { addPeopleToList } from "@/lib/leads/operations";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import { EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES } from "@/lib/emailbison/custom-variable-names";
+import { buildEmailLeadPayload } from "@/lib/emailbison/lead-payload";
 import { chainActions } from "@/lib/linkedin/chain";
 import { applyTimingJitter } from "@/lib/linkedin/jitter";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
@@ -351,6 +353,9 @@ async function processSingleCampaign(
     campaign.workspace.apiToken
   ) {
     const ebClient = new EmailBisonClient(campaign.workspace.apiToken);
+    await ebClient.ensureCustomVariables([
+      ...EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES,
+    ]);
 
     for (const lead of passingLeads) {
       const person = await prisma.person.findUnique({
@@ -361,19 +366,28 @@ async function processSingleCampaign(
           lastName: true,
           jobTitle: true,
           company: true,
+          companyDomain: true,
+          location: true,
         },
       });
       // Skip leads without a real email
       if (!person || !person.email) continue;
 
       try {
-        await ebClient.createLead({
-          email: person.email,
-          firstName: person.firstName ?? undefined,
-          lastName: person.lastName ?? undefined,
-          jobTitle: person.jobTitle ?? undefined,
-          company: person.company ?? undefined,
-        });
+        await ebClient.createLead(
+          buildEmailLeadPayload(
+            {
+              email: person.email,
+              firstName: person.firstName,
+              lastName: person.lastName,
+              jobTitle: person.jobTitle,
+              company: person.company,
+              companyDomain: person.companyDomain,
+              location: person.location,
+            },
+            campaign.description,
+          ),
+        );
         leadsDeployed++;
         // Throttle — 100ms between leads to avoid EmailBison rate limits
         await new Promise(resolve => setTimeout(resolve, 100));

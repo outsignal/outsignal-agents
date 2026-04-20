@@ -114,6 +114,17 @@ export class ApiClient {
   }
 
   /**
+   * Mark an action as failed only if it is still running.
+   * Used for sender timeout cleanup so late completions are not clobbered.
+   */
+  async markFailedIfRunning(actionId: string, error: string): Promise<void> {
+    await this.request(`/api/linkedin/actions/${actionId}/fail`, {
+      method: "POST",
+      body: JSON.stringify({ error, onlyIfRunning: true }),
+    });
+  }
+
+  /**
    * Get senders for a workspace.
    */
   async getSenders(workspaceSlug: string): Promise<SenderItem[]> {
@@ -189,9 +200,9 @@ export class ApiClient {
    */
   async getVoyagerCookies(
     senderId: string,
-  ): Promise<{ liAt: string; jsessionId: string } | null> {
+  ): Promise<{ liAt: string; jsessionId: string; proxyUrl?: string | null } | null> {
     try {
-      const result = await this.request<{ cookies: unknown[] }>(
+      const result = await this.request<{ cookies: unknown[]; proxyUrl?: string | null }>(
         `/api/linkedin/senders/${senderId}/cookies`,
       );
 
@@ -202,7 +213,11 @@ export class ApiClient {
         ) as { type: string; liAt: string; jsessionId: string } | undefined;
 
         if (voyagerEntry?.liAt && voyagerEntry?.jsessionId) {
-          return { liAt: voyagerEntry.liAt, jsessionId: voyagerEntry.jsessionId };
+          return {
+            liAt: voyagerEntry.liAt,
+            jsessionId: voyagerEntry.jsessionId,
+            proxyUrl: result.proxyUrl ?? null,
+          };
         }
       }
       return null;
@@ -293,11 +308,12 @@ export class ApiClient {
    * Used as a pre-send gate before executing message actions.
    */
   async getConnectionStatusForPerson(
+    senderId: string,
     personId: string,
   ): Promise<{ status: string } | null> {
     try {
       return await this.request<{ status: string }>(
-        `/api/linkedin/connections/person/${personId}/status`,
+        `/api/linkedin/connections/person/${personId}/status?senderId=${senderId}`,
       );
     } catch {
       return null;

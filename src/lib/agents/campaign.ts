@@ -11,6 +11,12 @@ import { appendToMemory } from "./memory";
 import { prisma } from "@/lib/db";
 import { extractIcpCriteria } from "@/lib/icp/extract-criteria";
 import { hasModule, getWorkspaceQuotaUsage } from "@/lib/workspaces/quota";
+import { validateSignalCampaignContent } from "@/lib/pipeline/signal-content-validation";
+import {
+  claimSignalCampaignActivation,
+  finalizeSignalCampaignActivation,
+  rollbackSignalCampaignActivationClaim,
+} from "@/lib/campaigns/signal-activation";
 
 // --- Campaign Agent Tools ---
 
@@ -263,93 +269,191 @@ const campaignTools = {
         };
       }
 
-      // Check target list exists — create one if needed
-      if (!campaign.targetListId) {
-        // Auto-create a target list for the signal campaign
-        const list = await prisma.targetList.create({
-          data: {
-            name: `${campaign.name} — Signal Leads`,
-            workspaceSlug: campaign.workspaceSlug,
-            description: `Auto-created target list for signal campaign "${campaign.name}"`,
-          },
-        });
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { targetListId: list.id },
-        });
-      }
-
-      // Pre-provision EmailBison campaign for email channel
-      let signalEmailBisonCampaignId: number | null = null;
-      if (campaign.channels.includes("email") && hasEmail) {
-        const ws = await prisma.workspace.findUnique({
-          where: { slug: campaign.workspaceSlug },
-          select: { apiToken: true },
-        });
-        if (!ws?.apiToken) {
-          return {
-            error: `Workspace '${campaign.workspaceSlug}' has no API token configured. Cannot pre-provision EmailBison campaign.`,
-          };
-        }
-
-        // Import and use EmailBisonClient to create EB campaign + sequence steps
-        const { EmailBisonClient } = await import("@/lib/emailbison/client");
-        const ebClient = new EmailBisonClient(ws.apiToken);
-        const ebCampaign = await ebClient.createCampaign({ name: campaign.name });
-        signalEmailBisonCampaignId = ebCampaign.id;
-
-        // Create sequence steps via the v1.1 batch endpoint (BL-074 follow-through).
-        // The deprecated singular `createSequenceStep` posted a flat body to the
-        // v1 path and hit EB 422 "title/sequence_steps required". We now send
-        // one batched POST with the EB-required `{title, sequence_steps:[...]}`
-        // envelope — title reuses the campaign name already passed to
-        // createCampaign above.
-        //
-        // BL-093 monty-qa F2 (2026-04-16): use the shared
-        // `buildSequenceStepsForEB` helper so this signal-campaign path
-        // applies the same `thread_reply` rules as `EmailAdapter.deploy`
-        // Step 3. Without it, a follow-up step with empty `subjectLine`
-        // would 422 EB on activation (email_subject="" + thread_reply
-        // unset → EB rejects empty subject) and signal-campaign launches
-        // would silently fail for any sequence that uses threaded
-        // follow-ups.
-        const { buildSequenceStepsForEB } = await import(
-          "@/lib/channels/email-adapter"
-        );
-        const emailSeq = campaign.emailSequence as Array<{
-          position: number;
+      const contentValidation = validateSignalCampaignContent({
+        channels: campaign.channels ?? ["email"],
+        copyStrategy: campaign.copyStrategy,
+        emailSequence: (campaign.emailSequence as Array<{
+          position?: number;
           subjectLine?: string;
+          subjectVariantB?: string;
           body?: string;
-          bodyText?: string;
-          delayDays?: number;
-        }>;
-        await ebClient.createSequenceSteps(
-          ebCampaign.id,
-          campaign.name,
-          buildSequenceStepsForEB(
-            emailSeq,
-            `Signal campaign ${campaignId} ('${campaign.name}')`,
-          ),
-        );
-      }
-
-      // Transition to active
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          status: "active",
-          ...(signalEmailBisonCampaignId
-            ? { signalEmailBisonCampaignId }
-            : {}),
-          lastSignalProcessedAt: new Date(), // Start processing from now
-        },
+        }> | null) ?? null,
+        linkedinSequence: (campaign.linkedinSequence as Array<{
+          position?: number;
+          subjectLine?: string;
+          subjectVariantB?: string;
+          body?: string;
+        }> | null) ?? null,
       });
 
-      const updated = await campaignOperations.getCampaign(campaignId);
-      return {
-        campaign: updated,
-        note: `Signal campaign "${campaign.name}" is now active. The pipeline will process matching signals every 6 hours.${signalEmailBisonCampaignId ? ` EmailBison campaign #${signalEmailBisonCampaignId} pre-provisioned.` : ""}`,
-      };
+      if (contentValidation.hardViolations.length > 0) {
+        return {
+          error: "Signal campaign content validation failed",
+          violations: contentValidation.hardViolations,
+          warnings: contentValidation.softWarnings,
+        };
+      }
+
+      const activationClaimedAt = new Date();
+      const claimed = await claimSignalCampaignActivation(
+        campaignId,
+        activationClaimedAt,
+      );
+      if (!claimed) {
+        const latest = await campaignOperations.getCampaign(campaignId);
+        if (latest?.status === "active") {
+          return {
+            campaign: latest,
+            note: `Signal campaign "${latest.name}" was already activated by another request.`,
+          };
+        }
+        return {
+          error:
+            `Signal campaign activation is already in progress or the campaign is no longer in draft state ` +
+            `(current: ${latest?.status ?? "unknown"}). Reload and retry.`,
+        };
+      }
+
+      let createdTargetListId: string | null = null;
+      let signalEmailBisonCampaignId: number | null = null;
+      let orphanSignalEbCampaignId: number | null = null;
+      let cleanupApiToken: string | null = null;
+
+      try {
+        // Check target list exists — create one if needed
+        if (!campaign.targetListId) {
+          const list = await prisma.targetList.create({
+            data: {
+              name: `${campaign.name} — Signal Leads`,
+              workspaceSlug: campaign.workspaceSlug,
+              description: `Auto-created target list for signal campaign "${campaign.name}"`,
+            },
+          });
+          createdTargetListId = list.id;
+        }
+
+        // Pre-provision EmailBison campaign for email channel
+        if (campaign.channels.includes("email") && hasEmail) {
+          const ws = await prisma.workspace.findUnique({
+            where: { slug: campaign.workspaceSlug },
+            select: { apiToken: true },
+          });
+          if (!ws?.apiToken) {
+            throw new Error(
+              `Workspace '${campaign.workspaceSlug}' has no API token configured. Cannot pre-provision EmailBison campaign.`,
+            );
+          }
+
+          cleanupApiToken = ws.apiToken;
+
+          // Import and use EmailBisonClient to create EB campaign + sequence steps
+          const { EmailBisonClient } = await import("@/lib/emailbison/client");
+          const ebClient = new EmailBisonClient(ws.apiToken);
+          const ebCampaign = await ebClient.createCampaign({ name: campaign.name });
+          signalEmailBisonCampaignId = ebCampaign.id;
+          orphanSignalEbCampaignId = ebCampaign.id;
+
+          // Create sequence steps via the v1.1 batch endpoint (BL-074 follow-through).
+          // The deprecated singular `createSequenceStep` posted a flat body to the
+          // v1 path and hit EB 422 "title/sequence_steps required". We now send
+          // one batched POST with the EB-required `{title, sequence_steps:[...]}`
+          // envelope — title reuses the campaign name already passed to
+          // createCampaign above.
+          //
+          // BL-093 monty-qa F2 (2026-04-16): use the shared
+          // `buildSequenceStepsForEB` helper so this signal-campaign path
+          // applies the same `thread_reply` rules as `EmailAdapter.deploy`
+          // Step 3.
+          const { buildSequenceStepsForEB } = await import(
+            "@/lib/channels/email-adapter"
+          );
+          const emailSeq = campaign.emailSequence as Array<{
+            position: number;
+            subjectLine?: string;
+            body?: string;
+            bodyText?: string;
+            delayDays?: number;
+          }>;
+          await ebClient.createSequenceSteps(
+            ebCampaign.id,
+            campaign.name,
+            buildSequenceStepsForEB(
+              emailSeq,
+              `Signal campaign ${campaignId} ('${campaign.name}')`,
+            ),
+          );
+        }
+
+        const finalized = await finalizeSignalCampaignActivation({
+          campaignId,
+          claimedAt: activationClaimedAt,
+          targetListId: createdTargetListId ?? campaign.targetListId ?? null,
+          signalEmailBisonCampaignId,
+        });
+
+        if (!finalized) {
+          throw new Error(
+            `Signal campaign ${campaignId} changed while activation was running. Reload and retry.`,
+          );
+        }
+
+        orphanSignalEbCampaignId = null;
+        createdTargetListId = null;
+
+        const updated = await campaignOperations.getCampaign(campaignId);
+        return {
+          campaign: updated,
+          ...(contentValidation.softWarnings.length > 0
+            ? { warnings: contentValidation.softWarnings }
+            : {}),
+          note: `Signal campaign "${campaign.name}" is now active. The pipeline will process matching signals every 6 hours.${signalEmailBisonCampaignId ? ` EmailBison campaign #${signalEmailBisonCampaignId} pre-provisioned.` : ""}`,
+        };
+      } catch (error) {
+        if (orphanSignalEbCampaignId && cleanupApiToken) {
+          try {
+            const { EmailBisonClient } = await import("@/lib/emailbison/client");
+            const cleanupClient = new EmailBisonClient(cleanupApiToken);
+            await cleanupClient.deleteCampaign(orphanSignalEbCampaignId);
+            console.warn(
+              `[campaign-agent] Deleted orphan signal EB campaign ${orphanSignalEbCampaignId} after activation failure for ${campaignId}`,
+            );
+          } catch (cleanupError) {
+            console.warn(
+              `[campaign-agent] Failed to delete orphan signal EB campaign ${orphanSignalEbCampaignId} for ${campaignId}: ${
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : String(cleanupError)
+              }`,
+            );
+          }
+        }
+
+        if (createdTargetListId) {
+          try {
+            await prisma.targetList.delete({ where: { id: createdTargetListId } });
+          } catch (cleanupError) {
+            console.warn(
+              `[campaign-agent] Failed to delete signal activation target list ${createdTargetListId} for ${campaignId}: ${
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : String(cleanupError)
+              }`,
+            );
+          }
+        }
+
+        await rollbackSignalCampaignActivationClaim(
+          campaignId,
+          activationClaimedAt,
+        );
+
+        return {
+          error:
+            error instanceof Error
+              ? error.message
+              : `Failed to activate signal campaign '${campaignId}'`,
+        };
+      }
     },
   }),
 

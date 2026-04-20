@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       where: {
         ...(workspaceSlug ? { workspaceSlug } : {}),
         channel: { in: ["linkedin", "both"] },
+        status: { not: "disabled" },
       },
       include: {
         workspace: {

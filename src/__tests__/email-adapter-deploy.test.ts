@@ -44,6 +44,7 @@ const {
     // upsert. createLead is preserved on the mock for non-canary callers
     // and as a tripwire (assert .not.toHaveBeenCalled in the happy path).
     createOrUpdateLeadsMultiple: vi.fn(),
+    ensureCustomVariables: vi.fn(),
     attachLeadsToCampaign: vi.fn(),
     createSchedule: vi.fn(),
     getSchedule: vi.fn(),
@@ -103,6 +104,8 @@ function fakePersonEntry(overrides: {
   lastName?: string;
   jobTitle?: string;
   company?: string;
+  companyDomain?: string;
+  location?: string;
 }) {
   return {
     person: {
@@ -111,6 +114,8 @@ function fakePersonEntry(overrides: {
       lastName: overrides.lastName ?? null,
       jobTitle: overrides.jobTitle ?? null,
       company: overrides.company ?? null,
+      companyDomain: overrides.companyDomain ?? null,
+      location: overrides.location ?? null,
       workspaces: [],
     },
   };
@@ -179,6 +184,7 @@ describe("EmailAdapter.deploy()", () => {
     // unmocked at this layer; tests should never see it called now (Step 4
     // routes through createOrUpdateLeadsMultiple).
     ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([]);
+    ebMock.ensureCustomVariables.mockResolvedValue(undefined);
     ebMock.attachLeadsToCampaign.mockResolvedValue(undefined);
     ebMock.createSchedule.mockResolvedValue({});
     ebMock.getSchedule.mockResolvedValue(null);
@@ -301,6 +307,44 @@ describe("EmailAdapter.deploy()", () => {
         emailError: null,
       },
     });
+  });
+
+  it("adds LOCATION and LASTEMAILMONTH custom variables during lead upsert", async () => {
+    stubCampaign({
+      description: "Signal follow-up lastEmailMonth:March",
+    });
+    prismaMock.targetListPerson.findMany.mockResolvedValue([
+      fakePersonEntry({
+        email: "a@acme.com",
+        firstName: "A",
+        company: "Acme Services UK Limited",
+        companyDomain: "acme.com",
+        location: "Leeds, UK",
+      }),
+    ]);
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValueOnce([
+      { id: 1001, email: "a@acme.com", status: "active" },
+    ]);
+
+    await adapter.deploy(DEPLOY_PARAMS);
+
+    expect(ebMock.ensureCustomVariables).toHaveBeenCalledWith([
+      "LOCATION",
+      "LASTEMAILMONTH",
+    ]);
+    expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledWith([
+      {
+        email: "a@acme.com",
+        firstName: "A",
+        lastName: undefined,
+        jobTitle: undefined,
+        company: "Acme",
+        customVariables: [
+          { name: "LOCATION", value: "Leeds, UK" },
+          { name: "LASTEMAILMONTH", value: "March" },
+        ],
+      },
+    ]);
   });
 
   it("happy path: invokes the pipeline in the documented sequential order", async () => {

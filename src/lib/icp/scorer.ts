@@ -695,9 +695,10 @@ export interface StagedPersonBatchInput extends StagedPersonInput {
 /**
  * Score multiple staged DiscoveredPerson records' ICP fit in batches.
  *
- * Uses Claude Code CLI (`claude -p`) instead of the Anthropic API to avoid
- * API credit costs. Mirrors the pattern of scorePersonIcpBatch() but works
- * with raw DiscoveredPerson fields (no Person/PersonWorkspace required).
+ * Uses the AI SDK batch path with temperature pinned to 0 so discovery-time
+ * promotion scoring is deterministic across identical staged inputs.
+ * Mirrors the pattern of scorePersonIcpBatch() but works with raw
+ * DiscoveredPerson fields (no Person/PersonWorkspace required).
  *
  * @param inputs - Array of staged person inputs with discoveredPersonId
  * @param workspaceSlug - Workspace slug to fetch icpCriteriaPrompt
@@ -709,12 +710,6 @@ export async function scoreStagedPersonIcpBatch(
   workspaceSlug: string,
   options?: { batchSize?: number },
 ): Promise<Map<string, IcpScoreResult>> {
-  const { execSync } = await import("child_process");
-  const { writeFileSync, unlinkSync } = await import("fs");
-  const { randomUUID } = await import("crypto");
-  const { tmpdir } = await import("os");
-  const { join } = await import("path");
-
   const batchSize = options?.batchSize ?? 15;
   const results = new Map<string, IcpScoreResult>();
 
@@ -755,7 +750,7 @@ export async function scoreStagedPersonIcpBatch(
   });
   const companyMap = new Map(companies.map((c) => [c.domain, c]));
 
-  // 3. Chunk into batches and process via Claude Code CLI
+  // 3. Chunk into batches and process deterministically via the AI SDK
   for (let i = 0; i < inputs.length; i += batchSize) {
     const batch = inputs.slice(i, i + batchSize);
 
@@ -809,29 +804,16 @@ export async function scoreStagedPersonIcpBatch(
       '- "low": Only 1 signal type or very sparse data',
     ].join("\n");
 
-    const promptPath = join(tmpdir(), `icp-staged-batch-${randomUUID()}.txt`);
-
     try {
-      writeFileSync(promptPath, fullPrompt, "utf-8");
+      const { object } = await generateObject({
+        model: anthropic("claude-haiku-4-5-20251001"),
+        temperature: 0,
+        schema: BatchIcpScoreSchema,
+        system: workspace.icpCriteriaPrompt,
+        prompt: fullPrompt,
+      });
 
-      const output = execSync(
-        `npx -y @anthropic-ai/claude-code -p "$(cat '${promptPath}')" --output-format json --model claude-haiku-4-5`,
-        {
-          encoding: "utf-8",
-          maxBuffer: 10 * 1024 * 1024,
-          timeout: 120_000,
-        },
-      ).trim();
-
-      const parsed = parseCliJsonArray(output);
-
-      if (!Array.isArray(parsed)) {
-        throw new Error(
-          `Expected JSON array from Claude Code, got ${typeof parsed}`,
-        );
-      }
-
-      for (const entry of parsed) {
+      for (const entry of object) {
         const validated = BatchIcpScoreSchema.element.safeParse(entry);
         if (validated.success) {
           results.set(validated.data.personId, {
@@ -843,15 +825,9 @@ export async function scoreStagedPersonIcpBatch(
       }
     } catch (error) {
       console.error(
-        `[icp-scorer] Staged batch scoring via CLI failed for ${batch.length} people: ${error instanceof Error ? error.message : String(error)}`,
+        `[icp-scorer] Staged batch scoring failed for ${batch.length} people: ${error instanceof Error ? error.message : String(error)}`,
       );
       // Fail-open: batch failed, results Map won't have entries for these people
-    } finally {
-      try {
-        unlinkSync(promptPath);
-      } catch {
-        // ignore cleanup errors
-      }
     }
   }
 

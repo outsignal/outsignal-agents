@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHmac } from "crypto";
 import { prisma } from "@/lib/db";
 import { generateProposalToken } from "@/lib/tokens";
 import { sendNotificationEmail } from "@/lib/resend";
 import { notifyReply } from "@/lib/notifications";
+import { NextRequest } from "next/server";
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -13,7 +15,14 @@ vi.mock("next/server", () => ({
       status: init?.status ?? 200,
     }),
   },
-  NextRequest: class extends Request {},
+  NextRequest: class extends Request {
+    nextUrl: URL;
+
+    constructor(input: string | URL, init?: RequestInit) {
+      super(input, init);
+      this.nextUrl = new URL(typeof input === "string" ? input : input.toString());
+    }
+  },
 }));
 
 vi.mock("@/lib/tokens", () => ({
@@ -26,6 +35,14 @@ vi.mock("@/lib/resend", () => ({
 
 vi.mock("@/lib/notifications", () => ({
   notifyReply: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/require-admin-auth", () => ({
+  requireAdminAuth: vi.fn().mockResolvedValue({
+    email: "admin@example.com",
+    role: "admin",
+    exp: Infinity,
+  }),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -45,6 +62,9 @@ describe("GET /api/proposals", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) =>
+      fn(prisma as typeof prisma),
+    );
     ({ GET } = await import("@/app/api/proposals/route"));
   });
 
@@ -70,6 +90,9 @@ describe("POST /api/proposals", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) =>
+      fn(prisma as typeof prisma),
+    );
     ({ POST } = await import("@/app/api/proposals/route"));
   });
 
@@ -85,7 +108,12 @@ describe("POST /api/proposals", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body.error).toMatch(/clientName/);
+    expect(body).toEqual({
+      error: "Validation failed",
+      details: expect.objectContaining({
+        clientName: expect.any(Array),
+      }),
+    });
   });
 
   it("returns 400 when packageType is missing", async () => {
@@ -98,7 +126,12 @@ describe("POST /api/proposals", () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body.error).toMatch(/packageType/);
+    expect(body).toEqual({
+      error: "Validation failed",
+      details: expect.objectContaining({
+        packageType: expect.any(Array),
+      }),
+    });
   });
 
   it("returns 400 for invalid packageType", async () => {
@@ -288,11 +321,31 @@ describe("POST /api/webhooks/emailbison", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.EMAILBISON_WEBHOOK_SECRET = "test-emailbison-secret";
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) =>
+      fn(prisma as typeof prisma),
+    );
     ({ POST } = await import("@/app/api/webhooks/emailbison/route"));
   });
 
-  const makeWebhookRequest = (payload: unknown) =>
-    postRequest(payload) as InstanceType<typeof import("next/server").NextRequest>;
+  const makeWebhookRequest = (payload: unknown) => {
+    const rawBody = JSON.stringify(payload);
+    const signature = createHmac(
+      "sha256",
+      process.env.EMAILBISON_WEBHOOK_SECRET ?? "",
+    )
+      .update(rawBody)
+      .digest("hex");
+
+    return new NextRequest("http://localhost/api/webhooks/emailbison?workspace=acme", {
+      method: "POST",
+      body: rawBody,
+      headers: {
+        "Content-Type": "application/json",
+        "x-emailbison-signature": signature,
+      },
+    }) as InstanceType<typeof import("next/server").NextRequest>;
+  };
 
   it("creates webhookEvent record", async () => {
     vi.mocked(prisma.webhookEvent.create).mockResolvedValue({} as never);
@@ -300,10 +353,9 @@ describe("POST /api/webhooks/emailbison", () => {
     const payload = {
       event: "EMAIL_SENT",
       data: {
-        workspace_slug: "acme",
-        campaign_id: 42,
-        lead_email: "lead@example.com",
-        sender_email: "sender@example.com",
+        campaign: { id: 42 },
+        lead: { email: "lead@example.com" },
+        sender_email: { email: "sender@example.com" },
       },
     };
 
@@ -313,10 +365,13 @@ describe("POST /api/webhooks/emailbison", () => {
       data: {
         workspace: "acme",
         eventType: "EMAIL_SENT",
+        externalEventId:
+          "email_sent:42:lead@example.com:none:sender@example.com",
         campaignId: "42",
         leadEmail: "lead@example.com",
         senderEmail: "sender@example.com",
         payload: JSON.stringify(payload),
+        isAutomated: false,
       },
     });
   });
@@ -327,13 +382,13 @@ describe("POST /api/webhooks/emailbison", () => {
 
     const payload = {
       event: "EMAIL_SENT",
-      data: { lead_email: "lead@example.com" },
+      data: { lead: { email: "lead@example.com" } },
     };
 
     await POST(makeWebhookRequest(payload));
 
     expect(prisma.person.updateMany).toHaveBeenCalledWith({
-      where: { email: "lead@example.com" },
+      where: { email: "lead@example.com", status: "new" },
       data: { status: "contacted" },
     });
   });
@@ -344,7 +399,7 @@ describe("POST /api/webhooks/emailbison", () => {
 
     const payload = {
       event: "BOUNCE",
-      data: { lead_email: "bounced@example.com" },
+      data: { lead: { email: "bounced@example.com" } },
     };
 
     await POST(makeWebhookRequest(payload));
@@ -355,19 +410,21 @@ describe("POST /api/webhooks/emailbison", () => {
     });
   });
 
-  it("calls notifyReply for non-automated REPLY_RECEIVED", async () => {
+  it("calls notifyReply for non-automated UNTRACKED_REPLY_RECEIVED", async () => {
     vi.mocked(prisma.webhookEvent.create).mockResolvedValue({} as never);
     vi.mocked(prisma.person.updateMany).mockResolvedValue({ count: 1 } as never);
 
     const payload = {
-      event: "REPLY_RECEIVED",
+      event: "UNTRACKED_REPLY_RECEIVED",
       data: {
-        workspace_slug: "acme",
-        lead_email: "lead@example.com",
-        sender_email: "sender@example.com",
-        subject: "Re: Hello",
-        text_body: "Thanks for reaching out!",
-        automated_reply: false,
+        lead: { email: "lead@example.com" },
+        reply: {
+          from_email_address: "lead@example.com",
+          primary_to_email_address: "sender@example.com",
+          email_subject: "Re: Hello",
+          text_body: "Thanks for reaching out!",
+          automated_reply: false,
+        },
       },
     };
 
@@ -378,10 +435,14 @@ describe("POST /api/webhooks/emailbison", () => {
 
     expect(notifyReply).toHaveBeenCalledWith({
       workspaceSlug: "acme",
+      leadName: null,
       leadEmail: "lead@example.com",
       senderEmail: "sender@example.com",
       subject: "Re: Hello",
       bodyPreview: "Thanks for reaching out!",
+      interested: false,
+      suggestedResponse: null,
+      replyId: null,
     });
   });
 
@@ -390,12 +451,14 @@ describe("POST /api/webhooks/emailbison", () => {
     vi.mocked(prisma.person.updateMany).mockResolvedValue({ count: 1 } as never);
 
     const payload = {
-      event: "REPLY_RECEIVED",
+      event: "UNTRACKED_REPLY_RECEIVED",
       data: {
-        workspace_slug: "acme",
-        lead_email: "lead@example.com",
-        sender_email: "sender@example.com",
-        automated_reply: true,
+        lead: { email: "lead@example.com" },
+        reply: {
+          from_email_address: "lead@example.com",
+          primary_to_email_address: "sender@example.com",
+          automated_reply: true,
+        },
       },
     };
 
@@ -410,7 +473,7 @@ describe("POST /api/webhooks/emailbison", () => {
 
     const payload = {
       event: "EMAIL_SENT",
-      data: { lead_email: "lead@example.com" },
+      data: { lead: { email: "lead@example.com" } },
     };
 
     const res = await POST(makeWebhookRequest(payload));
@@ -418,6 +481,71 @@ describe("POST /api/webhooks/emailbison", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({ received: true });
+  });
+
+  it("deduplicates reply webhooks via structured externalEventId unique key", async () => {
+    vi.mocked(prisma.webhookEvent.create).mockRejectedValue({
+      code: "P2002",
+      meta: { target: ["workspace", "eventType", "externalEventId"] },
+    } as never);
+
+    const payload = {
+      event: "UNTRACKED_REPLY_RECEIVED",
+      data: {
+        lead: { email: "lead@example.com" },
+        reply: {
+          id: 12345,
+          from_email_address: "lead@example.com",
+          primary_to_email_address: "sender@example.com",
+          automated_reply: false,
+        },
+      },
+    };
+
+    const res = await POST(makeWebhookRequest(payload));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true, deduplicated: true });
+    expect(prisma.webhookEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspace: "acme",
+        eventType: "UNTRACKED_REPLY_RECEIVED",
+        externalEventId: "reply:12345",
+      }),
+    });
+  });
+
+  it("deduplicates EMAIL_SENT webhooks via structured externalEventId unique key", async () => {
+    vi.mocked(prisma.webhookEvent.create).mockRejectedValue({
+      code: "P2002",
+      meta: { target: ["workspace", "eventType", "externalEventId"] },
+    } as never);
+
+    const payload = {
+      event: "EMAIL_SENT",
+      data: {
+        campaign: { id: 42 },
+        lead: { email: "lead@example.com" },
+        sender_email: { email: "sender@example.com" },
+        step_number: 2,
+      },
+    };
+
+    const res = await POST(makeWebhookRequest(payload));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true, deduplicated: true });
+    expect(prisma.webhookEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspace: "acme",
+        eventType: "EMAIL_SENT",
+        externalEventId:
+          "email_sent:42:lead@example.com:2:sender@example.com",
+      }),
+    });
+    expect(prisma.person.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns 500 on processing error", async () => {

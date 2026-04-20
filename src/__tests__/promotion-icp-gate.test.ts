@@ -152,37 +152,17 @@ describe("promotion ICP gate", () => {
     );
   });
 
-  it("omits score fields when icpScoringEnabled but scoreResult is undefined for that person", async () => {
-    // Workspace HAS ICP scoring enabled, but the batch scorer returned
-    // nothing for this particular DiscoveredPerson (e.g. timed out, hit
-    // an error, or excluded by per-row guard). The upsert payload must
-    // NOT contain icp* keys so we don't write `null`/`undefined` over
-    // an existing manually-curated score on the PersonWorkspace row.
+  it("fails closed when the batch scorer omits a candidate result", async () => {
     const dp = makeStagedPerson({ id: "dp-no-result" });
     mockFindManyDiscovered.mockResolvedValue([dp]);
 
     // scorer returned an empty Map — no entry for "dp-no-result"
     mockScorerBatch.mockResolvedValue(new Map());
 
-    const result = await deduplicateAndPromote("test-ws", ["run-1"]);
-
-    // With no score, the row falls below the default 40 threshold and
-    // should be rejected by the ICP gate. So `promoted` is 0, but more
-    // importantly the upsert path that runs (if any) must not include
-    // icp* keys. Verify by inspecting any upsert call: there should
-    // either be zero PersonWorkspace upserts (if the gate fired before
-    // promotion), or the call's payload must not contain icp* keys.
-    expect(result.scoredRejected).toBeGreaterThanOrEqual(0);
-    for (const call of mockUpsertPw.mock.calls) {
-      const payload = call[0] as {
-        create: Record<string, unknown>;
-        update: Record<string, unknown>;
-      };
-      expect(payload.create).not.toHaveProperty("icpScore");
-      expect(payload.create).not.toHaveProperty("icpReasoning");
-      expect(payload.update).not.toHaveProperty("icpScore");
-      expect(payload.update).not.toHaveProperty("icpReasoning");
-    }
+    await expect(deduplicateAndPromote("test-ws", ["run-1"])).rejects.toThrow(
+      /partial results|refusing to promote unscored candidates/i,
+    );
+    expect(mockUpsertPw).not.toHaveBeenCalled();
   });
 
   it("update path overrides existing PersonWorkspace score with the new score", async () => {

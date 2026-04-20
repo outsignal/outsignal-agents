@@ -27,3 +27,5 @@
     Action: re-enrich these 290 people on next enrichment run cadence.
     Status: Monty platform fix DONE; Nova re-enrichment task PENDING.
     Recovered from stash@{0} 2026-04-11.
+
+[2026-04-14] — Added Giuseppe Silletti (himself@peppesilletti.io) as client at Gordon's request; appears to be a developer helping Gordon review campaigns

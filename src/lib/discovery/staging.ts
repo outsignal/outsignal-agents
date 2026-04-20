@@ -48,6 +48,34 @@ export interface StagingResult {
   runId: string;
 }
 
+function normalise(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+function recordRichnessScore(person: DiscoveredPersonResult): number {
+  let score = 0;
+  const values = [
+    person.email,
+    person.firstName,
+    person.lastName,
+    person.jobTitle,
+    person.company,
+    person.companyDomain,
+    person.linkedinUrl,
+    person.phone,
+    person.location,
+  ];
+
+  for (const value of values) {
+    if (!value) continue;
+    score += 100;
+    score += Math.min(value.trim().length, 40);
+  }
+
+  return score;
+}
+
 /**
  * Check if a DiscoveredPerson already exists for this workspace by
  * linkedinUrl or firstName+lastName+companyDomain.
@@ -82,26 +110,93 @@ async function findExistingDuplicates(
     }
   }
 
-  // For people without LinkedIn URLs (or not yet caught), check name+domain
+  // Batch-check exact name+domain tuples instead of one query per person.
+  const nameDomainTriples = people
+    .map((p, i) => ({
+      firstName: p.firstName,
+      lastName: p.lastName,
+      companyDomain: p.companyDomain,
+      idx: i,
+    }))
+    .filter(
+      (x): x is { firstName: string; lastName: string; companyDomain: string; idx: number } =>
+        Boolean(x.firstName && x.lastName && x.companyDomain),
+    );
+
+  if (nameDomainTriples.length > 0) {
+    const uniqueTriples = Array.from(
+      new Map(
+        nameDomainTriples.map((t) => [
+          `${normalise(t.firstName)}::${normalise(t.lastName)}::${normalise(t.companyDomain)}`,
+          t,
+        ]),
+      ).values(),
+    );
+
+    const existing = await prisma.discoveredPerson.findMany({
+      where: {
+        workspaceSlug,
+        status: { in: ["staged", "promoted"] },
+        OR: uniqueTriples.map((t) => ({
+          firstName: t.firstName,
+          lastName: t.lastName,
+          companyDomain: t.companyDomain,
+        })),
+      },
+      select: { firstName: true, lastName: true, companyDomain: true },
+    });
+
+    const existingSet = new Set(
+      existing.map(
+        (r) =>
+          `${normalise(r.firstName)}::${normalise(r.lastName)}::${normalise(r.companyDomain)}`,
+      ),
+    );
+
+    for (const triple of nameDomainTriples) {
+      const key = `${normalise(triple.firstName)}::${normalise(triple.lastName)}::${normalise(triple.companyDomain)}`;
+      if (existingSet.has(key)) {
+        dupeIndices.add(triple.idx);
+      }
+    }
+  }
+
+  // Intra-batch dedup: keep the richer record when the same LinkedIn URL or
+  // exact name+domain tuple appears twice in one staging call.
+  const bestByLinkedIn = new Map<string, number>();
+  const bestByNameDomain = new Map<string, number>();
+
   for (let i = 0; i < people.length; i++) {
     if (dupeIndices.has(i)) continue;
 
-    const p = people[i];
-    if (p.firstName && p.lastName && p.companyDomain) {
-      const match = await prisma.discoveredPerson.findFirst({
-        where: {
-          workspaceSlug,
-          firstName: p.firstName,
-          lastName: p.lastName,
-          companyDomain: p.companyDomain,
-          status: { in: ["staged", "promoted"] },
-        },
-        select: { id: true },
-      });
+    const person = people[i];
+    const linkedinKey = normalise(person.linkedinUrl);
+    const nameDomainKey =
+      person.firstName && person.lastName && person.companyDomain
+        ? `${normalise(person.firstName)}::${normalise(person.lastName)}::${normalise(person.companyDomain)}`
+        : null;
 
-      if (match) {
-        dupeIndices.add(i);
+    const candidateKeys = [
+      linkedinKey ? { map: bestByLinkedIn, key: linkedinKey } : null,
+      nameDomainKey ? { map: bestByNameDomain, key: nameDomainKey } : null,
+    ].filter(
+      (entry): entry is { map: Map<string, number>; key: string } => entry !== null,
+    );
+
+    for (const { map, key } of candidateKeys) {
+      const previousIndex = map.get(key);
+      if (previousIndex == null || dupeIndices.has(previousIndex)) {
+        map.set(key, i);
+        continue;
       }
+
+      const keepCurrent =
+        recordRichnessScore(person) > recordRichnessScore(people[previousIndex]);
+      const duplicateIndex = keepCurrent ? previousIndex : i;
+      const winnerIndex = keepCurrent ? i : previousIndex;
+
+      dupeIndices.add(duplicateIndex);
+      map.set(key, winnerIndex);
     }
   }
 

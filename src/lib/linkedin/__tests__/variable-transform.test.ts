@@ -285,4 +285,62 @@ describe("LinkedIn render integration (transform + normalise + compile)", () => 
     // Acme Inc should render as "Acme" (Inc stripped by BL-103 normaliser).
     expect(rendered).toBe("Hey Alex, from Acme.");
   });
+
+  it("resolves spintax before variable rendering for legacy LinkedIn templates", () => {
+    const template =
+      "{Hey|Hi} {FIRSTNAME}, worth a chat about {COMPANYNAME}?";
+    const person = {
+      firstName: "Maya",
+      lastName: "Cole",
+      company: "Northstar Ltd",
+      jobTitle: "Founder",
+      linkedinUrl: null,
+      email: "maya@northstar.example",
+    };
+
+    const context = buildTemplateContext(person);
+    const rendered = compileTemplate(template, context);
+
+    expect(rendered).toBe("Hey Maya, worth a chat about Northstar?");
+    expect(rendered).not.toContain("{Hey|Hi}");
+    expect(rendered).not.toMatch(/\{[A-Z_][A-Z0-9_]*\}/);
+  });
+
+  it("binds email and lastEmailMonth in the LinkedIn render context", () => {
+    const template =
+      "Following up on {EMAIL} from {LASTEMAILMONTH}, {FIRSTNAME}.";
+    const person = {
+      firstName: "Jordan",
+      lastName: "Lee",
+      company: "Acme",
+      jobTitle: "COO",
+      linkedinUrl: null,
+      email: "jordan@acme.example",
+    };
+
+    const context = buildTemplateContext(person, undefined, {
+      lastEmailMonth: "March",
+    });
+    const rendered = compileTemplate(template, context);
+
+    expect(rendered).toBe(
+      "Following up on jordan@acme.example from March, Jordan.",
+    );
+    expect(rendered).not.toMatch(/\{[A-Z_][A-Z0-9_]*\}/);
+  });
+
+  it("throws instead of returning the raw template when compilation fails", () => {
+    const context = buildTemplateContext({
+      firstName: "Jordan",
+      lastName: "Lee",
+      company: "Acme",
+      jobTitle: "COO",
+      linkedinUrl: null,
+      email: "jordan@acme.example",
+    });
+
+    expect(() => compileTemplate("Hey {{#if firstName}", context)).toThrow(
+      /template compilation failed/i,
+    );
+  });
 });

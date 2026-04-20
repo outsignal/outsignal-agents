@@ -3,8 +3,10 @@ import { prisma } from "@/lib/db";
 import {
   enqueueAction,
   getNextBatch,
+  claimNextBatch,
   markComplete,
   markFailed,
+  markFailedIfRunning,
   cancelAction,
   cancelActionsForPerson,
   bumpPriority,
@@ -135,18 +137,21 @@ describe("markComplete", () => {
   it("updates action status to complete with timestamp", async () => {
     (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",
+      status: "running",
       actionType: "profile_view",
       senderId: "sender-1",
       personId: "person-1",
       workspaceSlug: "rise",
       sequenceStepRef: null,
     });
-    (prisma.linkedInAction.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
 
     await markComplete("action-1", '{"success":true}');
 
-    expect(prisma.linkedInAction.update).toHaveBeenCalledWith({
-      where: { id: "action-1" },
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
       data: {
         status: "complete",
         completedAt: expect.any(Date),
@@ -158,13 +163,16 @@ describe("markComplete", () => {
   it("increments pending count on connection_request completion", async () => {
     (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",
+      status: "running",
       actionType: "connection_request",
       senderId: "sender-1",
       personId: "person-1",
       workspaceSlug: "rise",
       sequenceStepRef: null,
     });
-    (prisma.linkedInAction.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
     (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
     await markComplete("action-1");
@@ -177,6 +185,50 @@ describe("markComplete", () => {
       },
     });
   });
+
+  it("does not run post-completion hooks twice when the action was already completed", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        id: "action-1",
+        status: "running",
+        actionType: "connection_request",
+        senderId: "sender-1",
+        personId: "person-1",
+        workspaceSlug: "rise",
+        sequenceStepRef: null,
+      })
+      .mockResolvedValueOnce({
+        status: "complete",
+      });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 0,
+    });
+
+    await markComplete("action-1");
+
+    expect(prisma.sender.update).not.toHaveBeenCalled();
+  });
+
+  it("does not force-complete a pending action when no running transition occurred", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "pending",
+      actionType: "connection_request",
+      senderId: "sender-1",
+      personId: "person-1",
+      workspaceSlug: "rise",
+      sequenceStepRef: null,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 0,
+    });
+
+    const result = await markComplete("action-1");
+
+    expect(result).toEqual({ transitionedFromRunning: false });
+    expect(prisma.linkedInAction.update).not.toHaveBeenCalled();
+    expect(prisma.sender.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("markFailed", () => {
@@ -187,15 +239,19 @@ describe("markFailed", () => {
   it("marks as failed when retries exhausted", async () => {
     (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",
+      status: "running",
       attempts: 3,
       maxAttempts: 3,
     });
-    (prisma.linkedInAction.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
 
-    await markFailed("action-1", "Session expired");
+    const updated = await markFailed("action-1", "Session expired");
 
-    expect(prisma.linkedInAction.update).toHaveBeenCalledWith({
-      where: { id: "action-1" },
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
       data: {
         status: "failed",
         result: JSON.stringify({ error: "Session expired" }),
@@ -206,20 +262,173 @@ describe("markFailed", () => {
   it("schedules retry with backoff when attempts remain", async () => {
     (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",
+      status: "running",
       attempts: 1,
       maxAttempts: 3,
     });
-    (prisma.linkedInAction.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
 
-    await markFailed("action-1", "Network error");
+    const updated = await markFailed("action-1", "Network error");
 
-    expect(prisma.linkedInAction.update).toHaveBeenCalledWith({
-      where: { id: "action-1" },
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
       data: expect.objectContaining({
         status: "pending", // back to pending for retry
         nextRetryAt: expect.any(Date),
         scheduledFor: expect.any(Date),
       }),
+    });
+  });
+
+  it("marks already_invited as terminal even when attempts remain", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailed("action-1", "already_invited");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "failed",
+        result: JSON.stringify({ error: "already_invited" }),
+      },
+    });
+  });
+
+  it("marks invalid_profile_url as terminal even when attempts remain", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailed("action-1", "invalid_profile_url");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "failed",
+        result: JSON.stringify({ error: "invalid_profile_url" }),
+      },
+    });
+  });
+
+  it("does not overwrite a completion that won the race after the initial read", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 0,
+    });
+
+    const updated = await markFailed("action-1", "Network error");
+
+    expect(updated).toBe(false);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: expect.objectContaining({
+        status: "pending",
+      }),
+    });
+  });
+
+  it("does nothing when the action is already complete before failure handling starts", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "complete",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+
+    const updated = await markFailed("action-1", "Network error");
+
+    expect(updated).toBe(false);
+    expect(prisma.linkedInAction.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("markFailedIfRunning", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns false without updating when the action is no longer running", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "complete",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "worker_timeout");
+
+    expect(updated).toBe(false);
+    expect(prisma.linkedInAction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("requeues the action when it is still running and retries remain", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "worker_timeout");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: expect.objectContaining({
+        status: "pending",
+        nextRetryAt: expect.any(Date),
+        scheduledFor: expect.any(Date),
+      }),
+    });
+  });
+
+  it("marks already_invited as failed without requeueing even if the action is still running", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "already_invited");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "failed",
+        result: JSON.stringify({ error: "already_invited" }),
+      },
     });
   });
 });
@@ -782,5 +991,73 @@ describe("getNextBatch — independent per-type budgets", () => {
 
     expect(batch.length).toBe(2);
     expect(batch.every((a) => a.actionType === "withdraw_connection")).toBe(true);
+  });
+});
+
+describe("claimNextBatch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCheckBudget.mockResolvedValue({ allowed: true, remaining: 10 });
+  });
+
+  it("returns only actions successfully claimed with pending -> running CAS", async () => {
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { where: { actionType?: { in: string[] } } }) => {
+        const types = args.where?.actionType?.in ?? [];
+        if (types.includes("connection_request")) {
+          return Promise.resolve([
+            {
+              id: "a1",
+              personId: "p1",
+              actionType: "connection_request",
+              messageBody: null,
+              priority: 5,
+              workspaceSlug: "ws",
+              campaignName: null,
+              linkedInConversationId: null,
+            },
+            {
+              id: "a2",
+              personId: "p2",
+              actionType: "connection_request",
+              messageBody: null,
+              priority: 5,
+              workspaceSlug: "ws",
+              campaignName: null,
+              linkedInConversationId: null,
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const claimed = await claimNextBatch("sender-1", 5);
+
+    expect(claimed.map((a) => a.id)).toEqual(["a1"]);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "a1",
+          senderId: "sender-1",
+          status: "pending",
+        }),
+      }),
+    );
+    expect(prisma.linkedInAction.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "a2",
+          senderId: "sender-1",
+          status: "pending",
+        }),
+      }),
+    );
   });
 });

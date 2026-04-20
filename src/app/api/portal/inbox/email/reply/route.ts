@@ -3,11 +3,17 @@ import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { EmailBisonError } from "@/lib/emailbison/types";
+import { canManageInbox } from "@/lib/member-permissions";
 
 // POST /api/portal/inbox/email/reply — send a reply via EmailBison and persist as outbound Reply
 export async function POST(request: NextRequest) {
   try {
-    const { workspaceSlug } = await getPortalSession();
+    const session = await getPortalSession();
+    const { workspaceSlug } = session;
+
+    if (!canManageInbox(session.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const body = await request.json();
     const { replyId, message } = body as { replyId: string; message: string };

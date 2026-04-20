@@ -75,7 +75,7 @@ describe("getUnverifiedRoutingSuggestion", () => {
     ]);
     expect(result.totalWithEmail).toBe(2);
     expect(result.noEmailCount).toBe(0);
-    expect(result.suggestion).toContain("LeadMagic verification");
+    expect(result.suggestion).toContain("BounceBan verification");
   });
 
   it("reports no-email leads", () => {

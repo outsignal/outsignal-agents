@@ -8,15 +8,19 @@
  */
 import Handlebars from "handlebars";
 import { prisma } from "@/lib/db";
+import { resolveSpintax } from "@/lib/content-preview";
 import { normalizeCompanyName } from "@/lib/emailbison/company-normaliser";
 import { transformVariablesForLinkedIn } from "@/lib/linkedin/variable-transform";
+import { resolveLastEmailMonth } from "@/lib/outreach/last-email-month";
+import { notify } from "@/lib/notify";
 
 // ─── Template Engine ─────────────────────────────────────────────────────────
 
 /**
  * Compile a Handlebars template string against a context object.
  * Uses `noEscape: true` — LinkedIn messages are plain text, not HTML.
- * Gracefully returns the raw template string on compilation error.
+ * Throws on compilation error so callers can fail closed instead of
+ * shipping raw template syntax to recipients.
  *
  * BL-105 (2026-04-16): writer copy emits canonical single-curly UPPERCASE
  * tokens (`{FIRSTNAME}`, `{COMPANYNAME}`, ...) per copy-quality.ts
@@ -31,14 +35,19 @@ export function compileTemplate(
   context: Record<string, unknown>,
 ): string {
   try {
+    // LinkedIn sequences should not contain spintax, but some legacy queued
+    // templates still do. Resolve it deterministically at the render edge so
+    // recipients never see raw `{A|B}` syntax.
+    const despintaxed = resolveSpintax(template);
     // BL-105: transform canonical {UPPERCASE} → {{camelCase}} before
     // Handlebars sees the template.
-    const transformed = transformVariablesForLinkedIn(template);
+    const transformed = transformVariablesForLinkedIn(despintaxed);
     const compiled = Handlebars.compile(transformed, { noEscape: true });
     return compiled(context);
   } catch (err) {
-    console.warn("[sequencing] Template compilation failed, returning raw template:", err);
-    return template;
+    throw new Error(
+      `[sequencing] Template compilation failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -53,6 +62,7 @@ export function buildTemplateContext(
     company?: string | null;
     jobTitle?: string | null;
     linkedinUrl?: string | null;
+    email?: string | null;
   },
   emailContext?: {
     stepRef?: string;
@@ -77,6 +87,7 @@ export function buildTemplateContext(
     companyName: normalizeCompanyName(person.company) ?? "",
     jobTitle: person.jobTitle ?? "",
     linkedinUrl: person.linkedinUrl ?? "",
+    email: person.email ?? "",
 
     // Email context fields
     emailStepRef: emailContext?.stepRef ?? "",
@@ -166,6 +177,51 @@ export interface EvaluateSequenceRulesParams {
   senderEmail?: string;
 }
 
+async function notifyTemplateFailure(params: {
+  workspaceSlug: string;
+  campaignName: string;
+  ruleId: string;
+  personId: string;
+  triggerEvent: string;
+  actionType: string;
+  path: "primary" | "else";
+  error: unknown;
+}): Promise<void> {
+  const message =
+    params.error instanceof Error ? params.error.message : String(params.error);
+
+  try {
+    await notify({
+      type: "error",
+      severity: "error",
+      title: "LinkedIn sequence rule skipped due to template failure",
+      message:
+        `Campaign: ${params.campaignName}\n` +
+        `Rule: ${params.ruleId}\n` +
+        `Person: ${params.personId}\n` +
+        `Trigger: ${params.triggerEvent}\n` +
+        `Path: ${params.path}\n` +
+        `Action: ${params.actionType}\n` +
+        `Error: ${message}`,
+      workspaceSlug: params.workspaceSlug,
+      metadata: {
+        campaignName: params.campaignName,
+        ruleId: params.ruleId,
+        personId: params.personId,
+        triggerEvent: params.triggerEvent,
+        actionType: params.actionType,
+        path: params.path,
+        error: message,
+      },
+    });
+  } catch (notifyErr) {
+    console.error(
+      "[sequencing] Failed to notify ops about template compilation failure:",
+      notifyErr,
+    );
+  }
+}
+
 /**
  * Evaluate a condition on a CampaignSequenceRule.
  * Returns true if the condition passes (action should fire), false if it fails (else-path should fire).
@@ -242,23 +298,17 @@ export async function evaluateSequenceRules(
 
   const descriptors: SequenceActionDescriptor[] = [];
 
-  // Resolve {{lastEmailMonth}} from this campaign's description field.
-  // When setting up LinkedIn retargeting campaigns, store the source email
-  // completion month in description as "lastEmailMonth:February" (or similar).
-  // This avoids fragile date lookups on synced email campaigns whose DB
-  // timestamps don't reflect the real EB completion dates.
+  // Resolve {{lastEmailMonth}} from this campaign's description field via the
+  // shared `resolveLastEmailMonth` helper (see definition above). Parsing
+  // lives in one place so verification scripts can mirror prod behaviour
+  // exactly. Keeps identical semantics to the prior inline regex.
   let lastEmailMonth = "";
   try {
     const thisCampaign = await prisma.campaign.findUnique({
       where: { workspaceSlug_name: { workspaceSlug, name: campaignName } },
       select: { description: true },
     });
-    if (thisCampaign?.description) {
-      const monthMatch = thisCampaign.description.match(/lastEmailMonth:(\w+)/);
-      if (monthMatch) {
-        lastEmailMonth = monthMatch[1];
-      }
-    }
+    lastEmailMonth = resolveLastEmailMonth(thisCampaign?.description);
   } catch (err) {
     console.warn("[sequencing] Failed to look up lastEmailMonth:", err);
   }
@@ -303,9 +353,28 @@ export async function evaluateSequenceRules(
       const context = buildTemplateContext(person, emailContext, { lastEmailMonth });
 
       if (conditionPassed) {
-        const messageBody = rule.messageTemplate
-          ? compileTemplate(rule.messageTemplate, context)
-          : null;
+        let messageBody: string | null = null;
+        try {
+          messageBody = rule.messageTemplate
+            ? compileTemplate(rule.messageTemplate, context)
+            : null;
+        } catch (err) {
+          console.warn(
+            `[sequencing] Skipping rule ${rule.id} due to template compilation failure:`,
+            err,
+          );
+          await notifyTemplateFailure({
+            workspaceSlug,
+            campaignName,
+            ruleId: rule.id,
+            personId,
+            triggerEvent,
+            actionType: rule.actionType,
+            path: "primary",
+            error: err,
+          });
+          continue;
+        }
 
         descriptors.push({
           actionType: rule.actionType,
@@ -315,9 +384,28 @@ export async function evaluateSequenceRules(
           variantKey: rule.variantKey,
         });
       } else if (rule.elseActionType) {
-        const messageBody = rule.elseMessageTemplate
-          ? compileTemplate(rule.elseMessageTemplate, context)
-          : null;
+        let messageBody: string | null = null;
+        try {
+          messageBody = rule.elseMessageTemplate
+            ? compileTemplate(rule.elseMessageTemplate, context)
+            : null;
+        } catch (err) {
+          console.warn(
+            `[sequencing] Skipping else-path for rule ${rule.id} due to template compilation failure:`,
+            err,
+          );
+          await notifyTemplateFailure({
+            workspaceSlug,
+            campaignName,
+            ruleId: rule.id,
+            personId,
+            triggerEvent,
+            actionType: rule.elseActionType,
+            path: "else",
+            error: err,
+          });
+          continue;
+        }
 
         descriptors.push({
           actionType: rule.elseActionType,

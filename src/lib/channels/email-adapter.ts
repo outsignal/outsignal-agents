@@ -11,7 +11,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { isNotFoundError } from "@/lib/emailbison/errors";
-import { normalizeCompanyName } from "@/lib/emailbison/company-normaliser";
+import { buildEmailLeadPayload } from "@/lib/emailbison/lead-payload";
+import { EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES } from "@/lib/emailbison/custom-variable-names";
 import {
   transformSenderNames,
   type SenderRoster,
@@ -916,6 +917,10 @@ export class EmailAdapter implements ChannelAdapter {
       const createdLeadIds: number[] = [];
       let leadCount = 0;
       if (eligibleLeads.length > 0) {
+        await ebClient.ensureCustomVariables([
+          ...EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES,
+        ]);
+
         // Chunk the upsert in 500-lead batches. EB enforces a hardcoded
         // 500-lead cap on `POST /api/leads/create-or-update/multiple`
         // (docs/emailbison-dedi-api-reference.md:1599 "The leads field
@@ -959,15 +964,18 @@ export class EmailAdapter implements ChannelAdapter {
           const upserted = await withRetry(() =>
             ebClient.createOrUpdateLeadsMultiple(
               chunk.map((entry) => ({
-                email: entry.person.email!,
-                firstName: entry.person.firstName ?? undefined,
-                lastName: entry.person.lastName ?? undefined,
-                jobTitle: entry.person.jobTitle ?? undefined,
-                company:
-                  normalizeCompanyName(
-                    entry.person.company,
-                    entry.person.companyDomain ?? null,
-                  ) ?? undefined,
+                ...buildEmailLeadPayload(
+                  {
+                    email: entry.person.email!,
+                    firstName: entry.person.firstName,
+                    lastName: entry.person.lastName,
+                    jobTitle: entry.person.jobTitle,
+                    company: entry.person.company,
+                    companyDomain: entry.person.companyDomain,
+                    location: entry.person.location,
+                  },
+                  campaign.description,
+                ),
               })),
             ),
           );

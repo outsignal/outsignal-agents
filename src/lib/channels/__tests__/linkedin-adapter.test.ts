@@ -137,6 +137,21 @@ describe("LinkedInAdapter.deploy() — BL-068 shape-drift guard", () => {
     expect(rules.every((r) => typeof r.position === "number" && r.position > 0)).toBe(true);
   });
 
+  it("(a2) empty LinkedIn sequence clears stale linkedinError on complete", async () => {
+    stubCampaign([]);
+
+    await adapter.deploy(DEPLOY_PARAMS);
+
+    expect(prismaMock.campaignDeploy.update).toHaveBeenLastCalledWith({
+      where: { id: "deploy-1" },
+      data: {
+        linkedinStatus: "complete",
+        linkedinStepCount: 0,
+        linkedinError: null,
+      },
+    });
+  });
+
   // -------------------------------------------------------------------------
   // (b) BL-068 shape — `stepNumber` only
   // -------------------------------------------------------------------------

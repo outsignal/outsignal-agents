@@ -17,9 +17,66 @@ export const maxDuration = 10;
 
 const webhookLimiter = rateLimit({ windowMs: 60_000, max: 60 });
 
-// EmailBison does not currently support webhook signing.
-// When EMAILBISON_WEBHOOK_SECRET is set and EB sends a signature header,
-// we verify it. Otherwise we accept unsigned requests with a warning.
+function isWebhookDuplicateError(err: unknown): boolean {
+  if (
+    !err ||
+    typeof err !== "object" ||
+    !("code" in err) ||
+    (err as { code?: string }).code !== "P2002"
+  ) {
+    return false;
+  }
+
+  const target = (err as { meta?: { target?: unknown } }).meta?.target;
+  return Array.isArray(target)
+    ? target.includes("externalEventId")
+    : false;
+}
+
+function buildExternalEventId(args: {
+  eventType: string;
+  replyId?: string | number | null;
+  campaignId?: string | null;
+  leadEmail?: string | null;
+  senderEmail?: string | null;
+  stepNumber?: number | null;
+}): string | null {
+  const {
+    eventType,
+    replyId,
+    campaignId,
+    leadEmail,
+    senderEmail,
+    stepNumber,
+  } = args;
+  const normalizedLeadEmail = leadEmail?.toLowerCase() ?? null;
+  const normalizedSenderEmail = senderEmail?.toLowerCase() ?? null;
+
+  if (replyId != null) {
+    return `reply:${String(replyId)}`;
+  }
+
+  switch (eventType) {
+    case "EMAIL_SENT":
+      return normalizedLeadEmail
+        ? `email_sent:${campaignId ?? "none"}:${normalizedLeadEmail}:${stepNumber ?? "none"}:${normalizedSenderEmail ?? "none"}`
+        : null;
+    case "BOUNCE":
+      return normalizedLeadEmail
+        ? `bounce:${campaignId ?? "none"}:${normalizedLeadEmail}:${normalizedSenderEmail ?? "none"}`
+        : null;
+    case "UNSUBSCRIBED":
+      return normalizedLeadEmail
+        ? `unsubscribed:${campaignId ?? "none"}:${normalizedLeadEmail}:${normalizedSenderEmail ?? "none"}`
+        : null;
+    default:
+      return null;
+  }
+}
+
+// Webhook authentication is mandatory. If the secret is missing or the
+// request has no signature header, we fail closed rather than accepting a
+// destructive unsigned mutation.
 function verifyWebhookSignature(
   rawBody: string,
   request: NextRequest,
@@ -30,17 +87,23 @@ function verifyWebhookSignature(
     request.headers.get("x-webhook-signature");
 
   if (!secret) {
-    console.warn(
-      "[EmailBison Webhook] EMAILBISON_WEBHOOK_SECRET not configured — accepting unsigned request",
-    );
-    return { valid: true };
+    return {
+      valid: false,
+      response: NextResponse.json(
+        { error: "Webhook authentication not configured" },
+        { status: 503 },
+      ),
+    };
   }
 
   if (!signature) {
-    console.warn(
-      "[EmailBison Webhook] No signature header present — accepting unsigned request (EB does not send signatures)",
-    );
-    return { valid: true };
+    return {
+      valid: false,
+      response: NextResponse.json(
+        { error: "Missing webhook signature" },
+        { status: 401 },
+      ),
+    };
   }
 
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
@@ -98,8 +161,18 @@ export async function POST(request: NextRequest) {
     const textBody = data.reply?.text_body ?? null;
     const automatedReply = data.reply?.automated_reply ?? false;
     const campaignId = data.campaign?.id?.toString() ?? null;
+    const stepNumber = data.sequence_step?.position ?? data.step_number ?? null;
     const interested = data.reply?.interested ?? false;
     const leadName = [data.lead?.first_name, data.lead?.last_name].filter(Boolean).join(" ") || null;
+    const replyId = data.reply?.id;
+    const externalEventId = buildExternalEventId({
+      eventType,
+      replyId,
+      campaignId,
+      leadEmail,
+      senderEmail,
+      stepNumber,
+    });
 
     // Detect OOO / non-real replies early so we can persist the flag
     const fromEmail = (data.reply?.from_email_address ?? "").toLowerCase();
@@ -120,35 +193,29 @@ export async function POST(request: NextRequest) {
       emailSubject.includes("retention settings");
     const isAutomatedFlag = automatedReply || isNonRealReply;
 
-    // Idempotency: skip if we already processed this exact event recently
-    const replyId = data.reply?.id;
-    if (replyId != null) {
-      const existing = await prisma.webhookEvent.findFirst({
-        where: {
+    let webhookEvent;
+    try {
+      webhookEvent = await prisma.webhookEvent.create({
+        data: {
           workspace: workspaceSlug,
           eventType,
+          externalEventId,
+          campaignId,
           leadEmail,
-          payload: { contains: `"id":${replyId}` },
+          senderEmail,
+          payload: JSON.stringify(payload),
+          isAutomated: isAutomatedFlag,
         },
-        select: { id: true },
       });
-      if (existing) {
-        console.log(`[EmailBison Webhook] Idempotent skip — duplicate reply event (replyId=${replyId}, existing=${existing.id})`);
+    } catch (err) {
+      if (externalEventId && isWebhookDuplicateError(err)) {
+        console.log(
+          `[EmailBison Webhook] Idempotent skip — duplicate external event ${externalEventId} (${eventType})`,
+        );
         return NextResponse.json({ received: true, deduplicated: true });
       }
+      throw err;
     }
-
-    const webhookEvent = await prisma.webhookEvent.create({
-      data: {
-        workspace: workspaceSlug,
-        eventType,
-        campaignId,
-        leadEmail,
-        senderEmail,
-        payload: JSON.stringify(payload),
-        isAutomated: isAutomatedFlag,
-      },
-    });
 
     // Handle EMAIL_SENT — update person status to "contacted"
     if (eventType === "EMAIL_SENT" && leadEmail) {
@@ -194,7 +261,6 @@ export async function POST(request: NextRequest) {
             if (person?.linkedinUrl) {
               // Determine which email step this is (from EB webhook data)
               // EB sends data.sequence_step or data.step_number — extract position
-              const stepNumber = data.sequence_step?.position ?? data.step_number ?? null;
               const triggerStepRef = stepNumber ? `email_${stepNumber}` : undefined;
 
               const actions = await evaluateSequenceRules({
@@ -243,44 +309,77 @@ export async function POST(request: NextRequest) {
                   },
                 );
 
-                if (sender) {
-                  const actionScheduledFor = new Date(Date.now() + action.delayMinutes * 60 * 1000);
+                if (!sender) {
+                  const alertMessage =
+                    `Campaign: ${outsignalCampaign.name}\n` +
+                    `Lead: ${leadEmail}\n` +
+                    `Sender email: ${senderEmail ?? "(unknown)"}\n` +
+                    `Action: ${action.actionType}\n` +
+                    `Reason: no eligible LinkedIn sender was available for assignment`;
+                  console.warn(
+                    `[webhook] No eligible LinkedIn sender for ${leadEmail} in ${outsignalCampaign.workspaceSlug}; action ${action.actionType} was not enqueued`,
+                  );
+                  await notify({
+                    type: "error",
+                    severity: "error",
+                    title:
+                      "LinkedIn action could not be assigned from EmailBison webhook",
+                    message: alertMessage,
+                    workspaceSlug: outsignalCampaign.workspaceSlug,
+                    metadata: {
+                      campaignName: outsignalCampaign.name,
+                      leadEmail,
+                      senderEmail,
+                      actionType: action.actionType,
+                      personId: person.id,
+                      eventType,
+                      externalEventId,
+                    },
+                  }).catch((notifyErr) =>
+                    console.error(
+                      "[webhook] Failed to notify ops about missing LinkedIn sender:",
+                      notifyErr,
+                    ),
+                  );
+                  continue;
+                }
+
+                const actionScheduledFor = new Date(Date.now() + action.delayMinutes * 60 * 1000);
+
+                await enqueueAction({
+                  senderId: sender.id,
+                  personId: person.id,
+                  workspaceSlug: outsignalCampaign.workspaceSlug,
+                  actionType: action.actionType as "connect" | "message" | "profile_view",
+                  messageBody: action.messageBody ?? undefined,
+                  priority: 5,
+                  scheduledFor: actionScheduledFor,
+                  campaignName: outsignalCampaign.name,
+                  sequenceStepRef: action.sequenceStepRef,
+                  variantKey: action.variantKey ?? undefined,
+                });
+
+                // Forward-chain: schedule a profile_view before connect actions
+                if ((action.actionType === "connect" || action.actionType === "connection_request") && person.linkedinUrl) {
+                  const viewScheduledFor = new Date(
+                    actionScheduledFor.getTime() - Math.max(4 * 60 * 60 * 1000, Math.random() * 2 * 24 * 60 * 60 * 1000),
+                  );
+                  const safeViewTime = viewScheduledFor.getTime() > Date.now()
+                    ? viewScheduledFor
+                    : new Date(Date.now() + 5 * 60 * 1000);
 
                   await enqueueAction({
                     senderId: sender.id,
                     personId: person.id,
                     workspaceSlug: outsignalCampaign.workspaceSlug,
-                    actionType: action.actionType as "connect" | "message" | "profile_view",
-                    messageBody: action.messageBody ?? undefined,
-                    priority: 5,
-                    scheduledFor: actionScheduledFor,
+                    actionType: "profile_view",
+                    priority: 7,
+                    scheduledFor: safeViewTime,
                     campaignName: outsignalCampaign.name,
-                    sequenceStepRef: action.sequenceStepRef,
-                    variantKey: action.variantKey ?? undefined,
-                  });
-
-                  // Forward-chain: schedule a profile_view before connect actions
-                  if ((action.actionType === "connect" || action.actionType === "connection_request") && person.linkedinUrl) {
-                    const viewScheduledFor = new Date(
-                      actionScheduledFor.getTime() - Math.max(4 * 60 * 60 * 1000, Math.random() * 2 * 24 * 60 * 60 * 1000),
-                    );
-                    const safeViewTime = viewScheduledFor.getTime() > Date.now()
-                      ? viewScheduledFor
-                      : new Date(Date.now() + 5 * 60 * 1000);
-
-                    await enqueueAction({
-                      senderId: sender.id,
-                      personId: person.id,
-                      workspaceSlug: outsignalCampaign.workspaceSlug,
-                      actionType: "profile_view",
-                      priority: 7,
-                      scheduledFor: safeViewTime,
-                      campaignName: outsignalCampaign.name,
-                      sequenceStepRef: "linkedin_0",
-                    }).catch((err) =>
-                      console.warn(`[webhook] Profile view scheduling failed for person ${person.id}:`, err),
-                    );
-                  }
+                    sequenceStepRef: "linkedin_0",
+                  }).catch((err) =>
+                    console.warn(`[webhook] Profile view scheduling failed for person ${person.id}:`, err),
+                  );
                 }
               }
             }

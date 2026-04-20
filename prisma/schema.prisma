@@ -277,6 +277,7 @@ model WebhookEvent {
   id          String   @id @default(cuid())
   workspace   String
   eventType   String
+  externalEventId String?
   campaignId  String?
   leadEmail   String?
   senderEmail String?
@@ -284,6 +285,7 @@ model WebhookEvent {
   isAutomated Boolean  @default(false)
   receivedAt  DateTime @default(now())
 
+  @@unique([workspace, eventType, externalEventId])
   @@index([workspace, eventType])
   @@index([leadEmail])
   @@index([senderEmail, eventType])
@@ -658,6 +660,7 @@ model SignalEvent {
   @@unique([source, externalId]) // Prevent duplicate signals from same provider
   @@index([companyDomain, workspaceSlug, status])
   @@index([workspaceSlug, detectedAt])
+  @@index([workspaceSlug, status, detectedAt])
   @@index([detectedAt])
   @@index([expiresAt, status]) // For TTL cleanup query
 }
@@ -782,7 +785,7 @@ model Campaign {
 
   // Pre-provisioned EmailBison campaign ID for signal auto-deploy
   // Created when signal campaign transitions to "active"
-  signalEmailBisonCampaignId Int?
+  signalEmailBisonCampaignId Int? @unique
 
   // Timestamp of last signal processing run — processor finds signals newer than this
   lastSignalProcessedAt DateTime?
@@ -952,6 +955,7 @@ model Sender {
   @@index([status])
   @@index([healthStatus])
   @@index([channel])
+  @@index([workspaceSlug, healthStatus, status])
 }
 
 model SenderHealthEvent {
@@ -1033,7 +1037,7 @@ model LinkedInAction {
   sender Sender @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([status, scheduledFor])
-  @@index([senderId, status])
+  @@index([senderId, status, scheduledFor])
   @@index([personId])
   @@index([priority, scheduledFor])
   @@index([workspaceSlug])
@@ -1132,6 +1136,7 @@ model MagicLinkToken {
   createdAt     DateTime @default(now())
 
   @@index([email])
+  @@index([expiresAt])
 }
 
 model Member {

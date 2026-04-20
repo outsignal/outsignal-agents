@@ -81,7 +81,7 @@ const MAX_RETRIES = 3;
  *   2. BounceBan verify → "unknown" → Kitt verify fallback
  *      - Kitt "valid" → accept (true)
  *      - Kitt anything else → reject (false)
- *   3. BounceBan verify → "invalid"/"risky"/"catch_all" → reject (false)
+ *   3. BounceBan verify → "invalid"/"risky"/"catch_all"/"valid_catch_all" → reject (false)
  *   4. BounceBan error → treat as unknown → Kitt fallback
  */
 async function verifyFoundEmail(
@@ -91,7 +91,7 @@ async function verifyFoundEmail(
   try {
     const bbResult = await bouncebanVerify(email, personId);
 
-    if (bbResult.status === "valid" || bbResult.status === "valid_catch_all") {
+    if (bbResult.status === "valid") {
       return true; // verified deliverable
     }
 
@@ -1215,7 +1215,7 @@ export async function enrichEmailBatch(
         continue;
       }
 
-      const isValid = vResult.status === "valid" || vResult.status === "valid_catch_all";
+      const isValid = vResult.status === "valid";
 
       if (!isValid) {
         // Verification failed — null out the email if it was written

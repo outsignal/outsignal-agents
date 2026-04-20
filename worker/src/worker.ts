@@ -11,7 +11,7 @@
  */
 
 import { ApiClient } from "./api-client.js";
-import { VoyagerClient } from "./voyager-client.js";
+import { VoyagerClient, VoyagerError } from "./voyager-client.js";
 import type {
   ActionResult,
   ConnectionCheckResult,
@@ -105,6 +105,8 @@ export class Worker {
   private lastPlanDate: Map<string, string> = new Map();
   /** Last date (YYYY-MM-DD) mid-day top-up was run per workspace. */
   private lastTopupDate: Map<string, string> = new Map();
+  /** Currently claimed action IDs per sender for timeout cleanup. */
+  private inFlightActionIdsBySender: Map<string, Set<string>> = new Map();
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -151,6 +153,7 @@ export class Worker {
     this.lastConnectionPoll.clear();
     this.nextConnectionPollInterval.clear();
     this.lastConnectionBrowserFallback.clear();
+    this.inFlightActionIdsBySender.clear();
   }
 
   /**
@@ -508,17 +511,24 @@ export class Worker {
     await Promise.all(
       activeSenders.map((sender) => {
         if (!this.running) return Promise.resolve();
-        const senderWork = this.processSender(sender);
+        const senderWork = this.processSender(sender).then(
+          () => "completed" as const,
+        );
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
-        const timeout = new Promise<void>((resolve) => {
+        const timeout = new Promise<"timeout">((resolve) => {
           timeoutId = setTimeout(() => {
             console.error(
               `[Worker] processSender timed out after ${PER_SENDER_TIMEOUT_MS / 60000}min for ${sender.name} — abandoning this tick`,
             );
-            resolve();
+            resolve("timeout");
           }, PER_SENDER_TIMEOUT_MS);
         });
         return Promise.race([senderWork, timeout])
+          .then(async (result) => {
+            if (result === "timeout") {
+              await this.handleSenderTimeout(sender);
+            }
+          })
           .catch((err) => {
             console.error(`[Worker] processSender failed for ${sender.name}:`, err);
           })
@@ -551,7 +561,9 @@ export class Worker {
 
       let client: VoyagerClient;
       try {
-        client = await this.getOrCreateVoyagerClient(sender);
+        const healthyClient = await this.ensureSenderSessionHealthy(sender);
+        if (!healthyClient) continue;
+        client = healthyClient;
       } catch {
         continue; // No cookies available — skip
       }
@@ -675,6 +687,15 @@ export class Worker {
 
         this.conversationBackoff.delete(sender.id);
       } catch (err) {
+        if (err instanceof VoyagerError && (err.status === 401 || err.status === 403)) {
+          await this.markSenderSessionExpired(
+            sender,
+            err.body.includes("checkpoint_detected") ? "blocked" : "session_expired",
+            "conversation check auth failure",
+          );
+          continue;
+        }
+
         const errMsg = err instanceof Error ? err.message : String(err);
         if (/429|401|403/.test(errMsg)) {
           this.conversationBackoff.set(sender.id, 5); // ~15-25 min backoff
@@ -776,7 +797,9 @@ export class Worker {
       let client: VoyagerClient;
       let browserFallback: LinkedInBrowser | null | undefined;
       try {
-        client = await this.getOrCreateVoyagerClient(senderConfig);
+        const healthyClient = await this.ensureSenderSessionHealthy(senderConfig);
+        if (!healthyClient) continue;
+        client = healthyClient;
       } catch (error) {
         console.error(
           `[Worker] Failed to get VoyagerClient for ${senderConfig.name} during connection polling:`,
@@ -840,6 +863,20 @@ export class Worker {
             `[Worker] Failed to check connection ${conn.connectionId}:`,
             error,
           );
+
+          if (
+            error instanceof VoyagerError &&
+            (error.status === 401 || error.status === 403)
+          ) {
+            await this.markSenderSessionExpired(
+              senderConfig,
+              error.body.includes("checkpoint_detected")
+                ? "blocked"
+                : "session_expired",
+              "connection polling auth failure",
+            );
+            break;
+          }
         }
 
         // Small delay between checks to avoid rate limiting
@@ -865,32 +902,16 @@ export class Worker {
   private async processSender(sender: SenderConfig): Promise<void> {
     console.log(`[Worker] Processing sender: ${sender.name} (${sender.id})`);
 
-    // Get next batch of actions
-    let actions: ActionItem[];
-    try {
-      actions = await this.api.getNextActions(sender.id, 5);
-    } catch (error) {
-      console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
-      return;
-    }
-
-    if (actions.length === 0) {
-      console.log(`[Worker] No pending actions for ${sender.name}`);
-      return;
-    }
-
-    console.log(`[Worker] ${actions.length} actions for ${sender.name}`);
-
-    // Get or create VoyagerClient for this sender
+    // Proactively validate sender session health before claiming actions.
+    // This ensures idle senders still get checked on the 30-minute cadence
+    // instead of silently looping with dead cookies until keepalive happens.
     let client: VoyagerClient;
     try {
-      client = await this.getOrCreateVoyagerClient(sender);
+      const healthyClient = await this.ensureSenderSessionHealthy(sender);
+      if (!healthyClient) return;
+      client = healthyClient;
     } catch (error) {
       console.error(`[Worker] Failed to create VoyagerClient for ${sender.name}:`, error);
-      // Mark all actions as failed
-      for (const action of actions) {
-        await this.safeMarkFailed(action.id, `VoyagerClient creation failed: ${error}`);
-      }
       return;
     }
 
@@ -907,105 +928,81 @@ export class Worker {
       }
     }
 
-    // Session health check — only if 30+ minutes since last successful test
-    const lastCheck = this.lastSessionCheck.get(sender.id) ?? 0;
-    const now = Date.now();
-    if (now - lastCheck > Worker.SESSION_CHECK_INTERVAL_MS) {
-      console.log(`[Worker] Testing session health for ${sender.name}...`);
-      const sessionResult = await client.testSession();
-
-      if (sessionResult === "ok") {
-        console.log(`[Worker] Session OK for ${sender.name}`);
-        this.lastSessionCheck.set(sender.id, now);
-      } else if (sessionResult === "rate_limited") {
-        // Session might be fine — just back off, don't mark expired
-        console.warn(`[Worker] Rate limited during health check for ${sender.name} — skipping this tick`);
-        return;
-      } else if (sessionResult === "network_error") {
-        // Transient failure — don't mark expired, retry next tick
-        console.warn(`[Worker] Network error during health check for ${sender.name} — will retry next tick`);
-        return;
-      } else {
-        // "expired" or "checkpoint" — genuine session failure
-        console.warn(`[Worker] Session health check: ${sessionResult} for ${sender.name}`);
-        this.activeClients.delete(sender.id);
-        this.lastSessionCheck.delete(sender.id);
-
-        // Attempt auto-re-login if credentials are available
-        const reloginSuccess = await this.attemptAutoRelogin(sender);
-
-        if (reloginSuccess) {
-          // Re-create client with fresh cookies
-          try {
-            client = await this.getOrCreateVoyagerClient(sender);
-          } catch (error) {
-            console.error(`[Worker] Failed to create client after re-login for ${sender.name}:`, error);
-            for (const action of actions) {
-              await this.safeMarkFailed(action.id, "session_expired");
-            }
-            return;
-          }
-        } else {
-          // Re-login failed or not available — mark expired
-          await this.api.updateSenderHealth(sender.id, "session_expired").catch((err) =>
-            console.error(`[Worker] Failed to update sender health:`, err),
-          );
-          for (const action of actions) {
-            await this.safeMarkFailed(action.id, "session_expired");
-          }
-          return;
-        }
-      }
-    }
-
-    // Fetch daily usage for spread delay calculation
-    let usageData: Record<string, unknown> | null = null;
+    // Get next batch of actions only after session health is confirmed.
+    let actions: ActionItem[];
     try {
-      usageData = await this.api.getUsage(sender.id);
-    } catch (err) {
-      console.warn(`[Worker] Failed to fetch usage for ${sender.name}, falling back to fixed delay:`, err);
+      actions = await this.api.getNextActions(sender.id, 5);
+    } catch (error) {
+      console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
+      return;
     }
 
-    // Execute each action with delays between them
-    for (let i = 0; i < actions.length; i++) {
-      if (!this.running) break;
+    if (actions.length === 0) {
+      console.log(`[Worker] No pending actions for ${sender.name}`);
+      return;
+    }
 
-      const action = actions[i];
-      console.log(
-        `[Worker] Executing ${action.actionType} (priority ${action.priority}) for person ${action.personId}`,
-      );
+    console.log(`[Worker] ${actions.length} actions for ${sender.name}`);
+    const inFlight = new Set(actions.map((action) => action.id));
+    this.inFlightActionIdsBySender.set(sender.id, inFlight);
 
+    try {
+      // Fetch daily usage for spread delay calculation
+      let usageData: Record<string, unknown> | null = null;
       try {
-        await this.executeAction(client, action, sender.id);
-      } catch (error) {
-        if (error instanceof Error && error.message === "RATE_LIMITED") {
-          // Skip remaining actions for this sender — natural backoff until next poll
-          break;
-        }
-        throw error;
+        usageData = await this.api.getUsage(sender.id);
+      } catch (err) {
+        console.warn(`[Worker] Failed to fetch usage for ${sender.name}, falling back to fixed delay:`, err);
       }
 
-      // Spread delay between actions (not after the last one)
-      if (i < actions.length - 1 && this.running) {
-        const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
-        const delaySec = Math.round(delay / 1000);
-        const totalRemaining = this.getTotalDailyRemaining(usageData);
-        // Pick remaining per type for log transparency. Same shape the
-        // /api/linkedin/usage endpoint returns.
-        const pick = (slot: unknown): number => {
-          const s = slot as { remaining?: number } | undefined;
-          return typeof s?.remaining === "number" ? Math.max(0, s.remaining) : 0;
-        };
-        const connRemaining = pick(usageData?.connections);
-        const msgRemaining = pick(usageData?.messages);
-        const pvRemaining = pick(usageData?.profileViews);
-        const { hour, minute } = getLondonHoursMinutes();
-        const hoursLeft = Math.max(0, 18 - (hour + minute / 60));
+      // Execute each action with delays between them
+      for (let i = 0; i < actions.length; i++) {
+        if (!this.running) break;
+
+        const action = actions[i];
         console.log(
-          `[Worker] ${sender.name}: spread ${connRemaining}c + ${msgRemaining}m + ${pvRemaining}pv (total ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
+          `[Worker] Executing ${action.actionType} (priority ${action.priority}) for person ${action.personId}`,
         );
-        await sleep(delay);
+
+        try {
+          await this.executeAction(client, action, sender.id);
+        } catch (error) {
+          if (error instanceof Error && error.message === "RATE_LIMITED") {
+            // Skip remaining actions for this sender — natural backoff until next poll
+            break;
+          }
+          throw error;
+        } finally {
+          inFlight.delete(action.id);
+          if (inFlight.size === 0) {
+            this.inFlightActionIdsBySender.delete(sender.id);
+          }
+        }
+
+        // Spread delay between actions (not after the last one)
+        if (i < actions.length - 1 && this.running) {
+          const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
+          const delaySec = Math.round(delay / 1000);
+          const totalRemaining = this.getTotalDailyRemaining(usageData);
+          // Pick remaining per type for log transparency. Same shape the
+          // /api/linkedin/usage endpoint returns.
+          const pick = (slot: unknown): number => {
+            const s = slot as { remaining?: number } | undefined;
+            return typeof s?.remaining === "number" ? Math.max(0, s.remaining) : 0;
+          };
+          const connRemaining = pick(usageData?.connections);
+          const msgRemaining = pick(usageData?.messages);
+          const pvRemaining = pick(usageData?.profileViews);
+          const { hour, minute } = getLondonHoursMinutes();
+          const hoursLeft = Math.max(0, 18 - (hour + minute / 60));
+          console.log(
+            `[Worker] ${sender.name}: spread ${connRemaining}c + ${msgRemaining}m + ${pvRemaining}pv (total ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
+          );
+          await sleep(delay);
+        }
       }
+    } finally {
+      this.inFlightActionIdsBySender.delete(sender.id);
     }
   }
 
@@ -1194,7 +1191,10 @@ export class Worker {
     // Only applies to message actions — connect and profile_view do not require an existing connection.
     if (action.actionType === "message" && action.personId) {
       try {
-        const connStatus = await this.api.getConnectionStatusForPerson(action.personId);
+        const connStatus = await this.api.getConnectionStatusForPerson(
+          senderId,
+          action.personId,
+        );
         if (!connStatus || connStatus.status !== "connected") {
           const reason = connStatus
             ? `connection status is '${connStatus.status}'`
@@ -1326,5 +1326,152 @@ export class Worker {
     } catch (err) {
       console.error(`[Worker] Failed to report failure for ${actionId}:`, err);
     }
+  }
+
+  private async safeMarkFailedIfRunning(
+    actionId: string,
+    error: string,
+  ): Promise<void> {
+    try {
+      await this.api.markFailedIfRunning(actionId, error);
+    } catch (err) {
+      console.error(
+        `[Worker] Failed to report timeout failure for ${actionId}:`,
+        err,
+      );
+    }
+  }
+
+  private async markSenderSessionExpired(
+    sender: SenderConfig,
+    status: "session_expired" | "blocked",
+    context: string,
+  ): Promise<void> {
+    this.activeClients.delete(sender.id);
+    this.lastSessionCheck.delete(sender.id);
+    console.warn(
+      `[Worker] ${context} for ${sender.name} — marking ${status}`,
+    );
+    await this.api.updateSenderHealth(sender.id, status).catch((err) =>
+      console.error(`[Worker] Failed to update sender health:`, err),
+    );
+  }
+
+  private async ensureSenderSessionHealthy(
+    sender: SenderConfig,
+  ): Promise<VoyagerClient | null> {
+    let client: VoyagerClient;
+    try {
+      client = await this.getOrCreateVoyagerClient(sender);
+    } catch (error) {
+      console.error(
+        `[Worker] Failed to create VoyagerClient for ${sender.name}:`,
+        error,
+      );
+      return null;
+    }
+
+    const lastCheck = this.lastSessionCheck.get(sender.id) ?? 0;
+    const now = Date.now();
+    if (now - lastCheck <= Worker.SESSION_CHECK_INTERVAL_MS) {
+      return client;
+    }
+
+    console.log(`[Worker] Testing session health for ${sender.name}...`);
+    const sessionResult = await client.testSession();
+
+    if (sessionResult === "ok") {
+      console.log(`[Worker] Session OK for ${sender.name}`);
+      this.lastSessionCheck.set(sender.id, now);
+      if (
+        sender.healthStatus === "session_expired" ||
+        sender.healthStatus === "blocked"
+      ) {
+        await this.api.updateSenderHealth(sender.id, "healthy").catch((err) =>
+          console.error(
+            `[Worker] Failed to clear stale sender health for ${sender.name}:`,
+            err,
+          ),
+        );
+      }
+      return client;
+    }
+
+    if (sessionResult === "rate_limited") {
+      console.warn(
+        `[Worker] Rate limited during health check for ${sender.name} — skipping this tick`,
+      );
+      return null;
+    }
+
+    if (sessionResult === "network_error") {
+      console.warn(
+        `[Worker] Network error during health check for ${sender.name} — will retry next tick`,
+      );
+      return null;
+    }
+
+    console.warn(`[Worker] Session health check: ${sessionResult} for ${sender.name}`);
+    this.activeClients.delete(sender.id);
+    this.lastSessionCheck.delete(sender.id);
+
+    if (sessionResult === "checkpoint") {
+      await this.markSenderSessionExpired(
+        sender,
+        "blocked",
+        "checkpoint during health check",
+      );
+      return null;
+    }
+
+    const reloginSuccess = await this.attemptAutoRelogin(sender);
+    if (!reloginSuccess) {
+      await this.markSenderSessionExpired(
+        sender,
+        "session_expired",
+        "health check auth failure",
+      );
+      return null;
+    }
+
+    try {
+      client = await this.getOrCreateVoyagerClient(sender);
+      this.lastSessionCheck.set(sender.id, now);
+      return client;
+    } catch (error) {
+      console.error(
+        `[Worker] Failed to create client after re-login for ${sender.name}:`,
+        error,
+      );
+      await this.markSenderSessionExpired(
+        sender,
+        "session_expired",
+        "post-relogin client bootstrap failure",
+      );
+      return null;
+    }
+  }
+
+  private async handleSenderTimeout(sender: SenderConfig): Promise<void> {
+    const inFlight = Array.from(
+      this.inFlightActionIdsBySender.get(sender.id) ?? [],
+    );
+
+    this.activeClients.delete(sender.id);
+    this.lastSessionCheck.delete(sender.id);
+
+    if (inFlight.length === 0) {
+      return;
+    }
+
+    console.error(
+      `[Worker] Timing out ${inFlight.length} in-flight action(s) for ${sender.name}: ${inFlight.join(", ")}`,
+    );
+    await Promise.all(
+      inFlight.map((actionId) =>
+        this.safeMarkFailedIfRunning(actionId, "worker_timeout"),
+      ),
+    );
+    this.inFlightActionIdsBySender.delete(sender.id);
   }
 }

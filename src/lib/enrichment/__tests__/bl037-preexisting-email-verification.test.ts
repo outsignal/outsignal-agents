@@ -136,6 +136,37 @@ describe("BL-037: pre-existing email verification in single-person path", () => 
     });
   });
 
+  it("nulls out catch-all emails instead of treating them as verified", async () => {
+    mockPrismaPersonFindUnique.mockResolvedValue({
+      id: "p1",
+      email: "maybe@example.com",
+      source: "discovery-apify-leads-finder",
+    });
+
+    mockBouncebanVerify.mockResolvedValue({
+      status: "valid_catch_all",
+      email: "maybe@example.com",
+      costUsd: 0.001,
+    });
+
+    const breaker = createCircuitBreaker();
+    await enrichEmail(
+      "p1",
+      {
+        firstName: "Jane",
+        lastName: "Doe",
+        companyDomain: "example.com",
+        discoverySource: "apify-leads-finder",
+      },
+      breaker,
+    );
+
+    expect(mockPrismaPersonUpdate).toHaveBeenCalledWith({
+      where: { id: "p1" },
+      data: { email: null },
+    });
+  });
+
   it("skips verification for AI Ark export-sourced emails (pre-verified by BounceBan on AI Ark side)", async () => {
     // Person has email from AI Ark export — pre-verified
     mockPrismaPersonFindUnique.mockResolvedValue({

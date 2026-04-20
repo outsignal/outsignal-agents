@@ -47,8 +47,8 @@ describe("markComplete — withdraw_connection path", () => {
       prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>
     ).mockResolvedValue(action);
     (
-      prisma.linkedInAction.update as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({});
+      prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ count: 1 });
     // stillPending > 0 so the withdrawal path fires
     (
       prisma.linkedInConnection.count as ReturnType<typeof vi.fn>
@@ -95,8 +95,8 @@ describe("markComplete — withdraw_connection path", () => {
       prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>
     ).mockResolvedValue(action);
     (
-      prisma.linkedInAction.update as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({});
+      prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ count: 1 });
     // stillPending = 0 — the poller already moved it to "connected"
     (
       prisma.linkedInConnection.count as ReturnType<typeof vi.fn>
