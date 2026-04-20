@@ -150,6 +150,47 @@ export interface WriterOutput {
   references?: string[];
 }
 
+export const writerStepPositionSchema = z
+  .number()
+  .int()
+  .min(1, "Step positions must start at 1");
+
+export const writerEmailStepSchema = z.object({
+  position: writerStepPositionSchema,
+  subjectLine: z.string(),
+  subjectVariantB: z.string().optional(),
+  body: z.string(),
+  delayDays: z.number(),
+  notes: z.string(),
+});
+
+export const writerLinkedInStepSchema = z.object({
+  position: writerStepPositionSchema,
+  type: z.enum(["connection_request", "message", "inmail"]),
+  body: z.string(),
+  delayDays: z.number(),
+  notes: z.string(),
+});
+
+export const writerCreativeIdeaDraftSchema = z.object({
+  position: writerStepPositionSchema,
+  title: z.string(),
+  groundedIn: z.string(),
+  subjectLine: z.string(),
+  subjectVariantB: z.string().optional(),
+  body: z.string(),
+  notes: z.string(),
+});
+
+export const writerValidationStepSchema = z.object({
+  position: writerStepPositionSchema,
+  subjectLine: z.string().optional(),
+  subjectVariantB: z.string().optional(),
+  body: z.string(),
+  channel: z.enum(["email", "linkedin"]),
+  notes: z.string().optional(),
+});
+
 // --- Campaign Agent ---
 
 export interface CampaignInput {
@@ -249,41 +290,14 @@ export const writerOutputSchema = z.object({
   campaignName: z.string(),
   channel: z.enum(["email", "linkedin", "email_linkedin"]),
   emailSteps: z
-    .array(
-      z.object({
-        position: z.number(),
-        subjectLine: z.string(),
-        subjectVariantB: z.string().optional(),
-        body: z.string(),
-        delayDays: z.number(),
-        notes: z.string(),
-      }),
-    )
+    .array(writerEmailStepSchema)
     .optional(),
   linkedinSteps: z
-    .array(
-      z.object({
-        position: z.number(),
-        type: z.enum(["connection_request", "message", "inmail"]),
-        body: z.string(),
-        delayDays: z.number(),
-        notes: z.string(),
-      }),
-    )
+    .array(writerLinkedInStepSchema)
     .optional(),
   reviewNotes: z.string(),
   creativeIdeas: z
-    .array(
-      z.object({
-        position: z.number(),
-        title: z.string(),
-        groundedIn: z.string(),
-        subjectLine: z.string(),
-        subjectVariantB: z.string().optional(),
-        body: z.string(),
-        notes: z.string(),
-      }),
-    )
+    .array(writerCreativeIdeaDraftSchema)
     .optional(),
   strategy: z.string().optional(),
   references: z.array(z.string()).optional(),

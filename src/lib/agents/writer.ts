@@ -4,7 +4,14 @@ import { prisma } from "@/lib/db";
 import { getClientForWorkspace } from "@/lib/workspaces";
 import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
-import { writerOutputSchema, NOVA_MODEL } from "./types";
+import {
+  writerEmailStepSchema,
+  writerLinkedInStepSchema,
+  writerOutputSchema,
+  writerStepPositionSchema,
+  writerValidationStepSchema,
+  NOVA_MODEL,
+} from "./types";
 import type { AgentConfig, WriterInput, WriterOutput, SignalContext, CreativeIdeaDraft, ValidationResult } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
@@ -207,28 +214,11 @@ const writerTools = {
     inputSchema: z.object({
       campaignId: z.string().describe("The campaign ID"),
       emailSequence: z
-        .array(
-          z.object({
-            position: z.number(),
-            subjectLine: z.string(),
-            subjectVariantB: z.string().optional(),
-            body: z.string(),
-            delayDays: z.number(),
-            notes: z.string().optional(),
-          }),
-        )
+        .array(writerEmailStepSchema.extend({ notes: z.string().optional() }))
         .optional()
         .describe("Email sequence steps"),
       linkedinSequence: z
-        .array(
-          z.object({
-            position: z.number(),
-            type: z.enum(["connection_request", "message", "inmail"]),
-            body: z.string(),
-            delayDays: z.number(),
-            notes: z.string().optional(),
-          }),
-        )
+        .array(writerLinkedInStepSchema.extend({ notes: z.string().optional() }))
         .optional()
         .describe("LinkedIn sequence steps"),
       copyStrategy: z
@@ -321,7 +311,7 @@ const writerTools = {
       channel: z
         .enum(["email", "linkedin"])
         .describe("Channel: email or linkedin"),
-      sequenceStep: z.number().describe("Step position (1, 2, 3, etc.)"),
+      sequenceStep: writerStepPositionSchema.describe("Step position (1, 2, 3, etc.)"),
       subjectLine: z
         .string()
         .optional()
@@ -411,16 +401,7 @@ const writerTools = {
     description:
       "Validate copy against ALL quality rules before saving. Run this BEFORE every saveCampaignSequence or saveDraft call. Returns per-step validation results with hard/soft violations. Hard violations MUST be fixed before saving.",
     inputSchema: z.object({
-      steps: z.array(
-        z.object({
-          position: z.number(),
-          subjectLine: z.string().optional(),
-          subjectVariantB: z.string().optional(),
-          body: z.string(),
-          channel: z.enum(["email", "linkedin"]),
-          notes: z.string().optional(),
-        }),
-      ),
+      steps: z.array(writerValidationStepSchema),
       strategy: z.enum(["pvp", "creative-ideas", "one-liner", "custom", "linkedin"]),
     }),
     execute: async ({ steps, strategy }) => {
@@ -531,16 +512,7 @@ const writerTools = {
     description:
       "Run the semantic validator agent on the complete sequence. Call AFTER all steps are generated and quality-checked, but BEFORE confirming the final save. Returns ValidationResult with findings and suggestions. If hard findings exist, rewrite affected steps and call again (max 1 validator retry).",
     inputSchema: z.object({
-      steps: z.array(
-        z.object({
-          position: z.number(),
-          subjectLine: z.string().optional(),
-          subjectVariantB: z.string().optional(),
-          body: z.string(),
-          channel: z.enum(["email", "linkedin"]),
-          notes: z.string().optional(),
-        }),
-      ),
+      steps: z.array(writerValidationStepSchema),
       strategy: z.enum(["pvp", "creative-ideas", "one-liner", "custom", "linkedin"]),
       workspaceSlug: z.string(),
     }),
