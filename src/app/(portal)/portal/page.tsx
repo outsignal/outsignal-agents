@@ -10,6 +10,7 @@ import { RelativeTimestamp } from "@/components/portal/relative-timestamp";
 import { PeriodSelector } from "@/components/portal/period-selector";
 import { Mail } from "lucide-react";
 import { getEnabledChannels } from "@/lib/channels";
+import { getCanonicalLinkedInSender } from "@/lib/linkedin/sender";
 
 import Link from "next/link";
 
@@ -250,10 +251,7 @@ export default async function PortalDashboardPage({
 
   // LinkedIn worker online status — only query if package includes LinkedIn
   const linkedInSender = hasLinkedIn
-    ? await prisma.sender.findFirst({
-        where: { workspaceSlug, sessionStatus: { not: "not_setup" } },
-        select: { lastPolledAt: true },
-      })
+    ? await getCanonicalLinkedInSender(workspaceSlug)
     : null;
   const linkedInWorkerOnline =
     linkedInSender?.lastPolledAt &&

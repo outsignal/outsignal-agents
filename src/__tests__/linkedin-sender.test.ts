@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   createSender,
+  getCanonicalLinkedInSender,
   getSendersForWorkspace,
   getActiveSenders,
   assignSenderForPerson,
@@ -90,6 +91,138 @@ describe("getActiveSenders", () => {
       },
       orderBy: { createdAt: "asc" },
     });
+  });
+});
+
+describe("getCanonicalLinkedInSender", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns null when no live LinkedIn sender exists", async () => {
+    (prisma.sender.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const result = await getCanonicalLinkedInSender("rise");
+
+    expect(result).toBeNull();
+    expect(prisma.sender.findMany).toHaveBeenCalledWith({
+      where: {
+        workspaceSlug: "rise",
+        status: "active",
+        channel: { in: ["linkedin", "both"] },
+        sessionStatus: "active",
+        healthStatus: { notIn: ["blocked", "session_expired"] },
+      },
+      orderBy: [
+        { lastKeepaliveAt: { sort: "desc", nulls: "last" } },
+        { lastActiveAt: { sort: "desc", nulls: "last" } },
+        { createdAt: "asc" },
+      ],
+    });
+  });
+
+  it("returns the single live LinkedIn sender when exactly one exists", async () => {
+    const sender = {
+      id: "sender-1",
+      name: "Lucy Marshall",
+      workspaceSlug: "lime",
+      status: "active",
+      channel: "linkedin",
+      sessionStatus: "active",
+      healthStatus: "healthy",
+      createdAt: new Date("2026-04-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+      warmupStartedAt: null,
+      warmupDay: 0,
+      dailyConnectionLimit: 5,
+      dailyMessageLimit: 10,
+      dailyProfileViewLimit: 15,
+      acceptanceRate: null,
+      healthFlaggedAt: null,
+      lastActiveAt: null,
+      lastKeepaliveAt: new Date("2026-04-21T09:00:00.000Z"),
+      lastPolledAt: null,
+      emailAddress: null,
+      emailSenderName: null,
+      emailBisonSenderId: null,
+      linkedinProfileUrl: null,
+      linkedinEmail: null,
+      linkedinPassword: null,
+      loginMethod: "credentials",
+      linkedinTier: "free",
+      proxyUrl: null,
+      totpSecret: null,
+      sessionData: null,
+      inviteToken: null,
+      inviteTokenExpiresAt: null,
+      emailBounceStatus: null,
+      emailBounceStatusAt: null,
+      consecutiveHealthyChecks: 0,
+      assignedClientId: null,
+    };
+    (prisma.sender.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([sender]);
+
+    const result = await getCanonicalLinkedInSender("lime");
+
+    expect(result).toEqual(sender);
+  });
+
+  it("returns the most recently keepalived sender and warns when multiple live candidates exist", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const olderSender = {
+      id: "sender-1",
+      name: "Daniel Lazarus",
+      workspaceSlug: "1210",
+      status: "active",
+      channel: "linkedin",
+      sessionStatus: "active",
+      healthStatus: "healthy",
+      createdAt: new Date("2026-04-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+      warmupStartedAt: null,
+      warmupDay: 0,
+      dailyConnectionLimit: 5,
+      dailyMessageLimit: 10,
+      dailyProfileViewLimit: 15,
+      acceptanceRate: null,
+      healthFlaggedAt: null,
+      lastActiveAt: null,
+      lastKeepaliveAt: new Date("2026-04-21T08:00:00.000Z"),
+      lastPolledAt: null,
+      emailAddress: null,
+      emailSenderName: null,
+      emailBisonSenderId: null,
+      linkedinProfileUrl: null,
+      linkedinEmail: null,
+      linkedinPassword: null,
+      loginMethod: "credentials",
+      linkedinTier: "free",
+      proxyUrl: null,
+      totpSecret: null,
+      sessionData: null,
+      inviteToken: null,
+      inviteTokenExpiresAt: null,
+      emailBounceStatus: null,
+      emailBounceStatusAt: null,
+      consecutiveHealthyChecks: 0,
+      assignedClientId: null,
+    };
+    const newerSender = {
+      ...olderSender,
+      id: "sender-2",
+      lastKeepaliveAt: new Date("2026-04-21T09:30:00.000Z"),
+    };
+    (prisma.sender.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      newerSender,
+      olderSender,
+    ]);
+
+    const result = await getCanonicalLinkedInSender("1210");
+
+    expect(result).toEqual(newerSender);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[linkedin/sender] WARNING: 2 live LinkedIn senders for 1210 — returning most recent keepalive",
+    );
   });
 });
 

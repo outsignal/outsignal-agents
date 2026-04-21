@@ -61,7 +61,8 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
 
       console.log(`[sync-senders] ${slug}: fetched ${senderEmails.length} inbox(es) from EmailBison`);
 
-      // Load all senders for this workspace once to avoid N+1 queries
+      // INTENTIONAL-BROAD: sync must see ALL rows to match/create/deactivate.
+      // Narrowing here would break inbox upsert and stale sender detection.
       const existingSenders = await prisma.sender.findMany({
         where: { workspaceSlug: slug },
         select: {

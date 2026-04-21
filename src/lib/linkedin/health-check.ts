@@ -39,7 +39,10 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
 
   // --- Step 1: Fetch all active/setup senders ---
   const senders = await prisma.sender.findMany({
-    where: { status: { in: ["active", "setup"] } },
+    where: {
+      status: { in: ["active", "setup"] },
+      channel: { in: ["linkedin", "both"] },
+    },
     include: { workspace: true },
   });
 
@@ -182,7 +185,10 @@ export async function runSenderHealthCheck(): Promise<HealthCheckResult[]> {
 
   // Re-fetch senders after auto-recovery updates to get fresh healthStatus
   const freshSenders = await prisma.sender.findMany({
-    where: { status: { in: ["active", "setup"] } },
+    where: {
+      status: { in: ["active", "setup"] },
+      channel: { in: ["linkedin", "both"] },
+    },
     include: { workspace: true },
   });
 

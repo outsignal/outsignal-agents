@@ -278,4 +278,35 @@ describe("LinkedIn session race guards", () => {
     expect(prismaMock.senderHealthEvent.create).not.toHaveBeenCalled();
     expect(notifySessionDropMock).not.toHaveBeenCalled();
   });
+
+  it("health check re-fetches only LinkedIn-capable senders before applying new flags", async () => {
+    const sender = {
+      id: "sender-1",
+      name: "Daniel Lazarus",
+      emailAddress: "daniel@example.com",
+      workspaceSlug: "1210",
+      status: "active",
+      sessionStatus: "active",
+      healthStatus: "healthy",
+      healthFlaggedAt: null,
+      lastActiveAt: new Date("2026-04-20T08:00:00.000Z"),
+      workspace: { name: "1210 Solutions" },
+    };
+
+    (prismaMock.sender.findMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([sender])
+      .mockResolvedValueOnce([]);
+    (prismaMock.webhookEvent.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (prismaMock.linkedInDailyUsage.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    await runSenderHealthCheck();
+
+    expect(prismaMock.sender.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        status: { in: ["active", "setup"] },
+        channel: { in: ["linkedin", "both"] },
+      },
+      include: { workspace: true },
+    });
+  });
 });

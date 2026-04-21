@@ -94,6 +94,8 @@ runWithHarness("client-sweep <slug>", async () => {
   };
 
   // 2. Senders
+  // INTENTIONAL-BROAD: diagnostic sweep must show every sender row, including
+  // email-only fan-out and stale placeholders, so operators can inspect drift.
   const senders = await prisma.sender.findMany({
     where: { workspaceSlug: slug },
     select: {

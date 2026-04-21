@@ -13,6 +13,7 @@ export async function GET() {
   }
 
   try {
+    // INTENTIONAL-BROAD: inbox management must list all email inbox rows.
     const senders = await prisma.sender.findMany({
       where: {
         loginMethod: "none",

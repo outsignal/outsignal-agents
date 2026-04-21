@@ -231,7 +231,12 @@ export const generateInsightsTask = schedules.task({
 
     // Auto-start warmup for senders with active sessions + deployed LinkedIn campaigns
     const unstartedSenders = await prisma.sender.findMany({
-      where: { warmupDay: 0, sessionStatus: "active" },
+      where: {
+        warmupDay: 0,
+        status: "setup",
+        channel: { in: ["linkedin", "both"] },
+        sessionStatus: "active",
+      },
       select: { id: true, name: true, workspaceSlug: true },
     });
 
@@ -275,7 +280,10 @@ export const generateInsightsTask = schedules.task({
     }
 
     const activeSenders = await prisma.sender.findMany({
-      where: { status: "active" },
+      where: {
+        status: "active",
+        channel: { in: ["linkedin", "both"] },
+      },
       select: { id: true, name: true },
     });
 

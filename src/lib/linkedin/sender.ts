@@ -4,6 +4,7 @@
  * A Sender links an email identity (used in EmailBison) to a LinkedIn
  * account, within a workspace. One workspace can have multiple senders.
  */
+import type { Sender } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getWarmupLimits } from "./rate-limiter";
 
@@ -62,6 +63,45 @@ export async function getSendersForWorkspace(workspaceSlug: string) {
     where: { workspaceSlug },
     orderBy: { createdAt: "asc" },
   });
+}
+
+/**
+ * Returns the single best LinkedIn-capable sender for a workspace,
+ * preferring the most recently active session.
+ *
+ * Returns null if no live LinkedIn sender exists (email-only workspace).
+ * Logs a warning if multiple live candidates exist — usually means session
+ * setup ran twice without cleanup.
+ */
+export async function getCanonicalLinkedInSender(
+  workspaceSlug: string,
+): Promise<Sender | null> {
+  const candidates = await prisma.sender.findMany({
+    where: {
+      workspaceSlug,
+      status: "active",
+      channel: { in: ["linkedin", "both"] },
+      sessionStatus: "active",
+      healthStatus: { notIn: ["blocked", "session_expired"] },
+    },
+    orderBy: [
+      { lastKeepaliveAt: { sort: "desc", nulls: "last" } },
+      { lastActiveAt: { sort: "desc", nulls: "last" } },
+      { createdAt: "asc" },
+    ],
+  });
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  if (candidates.length > 1) {
+    console.warn(
+      `[linkedin/sender] WARNING: ${candidates.length} live LinkedIn senders for ${workspaceSlug} — returning most recent keepalive`,
+    );
+  }
+
+  return candidates[0] ?? null;
 }
 
 /**

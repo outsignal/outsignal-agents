@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import { getCanonicalLinkedInSender } from "@/lib/linkedin/sender";
 import { getWorkspaceBySlug } from "@/lib/workspaces";
 
 export const dynamic = "force-dynamic";
@@ -218,7 +219,7 @@ export async function GET(request: NextRequest) {
       pipelineMap[item.status] = item._count.status;
     }
 
-    // 4. Health KPIs: Sender health/session status
+    // INTENTIONAL-BROAD: cross-channel health summary. Narrowing breaks email health visibility.
     const senderHealthStats = await prisma.sender.groupBy({
       by: ["healthStatus"],
       where: wsFilterSlug,
@@ -323,12 +324,21 @@ export async function GET(request: NextRequest) {
       // Failed requests are silently skipped — they don't break the dashboard
     }
 
-    // Worker heartbeat: most recently polled sender
-    const latestPoll = await prisma.sender.findFirst({
-      where: workspaceFilter !== "all" ? { workspaceSlug: workspaceFilter } : undefined,
-      orderBy: { lastPolledAt: "desc" },
-      select: { lastPolledAt: true },
-    });
+    // Worker heartbeat: workspace dashboards use the canonical live LinkedIn sender.
+    // The all-workspaces view still looks for the most recently polled live sender globally.
+    const latestPoll =
+      workspaceFilter !== "all"
+        ? await getCanonicalLinkedInSender(workspaceFilter)
+        : await prisma.sender.findFirst({
+            where: {
+              status: "active",
+              channel: { in: ["linkedin", "both"] },
+              sessionStatus: "active",
+              healthStatus: { notIn: ["blocked", "session_expired"] },
+            },
+            orderBy: { lastPolledAt: "desc" },
+            select: { lastPolledAt: true },
+          });
     const workerLastPollAt = latestPoll?.lastPolledAt ?? null;
     const msSinceLastPoll = workerLastPollAt
       ? Date.now() - new Date(workerLastPollAt).getTime()
@@ -338,7 +348,8 @@ export async function GET(request: NextRequest) {
       : msSinceLastPoll < 24 * 60 * 60 * 1000 ? "paused"
       : "offline";
 
-    // Session health summary
+    // INTENTIONAL-BROAD: counts ALL sender session statuses for dashboard KPI.
+    // LinkedIn-specific equivalent is the linkedinSessionStats query above.
     const allSenders = await prisma.sender.findMany({
       where:
         workspaceFilter !== "all"

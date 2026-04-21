@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const workspace = request.nextUrl.searchParams.get("workspace");
 
+    // INTENTIONAL-BROAD: deliverability view shows all inbox health rows.
     const senders = await prisma.sender.findMany({
       where: {
         emailAddress: { not: null },
