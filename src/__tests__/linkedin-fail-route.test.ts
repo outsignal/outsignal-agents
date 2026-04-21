@@ -58,7 +58,7 @@ describe("POST /api/linkedin/actions/[id]/fail — worker timeout cleanup", () =
     expect(markFailed).not.toHaveBeenCalled();
   });
 
-  it("fails and consumes budget when timeout cleanup still owns the running action", async () => {
+  it("fails a timed-out running action without consuming budget", async () => {
     (prisma.linkedInAction.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",
       status: "running",
@@ -75,7 +75,7 @@ describe("POST /api/linkedin/actions/[id]/fail — worker timeout cleanup", () =
     expect(res.status).toBe(200);
     expect(body).toEqual({ ok: true, skipped: false });
     expect(markFailedIfRunning).toHaveBeenCalledWith("action-1", "worker_timeout");
-    expect(consumeBudget).toHaveBeenCalledWith("sender-1", "connection_request");
+    expect(consumeBudget).not.toHaveBeenCalled();
     expect(markFailed).not.toHaveBeenCalled();
   });
 
@@ -99,6 +99,34 @@ describe("POST /api/linkedin/actions/[id]/fail — worker timeout cleanup", () =
     expect(markFailed).toHaveBeenCalledWith("action-1", "Network error");
     expect(consumeBudget).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "connection_request",
+    "message",
+    "profile_view",
+    "withdraw_connection",
+  ])(
+    "does not consume daily usage for failed %s actions",
+    async (actionType) => {
+      (prisma.linkedInAction.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "action-1",
+        status: "running",
+        actionType,
+        senderId: "sender-1",
+      });
+
+      const res = await POST(
+        makeRequest({ error: "Network error" }),
+        { params },
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body).toEqual({ ok: true, skipped: false });
+      expect(markFailed).toHaveBeenCalledWith("action-1", "Network error");
+      expect(consumeBudget).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not consume budget for deterministic precondition failures", async () => {
     (prisma.linkedInAction.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({

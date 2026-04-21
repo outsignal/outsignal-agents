@@ -21,8 +21,3 @@ const TERMINAL_ACTION_ERRORS = new Set([
 export function isTerminalActionError(error: string): boolean {
   return TERMINAL_ACTION_ERRORS.has(normalizeActionError(error));
 }
-
-export function shouldConsumeBudgetOnFailure(error: string): boolean {
-  return !isTerminalActionError(error);
-}
-

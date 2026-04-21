@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWorkerAuth } from "@/lib/linkedin/auth";
-import { shouldConsumeBudgetOnFailure } from "@/lib/linkedin/action-errors";
 import { markFailed, markFailedIfRunning } from "@/lib/linkedin/queue";
-import { consumeBudget } from "@/lib/linkedin/rate-limiter";
 import { prisma } from "@/lib/db";
-import type { LinkedInActionType } from "@/lib/linkedin/types";
 
 /**
  * POST /api/linkedin/actions/[id]/fail
  * Mark an action as failed with error details.
- * Also consumes budget so failed attempts count against the daily limit,
- * preventing runaway retries from blowing through warmup limits.
+ *
+ * Failed attempts do not consume daily budget. Budget is only consumed
+ * on a successful running -> complete transition.
  */
 export async function POST(
   request: NextRequest,
@@ -34,27 +32,10 @@ export async function POST(
 
     if (onlyIfRunning) {
       const updated = await markFailedIfRunning(id, error);
-      if (updated && shouldConsumeBudgetOnFailure(error)) {
-        await consumeBudget(action.senderId, action.actionType as LinkedInActionType);
-        console.warn(
-          `[fail] Budget consumed for timed-out action ${id} (sender=${action.senderId}, type=${action.actionType}, error=${error})`,
-        );
-      }
       return NextResponse.json({ ok: true, skipped: !updated });
     }
 
-    const wasRunning = action.status === "running";
-
     const updated = await markFailed(id, error);
-
-    // Only consume budget if the action was actually attempted (status was "running").
-    // This prevents budget consumption for expired cleanup or other non-attempt transitions.
-    if (wasRunning && updated && shouldConsumeBudgetOnFailure(error)) {
-      await consumeBudget(action.senderId, action.actionType as LinkedInActionType);
-      console.warn(
-        `[fail] Budget consumed for failed action ${id} (sender=${action.senderId}, type=${action.actionType}, error=${error})`,
-      );
-    }
 
     return NextResponse.json({ ok: true, skipped: !updated });
   } catch (error) {
