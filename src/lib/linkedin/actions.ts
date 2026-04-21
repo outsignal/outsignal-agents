@@ -17,7 +17,7 @@ export async function addLinkedInAccount(
   const sender = await prisma.sender.create({
     data: {
       workspaceSlug,
-      name,
+      name: name.trim(),
       channel: "linkedin",
       status: "setup",
       loginMethod: "credentials",

@@ -35,7 +35,7 @@ export async function createSender(params: CreateSenderParams) {
   return prisma.sender.create({
     data: {
       workspaceSlug,
-      name,
+      name: name.trim(),
       emailAddress: emailAddress ?? null,
       emailSenderName: emailSenderName ?? null,
       linkedinProfileUrl: linkedinProfileUrl ?? null,

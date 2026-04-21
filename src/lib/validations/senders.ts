@@ -3,7 +3,7 @@ import { z } from "zod";
 // POST /api/senders
 export const createSenderSchema = z.object({
   workspaceSlug: z.string().min(1, "workspaceSlug is required"),
-  name: z.string().min(1, "name is required"),
+  name: z.string().trim().min(1, "name is required"),
   emailAddress: z.string().optional(),
   linkedinProfileUrl: z.string().optional(),
   linkedinEmail: z.string().optional(),
@@ -16,7 +16,7 @@ export const createSenderSchema = z.object({
 
 // PATCH /api/senders/[id]
 export const updateSenderSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   emailAddress: z.string().nullable().optional(),
   linkedinProfileUrl: z.string().nullable().optional(),
   linkedinEmail: z.string().nullable().optional(),

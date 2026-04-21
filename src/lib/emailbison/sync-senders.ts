@@ -97,6 +97,8 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
       for (const senderEmail of senderEmails) {
         liveEbIds.add(senderEmail.id);
         const emailKey = senderEmail.email.toLowerCase();
+        const trimmedSenderName = senderEmail.name?.trim();
+        const normalizedSenderName = trimmedSenderName || senderEmail.email;
 
         // Priority 1: match by emailBisonSenderId (most reliable)
         const matchedByEbId = byEbId.get(senderEmail.id);
@@ -104,7 +106,8 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
           const newChannel = mergedChannel(matchedByEbId);
           const needsUpdate =
             matchedByEbId.emailAddress?.toLowerCase() !== emailKey ||
-            (senderEmail.name && matchedByEbId.emailSenderName !== senderEmail.name) ||
+            (trimmedSenderName &&
+              matchedByEbId.emailSenderName !== trimmedSenderName) ||
             matchedByEbId.channel !== newChannel ||
             matchedByEbId.status === "deactivated";
 
@@ -114,7 +117,9 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
               data: {
                 emailAddress: senderEmail.email,
                 channel: newChannel,
-                ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
+                ...(trimmedSenderName
+                  ? { emailSenderName: trimmedSenderName }
+                  : {}),
                 // Reactivate if it was previously deactivated but now exists in EB again
                 ...(matchedByEbId.status === "deactivated" ? { status: "active" } : {}),
               },
@@ -134,7 +139,8 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
           const newChannel = mergedChannel(matchedByEmail);
           const needsUpdate =
             matchedByEmail.emailBisonSenderId !== senderEmail.id ||
-            (senderEmail.name && matchedByEmail.emailSenderName !== senderEmail.name) ||
+            (trimmedSenderName &&
+              matchedByEmail.emailSenderName !== trimmedSenderName) ||
             matchedByEmail.channel !== newChannel ||
             matchedByEmail.status === "deactivated";
 
@@ -144,7 +150,9 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
               data: {
                 emailBisonSenderId: senderEmail.id,
                 channel: newChannel,
-                ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
+                ...(trimmedSenderName
+                  ? { emailSenderName: trimmedSenderName }
+                  : {}),
                 ...(matchedByEmail.status === "deactivated" ? { status: "active" } : {}),
               },
             });
@@ -161,11 +169,13 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
         await prisma.sender.create({
           data: {
             workspaceSlug: slug,
-            name: senderEmail.name ?? senderEmail.email,
+            name: normalizedSenderName,
             emailAddress: senderEmail.email,
             emailBisonSenderId: senderEmail.id,
             channel: "email",
-            ...(senderEmail.name ? { emailSenderName: senderEmail.name } : {}),
+            ...(trimmedSenderName
+              ? { emailSenderName: trimmedSenderName }
+              : {}),
             status: "active",
           },
         });

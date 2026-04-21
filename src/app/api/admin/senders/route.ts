@@ -9,7 +9,7 @@ import { auditLog } from "@/lib/audit";
 
 const adminCreateSenderSchema = z.object({
   workspaceSlug: z.string().min(1),
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   emailAddress: z.string().email().optional().or(z.literal("")),
   linkedinProfileUrl: z.string().url().optional().or(z.literal("")),
   linkedinEmail: z.string().email().optional().or(z.literal("")),
