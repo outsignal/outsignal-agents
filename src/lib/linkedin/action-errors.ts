@@ -8,6 +8,7 @@ function normalizeActionError(error: string): string {
 
 const TERMINAL_ACTION_ERRORS = new Set([
   "already_invited",
+  "hard_backstop_abort",
   "invalid_profile_url",
   "urn_not_found",
   "note_too_long",

@@ -409,6 +409,52 @@ describe("markFailedIfRunning", () => {
     });
   });
 
+  it("releases gracefully yielded actions back to pending without consuming an attempt", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 2,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "graceful_yield");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "pending",
+        attempts: { decrement: 1 },
+      },
+    });
+  });
+
+  it("keeps graceful_yield releases at zero attempts for legacy running rows", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 0,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "graceful_yield");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "pending",
+        attempts: 0,
+      },
+    });
+  });
+
   it("marks already_invited as failed without requeueing even if the action is still running", async () => {
     (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",
@@ -430,6 +476,43 @@ describe("markFailedIfRunning", () => {
         result: JSON.stringify({ error: "already_invited" }),
       },
     });
+  });
+
+  it("marks hard_backstop_abort as terminal even when retries remain", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "hard_backstop_abort");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "failed",
+        result: JSON.stringify({ error: "hard_backstop_abort" }),
+      },
+    });
+  });
+
+  it("does not clobber a completed action when graceful_yield loses the race", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "complete",
+      attempts: 2,
+      maxAttempts: 3,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "graceful_yield");
+
+    expect(updated).toBe(false);
+    expect(prisma.linkedInAction.updateMany).not.toHaveBeenCalled();
   });
 });
 

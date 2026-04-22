@@ -30,6 +30,11 @@ import {
   getPollDelay,
   sleep,
 } from "./scheduler.js";
+import {
+  HARD_SENDER_TIMEOUT_MS,
+  PER_SENDER_TIMEOUT_MS,
+  shouldExitSenderLoop,
+} from "./sender-timeout.js";
 import { KeepaliveManager } from "./keepalive.js";
 
 interface SenderConfig {
@@ -107,6 +112,8 @@ export class Worker {
   private lastTopupDate: Map<string, string> = new Map();
   /** Currently claimed action IDs per sender for timeout cleanup. */
   private inFlightActionIdsBySender: Map<string, Set<string>> = new Map();
+  /** Senders whose previous tick hit the hard backstop and must drain first. */
+  private senderAborted: Set<string> = new Set();
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -154,6 +161,7 @@ export class Worker {
     this.nextConnectionPollInterval.clear();
     this.lastConnectionBrowserFallback.clear();
     this.inFlightActionIdsBySender.clear();
+    this.senderAborted.clear();
   }
 
   /**
@@ -503,14 +511,19 @@ export class Worker {
     // spread-delay sleep remains (LinkedIn safety), so this is the right level
     // to parallelise: one sender's hour-long backlog must not stall its peers.
     //
-    // Per-sender timeout (Finding 5.3): wrap each processSender in a 10-min
-    // race so a single hung sender (network stall, deadlocked Voyager, etc.)
-    // can't stall the whole workspace tick. The stuck-running sweeper
-    // (Trigger.dev) will eventually clean up the orphaned action row.
-    const PER_SENDER_TIMEOUT_MS = 10 * 60 * 1000;
+    // Per-sender timeout (Finding 5.3): processSender now yields gracefully
+    // around the 20-minute mark when the claimed batch would overrun, while a
+    // later 25-minute hard backstop still protects the whole workspace tick
+    // from a truly hung sender (network stall, deadlocked Voyager, etc.).
     await Promise.all(
       activeSenders.map((sender) => {
         if (!this.running) return Promise.resolve();
+        if (this.senderAborted.has(sender.id)) {
+          console.warn(
+            `[Worker] Skipping ${sender.name} — prior hard-timeout cleanup still draining`,
+          );
+          return Promise.resolve();
+        }
         const senderWork = this.processSender(sender).then(
           () => "completed" as const,
         );
@@ -518,10 +531,10 @@ export class Worker {
         const timeout = new Promise<"timeout">((resolve) => {
           timeoutId = setTimeout(() => {
             console.error(
-              `[Worker] processSender timed out after ${PER_SENDER_TIMEOUT_MS / 60000}min for ${sender.name} — abandoning this tick`,
+              `[Worker] processSender hit hard timeout after ${HARD_SENDER_TIMEOUT_MS / 60000}min for ${sender.name} — abandoning this tick`,
             );
             resolve("timeout");
-          }, PER_SENDER_TIMEOUT_MS);
+          }, HARD_SENDER_TIMEOUT_MS);
         });
         return Promise.race([senderWork, timeout])
           .then(async (result) => {
@@ -901,52 +914,74 @@ export class Worker {
    */
   private async processSender(sender: SenderConfig): Promise<void> {
     console.log(`[Worker] Processing sender: ${sender.name} (${sender.id})`);
+    const senderStartedAt = Date.now();
 
-    // Proactively validate sender session health before claiming actions.
-    // This ensures idle senders still get checked on the 30-minute cadence
-    // instead of silently looping with dead cookies until keepalive happens.
-    let client: VoyagerClient;
     try {
-      const healthyClient = await this.ensureSenderSessionHealthy(sender);
-      if (!healthyClient) return;
-      client = healthyClient;
-    } catch (error) {
-      console.error(`[Worker] Failed to create VoyagerClient for ${sender.name}:`, error);
-      return;
-    }
-
-    // Backfill linkedinProfileUrl if missing — uses existing Voyager session, no browser needed
-    if (!sender.linkedinProfileUrl) {
+      // Proactively validate sender session health before claiming actions.
+      // This ensures idle senders still get checked on the 30-minute cadence
+      // instead of silently looping with dead cookies until keepalive happens.
+      let client: VoyagerClient;
       try {
-        const profileUrl = await client.fetchOwnProfileUrl();
-        if (profileUrl) {
-          await this.api.updateSenderProfileUrl(sender.id, profileUrl);
-          console.log(`[Worker] Backfilled linkedinProfileUrl for ${sender.name}: ${profileUrl}`);
-        }
-      } catch (err) {
-        console.warn(`[Worker] Failed to backfill profile URL for ${sender.name}:`, err);
+        const healthyClient = await this.ensureSenderSessionHealthy(sender);
+        if (!healthyClient) return;
+        client = healthyClient;
+      } catch (error) {
+        console.error(`[Worker] Failed to create VoyagerClient for ${sender.name}:`, error);
+        return;
       }
-    }
 
-    // Get next batch of actions only after session health is confirmed.
-    let actions: ActionItem[];
-    try {
-      actions = await this.api.getNextActions(sender.id, 5);
-    } catch (error) {
-      console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
-      return;
-    }
+      // Backfill linkedinProfileUrl if missing — uses existing Voyager session, no browser needed
+      if (!sender.linkedinProfileUrl) {
+        try {
+          const profileUrl = await client.fetchOwnProfileUrl();
+          if (profileUrl) {
+            await this.api.updateSenderProfileUrl(sender.id, profileUrl);
+            console.log(`[Worker] Backfilled linkedinProfileUrl for ${sender.name}: ${profileUrl}`);
+          }
+        } catch (err) {
+          console.warn(`[Worker] Failed to backfill profile URL for ${sender.name}:`, err);
+        }
+      }
 
-    if (actions.length === 0) {
-      console.log(`[Worker] No pending actions for ${sender.name}`);
-      return;
-    }
+      if (this.senderAborted.has(sender.id)) {
+        console.warn(
+          `[Worker] ${sender.name}: hard-timeout cleanup fired before action claim completed — stopping sender work`,
+        );
+        return;
+      }
 
-    console.log(`[Worker] ${actions.length} actions for ${sender.name}`);
-    const inFlight = new Set(actions.map((action) => action.id));
-    this.inFlightActionIdsBySender.set(sender.id, inFlight);
+      // Get next batch of actions only after session health is confirmed.
+      let actions: ActionItem[];
+      try {
+        actions = await this.api.getNextActions(sender.id, 5);
+      } catch (error) {
+        console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
+        return;
+      }
 
-    try {
+      if (this.senderAborted.has(sender.id)) {
+        if (actions.length > 0) {
+          console.warn(
+            `[Worker] ${sender.name}: releasing ${actions.length} stale claimed action(s) after hard-timeout cleanup`,
+          );
+          await Promise.all(
+            actions.map((action) =>
+              this.safeMarkFailedIfRunning(action.id, "graceful_yield"),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (actions.length === 0) {
+        console.log(`[Worker] No pending actions for ${sender.name}`);
+        return;
+      }
+
+      console.log(`[Worker] ${actions.length} actions for ${sender.name}`);
+      const inFlight = new Set(actions.map((action) => action.id));
+      this.inFlightActionIdsBySender.set(sender.id, inFlight);
+
       // Fetch daily usage for spread delay calculation
       let usageData: Record<string, unknown> | null = null;
       try {
@@ -958,6 +993,25 @@ export class Worker {
       // Execute each action with delays between them
       for (let i = 0; i < actions.length; i++) {
         if (!this.running) break;
+        if (this.senderAborted.has(sender.id)) {
+          console.warn(
+            `[Worker] ${sender.name}: previous hard-timeout cleanup fired — stopping sender loop`,
+          );
+          break;
+        }
+
+        const elapsedMs = Date.now() - senderStartedAt;
+        if (shouldExitSenderLoop({ elapsedMs })) {
+          console.log(
+            `[Worker] ${sender.name}: approaching timeout (${Math.round(elapsedMs / 1000)}s elapsed), processed ${i}/${actions.length} — releasing ${inFlight.size} claimed action(s) for next tick`,
+          );
+          await Promise.all(
+            Array.from(inFlight).map((actionId) =>
+              this.safeMarkFailedIfRunning(actionId, "graceful_yield"),
+            ),
+          );
+          break;
+        }
 
         const action = actions[i];
         console.log(
@@ -979,9 +1033,28 @@ export class Worker {
           }
         }
 
+        if (this.senderAborted.has(sender.id)) {
+          console.warn(
+            `[Worker] ${sender.name}: hard-timeout cleanup completed while finishing action ${i + 1}/${actions.length} — stopping sender loop`,
+          );
+          break;
+        }
+
         // Spread delay between actions (not after the last one)
         if (i < actions.length - 1 && this.running) {
           const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
+          const elapsedMs = Date.now() - senderStartedAt;
+          if (shouldExitSenderLoop({ elapsedMs, nextDelayMs: delay })) {
+            console.log(
+              `[Worker] ${sender.name}: approaching timeout (${Math.round(elapsedMs / 1000)}s elapsed + ${Math.round(delay / 1000)}s spread), processed ${i + 1}/${actions.length} — releasing ${inFlight.size} claimed action(s) for next tick`,
+            );
+            await Promise.all(
+              Array.from(inFlight).map((actionId) =>
+                this.safeMarkFailedIfRunning(actionId, "graceful_yield"),
+              ),
+            );
+            break;
+          }
           const delaySec = Math.round(delay / 1000);
           const totalRemaining = this.getTotalDailyRemaining(usageData);
           // Pick remaining per type for log transparency. Same shape the
@@ -1003,6 +1076,7 @@ export class Worker {
       }
     } finally {
       this.inFlightActionIdsBySender.delete(sender.id);
+      this.senderAborted.delete(sender.id);
     }
   }
 
@@ -1453,6 +1527,8 @@ export class Worker {
   }
 
   private async handleSenderTimeout(sender: SenderConfig): Promise<void> {
+    this.senderAborted.add(sender.id);
+
     const inFlight = Array.from(
       this.inFlightActionIdsBySender.get(sender.id) ?? [],
     );
@@ -1465,11 +1541,11 @@ export class Worker {
     }
 
     console.error(
-      `[Worker] Timing out ${inFlight.length} in-flight action(s) for ${sender.name}: ${inFlight.join(", ")}`,
+      `[Worker] Hard-timing out ${inFlight.length} in-flight action(s) for ${sender.name}: ${inFlight.join(", ")}`,
     );
     await Promise.all(
       inFlight.map((actionId) =>
-        this.safeMarkFailedIfRunning(actionId, "worker_timeout"),
+        this.safeMarkFailedIfRunning(actionId, "hard_backstop_abort"),
       ),
     );
     this.inFlightActionIdsBySender.delete(sender.id);

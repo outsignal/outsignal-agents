@@ -155,7 +155,7 @@ export class LinkedInBrowser {
     // Pass proxy and user-agent via environment variables instead of CLI flags.
     // The daemon ignores --proxy/--user-agent if already running, but env vars
     // are picked up at daemon startup and work reliably.
-    const env: Record<string, string> = { ...process.env } as Record<string, string>;
+    const env: NodeJS.ProcessEnv = { ...process.env };
     if (this.proxyUrl) {
       env.AGENT_BROWSER_PROXY = this.proxyUrl;
     }

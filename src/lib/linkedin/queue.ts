@@ -528,6 +528,22 @@ export async function markFailedIfRunning(
     return false;
   }
 
+  // Graceful worker yield: the action was claimed for this sender tick but
+  // never actually started executing. Release it back to pending without
+  // consuming retry budget so the next poll can pick it up cleanly.
+  if (error === "graceful_yield") {
+    const attemptsUpdate =
+      action.attempts > 0 ? { decrement: 1 } : 0;
+    const updated = await prisma.linkedInAction.updateMany({
+      where: { id: actionId, status: "running" },
+      data: {
+        status: "pending",
+        attempts: attemptsUpdate,
+      },
+    });
+    return updated.count === 1;
+  }
+
   const retriesExhausted =
     action.attempts >= action.maxAttempts || isTerminalActionError(error);
 
