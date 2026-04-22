@@ -77,9 +77,11 @@ describe("scoreStagedPersonIcpBatch", () => {
     );
 
     expect(results.get("dp_1")).toEqual({
+      status: "scored",
       score: 82,
       reasoning: "Strong fit",
       confidence: "high",
+      scoringMethod: "firecrawl+llm",
     });
     expect(generateObjectMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -88,5 +90,33 @@ describe("scoreStagedPersonIcpBatch", () => {
       }),
     );
     expect(getCrawlMarkdownMock).toHaveBeenCalledWith("acme.com");
+  });
+
+  it("returns needs_website for staged leads without homepage content", async () => {
+    getCrawlMarkdownMock.mockResolvedValueOnce(null);
+    generateObjectMock.mockResolvedValue({ object: [] });
+
+    const results = await scoreStagedPersonIcpBatch(
+      [
+        {
+          discoveredPersonId: "dp_missing_site",
+          firstName: "Jane",
+          lastName: "Doe",
+          jobTitle: "Operations Director",
+          company: "No Site Ltd",
+          companyDomain: "nosite.com",
+          location: "Leeds",
+        },
+      ],
+      "test-workspace",
+    );
+
+    expect(results.get("dp_missing_site")).toEqual({
+      status: "needs_website",
+      reasoning: "NEEDS_WEBSITE: company website content unavailable",
+      confidence: "low",
+      scoringMethod: null,
+    });
+    expect(generateObjectMock).not.toHaveBeenCalled();
   });
 });

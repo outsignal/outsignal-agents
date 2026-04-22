@@ -9,7 +9,6 @@ import type { AgentConfig, LeadsInput, LeadsOutput } from "./types";
 import { sanitizePromptInput, USER_INPUT_GUARD } from "./utils";
 import { loadRules } from "./load-rules";
 import { appendToMemory } from "./memory";
-import { apolloAdapter } from "@/lib/discovery/adapters/apollo";
 import { prospeoSearchAdapter } from "@/lib/discovery/adapters/prospeo-search";
 import { aiarkSearchAdapter } from "@/lib/discovery/adapters/aiark-search";
 import { serperAdapter } from "@/lib/discovery/adapters/serper";
@@ -26,6 +25,7 @@ import { deduplicateAndPromote as runDeduplicateAndPromote } from "@/lib/discove
 import { assessSearchQuality } from "@/lib/discovery/quality-gate";
 import { getPlatformBalance, estimateSearchCost, reportSearchCost } from "@/lib/discovery/credit-tracker";
 import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
+import { APOLLO_DISABLED_MESSAGE } from "@/lib/discovery/apollo-disabled";
 import { resolveCompanyDomains } from "@/lib/discovery/domain-resolver";
 import type { DiscoveredPersonResult } from "@/lib/discovery/types";
 import { expandJobTitles } from "@/lib/discovery/title-expansion";
@@ -231,6 +231,13 @@ export const leadsTools = {
       ),
     }),
     execute: async (params) => {
+      if (params.sources.some((source) => source.name === "apollo")) {
+        return {
+          error: APOLLO_DISABLED_MESSAGE,
+          disabledSources: ["apollo"],
+        };
+      }
+
       const usage = await getWorkspaceQuotaUsage(params.workspaceSlug);
       const workspace = await prisma.workspace.findUnique({
         where: { slug: params.workspaceSlug },
@@ -355,6 +362,7 @@ export const leadsTools = {
       const result = await runDeduplicateAndPromote(
         params.workspaceSlug,
         params.discoveryRunIds,
+        { campaignId: params.campaignId },
       );
 
       return {
@@ -532,7 +540,7 @@ export const leadsTools = {
 
   searchApollo: tool({
     description:
-      "Search Apollo.io for people matching ICP filters. Apollo has 275M contacts. Search is FREE (no credits). Returns identity data only (no emails — enrichment fills those later). Use for enterprise B2B discovery.",
+      "Apollo discovery is currently disabled. Do not use Apollo for discovery runs until the workspace has a working subscription again.",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
       jobTitles: z
@@ -573,66 +581,19 @@ export const leadsTools = {
         .optional()
         .describe("Pagination token from previous search"),
     }),
-    execute: async (params) => {
-      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
-      if (params.jobTitles && expandedTitles) {
-        console.log(`[leads] Title expansion (apollo): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
-      }
-
-      // Pre-search domain coverage check: skip already-covered domains
-      let companyDomains = params.companyDomains;
-      if (companyDomains?.length) {
-        companyDomains = stripWwwAll(companyDomains);
-        companyDomains = await getUncoveredDomains(params.workspaceSlug, companyDomains);
-        if (companyDomains.length === 0) {
-          console.log(`[leads] All domains already covered for workspace ${params.workspaceSlug} — skipping Apollo search`);
-          return { source: "apollo", found: 0, staged: 0, duplicatesSkipped: 0, runId: "", totalAvailable: 0, hasMore: false, costUsd: 0, people: [] };
-        }
-      }
-
-      const filters = {
-        jobTitles: expandedTitles,
-        seniority: params.seniority,
-        industries: params.industries,
-        locations: params.locations,
-        companySizes: params.companySizes,
-        companyDomains,
-        keywords: params.keywords,
-      };
-      const result = await apolloAdapter.search(
-        filters,
-        params.limit,
-        params.pageToken,
-      );
-
-      // Apply ICP title + company-type filters before staging
-      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
-
-      const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
-        people: passed,
-        discoverySource: "apollo",
-        workspaceSlug: params.workspaceSlug,
-        searchQuery: JSON.stringify(filters),
-        rawResponses: passed.map(() => result.rawResponse),
-      });
+    execute: async () => {
       return {
         source: "apollo",
-        found: result.people.length,
-        staged,
-        duplicatesSkipped,
-        titleFiltered,
-        companyFiltered,
-        runId,
-        totalAvailable: result.totalAvailable,
-        hasMore: result.hasMore,
-        nextPageToken: result.nextPageToken,
-        costUsd: result.costUsd,
-        people: passed.slice(0, 10).map((p) => ({
-          name: [p.firstName, p.lastName].filter(Boolean).join(" "),
-          title: p.jobTitle,
-          company: p.company,
-          location: p.location,
-        })),
+        disabled: true,
+        error: APOLLO_DISABLED_MESSAGE,
+        found: 0,
+        staged: 0,
+        duplicatesSkipped: 0,
+        runId: "",
+        totalAvailable: 0,
+        hasMore: false,
+        costUsd: 0,
+        people: [],
       };
     },
   }),
@@ -1421,4 +1382,3 @@ function buildLeadsMessage(input: LeadsInput): string {
 
   return parts.join("\n");
 }
-

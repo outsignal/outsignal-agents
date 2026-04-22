@@ -68,6 +68,12 @@ describe("scoreStagedPersonIcp", () => {
 
     const result = await scoreStagedPersonIcp(fullInput, "test-workspace");
 
+    expect(result.status).toBe("scored");
+    expect(result.status).toBe("scored");
+    expect(result.scoringMethod).toBe("firecrawl+llm");
+    if (result.status !== "scored") {
+      throw new Error("expected scored result");
+    }
     expect(result.score).toBe(85);
     expect(result.reasoning).toBe("Strong ICP fit");
     expect(result.confidence).toBe("high");
@@ -75,24 +81,21 @@ describe("scoreStagedPersonIcp", () => {
     expect(generateObjectMock).toHaveBeenCalledTimes(1);
   });
 
-  it("scores with minimal data (no company domain)", async () => {
+  it("returns needs_website when company domain is missing", async () => {
     findUniqueOrThrowMock.mockResolvedValue(mockWorkspace);
-    getCrawlMarkdownMock.mockResolvedValue(null);
-    findUniqueMock.mockResolvedValue(null);
-    generateObjectMock.mockResolvedValue({
-      object: { score: 30, reasoning: "Sparse data", confidence: "low" },
-    });
 
     const result = await scoreStagedPersonIcp(
       { ...fullInput, companyDomain: null },
       "test-workspace",
     );
 
-    expect(result.score).toBe(30);
+    expect(result.status).toBe("needs_website");
+    expect(result.reasoning).toContain("NEEDS_WEBSITE");
     expect(result.confidence).toBe("low");
     // Should not attempt crawl or company lookup without domain
     expect(getCrawlMarkdownMock).not.toHaveBeenCalled();
     expect(findUniqueMock).not.toHaveBeenCalled();
+    expect(generateObjectMock).not.toHaveBeenCalled();
   });
 
   it("throws when workspace has no ICP criteria prompt", async () => {
@@ -108,7 +111,7 @@ describe("scoreStagedPersonIcp", () => {
 
   it("does NOT persist score (caller handles persistence)", async () => {
     findUniqueOrThrowMock.mockResolvedValue(mockWorkspace);
-    getCrawlMarkdownMock.mockResolvedValue(null);
+    getCrawlMarkdownMock.mockResolvedValue("Acme homepage");
     findUniqueMock.mockResolvedValue(null);
     generateObjectMock.mockResolvedValue({
       object: { score: 50, reasoning: "Moderate fit", confidence: "medium" },
@@ -116,10 +119,15 @@ describe("scoreStagedPersonIcp", () => {
 
     const result = await scoreStagedPersonIcp(fullInput, "test-workspace");
 
+    if (result.status !== "scored") {
+      throw new Error("expected scored result");
+    }
     expect(result).toEqual({
+      status: "scored",
       score: 50,
       reasoning: "Moderate fit",
       confidence: "medium",
+      scoringMethod: "firecrawl+llm",
     });
     // No prisma update calls — caller is responsible for persisting
   });

@@ -9,6 +9,7 @@ const personFindFirstMock = vi.fn();
 const personCreateMock = vi.fn();
 const personWorkspaceUpsertMock = vi.fn();
 const workspaceFindUniqueOrThrowMock = vi.fn();
+const campaignFindUniqueMock = vi.fn();
 const companyFindManyMock = vi.fn();
 const exclusionEntryFindManyMock = vi.fn();
 const exclusionEmailFindManyMock = vi.fn();
@@ -31,6 +32,9 @@ vi.mock("@/lib/db", () => ({
     workspace: {
       findUniqueOrThrow: (...args: unknown[]) => workspaceFindUniqueOrThrowMock(...args),
     },
+    campaign: {
+      findUnique: (...args: unknown[]) => campaignFindUniqueMock(...args),
+    },
     company: {
       findMany: (...args: unknown[]) => companyFindManyMock(...args),
     },
@@ -52,6 +56,7 @@ vi.mock("@/lib/enrichment/queue", () => ({
 // --- ICP scorer mock ---
 const scoreStagedPersonIcpBatchMock = vi.fn();
 vi.mock("@/lib/icp/scorer", () => ({
+  ICP_NEEDS_WEBSITE_STATUS: "needs_website",
   scoreStagedPersonIcpBatch: (...args: unknown[]) => scoreStagedPersonIcpBatchMock(...args),
 }));
 
@@ -80,6 +85,7 @@ beforeEach(() => {
   companyFindManyMock.mockResolvedValue([]);
   exclusionEntryFindManyMock.mockResolvedValue([]);
   exclusionEmailFindManyMock.mockResolvedValue([]);
+  campaignFindUniqueMock.mockResolvedValue(null);
 });
 
 function makeStagedRecord(overrides: Record<string, unknown> = {}) {
@@ -128,7 +134,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
     scoreStagedPersonIcpBatchMock.mockResolvedValue(
-      new Map([["dp-1", { score: 75, reasoning: "Good fit", confidence: "high" }]]),
+      new Map([["dp-1", { status: "scored", score: 75, reasoning: "Good fit", confidence: "high", scoringMethod: "firecrawl+llm" }]]),
     );
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
@@ -155,7 +161,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
     scoreStagedPersonIcpBatchMock.mockResolvedValue(
-      new Map([["dp-1", { score: 25, reasoning: "Poor fit", confidence: "medium" }]]),
+      new Map([["dp-1", { status: "scored", score: 25, reasoning: "Poor fit", confidence: "medium", scoringMethod: "firecrawl+llm" }]]),
     );
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
@@ -181,7 +187,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord()]);
 
     scoreStagedPersonIcpBatchMock.mockResolvedValue(
-      new Map([["dp-1", { score: 39, reasoning: "Below threshold", confidence: "medium" }]]),
+      new Map([["dp-1", { status: "scored", score: 39, reasoning: "Below threshold", confidence: "medium", scoringMethod: "firecrawl+llm" }]]),
     );
 
     const result = await deduplicateAndPromote("test", ["run-1"]);
@@ -222,8 +228,8 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
 
     scoreStagedPersonIcpBatchMock.mockResolvedValue(
       new Map([
-        ["dp-1", { score: 80, reasoning: "Good fit", confidence: "high" as const }],
-        ["dp-2", { score: 80, reasoning: "Good fit", confidence: "high" as const }],
+        ["dp-1", { status: "scored", score: 80, reasoning: "Good fit", confidence: "high" as const, scoringMethod: "firecrawl+llm" }],
+        ["dp-2", { status: "scored", score: 80, reasoning: "Good fit", confidence: "high" as const, scoringMethod: "firecrawl+llm" }],
       ]),
     );
 
@@ -270,5 +276,61 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
       },
       update: {},
     });
+  });
+
+  it("rejects leads without website evidence instead of promoting them", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: "ICP: B2B SaaS",
+      icpScoreThreshold: 40,
+    });
+
+    discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord({ id: "dp-needs-website" })]);
+    scoreStagedPersonIcpBatchMock.mockResolvedValue(
+      new Map([
+        [
+          "dp-needs-website",
+          {
+            status: "needs_website",
+            reasoning: "NEEDS_WEBSITE: company website content unavailable",
+            confidence: "low" as const,
+            scoringMethod: null,
+          },
+        ],
+      ]),
+    );
+
+    const result = await deduplicateAndPromote("test", ["run-1"]);
+
+    expect(result.promoted).toBe(0);
+    expect(result.scoredRejected).toBe(1);
+    expect(discoveredPersonUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "dp-needs-website" },
+        data: expect.objectContaining({
+          status: "scored_rejected",
+          icpScore: null,
+          icpReasoning: expect.stringContaining("NEEDS_WEBSITE"),
+        }),
+      }),
+    );
+  });
+
+  it("skips enrichment queue for linkedin-only campaigns", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+    campaignFindUniqueMock.mockResolvedValue({ channels: "[\"linkedin\"]" });
+    discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord({ id: "dp-linkedin" })]);
+
+    const result = await deduplicateAndPromote("test", ["run-1"], {
+      campaignId: "camp-linkedin",
+    });
+
+    expect(result.promoted).toBe(1);
+    expect(result.enrichmentJobId).toBeUndefined();
+    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 });

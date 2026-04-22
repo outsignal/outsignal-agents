@@ -81,6 +81,11 @@ describe("scoreStagedPersonIcp", () => {
       "test-ws",
     );
 
+    expect(result.status).toBe("scored");
+    expect(result.scoringMethod).toBe("firecrawl+llm");
+    if (result.status !== "scored") {
+      throw new Error("expected scored result");
+    }
     expect(result.score).toBe(85);
     expect(result.reasoning).toBe("Strong ICP fit: CTO at B2B SaaS company");
     expect(result.confidence).toBe("high");
@@ -110,5 +115,28 @@ describe("scoreStagedPersonIcp", () => {
         "test-ws",
       ),
     ).rejects.toThrow("No ICP criteria prompt configured");
+  });
+
+  it("returns needs_website when homepage content is unavailable", async () => {
+    const crawlCache = await import("@/lib/icp/crawl-cache");
+    const getCrawlMarkdownMock =
+      crawlCache.getCrawlMarkdown as ReturnType<typeof vi.fn>;
+    getCrawlMarkdownMock.mockResolvedValueOnce(null);
+
+    const result = await scoreStagedPersonIcp(
+      {
+        firstName: "John",
+        lastName: "Doe",
+        jobTitle: "CTO",
+        company: "Acme Corp",
+        companyDomain: "acme.com",
+        location: "London",
+      },
+      "test-ws",
+    );
+
+    expect(result.status).toBe("needs_website");
+    expect(result.reasoning).toContain("NEEDS_WEBSITE");
+    expect(generateObjectMock).not.toHaveBeenCalled();
   });
 });

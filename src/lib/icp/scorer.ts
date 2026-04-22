@@ -18,6 +18,27 @@ export interface IcpScoreResult {
   confidence: "high" | "medium" | "low";
 }
 
+export const ICP_SCORING_METHOD = "firecrawl+llm";
+export const ICP_NEEDS_WEBSITE_STATUS = "needs_website";
+const ICP_NEEDS_WEBSITE_REASON =
+  "NEEDS_WEBSITE: company website content unavailable";
+
+export interface NeedsWebsiteIcpResult {
+  status: typeof ICP_NEEDS_WEBSITE_STATUS;
+  reasoning: string;
+  confidence: "low";
+  scoringMethod: null;
+}
+
+export interface ScoredStagedIcpResult extends IcpScoreResult {
+  status: "scored";
+  scoringMethod: typeof ICP_SCORING_METHOD;
+}
+
+export type StagedIcpEvaluationResult =
+  | ScoredStagedIcpResult
+  | NeedsWebsiteIcpResult;
+
 export const IcpScoreSchema = z.object({
   score: z.number().describe("ICP fit score from 0 to 100"),
   reasoning: z.string().describe("1-3 sentence explanation of ICP fit"),
@@ -39,6 +60,19 @@ export interface BatchIcpScoreResult {
   scored: number;
   failed: number;
   skipped: number;
+}
+
+function hasWebsiteMarkdown(value: string | null): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function createNeedsWebsiteResult(): NeedsWebsiteIcpResult {
+  return {
+    status: ICP_NEEDS_WEBSITE_STATUS,
+    reasoning: ICP_NEEDS_WEBSITE_REASON,
+    confidence: "low",
+    scoringMethod: null,
+  };
 }
 
 /**
@@ -94,7 +128,7 @@ export function buildScoringPrompt(params: {
 - No company record found`;
 
   const websiteSection = `## Company Website (homepage excerpt)
-${websiteMarkdown?.slice(0, 3000) ?? "No website data available — score based on available data only."}`;
+${websiteMarkdown?.slice(0, 3000) ?? "Website homepage unavailable. Do not score without website evidence."}`;
 
   return `Score this prospect's ICP fit from 0-100 based on the workspace ICP criteria provided in the system prompt.
 
@@ -142,7 +176,7 @@ export interface StagedPersonInput {
 export async function scoreStagedPersonIcp(
   input: StagedPersonInput,
   workspaceSlug: string,
-): Promise<IcpScoreResult> {
+): Promise<StagedIcpEvaluationResult> {
   // 1. Fetch workspace for ICP criteria
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { slug: workspaceSlug },
@@ -158,6 +192,9 @@ export async function scoreStagedPersonIcp(
   const websiteMarkdown = input.companyDomain
     ? await getCrawlMarkdown(input.companyDomain)
     : null;
+  if (!hasWebsiteMarkdown(websiteMarkdown)) {
+    return createNeedsWebsiteResult();
+  }
 
   // 3. Fetch company record if exists
   const company = input.companyDomain
@@ -196,9 +233,11 @@ export async function scoreStagedPersonIcp(
   });
 
   return {
+    status: "scored",
     score: object.score,
     reasoning: object.reasoning,
     confidence: object.confidence,
+    scoringMethod: ICP_SCORING_METHOD,
   };
 }
 
@@ -258,6 +297,11 @@ export async function scorePersonIcp(
   const websiteMarkdown = person.companyDomain
     ? await getCrawlMarkdown(person.companyDomain, effectiveForceRecrawl)
     : null;
+  if (!hasWebsiteMarkdown(websiteMarkdown)) {
+    throw new Error(
+      `NEEDS_WEBSITE: company website content unavailable for person ${personId}`,
+    );
+  }
 
   // 5. Fetch company record for enrichment data (headcount, industry, etc.)
   const company = person.companyDomain
@@ -541,9 +585,16 @@ export async function scorePersonIcpBatch(
   });
   const companyMap = new Map(companies.map((c) => [c.domain, c]));
 
+  const scoreableIds = validIds.filter((id) => {
+    const person = personMap.get(id)!;
+    if (!person.companyDomain) return false;
+    return hasWebsiteMarkdown(websiteMap.get(person.companyDomain) ?? null);
+  });
+  skipped += validIds.length - scoreableIds.length;
+
   // 4. Chunk into batches and process via Claude Code CLI
-  for (let i = 0; i < validIds.length; i += batchSize) {
-    const batchIds = validIds.slice(i, i + batchSize);
+  for (let i = 0; i < scoreableIds.length; i += batchSize) {
+    const batchIds = scoreableIds.slice(i, i + batchSize);
 
     // Build person entries for this batch
     const entries: string[] = [];
@@ -709,9 +760,9 @@ export async function scoreStagedPersonIcpBatch(
   inputs: StagedPersonBatchInput[],
   workspaceSlug: string,
   options?: { batchSize?: number },
-): Promise<Map<string, IcpScoreResult>> {
+): Promise<Map<string, StagedIcpEvaluationResult>> {
   const batchSize = options?.batchSize ?? 15;
-  const results = new Map<string, IcpScoreResult>();
+  const results = new Map<string, StagedIcpEvaluationResult>();
 
   if (inputs.length === 0) {
     return results;
@@ -753,6 +804,7 @@ export async function scoreStagedPersonIcpBatch(
   // 3. Chunk into batches and process deterministically via the AI SDK
   for (let i = 0; i < inputs.length; i += batchSize) {
     const batch = inputs.slice(i, i + batchSize);
+    const scoreableBatch: StagedPersonBatchInput[] = [];
 
     const entries: string[] = [];
     for (const input of batch) {
@@ -762,6 +814,13 @@ export async function scoreStagedPersonIcpBatch(
       const websiteMarkdown = input.companyDomain
         ? websiteMap.get(input.companyDomain) ?? null
         : null;
+
+      if (!hasWebsiteMarkdown(websiteMarkdown)) {
+        results.set(input.discoveredPersonId, createNeedsWebsiteResult());
+        continue;
+      }
+
+      scoreableBatch.push(input);
 
       entries.push(
         buildBatchPersonEntry({
@@ -786,6 +845,10 @@ export async function scoreStagedPersonIcpBatch(
           websiteMarkdown,
         }),
       );
+    }
+
+    if (scoreableBatch.length === 0) {
+      continue;
     }
 
     const fullPrompt = [
@@ -817,9 +880,11 @@ export async function scoreStagedPersonIcpBatch(
         const validated = BatchIcpScoreSchema.element.safeParse(entry);
         if (validated.success) {
           results.set(validated.data.personId, {
+            status: "scored",
             score: validated.data.score,
             reasoning: validated.data.reasoning,
             confidence: validated.data.confidence,
+            scoringMethod: ICP_SCORING_METHOD,
           });
         }
       }

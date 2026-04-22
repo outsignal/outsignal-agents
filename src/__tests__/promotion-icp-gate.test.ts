@@ -6,6 +6,9 @@ vi.mock("@/lib/db", () => ({
     workspace: {
       findUniqueOrThrow: vi.fn(),
     },
+    campaign: {
+      findUnique: vi.fn(),
+    },
     discoveredPerson: {
       findMany: vi.fn(),
       update: vi.fn(),
@@ -38,6 +41,7 @@ vi.mock("@/lib/enrichment/queue", () => ({
 
 // Mock batch ICP scorer
 vi.mock("@/lib/icp/scorer", () => ({
+  ICP_NEEDS_WEBSITE_STATUS: "needs_website",
   scoreStagedPersonIcpBatch: vi.fn().mockResolvedValue(new Map()),
 }));
 
@@ -57,6 +61,7 @@ const mockFindManyPerson = prisma.person.findMany as ReturnType<typeof vi.fn>;
 const mockUpsertPerson = prisma.person.upsert as ReturnType<typeof vi.fn>;
 const mockUpsertPw = prisma.personWorkspace.upsert as ReturnType<typeof vi.fn>;
 const mockFindManyCompany = prisma.company.findMany as ReturnType<typeof vi.fn>;
+const mockFindUniqueCampaign = prisma.campaign.findUnique as ReturnType<typeof vi.fn>;
 const mockScorerBatch = scoreStagedPersonIcpBatch as ReturnType<typeof vi.fn>;
 
 function makeStagedPerson(overrides: Partial<{
@@ -103,6 +108,7 @@ describe("promotion ICP gate", () => {
     // No existing people (no duplicates)
     mockFindManyPerson.mockResolvedValue([]);
     mockFindManyCompany.mockResolvedValue([]);
+    mockFindUniqueCampaign.mockResolvedValue(null);
     // Person upsert returns an id
     mockUpsertPerson.mockResolvedValue({ id: "person-1" });
     mockUpsertPw.mockResolvedValue({});
@@ -115,7 +121,7 @@ describe("promotion ICP gate", () => {
 
     // Score exactly at threshold (40)
     const scoreResults = new Map([
-      ["dp-boundary", { score: 40, reasoning: "Exact threshold", confidence: "medium" as const }],
+      ["dp-boundary", { status: "scored", score: 40, reasoning: "Exact threshold", confidence: "medium" as const, scoringMethod: "firecrawl+llm" }],
     ]);
     mockScorerBatch.mockResolvedValue(scoreResults);
 
@@ -175,7 +181,7 @@ describe("promotion ICP gate", () => {
     mockFindManyDiscovered.mockResolvedValue([dp]);
 
     const scoreResults = new Map([
-      ["dp-update", { score: 75, reasoning: "Strong fit", confidence: "high" as const }],
+      ["dp-update", { status: "scored", score: 75, reasoning: "Strong fit", confidence: "high" as const, scoringMethod: "firecrawl+llm" }],
     ]);
     mockScorerBatch.mockResolvedValue(scoreResults);
 
@@ -225,5 +231,55 @@ describe("promotion ICP gate", () => {
     expect(call.update).not.toHaveProperty("icpReasoning");
     expect(call.update).not.toHaveProperty("icpConfidence");
     expect(call.update).not.toHaveProperty("icpScoredAt");
+  });
+
+  it("marks missing-website leads as scored_rejected instead of promoting them", async () => {
+    const dp = makeStagedPerson({ id: "dp-needs-website" });
+    mockFindManyDiscovered.mockResolvedValue([dp]);
+    mockScorerBatch.mockResolvedValue(
+      new Map([
+        [
+          "dp-needs-website",
+          {
+            status: "needs_website",
+            reasoning: "NEEDS_WEBSITE: company website content unavailable",
+            confidence: "low" as const,
+            scoringMethod: null,
+          },
+        ],
+      ]),
+    );
+
+    const result = await deduplicateAndPromote("test-ws", ["run-1"]);
+
+    expect(result.promoted).toBe(0);
+    expect(result.scoredRejected).toBe(1);
+    expect(mockUpdateDiscovered).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "dp-needs-website" },
+        data: expect.objectContaining({
+          status: "scored_rejected",
+          icpScore: null,
+          icpReasoning: expect.stringContaining("NEEDS_WEBSITE"),
+        }),
+      }),
+    );
+  });
+
+  it("does not enqueue enrichment for linkedin-only campaign promotion", async () => {
+    mockWorkspace.mockResolvedValue({
+      slug: "test-ws",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+    mockFindUniqueCampaign.mockResolvedValue({ channels: "[\"linkedin\"]" });
+    mockFindManyDiscovered.mockResolvedValue([makeStagedPerson({ id: "dp-linkedin" })]);
+
+    const result = await deduplicateAndPromote("test-ws", ["run-1"], {
+      campaignId: "camp-linkedin",
+    });
+
+    expect(result.promoted).toBe(1);
+    expect(result.enrichmentJobId).toBeUndefined();
   });
 });

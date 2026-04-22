@@ -15,10 +15,17 @@
 
 import { prisma } from "@/lib/db";
 import { enqueueJob } from "@/lib/enrichment/queue";
-import { scoreStagedPersonIcpBatch } from "@/lib/icp/scorer";
-import type { StagedPersonBatchInput } from "@/lib/icp/scorer";
+import {
+  ICP_NEEDS_WEBSITE_STATUS,
+  scoreStagedPersonIcpBatch,
+} from "@/lib/icp/scorer";
+import type {
+  StagedIcpEvaluationResult,
+  StagedPersonBatchInput,
+} from "@/lib/icp/scorer";
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
 import { getExclusionDomains, getExclusionEmails, extractDomain } from "@/lib/exclusions";
+import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
 import { normalizeJobTitle } from "@/lib/normalize";
 
 // ---------------------------------------------------------------------------
@@ -403,9 +410,16 @@ async function promoteToPerson(
  */
 async function triggerEnrichmentForPeople(
   personIds: string[],
-  workspaceSlug: string
+  workspaceSlug: string,
+  enrichmentProfile: "full" | "linkedin-only" = "full",
 ): Promise<string | undefined> {
   if (personIds.length === 0) return undefined;
+  if (enrichmentProfile === "linkedin-only") {
+    console.log(
+      `[promotion] Skipping email enrichment waterfall for ${personIds.length} promoted lead(s) — LinkedIn-only campaign profile`,
+    );
+    return undefined;
+  }
 
   const jobId = await enqueueJob({
     entityType: "person",
@@ -438,7 +452,8 @@ const DEFAULT_ICP_THRESHOLD = 40;
 
 export async function deduplicateAndPromote(
   workspaceSlug: string,
-  runIds: string[]
+  runIds: string[],
+  options?: { campaignId?: string },
 ): Promise<PromotionResult> {
   // Fetch workspace config for ICP scoring gate
   const workspace = await prisma.workspace.findUniqueOrThrow({
@@ -446,6 +461,17 @@ export async function deduplicateAndPromote(
   });
   const icpScoringEnabled = !!workspace.icpCriteriaPrompt?.trim();
   const icpThreshold = workspace.icpScoreThreshold ?? DEFAULT_ICP_THRESHOLD;
+  let enrichmentProfile: "full" | "linkedin-only" = "full";
+
+  if (options?.campaignId) {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: options.campaignId },
+      select: { channels: true },
+    });
+    if (campaign) {
+      enrichmentProfile = getEnrichmentProfile(getCampaignChannels(campaign));
+    }
+  }
 
   // Fetch all staged records for these run IDs
   const staged = await prisma.discoveredPerson.findMany({
@@ -669,7 +695,7 @@ export async function deduplicateAndPromote(
   // Score all non-duplicate candidates in one batch call before the promotion loop.
   // Fail closed: if scoring fails or returns partial results, promotion aborts
   // rather than silently promoting unscored candidates.
-  const scoreMap = new Map<string, { score: number; reasoning: string; confidence: "high" | "medium" | "low" }>();
+  const scoreMap = new Map<string, StagedIcpEvaluationResult>();
   if (icpScoringEnabled && candidatesForScoring.length > 0) {
     try {
       const batchInputs: StagedPersonBatchInput[] = candidatesForScoring.map(({ dp }) => ({
@@ -756,7 +782,21 @@ export async function deduplicateAndPromote(
     if (icpScoringEnabled) {
       const scoreResult = scoreMap.get(dp.id);
       if (scoreResult) {
-        // Persist score on DiscoveredPerson regardless of pass/fail
+        if (scoreResult.status === ICP_NEEDS_WEBSITE_STATUS) {
+          await prisma.discoveredPerson.update({
+            where: { id: dp.id },
+            data: {
+              status: "scored_rejected",
+              icpScore: null,
+              icpReasoning: scoreResult.reasoning,
+              icpConfidence: scoreResult.confidence,
+            },
+          });
+          scoredRejectedCount++;
+          continue;
+        }
+
+        // Persist score on DiscoveredPerson regardless of pass/fail.
         await prisma.discoveredPerson.update({
           where: { id: dp.id },
           data: {
@@ -819,7 +859,8 @@ export async function deduplicateAndPromote(
   // Enqueue enrichment for all newly promoted leads
   const enrichmentJobId = await triggerEnrichmentForPeople(
     promotedIds,
-    workspaceSlug
+    workspaceSlug,
+    enrichmentProfile,
   );
 
   return {
