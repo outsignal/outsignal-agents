@@ -34,10 +34,20 @@ function isWebhookDuplicateError(err: unknown): boolean {
 }
 
 function isMissingWebhookExternalEventIdColumnError(err: unknown): boolean {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+
+  const code = "code" in err ? (err as { code?: unknown }).code : undefined;
+  const column =
+    "meta" in err
+      ? (err as { meta?: { column?: unknown } }).meta?.column
+      : undefined;
+
   return (
-    err instanceof Error &&
-    err.message.includes("WebhookEvent.externalEventId") &&
-    err.message.includes("does not exist")
+    code === "P2022" &&
+    typeof column === "string" &&
+    column.includes("externalEventId")
   );
 }
 
@@ -147,7 +157,27 @@ async function createWebhookEventWithCompat(data: {
         "[EmailBison Webhook] WebhookEvent.externalEventId column missing in DB — retrying without dedupe field",
       );
       const { externalEventId: _externalEventId, ...compatData } = data;
-      return prisma.webhookEvent.create({ data: compatData });
+      await prisma.webhookEvent.createMany({ data: [compatData] });
+      const fallbackRow = await prisma.webhookEvent.findFirst({
+        where: {
+          workspace: compatData.workspace,
+          eventType: compatData.eventType,
+          campaignId: compatData.campaignId,
+          leadEmail: compatData.leadEmail,
+          senderEmail: compatData.senderEmail,
+          payload: compatData.payload,
+        },
+        orderBy: { receivedAt: "desc" },
+        select: { id: true },
+      });
+
+      if (!fallbackRow) {
+        throw new Error(
+          "WebhookEvent compat insert succeeded but the new row could not be reloaded",
+        );
+      }
+
+      return fallbackRow;
     }
     throw err;
   }

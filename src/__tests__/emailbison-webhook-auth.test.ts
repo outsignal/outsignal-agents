@@ -151,13 +151,21 @@ describe("POST /api/webhooks/emailbison — auth", () => {
   });
 
   it("retries without externalEventId when the database is missing that column", async () => {
+    const missingColumnError = Object.assign(
+      new Error(
+        "The column `externalEventId` does not exist in the current database.",
+      ),
+      {
+        code: "P2022",
+        meta: { modelName: "WebhookEvent", column: "externalEventId" },
+      },
+    );
+
     vi.mocked(prisma.webhookEvent.create)
-      .mockRejectedValueOnce(
-        new Error(
-          "The column `WebhookEvent.externalEventId` does not exist in the current database.",
-        ),
-      )
-      .mockResolvedValueOnce({ id: "webhook-compat" } as never);
+      .mockRejectedValueOnce(missingColumnError)
+      .mockResolvedValue({} as never);
+    vi.mocked(prisma.webhookEvent.createMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.webhookEvent.findFirst).mockResolvedValue({ id: "webhook-compat" } as never);
 
     const res = await POST(
       makeSignedRequest({ event: "UNKNOWN", data: {} }) as never,
@@ -166,7 +174,9 @@ describe("POST /api/webhooks/emailbison — auth", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({ received: true });
-    expect(prisma.webhookEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.webhookEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.webhookEvent.createMany).toHaveBeenCalledTimes(1);
+    expect(prisma.webhookEvent.findFirst).toHaveBeenCalledTimes(1);
   });
 
   it("alerts ops instead of silently dropping a LinkedIn action when no sender can be assigned", async () => {

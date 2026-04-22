@@ -25,6 +25,8 @@ vi.mock("@/lib/db", () => {
     },
     webhookEvent: {
       create: vi.fn(),
+      createMany: vi.fn(),
+      findFirst: vi.fn(),
     },
     notification: {
       create: vi.fn(),

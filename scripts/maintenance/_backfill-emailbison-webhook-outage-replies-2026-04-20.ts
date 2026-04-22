@@ -38,6 +38,25 @@ function inferReplyEventType(reply: EmailBisonReply): string {
   return reply.interested ? "LEAD_INTERESTED" : "LEAD_REPLIED";
 }
 
+function isMissingWebhookExternalEventIdColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code =
+    "code" in error ? (error as { code?: unknown }).code : undefined;
+  const column =
+    "meta" in error
+      ? (error as { meta?: { column?: unknown } }).meta?.column
+      : undefined;
+
+  return (
+    code === "P2022" &&
+    typeof column === "string" &&
+    column.includes("externalEventId")
+  );
+}
+
 function isAutomatedReply(reply: Pick<EmailBisonReply, "automated_reply" | "from_email_address" | "subject">): boolean {
   const fromEmail = reply.from_email_address.toLowerCase();
   const subject = (reply.subject ?? "").toLowerCase();
@@ -137,23 +156,40 @@ async function ensureSyntheticWebhookEvent(args: {
 
     return created.id;
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.includes("WebhookEvent.externalEventId") &&
-      error.message.includes("does not exist")
-    ) {
-      const created = await prisma.webhookEvent.create({
-        data: {
+    if (isMissingWebhookExternalEventIdColumnError(error)) {
+      const payloadJson = JSON.stringify(args.payload);
+      await prisma.webhookEvent.createMany({
+        data: [
+          {
+            workspace: args.workspaceSlug,
+            eventType: args.eventType,
+            campaignId: args.campaignId,
+            leadEmail: args.leadEmail,
+            senderEmail: args.senderEmail,
+            payload: payloadJson,
+            isAutomated: false,
+          },
+        ],
+      });
+
+      const created = await prisma.webhookEvent.findFirst({
+        where: {
           workspace: args.workspaceSlug,
           eventType: args.eventType,
           campaignId: args.campaignId,
           leadEmail: args.leadEmail,
           senderEmail: args.senderEmail,
-          payload: JSON.stringify(args.payload),
-          isAutomated: false,
+          payload: payloadJson,
         },
         select: { id: true },
+        orderBy: { receivedAt: "desc" },
       });
+
+      if (!created) {
+        throw new Error(
+          "WebhookEvent compat insert succeeded but the synthetic row could not be reloaded",
+        );
+      }
 
       return created.id;
     }
