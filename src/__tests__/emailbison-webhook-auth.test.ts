@@ -79,7 +79,7 @@ function makeSignedRequest(payload: unknown, secret?: string): InstanceType<
   });
 }
 
-describe("POST /api/webhooks/emailbison — auth hard-fail", () => {
+describe("POST /api/webhooks/emailbison — auth", () => {
   let POST: typeof import("@/app/api/webhooks/emailbison/route").POST;
   const env = process.env as Record<string, string | undefined>;
   const secret = "test-emailbison-secret";
@@ -91,7 +91,7 @@ describe("POST /api/webhooks/emailbison — auth hard-fail", () => {
     ({ POST } = await import("@/app/api/webhooks/emailbison/route"));
   });
 
-  it("returns 503 when webhook secret is not configured", async () => {
+  it("accepts unsigned requests when webhook secret is not configured", async () => {
     delete env.EMAILBISON_WEBHOOK_SECRET;
 
     const res = await POST(
@@ -99,20 +99,20 @@ describe("POST /api/webhooks/emailbison — auth hard-fail", () => {
     );
     const body = await res.json();
 
-    expect(res.status).toBe(503);
-    expect(body).toEqual({ error: "Webhook authentication not configured" });
-    expect(prisma.webhookEvent.create).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true });
+    expect(prisma.webhookEvent.create).toHaveBeenCalled();
   });
 
-  it("returns 401 when webhook signature is missing", async () => {
+  it("accepts unsigned requests when secret is configured but header is missing", async () => {
     const res = await POST(
       makeSignedRequest({ event: "UNKNOWN", data: {} }) as never,
     );
     const body = await res.json();
 
-    expect(res.status).toBe(401);
-    expect(body).toEqual({ error: "Missing webhook signature" });
-    expect(prisma.webhookEvent.create).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true });
+    expect(prisma.webhookEvent.create).toHaveBeenCalled();
   });
 
   it("accepts a valid signature and processes the event", async () => {
@@ -129,6 +129,25 @@ describe("POST /api/webhooks/emailbison — auth hard-fail", () => {
     expect(res.status).toBe(200);
     expect(body).toEqual({ received: true });
     expect(prisma.webhookEvent.create).toHaveBeenCalled();
+  });
+
+  it("rejects an invalid signature when a signature header is present", async () => {
+    const rawBody = JSON.stringify({ event: "UNKNOWN", data: {} });
+    const res = await POST(
+      new NextRequest("http://localhost/api/webhooks/emailbison?workspace=acme", {
+        method: "POST",
+        body: rawBody,
+        headers: {
+          "content-type": "application/json",
+          "x-emailbison-signature": "deadbeef",
+        },
+      }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toEqual({ error: "Invalid webhook signature" });
+    expect(prisma.webhookEvent.create).not.toHaveBeenCalled();
   });
 
   it("alerts ops instead of silently dropping a LinkedIn action when no sender can be assigned", async () => {

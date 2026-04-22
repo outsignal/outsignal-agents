@@ -74,9 +74,6 @@ function buildExternalEventId(args: {
   }
 }
 
-// Webhook authentication is mandatory. If the secret is missing or the
-// request has no signature header, we fail closed rather than accepting a
-// destructive unsigned mutation.
 function verifyWebhookSignature(
   rawBody: string,
   request: NextRequest,
@@ -86,24 +83,20 @@ function verifyWebhookSignature(
     request.headers.get("x-emailbison-signature") ??
     request.headers.get("x-webhook-signature");
 
+  // EmailBison does not currently support webhook signing.
+  // TODO: Revert this route to fail-closed once EB supports webhook signatures.
   if (!secret) {
-    return {
-      valid: false,
-      response: NextResponse.json(
-        { error: "Webhook authentication not configured" },
-        { status: 503 },
-      ),
-    };
+    console.debug(
+      "[EmailBison Webhook] EMAILBISON_WEBHOOK_SECRET unset — accepting unsigned request",
+    );
+    return { valid: true };
   }
 
   if (!signature) {
-    return {
-      valid: false,
-      response: NextResponse.json(
-        { error: "Missing webhook signature" },
-        { status: 401 },
-      ),
-    };
+    console.warn(
+      "[EmailBison Webhook] Signature header missing — accepting unsigned request because EmailBison does not sign webhooks",
+    );
+    return { valid: true };
   }
 
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");

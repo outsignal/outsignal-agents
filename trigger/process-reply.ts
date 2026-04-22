@@ -31,6 +31,7 @@ export interface ProcessReplyPayload {
   replySenderEmailId: number | null;
   direction: "inbound" | "outbound";
   sequenceStep: number | null;
+  replySource?: string;
 }
 
 export const processReply = task({
@@ -66,6 +67,7 @@ export const processReply = task({
       replySenderEmailId,
       direction,
       sequenceStep,
+      replySource,
     } = payload;
 
     // ----------------------------------------------------------------
@@ -149,7 +151,7 @@ export const processReply = task({
         sequenceStep,
         outboundSubject,
         outboundBody,
-        source: "webhook",
+        source: replySource ?? "webhook",
         webhookEventId,
         personId,
         emailBisonParentId: replyParentId,
