@@ -36,6 +36,15 @@ import {
   shouldExitSenderLoop,
 } from "./sender-timeout.js";
 import { KeepaliveManager } from "./keepalive.js";
+import {
+  clearSenderStateOverrides,
+  getEffectiveSenderState as getSharedEffectiveSenderState,
+  isSenderRecoverable as isSharedSenderRecoverable,
+  isSenderRunnable as isSharedSenderRunnable,
+  senderStateOverrides,
+  syncSenderHealth as syncSharedSenderHealth,
+  type SenderStateOverride,
+} from "./sender-health-sync.js";
 
 interface SenderConfig {
   id: string;
@@ -114,6 +123,8 @@ export class Worker {
   private inFlightActionIdsBySender: Map<string, Set<string>> = new Map();
   /** Senders whose previous tick hit the hard backstop and must drain first. */
   private senderAborted: Set<string> = new Set();
+  /** Shared process-local fail-closed sender state for worker + keepalive. */
+  private senderStateOverrides = senderStateOverrides;
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -162,6 +173,27 @@ export class Worker {
     this.lastConnectionBrowserFallback.clear();
     this.inFlightActionIdsBySender.clear();
     this.senderAborted.clear();
+    clearSenderStateOverrides();
+  }
+
+  private getEffectiveSenderState(sender: SenderConfig): SenderStateOverride {
+    return getSharedEffectiveSenderState(sender);
+  }
+
+  private isSenderRunnable(sender: SenderConfig): boolean {
+    return isSharedSenderRunnable(sender);
+  }
+
+  private isSenderRecoverable(sender: SenderConfig): boolean {
+    return isSharedSenderRecoverable(sender);
+  }
+
+  private async syncSenderHealth(
+    sender: Pick<SenderConfig, "id" | "name" | "sessionStatus">,
+    healthStatus: string,
+    context: string,
+  ): Promise<boolean> {
+    return syncSharedSenderHealth(this.api, sender, healthStatus, context);
   }
 
   /**
@@ -277,9 +309,7 @@ export class Worker {
         continue;
       }
 
-      const expiredSenders = senders.filter(
-        (s) => s.status === "active" && s.healthStatus === "session_expired",
-      );
+      const expiredSenders = senders.filter((s) => this.isSenderRecoverable(s));
 
       if (expiredSenders.length === 0) continue;
 
@@ -291,17 +321,21 @@ export class Worker {
       for (const sender of expiredSenders) {
         if (!this.running) break;
 
-        console.log(`[Worker] Recovery: attempting auto-re-login for ${sender.name}...`);
+        console.log(
+          `[Worker] Recovery: attempting session recovery for ${sender.name}...`,
+        );
 
         // Clear any cached client for this sender (stale session)
         this.activeClients.delete(sender.id);
         this.lastSessionCheck.delete(sender.id);
 
-        const success = await this.attemptAutoRelogin(sender);
+        const success = (await this.ensureSenderSessionHealthy(sender)) !== null;
 
         if (success) {
           totalRecovered++;
-          console.log(`[Worker] Recovery: successfully recovered session for ${sender.name}`);
+          console.log(
+            `[Worker] Recovery: successfully recovered session for ${sender.name}`,
+          );
         } else {
           console.warn(`[Worker] Recovery: failed to recover session for ${sender.name}`);
         }
@@ -372,13 +406,7 @@ export class Worker {
       if (!this.running) break;
       try {
         const senders = await this.api.getSenders(slug);
-        const activeSenders = senders.filter(
-          (s) =>
-            s.status === "active" &&
-            s.healthStatus !== "blocked" &&
-            s.healthStatus !== "session_expired" &&
-            s.sessionStatus === "active",
-        );
+        const activeSenders = senders.filter((s) => this.isSenderRunnable(s));
         if (activeSenders.length > 0) {
           await this.maybePollConnections(slug, activeSenders);
         }
@@ -463,13 +491,7 @@ export class Worker {
         if (!this.running) break;
         try {
           const senders = await this.api.getSenders(slug);
-          const activeSenders = senders.filter(
-            (s) =>
-              s.status === "active" &&
-              s.healthStatus !== "blocked" &&
-              s.healthStatus !== "session_expired" &&
-              s.sessionStatus === "active",
-          );
+          const activeSenders = senders.filter((s) => this.isSenderRunnable(s));
 
           if (activeSenders.length > 0) {
             await this.checkConversations(activeSenders);
@@ -493,13 +515,7 @@ export class Worker {
       return;
     }
 
-    const activeSenders = senders.filter(
-      (s) =>
-        s.status === "active" &&
-        s.healthStatus !== "blocked" &&
-        s.healthStatus !== "session_expired" &&
-        s.sessionStatus === "active",
-    );
+    const activeSenders = senders.filter((s) => this.isSenderRunnable(s));
 
     if (activeSenders.length === 0) {
       console.log(`[Worker] No active senders for ${workspaceSlug}`);
@@ -1019,7 +1035,7 @@ export class Worker {
         );
 
         try {
-          await this.executeAction(client, action, sender.id);
+          await this.executeAction(client, action, sender);
         } catch (error) {
           if (error instanceof Error && error.message === "RATE_LIMITED") {
             // Skip remaining actions for this sender — natural backoff until next poll
@@ -1036,6 +1052,14 @@ export class Worker {
         if (this.senderAborted.has(sender.id)) {
           console.warn(
             `[Worker] ${sender.name}: hard-timeout cleanup completed while finishing action ${i + 1}/${actions.length} — stopping sender loop`,
+          );
+          break;
+        }
+
+        if (!this.isSenderRunnable(sender)) {
+          const effectiveState = this.getEffectiveSenderState(sender);
+          console.warn(
+            `[Worker] ${sender.name}: sender is now ${effectiveState.healthStatus}/${effectiveState.sessionStatus} — stopping sender loop`,
           );
           break;
         }
@@ -1140,8 +1164,10 @@ export class Worker {
         }
 
         // Reset health to healthy
-        await this.api.updateSenderHealth(sender.id, "healthy").catch((err) =>
-          console.error(`[Worker] Failed to reset sender health after re-login:`, err),
+        await this.syncSenderHealth(
+          sender,
+          "healthy",
+          "post-relogin health reset",
         );
 
         await browser.close();
@@ -1249,7 +1275,7 @@ export class Worker {
   private async executeAction(
     client: VoyagerClient,
     action: ActionItem,
-    senderId: string,
+    sender: Pick<SenderConfig, "id" | "name" | "sessionStatus">,
   ): Promise<void> {
     let result: ActionResult;
 
@@ -1266,7 +1292,7 @@ export class Worker {
     if (action.actionType === "message" && action.personId) {
       try {
         const connStatus = await this.api.getConnectionStatusForPerson(
-          senderId,
+          sender.id,
           action.personId,
         );
         if (!connStatus || connStatus.status !== "connected") {
@@ -1346,32 +1372,40 @@ export class Worker {
       // IMPORTANT: markFailed() only updates LinkedInAction.status — it does NOT update
       // Sender.healthStatus. We must call updateSenderHealth() explicitly.
       if (result.error === "rate_limited") {
-        console.warn(`[Worker] Rate limited for sender ${senderId}, backing off`);
-        this.activeClients.delete(senderId);
+        console.warn(`[Worker] Rate limited for sender ${sender.id}, backing off`);
+        this.activeClients.delete(sender.id);
         throw new Error("RATE_LIMITED");
       }
 
       if (result.error === "auth_expired" || result.error === "unauthorized") {
-        console.warn(`[Worker] Auth expired for sender ${senderId} — removing cached client`);
-        this.activeClients.delete(senderId); // Will re-create with fresh cookies next tick
-        await this.api.updateSenderHealth(senderId, "session_expired").catch((err) =>
-          console.error(`[Worker] Failed to update sender health:`, err),
+        console.warn(
+          `[Worker] Auth expired for sender ${sender.id} — removing cached client`,
+        );
+        this.activeClients.delete(sender.id); // Will re-create with fresh cookies next tick
+        await this.syncSenderHealth(
+          sender,
+          "session_expired",
+          "action auth failure",
         );
       }
 
       if (result.error === "ip_blocked") {
-        console.error(`[Worker] Sender ${senderId} IP blocked — updating health to blocked`);
-        this.activeClients.delete(senderId);
-        await this.api.updateSenderHealth(senderId, "blocked").catch((err) =>
-          console.error(`[Worker] Failed to update sender health:`, err),
+        console.error(
+          `[Worker] Sender ${sender.id} IP blocked — updating health to blocked`,
         );
+        this.activeClients.delete(sender.id);
+        await this.syncSenderHealth(sender, "blocked", "action ip block");
       }
 
       if (result.error === "checkpoint_detected") {
-        console.error(`[Worker] Sender ${senderId} checkpoint detected — updating health to blocked`);
-        this.activeClients.delete(senderId);
-        await this.api.updateSenderHealth(senderId, "blocked").catch((err) =>
-          console.error(`[Worker] Failed to update sender health:`, err),
+        console.error(
+          `[Worker] Sender ${sender.id} checkpoint detected — updating health to blocked`,
+        );
+        this.activeClients.delete(sender.id);
+        await this.syncSenderHealth(
+          sender,
+          "blocked",
+          "action checkpoint detection",
         );
       }
     }
@@ -1426,9 +1460,7 @@ export class Worker {
     console.warn(
       `[Worker] ${context} for ${sender.name} — marking ${status}`,
     );
-    await this.api.updateSenderHealth(sender.id, status).catch((err) =>
-      console.error(`[Worker] Failed to update sender health:`, err),
-    );
+    await this.syncSenderHealth(sender, status, context);
   }
 
   private async ensureSenderSessionHealthy(
@@ -1457,15 +1489,15 @@ export class Worker {
     if (sessionResult === "ok") {
       console.log(`[Worker] Session OK for ${sender.name}`);
       this.lastSessionCheck.set(sender.id, now);
+      const effectiveState = this.getEffectiveSenderState(sender);
       if (
-        sender.healthStatus === "session_expired" ||
-        sender.healthStatus === "blocked"
+        effectiveState.healthStatus === "session_expired" ||
+        effectiveState.healthStatus === "blocked"
       ) {
-        await this.api.updateSenderHealth(sender.id, "healthy").catch((err) =>
-          console.error(
-            `[Worker] Failed to clear stale sender health for ${sender.name}:`,
-            err,
-          ),
+        await this.syncSenderHealth(
+          sender,
+          "healthy",
+          "session health check recovery",
         );
       }
       return client;

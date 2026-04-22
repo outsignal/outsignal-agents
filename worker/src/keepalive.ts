@@ -13,6 +13,10 @@
 
 import { VoyagerClient } from "./voyager-client.js";
 import { ApiClient } from "./api-client.js";
+import {
+  isKeepaliveEligible,
+  syncSenderHealth,
+} from "./sender-health-sync.js";
 
 type KeepaliveEndpoint = "profile" | "notifications" | "messaging" | "feed";
 
@@ -48,7 +52,7 @@ export class KeepaliveManager {
    */
   async checkAndRunKeepalives(senders: SenderInfo[]): Promise<void> {
     const now = Date.now();
-    const activeSenders = senders.filter((s) => s.sessionStatus === "active");
+    const activeSenders = senders.filter((s) => isKeepaliveEligible(s));
 
     for (const sender of activeSenders) {
       // Initialize state for new senders (e.g. after worker restart)
@@ -139,11 +143,21 @@ export class KeepaliveManager {
         // Clear stale session_expired health flag on successful keepalive
         if (sender.healthStatus === "session_expired") {
           console.log(`[Keepalive] ${sender.name}: clearing stale session_expired flag`);
-          await this.api.updateSenderHealth(sender.id, "healthy");
+          await syncSenderHealth(
+            this.api,
+            sender,
+            "healthy",
+            `keepalive ${endpoint} recovery`,
+          );
         }
       } else {
         console.warn(`[Keepalive] ${sender.name}: ${endpoint} — SESSION EXPIRED`);
-        await this.api.updateSenderHealth(sender.id, "session_expired");
+        await syncSenderHealth(
+          this.api,
+          sender,
+          "session_expired",
+          `keepalive ${endpoint} expiry`,
+        );
       }
     } catch (err) {
       console.error(
