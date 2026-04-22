@@ -150,6 +150,25 @@ describe("POST /api/webhooks/emailbison — auth", () => {
     expect(prisma.webhookEvent.create).not.toHaveBeenCalled();
   });
 
+  it("retries without externalEventId when the database is missing that column", async () => {
+    vi.mocked(prisma.webhookEvent.create)
+      .mockRejectedValueOnce(
+        new Error(
+          "The column `WebhookEvent.externalEventId` does not exist in the current database.",
+        ),
+      )
+      .mockResolvedValueOnce({ id: "webhook-compat" } as never);
+
+    const res = await POST(
+      makeSignedRequest({ event: "UNKNOWN", data: {} }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true });
+    expect(prisma.webhookEvent.create).toHaveBeenCalledTimes(2);
+  });
+
   it("alerts ops instead of silently dropping a LinkedIn action when no sender can be assigned", async () => {
     vi.mocked(prisma.webhookEvent.create).mockResolvedValue({ id: "webhook-1" } as never);
     vi.mocked(prisma.campaign.findFirst).mockResolvedValue({

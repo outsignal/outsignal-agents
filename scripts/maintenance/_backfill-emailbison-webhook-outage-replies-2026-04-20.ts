@@ -107,34 +107,59 @@ async function ensureSyntheticWebhookEvent(args: {
   senderEmail: string | null;
   payload: Record<string, unknown>;
 }): Promise<string> {
-  const existing = await prisma.webhookEvent.findFirst({
-    where: {
-      workspace: args.workspaceSlug,
-      eventType: args.eventType,
-      externalEventId: args.externalEventId,
-    },
-    select: { id: true },
-  });
+  try {
+    const existing = await prisma.webhookEvent.findFirst({
+      where: {
+        workspace: args.workspaceSlug,
+        eventType: args.eventType,
+        externalEventId: args.externalEventId,
+      },
+      select: { id: true },
+    });
 
-  if (existing) {
-    return existing.id;
+    if (existing) {
+      return existing.id;
+    }
+
+    const created = await prisma.webhookEvent.create({
+      data: {
+        workspace: args.workspaceSlug,
+        eventType: args.eventType,
+        externalEventId: args.externalEventId,
+        campaignId: args.campaignId,
+        leadEmail: args.leadEmail,
+        senderEmail: args.senderEmail,
+        payload: JSON.stringify(args.payload),
+        isAutomated: false,
+      },
+      select: { id: true },
+    });
+
+    return created.id;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("WebhookEvent.externalEventId") &&
+      error.message.includes("does not exist")
+    ) {
+      const created = await prisma.webhookEvent.create({
+        data: {
+          workspace: args.workspaceSlug,
+          eventType: args.eventType,
+          campaignId: args.campaignId,
+          leadEmail: args.leadEmail,
+          senderEmail: args.senderEmail,
+          payload: JSON.stringify(args.payload),
+          isAutomated: false,
+        },
+        select: { id: true },
+      });
+
+      return created.id;
+    }
+
+    throw error;
   }
-
-  const created = await prisma.webhookEvent.create({
-    data: {
-      workspace: args.workspaceSlug,
-      eventType: args.eventType,
-      externalEventId: args.externalEventId,
-      campaignId: args.campaignId,
-      leadEmail: args.leadEmail,
-      senderEmail: args.senderEmail,
-      payload: JSON.stringify(args.payload),
-      isAutomated: false,
-    },
-    select: { id: true },
-  });
-
-  return created.id;
 }
 
 async function main() {

@@ -33,6 +33,14 @@ function isWebhookDuplicateError(err: unknown): boolean {
     : false;
 }
 
+function isMissingWebhookExternalEventIdColumnError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    err.message.includes("WebhookEvent.externalEventId") &&
+    err.message.includes("does not exist")
+  );
+}
+
 function buildExternalEventId(args: {
   eventType: string;
   replyId?: string | number | null;
@@ -121,6 +129,30 @@ function verifyWebhookSignature(
   return { valid: true };
 }
 
+async function createWebhookEventWithCompat(data: {
+  workspace: string;
+  eventType: string;
+  externalEventId: string | null;
+  campaignId: string | null;
+  leadEmail: string | null;
+  senderEmail: string | null;
+  payload: string;
+  isAutomated: boolean;
+}) {
+  try {
+    return await prisma.webhookEvent.create({ data });
+  } catch (err) {
+    if (isMissingWebhookExternalEventIdColumnError(err)) {
+      console.warn(
+        "[EmailBison Webhook] WebhookEvent.externalEventId column missing in DB — retrying without dedupe field",
+      );
+      const { externalEventId: _externalEventId, ...compatData } = data;
+      return prisma.webhookEvent.create({ data: compatData });
+    }
+    throw err;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting
@@ -188,17 +220,15 @@ export async function POST(request: NextRequest) {
 
     let webhookEvent;
     try {
-      webhookEvent = await prisma.webhookEvent.create({
-        data: {
-          workspace: workspaceSlug,
-          eventType,
-          externalEventId,
-          campaignId,
-          leadEmail,
-          senderEmail,
-          payload: JSON.stringify(payload),
-          isAutomated: isAutomatedFlag,
-        },
+      webhookEvent = await createWebhookEventWithCompat({
+        workspace: workspaceSlug,
+        eventType,
+        externalEventId,
+        campaignId,
+        leadEmail,
+        senderEmail,
+        payload: JSON.stringify(payload),
+        isAutomated: isAutomatedFlag,
       });
     } catch (err) {
       if (externalEventId && isWebhookDuplicateError(err)) {
