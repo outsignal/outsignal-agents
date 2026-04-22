@@ -501,6 +501,29 @@ describe("markFailedIfRunning", () => {
     });
   });
 
+  it("cancels claimed-but-unstarted actions when a campaign pauses mid-tick", async () => {
+    (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "action-1",
+      status: "running",
+      attempts: 1,
+      maxAttempts: 3,
+    });
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+
+    const updated = await markFailedIfRunning("action-1", "campaign_paused");
+
+    expect(updated).toBe(true);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenCalledWith({
+      where: { id: "action-1", status: "running" },
+      data: {
+        status: "cancelled",
+        result: JSON.stringify({ error: "campaign_paused" }),
+      },
+    });
+  });
+
   it("does not clobber a completed action when graceful_yield loses the race", async () => {
     (prisma.linkedInAction.findUniqueOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "action-1",

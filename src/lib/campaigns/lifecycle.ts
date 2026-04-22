@@ -10,6 +10,25 @@ import { initAdapters, getAdapter } from "@/lib/channels";
 import type { ChannelType, CampaignChannelRef } from "@/lib/channels";
 import { getCampaign } from "@/lib/campaigns/operations";
 
+export class CampaignChannelSyncError extends Error {
+  readonly operation: "pause" | "resume";
+  readonly failures: Array<{ channel: string; error: string }>;
+
+  constructor(
+    operation: "pause" | "resume",
+    failures: Array<{ channel: string; error: string }>,
+  ) {
+    super(
+      `Failed to ${operation} ${failures.length} campaign channel(s): ${failures
+        .map((failure) => `${failure.channel}: ${failure.error}`)
+        .join("; ")}`,
+    );
+    this.name = "CampaignChannelSyncError";
+    this.operation = operation;
+    this.failures = failures;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // pauseCampaignChannels
 // ---------------------------------------------------------------------------
@@ -18,8 +37,9 @@ import { getCampaign } from "@/lib/campaigns/operations";
  * Pause all channel adapters for a campaign.
  *
  * Calls adapter.pause() for each channel in the campaign. Errors per
- * channel are logged but not thrown — if email pause fails, LinkedIn
- * pause still proceeds.
+ * channel are logged and aggregated — if email pause fails, LinkedIn
+ * pause still proceeds, but the caller receives a summary error once all
+ * channel attempts have finished.
  */
 export async function pauseCampaignChannels(campaignId: string): Promise<void> {
   initAdapters();
@@ -36,16 +56,25 @@ export async function pauseCampaignChannels(campaignId: string): Promise<void> {
     emailBisonCampaignId: campaign.emailBisonCampaignId ?? undefined,
   };
 
+  const failures: Array<{ channel: string; error: string }> = [];
+
   for (const channel of campaign.channels) {
     try {
       const adapter = getAdapter(channel as ChannelType);
       await adapter.pause(ref);
     } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : String(err);
       console.error(
         `[lifecycle] Failed to pause ${channel} for campaign ${campaignId}:`,
         err,
       );
+      failures.push({ channel, error: errorMessage });
     }
+  }
+
+  if (failures.length > 0) {
+    throw new CampaignChannelSyncError("pause", failures);
   }
 }
 
@@ -57,7 +86,8 @@ export async function pauseCampaignChannels(campaignId: string): Promise<void> {
  * Resume all channel adapters for a campaign.
  *
  * Calls adapter.resume() for each channel in the campaign. Errors per
- * channel are logged but not thrown — same isolation as pause.
+ * channel are logged and aggregated after all channels have been tried —
+ * same isolation as pause, but the caller receives a summary failure.
  */
 export async function resumeCampaignChannels(
   campaignId: string,
@@ -76,15 +106,24 @@ export async function resumeCampaignChannels(
     emailBisonCampaignId: campaign.emailBisonCampaignId ?? undefined,
   };
 
+  const failures: Array<{ channel: string; error: string }> = [];
+
   for (const channel of campaign.channels) {
     try {
       const adapter = getAdapter(channel as ChannelType);
       await adapter.resume(ref);
     } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : String(err);
       console.error(
         `[lifecycle] Failed to resume ${channel} for campaign ${campaignId}:`,
         err,
       );
+      failures.push({ channel, error: errorMessage });
     }
+  }
+
+  if (failures.length > 0) {
+    throw new CampaignChannelSyncError("resume", failures);
   }
 }

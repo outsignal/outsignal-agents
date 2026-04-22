@@ -6,7 +6,13 @@
 interface ActionItem {
   id: string;
   personId: string;
-  actionType: "connect" | "connection_request" | "message" | "profile_view" | "check_connection";
+  actionType:
+    | "connect"
+    | "connection_request"
+    | "message"
+    | "profile_view"
+    | "check_connection"
+    | "withdraw_connection";
   messageBody: string | null;
   priority: number;
   workspaceSlug: string;
@@ -45,6 +51,16 @@ interface SenderItem {
   dailyProfileViewLimit: number;
   lastActiveAt: string | null;
   lastKeepaliveAt: string | null;
+}
+
+interface SenderExecutionGuard {
+  sender: {
+    id: string;
+    status: string;
+    healthStatus: string;
+    sessionStatus: string;
+  };
+  pausedCampaignNames: string[];
 }
 
 export class ApiClient {
@@ -132,6 +148,16 @@ export class ApiClient {
       `/api/linkedin/senders?workspace=${workspaceSlug}`,
     );
     return result.senders;
+  }
+
+  /**
+   * Fetch execution-relevant pause state for a sender at tick start, with an
+   * optional refresh after a spread sleep before the next claimed action.
+   */
+  async getExecutionGuard(senderId: string): Promise<SenderExecutionGuard> {
+    return this.request<SenderExecutionGuard>(
+      `/api/linkedin/senders/${senderId}/execution-guard`,
+    );
   }
 
   /**

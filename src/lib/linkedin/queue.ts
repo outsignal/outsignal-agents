@@ -528,6 +528,24 @@ export async function markFailedIfRunning(
     return false;
   }
 
+  // Sender pause is resumable, so claimed work gets released via
+  // `graceful_yield` below. Campaign pause stays destructive to match the
+  // current LinkedIn adapter contract: pause() bulk-cancels pending actions,
+  // resume() does not rebuild them, and the daily planner only recreates
+  // cancelled work automatically when attempts === 0. That means same-day
+  // pause -> unpause after an action has already consumed an attempt still
+  // waits for the next planning pass, which we track as a backlog limitation.
+  if (error === "campaign_paused") {
+    const updated = await prisma.linkedInAction.updateMany({
+      where: { id: actionId, status: "running" },
+      data: {
+        status: "cancelled",
+        result: JSON.stringify({ error }),
+      },
+    });
+    return updated.count === 1;
+  }
+
   // Graceful worker yield: the action was claimed for this sender tick but
   // never actually started executing. Release it back to pending without
   // consuming retry budget so the next poll can pick it up cleanly.

@@ -144,6 +144,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
           messageBody: null,
           priority: 1,
           linkedinUrl: "https://www.linkedin.com/in/person-1",
+          campaignName: "Campaign A",
         },
         {
           id: "action-2",
@@ -152,10 +153,20 @@ describe("LinkedIn worker sender health sync fallback", () => {
           messageBody: null,
           priority: 1,
           linkedinUrl: "https://www.linkedin.com/in/person-2",
+          campaignName: "Campaign B",
         },
       ]),
       getUsage: vi.fn().mockResolvedValue(null),
       updateSenderHealth: vi.fn().mockRejectedValue(new Error("PATCH failed")),
+      getExecutionGuard: vi.fn().mockResolvedValue({
+        sender: {
+          id: sender.id,
+          status: "active",
+          healthStatus: "healthy",
+          sessionStatus: "active",
+        },
+        pausedCampaignNames: [],
+      }),
     };
     worker.ensureSenderSessionHealthy = vi.fn().mockResolvedValue({});
     worker.executeAction = vi.fn(async (_client: unknown, _action: unknown, target: typeof sender) => {
@@ -194,5 +205,227 @@ describe("LinkedIn worker sender health sync fallback", () => {
     expect(synced).toBe(true);
     expect(worker.senderStateOverrides.has(sender.id)).toBe(false);
     expect(worker.isSenderRunnable(sender)).toBe(true);
+  });
+
+  it("releases remaining claimed work when a sender is paused mid-tick", async () => {
+    const worker = new Worker({
+      apiUrl: "http://localhost:3000",
+      apiSecret: "test-secret",
+      workspaceSlugs: [],
+    }) as any;
+    worker.running = true;
+    worker.api = {
+      getNextActions: vi.fn().mockResolvedValue([
+        {
+          id: "action-1",
+          personId: "person-1",
+          actionType: "connection_request",
+          messageBody: null,
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-1",
+          campaignName: "Campaign A",
+        },
+        {
+          id: "action-2",
+          personId: "person-2",
+          actionType: "message",
+          messageBody: "Hi there",
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-2",
+          campaignName: "Campaign B",
+        },
+      ]),
+      getUsage: vi.fn().mockResolvedValue(null),
+      markFailedIfRunning: vi.fn().mockResolvedValue(undefined),
+      getExecutionGuard: vi
+        .fn()
+        .mockResolvedValueOnce({
+          sender: {
+            id: sender.id,
+            status: "active",
+            healthStatus: "healthy",
+            sessionStatus: "active",
+          },
+          pausedCampaignNames: [],
+        })
+        .mockResolvedValueOnce({
+          sender: {
+            id: sender.id,
+            status: "paused",
+            healthStatus: "paused",
+            sessionStatus: "active",
+          },
+          pausedCampaignNames: [],
+        }),
+    };
+    worker.ensureSenderSessionHealthy = vi.fn().mockResolvedValue({});
+    worker.calculateSpreadDelay = vi.fn().mockReturnValue(0);
+    worker.executeAction = vi.fn().mockResolvedValue(undefined);
+
+    await worker.processSender(fullSender);
+
+    expect(worker.executeAction).toHaveBeenCalledTimes(1);
+    expect(worker.api.markFailedIfRunning).toHaveBeenCalledWith(
+      "action-2",
+      "graceful_yield",
+    );
+    expect(worker.api.getExecutionGuard).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels claimed work for a campaign paused after claim but before execution", async () => {
+    const worker = new Worker({
+      apiUrl: "http://localhost:3000",
+      apiSecret: "test-secret",
+      workspaceSlugs: [],
+    }) as any;
+    worker.running = true;
+    worker.api = {
+      getNextActions: vi.fn().mockResolvedValue([
+        {
+          id: "action-1",
+          personId: "person-1",
+          actionType: "connection_request",
+          messageBody: null,
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-1",
+          campaignName: "Active Campaign",
+        },
+        {
+          id: "action-2",
+          personId: "person-2",
+          actionType: "message",
+          messageBody: "Hi there",
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-2",
+          campaignName: "Paused Campaign",
+        },
+      ]),
+      getUsage: vi.fn().mockResolvedValue(null),
+      markFailedIfRunning: vi.fn().mockResolvedValue(undefined),
+      getExecutionGuard: vi
+        .fn()
+        .mockResolvedValueOnce({
+          sender: {
+            id: sender.id,
+            status: "active",
+            healthStatus: "healthy",
+            sessionStatus: "active",
+          },
+          pausedCampaignNames: [],
+        })
+        .mockResolvedValueOnce({
+          sender: {
+            id: sender.id,
+            status: "active",
+            healthStatus: "healthy",
+            sessionStatus: "active",
+          },
+          pausedCampaignNames: ["Paused Campaign"],
+        }),
+    };
+    worker.ensureSenderSessionHealthy = vi.fn().mockResolvedValue({});
+    worker.calculateSpreadDelay = vi.fn().mockReturnValue(0);
+    worker.executeAction = vi.fn().mockResolvedValue(undefined);
+
+    await worker.processSender(fullSender);
+
+    expect(worker.executeAction).toHaveBeenCalledTimes(1);
+    expect(worker.api.markFailedIfRunning).toHaveBeenCalledWith(
+      "action-2",
+      "campaign_paused",
+    );
+    expect(worker.api.getExecutionGuard).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed and releases claimed work when the execution guard cannot be loaded after claim", async () => {
+    const worker = new Worker({
+      apiUrl: "http://localhost:3000",
+      apiSecret: "test-secret",
+      workspaceSlugs: [],
+    }) as any;
+    worker.running = true;
+    worker.api = {
+      getNextActions: vi.fn().mockResolvedValue([
+        {
+          id: "action-1",
+          personId: "person-1",
+          actionType: "connection_request",
+          messageBody: null,
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-1",
+          campaignName: "Campaign A",
+        },
+        {
+          id: "action-2",
+          personId: "person-2",
+          actionType: "message",
+          messageBody: "Hi there",
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-2",
+          campaignName: "Campaign B",
+        },
+      ]),
+      getExecutionGuard: vi.fn().mockResolvedValue(null),
+      markFailedIfRunning: vi.fn().mockResolvedValue(undefined),
+    };
+    worker.ensureSenderSessionHealthy = vi.fn().mockResolvedValue({});
+    worker.executeAction = vi.fn().mockResolvedValue(undefined);
+
+    await worker.processSender(fullSender);
+
+    expect(worker.executeAction).not.toHaveBeenCalled();
+    expect(worker.api.getExecutionGuard).toHaveBeenCalledTimes(1);
+    expect(worker.api.markFailedIfRunning).toHaveBeenCalledTimes(2);
+    expect(worker.api.markFailedIfRunning).toHaveBeenNthCalledWith(
+      1,
+      "action-1",
+      "graceful_yield",
+    );
+    expect(worker.api.markFailedIfRunning).toHaveBeenNthCalledWith(
+      2,
+      "action-2",
+      "graceful_yield",
+    );
+  });
+
+  it("executes normally when neither sender nor campaign is paused", async () => {
+    const worker = new Worker({
+      apiUrl: "http://localhost:3000",
+      apiSecret: "test-secret",
+      workspaceSlugs: [],
+    }) as any;
+    worker.running = true;
+    worker.api = {
+      getNextActions: vi.fn().mockResolvedValue([
+        {
+          id: "action-1",
+          personId: "person-1",
+          actionType: "connection_request",
+          messageBody: null,
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-1",
+          campaignName: "Active Campaign",
+        },
+      ]),
+      getUsage: vi.fn().mockResolvedValue(null),
+      markFailedIfRunning: vi.fn().mockResolvedValue(undefined),
+      getExecutionGuard: vi.fn().mockResolvedValue({
+        sender: {
+          id: sender.id,
+          status: "active",
+          healthStatus: "healthy",
+          sessionStatus: "active",
+        },
+        pausedCampaignNames: [],
+      }),
+    };
+    worker.ensureSenderSessionHealthy = vi.fn().mockResolvedValue({});
+    worker.executeAction = vi.fn().mockResolvedValue(undefined);
+
+    await worker.processSender(fullSender);
+
+    expect(worker.executeAction).toHaveBeenCalledTimes(1);
+    expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
+    expect(worker.api.getExecutionGuard).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,6 +4,7 @@ import {
   applyJitter,
   bucketKeyFor,
   checkBudget,
+  checkCircuitBreaker,
   consumeBudget,
   getSenderBudget,
   getWarmupLimits,
@@ -726,6 +727,47 @@ describe("checkBudget", () => {
     expect(result.allowed).toBe(true);
     expect(Number.isFinite(result.remaining)).toBe(true);
     expect(result.remaining).toBeGreaterThan(0);
+  });
+});
+
+describe("checkCircuitBreaker", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does not trip on benign target-level failures even when five recent actions failed", async () => {
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { status: "failed", result: JSON.stringify({ error: "already_invited" }) },
+      { status: "failed", result: JSON.stringify({ error: "already_invited" }) },
+      { status: "failed", result: JSON.stringify({ error: "already_invited" }) },
+      { status: "failed", result: JSON.stringify({ error: "already_invited" }) },
+      { status: "failed", result: JSON.stringify({ error: "already_invited" }) },
+    ]);
+
+    const result = await checkCircuitBreaker("sender-1");
+
+    expect(result).toEqual({
+      tripped: false,
+      consecutiveFailures: 0,
+    });
+  });
+
+  it("still trips on sender and infrastructure failures", async () => {
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { status: "failed", result: JSON.stringify({ error: "auth_expired" }) },
+      { status: "failed", result: JSON.stringify({ error: "worker_timeout" }) },
+      { status: "failed", result: JSON.stringify({ error: "hard_backstop_abort" }) },
+      { status: "failed", result: JSON.stringify({ error: "session_expired" }) },
+      { status: "failed", result: JSON.stringify({ error: "missing_shared_secret" }) },
+    ]);
+
+    const result = await checkCircuitBreaker("sender-1");
+
+    expect(result).toEqual({
+      tripped: true,
+      reason: "Last 5 actions all failed (last error: auth_expired)",
+      consecutiveFailures: 5,
+    });
   });
 });
 

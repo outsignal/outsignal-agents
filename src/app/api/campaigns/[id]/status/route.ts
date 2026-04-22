@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { prisma } from "@/lib/db";
 import { updateCampaignStatus } from "@/lib/campaigns/operations";
-import { pauseCampaignChannels, resumeCampaignChannels } from "@/lib/campaigns/lifecycle";
+import {
+  CampaignChannelSyncError,
+  pauseCampaignChannels,
+  resumeCampaignChannels,
+} from "@/lib/campaigns/lifecycle";
+import { auditLog } from "@/lib/audit";
+import { notify } from "@/lib/notify";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 
 async function createFirstLinkedInDeployIfNeeded(args: {
@@ -42,6 +48,21 @@ async function createFirstLinkedInDeployIfNeeded(args: {
       select: { id: true },
     });
   });
+}
+
+function describeChannelSyncFailure(error: unknown): {
+  summary: string;
+  failures?: Array<{ channel: string; error: string }>;
+} {
+  if (error instanceof CampaignChannelSyncError) {
+    return {
+      summary: error.message,
+      failures: error.failures,
+    };
+  }
+
+  const summary = error instanceof Error ? error.message : String(error);
+  return { summary };
 }
 
 export async function POST(
@@ -103,9 +124,38 @@ export async function POST(
     }
 
     if (status === "paused") {
-      pauseCampaignChannels(id).catch((err) =>
-        console.error(`[campaign-status] Pause channels failed for ${id}:`, err),
-      );
+      try {
+        await pauseCampaignChannels(id);
+      } catch (err) {
+        const failure = describeChannelSyncFailure(err);
+        console.error(`[campaign-status] Pause channels failed for ${id}:`, err);
+        auditLog({
+          action: "campaign.pause.sync_failed",
+          entityType: "Campaign",
+          entityId: id,
+          adminEmail: session.email,
+          metadata: {
+            campaignName: campaign.name,
+            workspaceSlug: campaign.workspaceSlug,
+            failures: failure.failures,
+            error: failure.summary,
+          },
+        });
+        await notify({
+          type: "error",
+          severity: "warning",
+          title: "Campaign paused locally but channel sync failed",
+          workspaceSlug: campaign.workspaceSlug,
+          message:
+            `Campaign "${campaign.name}" is paused in Outsignal, but at least one downstream channel failed to pause. ` +
+            `Check EmailBison/vendor state. ${failure.summary}`,
+          metadata: {
+            campaignId: id,
+            campaignName: campaign.name,
+            failures: failure.failures,
+          },
+        });
+      }
     }
 
     return NextResponse.json(campaign);

@@ -66,6 +66,7 @@ interface ActionItem {
   actionType: "connect" | "connection_request" | "message" | "profile_view" | "check_connection" | "withdraw_connection";
   messageBody: string | null;
   priority: number;
+  campaignName?: string | null;
   linkedinUrl: string | null;
 }
 
@@ -194,6 +195,35 @@ export class Worker {
     context: string,
   ): Promise<boolean> {
     return syncSharedSenderHealth(this.api, sender, healthStatus, context);
+  }
+
+  private async getExecutionGuard(
+    sender: SenderConfig,
+  ): Promise<{
+    guardedSender: SenderConfig;
+    pausedCampaignNames: Set<string>;
+  } | null> {
+    try {
+      const guard = await this.api.getExecutionGuard(sender.id);
+      if (!guard) {
+        throw new Error("Empty execution guard response");
+      }
+      return {
+        guardedSender: {
+          ...sender,
+          status: guard.sender.status,
+          healthStatus: guard.sender.healthStatus,
+          sessionStatus: guard.sender.sessionStatus,
+        },
+        pausedCampaignNames: new Set(guard.pausedCampaignNames),
+      };
+    } catch (error) {
+      console.warn(
+        `[Worker] Failed to refresh execution guard for ${sender.name}:`,
+        error,
+      );
+      return null;
+    }
   }
 
   /**
@@ -997,6 +1027,37 @@ export class Worker {
       console.log(`[Worker] ${actions.length} actions for ${sender.name}`);
       const inFlight = new Set(actions.map((action) => action.id));
       this.inFlightActionIdsBySender.set(sender.id, inFlight);
+      const releaseClaimedActions = async (): Promise<void> => {
+        await Promise.all(
+          Array.from(inFlight).map((actionId) =>
+            this.safeMarkFailedIfRunning(actionId, "graceful_yield"),
+          ),
+        );
+      };
+
+      let executionGuard = await this.getExecutionGuard(sender);
+      if (!executionGuard) {
+        console.warn(
+          `[Worker] ${sender.name}: execution guard unavailable after claim — releasing ${inFlight.size} claimed action(s) for next tick`,
+        );
+        await releaseClaimedActions();
+        return;
+      }
+
+      const refreshExecutionGuard = async (
+        context: string,
+      ): Promise<boolean> => {
+        const refreshed = await this.getExecutionGuard(sender);
+        if (!refreshed) {
+          console.warn(
+            `[Worker] ${sender.name}: execution guard unavailable ${context} — releasing ${inFlight.size} claimed action(s) for next tick`,
+          );
+          await releaseClaimedActions();
+          return false;
+        }
+        executionGuard = refreshed;
+        return true;
+      };
 
       // Fetch daily usage for spread delay calculation
       let usageData: Record<string, unknown> | null = null;
@@ -1021,15 +1082,34 @@ export class Worker {
           console.log(
             `[Worker] ${sender.name}: approaching timeout (${Math.round(elapsedMs / 1000)}s elapsed), processed ${i}/${actions.length} — releasing ${inFlight.size} claimed action(s) for next tick`,
           );
-          await Promise.all(
-            Array.from(inFlight).map((actionId) =>
-              this.safeMarkFailedIfRunning(actionId, "graceful_yield"),
-            ),
-          );
+          await releaseClaimedActions();
           break;
         }
 
         const action = actions[i];
+        const { guardedSender, pausedCampaignNames } = executionGuard;
+
+        if (!this.isSenderRunnable(guardedSender)) {
+          const effectiveState = this.getEffectiveSenderState(guardedSender);
+          console.warn(
+            `[Worker] ${sender.name}: sender is now status=${guardedSender.status} ${effectiveState.healthStatus}/${effectiveState.sessionStatus} before executing ${action.id} — releasing ${inFlight.size} claimed action(s)`,
+          );
+          await releaseClaimedActions();
+          break;
+        }
+
+        if (action.campaignName && pausedCampaignNames.has(action.campaignName)) {
+          console.warn(
+            `[Worker] ${sender.name}: campaign "${action.campaignName}" paused after claim — cancelling ${action.id} before execution`,
+          );
+          await this.safeMarkFailedIfRunning(action.id, "campaign_paused");
+          inFlight.delete(action.id);
+          if (inFlight.size === 0) {
+            this.inFlightActionIdsBySender.delete(sender.id);
+          }
+          continue;
+        }
+
         console.log(
           `[Worker] Executing ${action.actionType} (priority ${action.priority}) for person ${action.personId}`,
         );
@@ -1072,11 +1152,7 @@ export class Worker {
             console.log(
               `[Worker] ${sender.name}: approaching timeout (${Math.round(elapsedMs / 1000)}s elapsed + ${Math.round(delay / 1000)}s spread), processed ${i + 1}/${actions.length} — releasing ${inFlight.size} claimed action(s) for next tick`,
             );
-            await Promise.all(
-              Array.from(inFlight).map((actionId) =>
-                this.safeMarkFailedIfRunning(actionId, "graceful_yield"),
-              ),
-            );
+            await releaseClaimedActions();
             break;
           }
           const delaySec = Math.round(delay / 1000);
@@ -1096,6 +1172,9 @@ export class Worker {
             `[Worker] ${sender.name}: spread ${connRemaining}c + ${msgRemaining}m + ${pvRemaining}pv (total ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
           );
           await sleep(delay);
+          if (!(await refreshExecutionGuard("after spread sleep"))) {
+            break;
+          }
         }
       }
     } finally {

@@ -45,6 +45,19 @@ export function bucketKeyFor(actionType: LinkedInActionType): string {
 
 /** Circuit breaker threshold — trip after this many consecutive failures */
 const CIRCUIT_BREAKER_THRESHOLD = 5;
+/** Pull a wider window so benign target-level failures can be skipped safely. */
+const CIRCUIT_BREAKER_LOOKBACK_LIMIT = 50;
+
+const NON_BREAKER_ACTION_ERRORS = new Set([
+  "already_invited",
+  "failed_to_resolve_memberurn_for_withdrawal",
+  "failed_to_resolve_profile",
+  "failed_to_resolve_sender_profile_urn",
+  "invalid_profile_url",
+  "note_too_long",
+  "profile_not_found_404",
+  "urn_not_found",
+]);
 
 /** Maximum P1 connection actions per sender per day before falling through to normal budget */
 const P1_DAILY_CAP = 5;
@@ -92,6 +105,20 @@ function deterministicHash(input: string): number {
     hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
   }
   return hash;
+}
+
+function normalizeCircuitBreakerError(error: string): string {
+  return error
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function shouldCountTowardCircuitBreaker(error: string): boolean {
+  return !NON_BREAKER_ACTION_ERRORS.has(
+    normalizeCircuitBreakerError(error),
+  );
 }
 
 /**
@@ -543,9 +570,9 @@ export async function progressWarmup(senderId: string): Promise<void> {
 
 /**
  * Check the circuit breaker for a sender. Trips when the last
- * CIRCUIT_BREAKER_THRESHOLD actions all failed (within the last 24 hours).
- * This prevents systematic failures (session expired, IP blocked) from
- * burning through the entire daily budget.
+ * CIRCUIT_BREAKER_THRESHOLD sender-relevant actions all failed (within the
+ * last 24 hours). Target-level failures like already_invited are skipped so
+ * they do not masquerade as sender-health incidents.
  *
  * The circuit resets naturally when a successful action breaks the
  * consecutive failure streak.
@@ -562,22 +589,47 @@ export async function checkCircuitBreaker(
       status: { in: ["complete", "failed"] },
     },
     orderBy: { lastAttemptAt: "desc" },
-    take: CIRCUIT_BREAKER_THRESHOLD,
+    take: CIRCUIT_BREAKER_LOOKBACK_LIMIT,
     select: { status: true, result: true },
   });
 
-  // Not enough recent actions to evaluate
-  if (recentActions.length < CIRCUIT_BREAKER_THRESHOLD) {
-    return { tripped: false, consecutiveFailures: recentActions.filter((a) => a.status === "failed").length };
+  const countedActions = recentActions.flatMap((action) => {
+    if (action.status === "complete") {
+      return [action];
+    }
+
+    let error = "unknown";
+    try {
+      const parsed = JSON.parse(action.result ?? "{}");
+      if (typeof parsed.error === "string") {
+        error = parsed.error;
+      }
+    } catch {
+      // Leave as "unknown" — unparseable failures should still count.
+    }
+
+    if (!shouldCountTowardCircuitBreaker(error)) {
+      return [];
+    }
+
+    return [{ ...action, result: JSON.stringify({ error }) }];
+  }).slice(0, CIRCUIT_BREAKER_THRESHOLD);
+
+  // Not enough recent counted actions to evaluate
+  if (countedActions.length < CIRCUIT_BREAKER_THRESHOLD) {
+    return {
+      tripped: false,
+      consecutiveFailures: countedActions.filter((a) => a.status === "failed").length,
+    };
   }
 
-  const allFailed = recentActions.every((a) => a.status === "failed");
+  const allFailed = countedActions.every((a) => a.status === "failed");
 
   if (allFailed) {
     // Extract the most recent error for context
     let lastError = "unknown";
     try {
-      const parsed = JSON.parse(recentActions[0].result ?? "{}");
+      const parsed = JSON.parse(countedActions[0].result ?? "{}");
       lastError = parsed.error ?? "unknown";
     } catch {
       // ignore parse errors
@@ -590,9 +642,10 @@ export async function checkCircuitBreaker(
     };
   }
 
-  const consecutiveFailures = recentActions.findIndex((a) => a.status !== "failed");
+  const consecutiveFailures = countedActions.findIndex((a) => a.status !== "failed");
   return {
     tripped: false,
-    consecutiveFailures: consecutiveFailures === -1 ? recentActions.length : consecutiveFailures,
+    consecutiveFailures:
+      consecutiveFailures === -1 ? countedActions.length : consecutiveFailures,
   };
 }

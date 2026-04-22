@@ -21,6 +21,16 @@ vi.mock("@/lib/require-admin-auth", () => ({
   requireAdminAuth: (...args: unknown[]) => requireAdminAuthMock(...args),
 }));
 
+const auditLogMock = vi.fn();
+vi.mock("@/lib/audit", () => ({
+  auditLog: (...args: unknown[]) => auditLogMock(...args),
+}));
+
+const notifyMock = vi.fn();
+vi.mock("@/lib/notify", () => ({
+  notify: (...args: unknown[]) => notifyMock(...args),
+}));
+
 const updateCampaignStatusMock = vi.fn();
 const getCampaignMock = vi.fn();
 vi.mock("@/lib/campaigns/operations", () => ({
@@ -31,6 +41,22 @@ vi.mock("@/lib/campaigns/operations", () => ({
 const pauseCampaignChannelsMock = vi.fn();
 const resumeCampaignChannelsMock = vi.fn();
 vi.mock("@/lib/campaigns/lifecycle", () => ({
+  CampaignChannelSyncError: class CampaignChannelSyncError extends Error {
+    operation: "pause" | "resume";
+    failures: Array<{ channel: string; error: string }>;
+    constructor(
+      operation: "pause" | "resume",
+      failures: Array<{ channel: string; error: string }>,
+    ) {
+      super(
+        `Failed to ${operation} ${failures.length} campaign channel(s): ${failures
+          .map((failure) => `${failure.channel}: ${failure.error}`)
+          .join("; ")}`,
+      );
+      this.operation = operation;
+      this.failures = failures;
+    }
+  },
   pauseCampaignChannels: (...args: unknown[]) => pauseCampaignChannelsMock(...args),
   resumeCampaignChannels: (...args: unknown[]) => resumeCampaignChannelsMock(...args),
 }));
@@ -87,6 +113,7 @@ describe("campaign status route + retry CAS guards", () => {
     requireAdminAuthMock.mockResolvedValue({ email: "admin@example.com", role: "admin" });
     pauseCampaignChannelsMock.mockResolvedValue(undefined);
     resumeCampaignChannelsMock.mockResolvedValue(undefined);
+    notifyMock.mockResolvedValue(undefined);
   });
 
   it("creates the first LinkedIn deploy only when the deployedAt claim succeeds", async () => {
@@ -151,6 +178,69 @@ describe("campaign status route + retry CAS guards", () => {
     expect(res.status).toBe(409);
     expect(body).toEqual({
       error: "Campaign camp-1 was modified concurrently while changing status",
+    });
+  });
+
+  it("pauses channels cleanly without emitting an alert when downstream sync succeeds", async () => {
+    updateCampaignStatusMock.mockResolvedValue({
+      id: "camp-1",
+      name: "Email Campaign",
+      workspaceSlug: "acme",
+      channels: ["email"],
+    });
+
+    const { POST } = await import("@/app/api/campaigns/[id]/status/route");
+    const res = await POST(postRequest({ status: "paused" }), {
+      params: Promise.resolve({ id: "camp-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(pauseCampaignChannelsMock).toHaveBeenCalledWith("camp-1");
+    expect(auditLogMock).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("records and alerts when downstream pause sync fails after the DB status change", async () => {
+    updateCampaignStatusMock.mockResolvedValue({
+      id: "camp-1",
+      name: "Email Campaign",
+      workspaceSlug: "acme",
+      channels: ["email"],
+    });
+    pauseCampaignChannelsMock.mockRejectedValue(
+      new Error("Failed to pause 1 campaign channel(s): email: EB 503"),
+    );
+
+    const { POST } = await import("@/app/api/campaigns/[id]/status/route");
+    const res = await POST(postRequest({ status: "paused" }), {
+      params: Promise.resolve({ id: "camp-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(auditLogMock).toHaveBeenCalledWith({
+      action: "campaign.pause.sync_failed",
+      entityType: "Campaign",
+      entityId: "camp-1",
+      adminEmail: "admin@example.com",
+      metadata: {
+        campaignName: "Email Campaign",
+        workspaceSlug: "acme",
+        failures: undefined,
+        error: "Failed to pause 1 campaign channel(s): email: EB 503",
+      },
+    });
+    expect(notifyMock).toHaveBeenCalledWith({
+      type: "error",
+      severity: "warning",
+      title: "Campaign paused locally but channel sync failed",
+      workspaceSlug: "acme",
+      message:
+        'Campaign "Email Campaign" is paused in Outsignal, but at least one downstream channel failed to pause. Check EmailBison/vendor state. Failed to pause 1 campaign channel(s): email: EB 503',
+      metadata: {
+        campaignId: "camp-1",
+        campaignName: "Email Campaign",
+        failures: undefined,
+      },
     });
   });
 
