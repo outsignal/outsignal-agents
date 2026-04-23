@@ -91,6 +91,13 @@ interface WorkerOptions {
   scheduleOverrides?: Record<string, { timezone?: string; startHour?: number; endHour?: number }>;
 }
 
+interface PlannedBatchAction {
+  action: ActionItem;
+  originalIndex: number;
+  plannedSpreadMs: number;
+  exhaustedBudget: boolean;
+}
+
 export class Worker {
   private api: ApiClient;
   private options: WorkerOptions;
@@ -138,6 +145,18 @@ export class Worker {
   private senderAborted: Set<string> = new Set();
   /** Shared process-local fail-closed sender state for worker + keepalive. */
   private senderStateOverrides = senderStateOverrides;
+  /**
+   * Only spend ~70% of the sender tick budget on claimed work so we have
+   * room for action execution, cleanup, and guard refreshes.
+   */
+  private static readonly BATCH_EXECUTION_BUDGET_MS = Math.floor(
+    PER_SENDER_TIMEOUT_MS * 0.7,
+  );
+  /**
+   * Small per-action execution buffer used when deciding how much claimed
+   * work can realistically fit inside one sender tick.
+   */
+  private static readonly BATCH_ACTION_EXECUTION_BUFFER_MS = 15_000;
 
   constructor(options: WorkerOptions) {
     this.options = options;
@@ -1080,6 +1099,26 @@ export class Worker {
         console.warn(`[Worker] Failed to fetch usage for ${sender.name}, falling back to fixed delay:`, err);
       }
 
+      const batchPlan = this.planClaimedBatch(actions, sender, usageData);
+      if (batchPlan.deferredActions.length > 0) {
+        console.log(
+          `[Worker] ${sender.name}: claimed ${actions.length} actions but only ${batchPlan.actions.length} fit the sender tick budget (~${Math.round(batchPlan.totalExpectedMs / 1000)}s expected) — yielding ${batchPlan.deferredActions.length} early`,
+        );
+        await Promise.all(
+          batchPlan.deferredActions.map((action) =>
+            this.safeMarkFailedIfRunning(action.id, "graceful_yield"),
+          ),
+        );
+        for (const action of batchPlan.deferredActions) {
+          inFlight.delete(action.id);
+        }
+        if (inFlight.size === 0) {
+          this.inFlightActionIdsBySender.delete(sender.id);
+          return;
+        }
+      }
+      actions = batchPlan.actions;
+
       // Execute each action with delays between them
       for (let i = 0; i < actions.length; i++) {
         if (!this.running) break;
@@ -1413,6 +1452,80 @@ export class Worker {
     if (!slot) return null;
     if (typeof slot.limit !== "number") return null;
     return this.pickRemaining(slot);
+  }
+
+  private planClaimedBatch(
+    actions: ActionItem[],
+    sender: SenderConfig,
+    usageData: SenderUsageBudget | null,
+  ): {
+    actions: ActionItem[];
+    deferredActions: ActionItem[];
+    totalExpectedMs: number;
+  } {
+    if (!usageData || actions.length <= 1) {
+      return { actions, deferredActions: [], totalExpectedMs: 0 };
+    }
+
+    const planned: PlannedBatchAction[] = actions.map((action, originalIndex) => {
+      const remainingForType = this.getRemainingBudgetForActionType(
+        action.actionType,
+        usageData,
+      );
+      const exhaustedBudget =
+        remainingForType !== null && remainingForType <= 0;
+      return {
+        action,
+        originalIndex,
+        plannedSpreadMs: exhaustedBudget
+          ? Number.POSITIVE_INFINITY
+          : this.calculateSpreadDelay(action.actionType, sender, usageData),
+        exhaustedBudget,
+      };
+    });
+
+    planned.sort((a, b) => {
+      if (a.exhaustedBudget !== b.exhaustedBudget) {
+        return a.exhaustedBudget ? 1 : -1;
+      }
+      if (a.plannedSpreadMs !== b.plannedSpreadMs) {
+        return a.plannedSpreadMs - b.plannedSpreadMs;
+      }
+      return a.originalIndex - b.originalIndex;
+    });
+
+    const kept: ActionItem[] = [];
+    const deferred: ActionItem[] = [];
+    let totalExpectedMs = 0;
+
+    for (const plannedAction of planned) {
+      if (plannedAction.exhaustedBudget) {
+        deferred.push(plannedAction.action);
+        continue;
+      }
+
+      const preDelayMs = kept.length === 0 ? 0 : plannedAction.plannedSpreadMs;
+      const actionBudgetMs =
+        preDelayMs + Worker.BATCH_ACTION_EXECUTION_BUFFER_MS;
+
+      if (
+        kept.length > 0 &&
+        totalExpectedMs + actionBudgetMs >
+          Worker.BATCH_EXECUTION_BUDGET_MS
+      ) {
+        deferred.push(plannedAction.action);
+        continue;
+      }
+
+      kept.push(plannedAction.action);
+      totalExpectedMs += actionBudgetMs;
+    }
+
+    return {
+      actions: kept,
+      deferredActions: deferred,
+      totalExpectedMs,
+    };
   }
 
   /**
