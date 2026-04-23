@@ -128,7 +128,9 @@ describe("generate-insights task", () => {
       select: { id: true, name: true },
     });
 
-    expect(progressWarmupMock).toHaveBeenCalledWith("sender-active");
+    expect(progressWarmupMock).toHaveBeenCalledWith("sender-active", {
+      source: "cron",
+    });
     expect(updateAcceptanceRateMock).toHaveBeenCalledWith("sender-active");
   });
 });

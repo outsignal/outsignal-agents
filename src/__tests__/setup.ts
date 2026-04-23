@@ -110,6 +110,10 @@ vi.mock("@/lib/db", () => {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    senderHealthEvent: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
     campaignSequenceRule: {
       findMany: vi.fn(),
       create: vi.fn(),

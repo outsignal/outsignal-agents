@@ -528,9 +528,13 @@ export async function getSenderBudget(senderId: string) {
  * but only slows progression when a sender has enough connection volume for
  * acceptance-rate gating to be statistically meaningful.
  */
-export async function progressWarmup(senderId: string): Promise<void> {
+export async function progressWarmup(
+  senderId: string,
+  opts?: { source?: "cron" | "manual" | "catch-up" },
+): Promise<void> {
   const sender = await prisma.sender.findUnique({ where: { id: senderId } });
   if (!sender || sender.warmupDay <= 0) return;
+  const source = opts?.source ?? "cron";
 
   // Idempotency: only advance once per calendar day.
   // warmupDay should equal (days since warmupStartedAt) + 1
@@ -564,6 +568,19 @@ export async function progressWarmup(senderId: string): Promise<void> {
       dailyConnectionLimit: limits.connections,
       dailyMessageLimit: limits.messages,
       dailyProfileViewLimit: limits.profileViews,
+    },
+  });
+
+  await prisma.senderHealthEvent.create({
+    data: {
+      senderId,
+      status: sender.healthStatus ?? "healthy",
+      reason: "warmup_advanced",
+      detail:
+        `Warmup advanced day ${sender.warmupDay} -> ${newDay} via ${source}. ` +
+        `Limits: connections ${sender.dailyConnectionLimit} -> ${limits.connections}, ` +
+        `messages ${sender.dailyMessageLimit} -> ${limits.messages}, ` +
+        `profile views ${sender.dailyProfileViewLimit} -> ${limits.profileViews}.`,
     },
   });
 }

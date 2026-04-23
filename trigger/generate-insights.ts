@@ -293,7 +293,7 @@ export const generateInsightsTask = schedules.task({
     // Sequential per-sender loop — safe default, per-sender DB queries
     for (const sender of activeSenders) {
       try {
-        await progressWarmup(sender.id);
+        await progressWarmup(sender.id, { source: "cron" });
         warmupProcessed++;
       } catch (err) {
         warmupErrors++;

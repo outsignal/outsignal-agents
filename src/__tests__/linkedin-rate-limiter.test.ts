@@ -963,8 +963,13 @@ describe("progressWarmup", () => {
       warmupDay: 7,
       acceptanceRate: 0.35,
       warmupStartedAt: null, // skip idempotency check
+      healthStatus: "healthy",
+      dailyConnectionLimit: 10,
+      dailyMessageLimit: 15,
+      dailyProfileViewLimit: 20,
     });
     (prisma.sender.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.senderHealthEvent.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
     await progressWarmup("sender-1");
 
@@ -976,6 +981,14 @@ describe("progressWarmup", () => {
         dailyConnectionLimit: expect.any(Number),
         dailyMessageLimit: expect.any(Number),
         dailyProfileViewLimit: expect.any(Number),
+      }),
+    });
+    expect(prisma.senderHealthEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        senderId: "sender-1",
+        status: "healthy",
+        reason: "warmup_advanced",
+        detail: expect.stringContaining("Warmup advanced day 7 -> 8 via cron."),
       }),
     });
   });
@@ -1051,6 +1064,7 @@ describe("progressWarmup", () => {
     await progressWarmup("sender-1");
 
     expect(prisma.sender.update).not.toHaveBeenCalled();
+    expect(prisma.senderHealthEvent.create).not.toHaveBeenCalled();
   });
 
   it("advances a statistically significant healthy sender", async () => {
