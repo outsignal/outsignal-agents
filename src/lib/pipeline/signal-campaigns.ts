@@ -33,6 +33,7 @@ import { chainActions } from "@/lib/linkedin/chain";
 import { applyTimingJitter } from "@/lib/linkedin/jitter";
 import { createSequenceRulesForCampaign } from "@/lib/linkedin/sequencing";
 import { assignSenderForPerson } from "@/lib/linkedin/sender";
+import { notify } from "@/lib/notify";
 import { postMessage } from "@/lib/slack";
 import type { DiscoveryFilter } from "@/lib/discovery/types";
 
@@ -57,6 +58,87 @@ interface CampaignProcessResult {
   signalsMatched: number;
   leadsAdded: number;
   leadsDeployed: number;
+}
+
+const VENDOR_UNAVAILABLE_STATUS_CODES = new Set([
+  403, 404, 408, 409, 422, 429, 500, 502, 503, 504,
+]);
+
+const NETWORK_ERROR_CODES = new Set([
+  "ENOTFOUND",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function extractNumericStatus(error: unknown): number | null {
+  const record = asRecord(error);
+  if (!record) return null;
+
+  const direct = record.status ?? record.statusCode;
+  const directNumber =
+    typeof direct === "number"
+      ? direct
+      : typeof direct === "string" && direct.trim().length > 0
+        ? Number(direct)
+        : NaN;
+  if (!Number.isNaN(directNumber)) return directNumber;
+
+  const response = asRecord(record.response);
+  if (!response) return null;
+  const responseStatus = response.status ?? response.statusCode;
+  const responseNumber =
+    typeof responseStatus === "number"
+      ? responseStatus
+      : typeof responseStatus === "string" && responseStatus.trim().length > 0
+        ? Number(responseStatus)
+        : NaN;
+  return Number.isNaN(responseNumber) ? null : responseNumber;
+}
+
+function extractErrorCode(error: unknown): string {
+  const record = asRecord(error);
+  if (!record) return "";
+
+  const direct = record.code;
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return direct.trim().toUpperCase();
+  }
+
+  const cause = asRecord(record.cause);
+  const nested = cause?.code;
+  if (typeof nested === "string" && nested.trim().length > 0) {
+    return nested.trim().toUpperCase();
+  }
+
+  return "";
+}
+
+export function isVendorUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const statusCode = extractNumericStatus(error);
+  const code = extractErrorCode(error);
+
+  return (
+    /apollo disabled/i.test(message) ||
+    (statusCode !== null &&
+      VENDOR_UNAVAILABLE_STATUS_CODES.has(statusCode)) ||
+    NETWORK_ERROR_CODES.has(code) ||
+    /\bstatus code (403|404|408|409|422|429|500|502|503|504)\b/i.test(
+      message,
+    ) ||
+    /\b(timed? out|timeout|connection refused|network error|ssl|certificate verify failed)\b/i.test(
+      message,
+    )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -227,12 +309,29 @@ async function processSingleCampaign(
       // so these signals get retried after credits are topped up
       throw error;
     }
+    if (isVendorUnavailableError(error)) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[Pipeline] Discovery skipped for campaign "${campaign.name}" — vendor unavailable: ${errorMessage}`,
+      );
+      await notify({
+        type: "system",
+        severity: "warning",
+        title: "Signal campaign discovery skipped",
+        workspaceSlug,
+        message:
+          `Signal campaign "${campaign.name}" could not run discovery because the vendor was unavailable: ${errorMessage}`,
+        metadata: {
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          adapter: "apollo",
+          source: "signal_campaigns",
+        },
+      });
+      return { signalsMatched: signals.length, leadsAdded: 0, leadsDeployed: 0 };
+    }
     console.error(`[Pipeline] Discovery failed for campaign "${campaign.name}":`, error);
-    // Still update lastSignalProcessedAt to avoid re-attempting the same signals
-    await prisma.campaign.update({
-      where: { id: campaign.id },
-      data: { lastSignalProcessedAt: new Date() },
-    });
     throw error;
   }
 
@@ -259,7 +358,9 @@ async function processSingleCampaign(
   });
 
   // 6. Dedup and promote to Person table (also enqueues enrichment)
-  const promotionResult = await deduplicateAndPromote(workspaceSlug, [stagingResult.runId]);
+  const promotionResult = await deduplicateAndPromote(workspaceSlug, [stagingResult.runId], {
+    campaignId: campaign.id,
+  });
 
   if (promotionResult.promotedIds.length === 0) {
     await prisma.campaign.update({
