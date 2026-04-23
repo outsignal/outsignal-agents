@@ -29,7 +29,12 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const updated = await approveCampaignLeads(id);
+  const updated = await approveCampaignLeads(id, {
+    adminEmail: session.email,
+    actorRole: session.role,
+    workspaceSlug: campaign.workspaceSlug,
+    campaignName: campaign.name,
+  });
 
   // Determine if this triggered dual approval
   const action = updated.status === "approved" ? "both_approved" : "leads_approved";

@@ -755,6 +755,8 @@ model Campaign {
   contentApproved   Boolean   @default(false)
   contentFeedback   String?
   contentApprovedAt DateTime?
+  approvedContentHash     String?
+  approvedContentSnapshot Json?
 
   // EmailBison linkage (used in Phase 10 deploy)
   // @unique: guards against BL-070 concurrent-deploy race — two deploys cannot

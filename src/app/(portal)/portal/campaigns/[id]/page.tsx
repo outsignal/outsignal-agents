@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign } from "@/lib/campaigns/operations";
+import { hasContentDrifted } from "@/lib/campaigns/content-integrity";
 import { CampaignDetailTabs } from "@/components/portal/campaign-detail-tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { EmailActivityPoint } from "@/components/charts/email-activity-chart";
@@ -38,6 +39,15 @@ export default async function PortalCampaignDetailPage({
   if (!campaign || campaign.workspaceSlug !== workspaceSlug) {
     notFound();
   }
+  const hasApprovalBaseline = Boolean(
+    campaign.contentApprovedAt ||
+      campaign.approvedContentHash ||
+      campaign.approvedContentSnapshot,
+  );
+  const contentDrifted = hasApprovalBaseline
+    ? await hasContentDrifted(campaign.id)
+    : false;
+  const approvedContentVersion = campaign.approvedContentHash?.slice(0, 12) ?? null;
 
   // Bootstrap adapters
   initAdapters();
@@ -337,10 +347,34 @@ export default async function PortalCampaignDetailPage({
                 <Clock className="h-3.5 w-3.5" />
                 Last updated {formatDateTime(campaign.updatedAt)}
               </span>
+              {approvedContentVersion && (
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Approved content version {approvedContentVersion}
+                </span>
+              )}
             </div>
           </>
         )}
       </div>
+
+      {hasApprovalBaseline && contentDrifted && (
+        <Card className="border-amber-300/60 bg-amber-50/60 dark:border-amber-700/50 dark:bg-amber-950/20">
+          <CardContent className="py-4 text-sm text-amber-950 dark:text-amber-100">
+            <div className="font-medium">
+              Content has been modified since client approval — re-approval needed.
+            </div>
+            <div className="mt-1 text-amber-900/80 dark:text-amber-200/80">
+              {campaign.contentApprovedAt
+                ? `Last approved ${formatDateTime(new Date(campaign.contentApprovedAt))}. `
+                : ""}
+              {approvedContentVersion
+                ? `Approved version ${approvedContentVersion} no longer matches the current sequence content.`
+                : "The current sequence content no longer matches the last approved snapshot."}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status-dependent content */}
       {(campaign.status === "draft" || campaign.status === "internal_review") && (

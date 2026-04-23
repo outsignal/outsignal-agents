@@ -91,7 +91,12 @@ export async function POST(
   }
 
   // No hard violations -> proceed with approval
-  const updated = await approveCampaignContent(id);
+  const updated = await approveCampaignContent(id, {
+    adminEmail: session.email,
+    actorRole: session.role,
+    workspaceSlug: campaign.workspaceSlug,
+    campaignName: campaign.name,
+  });
 
   const action = updated.status === "approved" ? "both_approved" : "content_approved";
 

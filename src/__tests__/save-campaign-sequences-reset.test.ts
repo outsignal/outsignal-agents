@@ -95,6 +95,8 @@ function fakeRawCampaign(overrides: Record<string, unknown> = {}) {
     contentApproved: false,
     contentFeedback: null,
     contentApprovedAt: null,
+    approvedContentHash: null,
+    approvedContentSnapshot: null,
     emailBisonCampaignId: null,
     publishedAt: null,
     deployedAt: null,
@@ -140,6 +142,8 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
       name: "Test Campaign",
       status: "pending_approval",
       contentApproved: true,
+      contentApprovedAt: new Date("2026-04-20T00:00:00.000Z"),
+      approvedContentHash: "hash-123",
       emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
       linkedinSequence: null,
     });
@@ -163,6 +167,8 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     expect(updateArgs.where).toEqual({ id: CAMPAIGN_ID });
     expect(updateArgs.data.contentApproved).toBe(false);
     expect(updateArgs.data.contentApprovedAt).toBeNull();
+    expect(updateArgs.data.approvedContentHash).toBeNull();
+    expect(updateArgs.data.approvedContentSnapshot).toBeNull();
     // status was pending_approval, not approved → no status flip needed
     expect(updateArgs.data).not.toHaveProperty("status");
     // leadsApproved must NOT be touched (deferred per BL-053 scope).
@@ -197,6 +203,8 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
       name: "1210 Healthcare",
       status: "approved",
       contentApproved: true,
+      contentApprovedAt: new Date("2026-04-20T00:00:00.000Z"),
+      approvedContentHash: "hash-1210",
       emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
       linkedinSequence: null,
     });
@@ -221,6 +229,8 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     const updateArgs = mockUpdate.mock.calls[0][0];
     expect(updateArgs.data.contentApproved).toBe(false);
     expect(updateArgs.data.contentApprovedAt).toBeNull();
+    expect(updateArgs.data.approvedContentHash).toBeNull();
+    expect(updateArgs.data.approvedContentSnapshot).toBeNull();
     // THE FIX: status must flip back to pending_approval.
     expect(updateArgs.data.status).toBe("pending_approval");
     // leadsApproved stays — sequence rewrite doesn't invalidate the lead list.

@@ -13,6 +13,7 @@
 
 import { prisma } from "@/lib/db";
 import { SYSTEM_ADMIN_EMAIL } from "@/lib/audit";
+import { createApprovedContentArtifact } from "@/lib/campaigns/content-integrity";
 import { validateListForChannel, runDataQualityPreCheck, type DataQualityReport } from "@/lib/campaigns/list-validation";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
 import { auditTargetListForChannel, type ChannelValidationResult } from "@/lib/validation/channel-gate";
@@ -43,6 +44,13 @@ export interface UpdateCampaignParams {
   targetListId?: string;
 }
 
+export interface ApprovalAuditContext {
+  adminEmail: string;
+  actorRole?: string | null;
+  workspaceSlug: string;
+  campaignName: string;
+}
+
 export interface CampaignSummary {
   id: string;
   name: string;
@@ -70,6 +78,8 @@ export interface CampaignDetail extends CampaignSummary {
   leadsApprovedAt: Date | null;
   contentFeedback: string | null;
   contentApprovedAt: Date | null;
+  approvedContentHash: string | null;
+  approvedContentSnapshot: unknown | null;
   emailBisonCampaignId: number | null;
   publishedAt: Date | null;
   deployedAt: Date | null;
@@ -221,6 +231,8 @@ function formatCampaignDetail(
     contentApproved: boolean;
     contentFeedback: string | null;
     contentApprovedAt: Date | null;
+    approvedContentHash?: string | null;
+    approvedContentSnapshot?: unknown | null;
     emailBisonCampaignId: number | null;
     publishedAt: Date | null;
     deployedAt: Date | null;
@@ -262,6 +274,8 @@ function formatCampaignDetail(
     leadsApprovedAt: raw.leadsApprovedAt,
     contentFeedback: raw.contentFeedback,
     contentApprovedAt: raw.contentApprovedAt,
+    approvedContentHash: raw.approvedContentHash ?? null,
+    approvedContentSnapshot: raw.approvedContentSnapshot ?? null,
     emailBisonCampaignId: raw.emailBisonCampaignId,
     publishedAt: raw.publishedAt,
     deployedAt: raw.deployedAt,
@@ -838,6 +852,8 @@ export async function saveCampaignSequences(
         status: true,
         updatedAt: true,
         contentApproved: true,
+        contentApprovedAt: true,
+        approvedContentHash: true,
         emailSequence: true,
         linkedinSequence: true,
       },
@@ -879,6 +895,11 @@ export async function saveCampaignSequences(
     // A copyStrategy-only save (no sequences passed) is metadata — it does
     // not touch contentApproved.
     const shouldResetApproval = current.contentApproved && isOverwrite;
+    const shouldClearApprovedArtifact =
+      isOverwrite &&
+      (current.contentApproved ||
+        current.contentApprovedAt != null ||
+        current.approvedContentHash != null);
     const previousStatus = current.status;
 
     // Finding A: active/deployed/paused/completed campaigns must not accept
@@ -902,9 +923,14 @@ export async function saveCampaignSequences(
         ? "pending_approval"
         : previousStatus;
 
+    if (shouldClearApprovedArtifact) {
+      updateData.approvedContentHash = null;
+      updateData.approvedContentSnapshot = null;
+      updateData.contentApprovedAt = null;
+    }
+
     if (shouldResetApproval) {
       updateData.contentApproved = false;
-      updateData.contentApprovedAt = null;
       // Mirror the forward-transition pattern in approveCampaignContent /
       // approveCampaignLeads (status flips when dual-approval state changes).
       // If the campaign had reached 'approved' via dual approval, the reset
@@ -1004,7 +1030,10 @@ export async function saveCampaignSequences(
  * @returns Updated CampaignDetail
  * @throws If campaign not found
  */
-export async function approveCampaignLeads(id: string): Promise<CampaignDetail> {
+export async function approveCampaignLeads(
+  id: string,
+  auditContext?: ApprovalAuditContext,
+): Promise<CampaignDetail> {
   return prisma.$transaction(async (tx) => {
     const current = await tx.campaign.findUnique({
       where: { id },
@@ -1029,6 +1058,27 @@ export async function approveCampaignLeads(id: string): Promise<CampaignDetail> 
       data: updateData,
       include: targetListInclude,
     });
+
+    if (auditContext) {
+      await tx.auditLog.create({
+        data: {
+          action: "campaign.approve_leads",
+          entityType: "Campaign",
+          entityId: id,
+          adminEmail: auditContext.adminEmail,
+          metadata: {
+            actorRole: auditContext.actorRole ?? "client",
+            campaignName: auditContext.campaignName,
+            previousStatus: current.status,
+            newStatus: campaign.status,
+            approvedAt:
+              campaign.leadsApprovedAt?.toISOString() ?? new Date().toISOString(),
+            workspaceSlug: auditContext.workspaceSlug,
+            contentHash: campaign.approvedContentHash,
+          },
+        },
+      });
+    }
 
     return formatCampaignDetail(campaign);
   });
@@ -1075,19 +1125,33 @@ export async function rejectCampaignLeads(
  * @returns Updated CampaignDetail
  * @throws If campaign not found
  */
-export async function approveCampaignContent(id: string): Promise<CampaignDetail> {
+export async function approveCampaignContent(
+  id: string,
+  auditContext?: ApprovalAuditContext,
+): Promise<CampaignDetail> {
   return prisma.$transaction(async (tx) => {
     const current = await tx.campaign.findUnique({
       where: { id },
-      select: { leadsApproved: true, status: true },
+      select: {
+        leadsApproved: true,
+        status: true,
+        emailSequence: true,
+        linkedinSequence: true,
+      },
     });
 
     if (!current) throw new Error(`Campaign not found: '${id}'`);
+    const approvedArtifact = createApprovedContentArtifact({
+      emailSequence: parseJsonArray(current.emailSequence),
+      linkedinSequence: parseJsonArray(current.linkedinSequence),
+    });
 
     const updateData: Record<string, unknown> = {
       contentApproved: true,
       contentApprovedAt: new Date(),
       contentFeedback: null,
+      approvedContentHash: approvedArtifact.approvedContentHash,
+      approvedContentSnapshot: approvedArtifact.approvedContentSnapshot,
     };
 
     if (current.leadsApproved && current.status === "pending_approval") {
@@ -1099,6 +1163,28 @@ export async function approveCampaignContent(id: string): Promise<CampaignDetail
       data: updateData,
       include: targetListInclude,
     });
+
+    if (auditContext) {
+      await tx.auditLog.create({
+        data: {
+          action: "campaign.approve_content",
+          entityType: "Campaign",
+          entityId: id,
+          adminEmail: auditContext.adminEmail,
+          metadata: {
+            actorRole: auditContext.actorRole ?? "client",
+            campaignName: auditContext.campaignName,
+            previousStatus: current.status,
+            newStatus: campaign.status,
+            approvedAt:
+              campaign.contentApprovedAt?.toISOString() ??
+              new Date().toISOString(),
+            workspaceSlug: auditContext.workspaceSlug,
+            contentHash: campaign.approvedContentHash,
+          },
+        },
+      });
+    }
 
     return formatCampaignDetail(campaign);
   });

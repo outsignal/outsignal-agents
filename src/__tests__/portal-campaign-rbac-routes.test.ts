@@ -38,6 +38,14 @@ vi.mock("@/lib/notify", () => ({
   notify: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    workspace: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+  },
+}));
+
 vi.mock("@/lib/copy-quality", () => ({
   runFullSequenceValidation: vi.fn(() => ({
     hardViolations: [],
@@ -59,10 +67,13 @@ const baseCampaign = {
   id: "camp-1",
   name: "Portal Campaign",
   workspaceSlug: "ws-1",
+  status: "pending_approval",
   channels: ["email"],
   copyStrategy: "pvp",
   emailSequence: null,
   linkedinSequence: null,
+  approvedContentHash: null,
+  approvedContentSnapshot: null,
 };
 
 describe("Portal campaign RBAC routes", () => {
@@ -99,6 +110,8 @@ describe("Portal campaign RBAC routes", () => {
     approveCampaignContentMock.mockResolvedValue({
       ...baseCampaign,
       status: "approved",
+      contentApprovedAt: new Date("2026-04-23T12:15:00.000Z"),
+      approvedContentHash: "abc123def456",
     });
 
     const { POST } = await import(
@@ -109,7 +122,12 @@ describe("Portal campaign RBAC routes", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(approveCampaignContentMock).toHaveBeenCalledWith("camp-1");
+    expect(approveCampaignContentMock).toHaveBeenCalledWith("camp-1", {
+      adminEmail: "admin@example.com",
+      actorRole: "admin",
+      workspaceSlug: "ws-1",
+      campaignName: "Portal Campaign",
+    });
     expect(body.campaign.status).toBe("approved");
   });
 
@@ -129,6 +147,37 @@ describe("Portal campaign RBAC routes", () => {
 
     expect(res.status).toBe(403);
     expect(approveCampaignLeadsMock).not.toHaveBeenCalled();
+  });
+
+  it("admin can approve leads and writes an AuditLog row", async () => {
+    getPortalSessionMock.mockResolvedValue({
+      workspaceSlug: "ws-1",
+      email: "admin@example.com",
+      role: "admin",
+      exp: Infinity,
+    });
+    approveCampaignLeadsMock.mockResolvedValue({
+      ...baseCampaign,
+      status: "pending_approval",
+      leadsApprovedAt: new Date("2026-04-23T12:16:00.000Z"),
+      approvedContentHash: "abc123def456",
+    });
+
+    const { POST } = await import(
+      "@/app/api/portal/campaigns/[id]/approve-leads/route"
+    );
+
+    const res = await POST(makeRequest(), { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(approveCampaignLeadsMock).toHaveBeenCalledWith("camp-1", {
+      adminEmail: "admin@example.com",
+      actorRole: "admin",
+      workspaceSlug: "ws-1",
+      campaignName: "Portal Campaign",
+    });
+    expect(body.campaign.status).toBe("pending_approval");
   });
 
   it("viewer cannot request content changes", async () => {
