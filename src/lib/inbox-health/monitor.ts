@@ -30,8 +30,8 @@ export interface DisconnectedEntry {
   /** Age in whole days since `firstDisconnectedAt`. */
   ageDays: number;
   /**
-   * True when the underlying Sender row was never authenticated
-   * (sessionConnectedAt is null AND sessionStatus='not_setup'). These
+   * True when the underlying Sender row has never been connected.
+   * `firstConnectedAt` is the durable source of truth here; these
    * are provisioning stalls, not real disconnects.
    */
   neverConnected: boolean;
@@ -238,6 +238,7 @@ async function checkWorkspace(
       emailAddress: true,
       sessionStatus: true,
       sessionConnectedAt: true,
+      firstConnectedAt: true,
       lastActiveAt: true,
       createdAt: true,
     },
@@ -278,13 +279,12 @@ async function checkWorkspace(
     nextDisconnectedSince[emailKey] = firstDisconnectedAt;
 
     const senderRow = senderByEmail.get(emailKey);
-    // "Never connected" heuristic: Sender row exists, has never
-    // authenticated (sessionConnectedAt null + sessionStatus not_setup).
-    // Fall back to false when we have no Sender row (i.e. an inbox only
-    // exists in EmailBison and hasn't been synced).
+    // "Never connected" heuristic: Sender row exists but has no durable
+    // firstConnectedAt stamp. That covers true onboarding gaps, while
+    // previously connected inboxes that later dropped session now stay in
+    // the reconnection buckets instead of getting mislabeled as onboarding.
     const neverConnected = senderRow
-      ? senderRow.sessionConnectedAt === null &&
-        senderRow.sessionStatus === "not_setup"
+      ? senderRow.firstConnectedAt === null
       : false;
 
     // For never-connected inboxes, prefer Sender.createdAt to compute

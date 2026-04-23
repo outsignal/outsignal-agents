@@ -156,6 +156,7 @@ describe("inbox-monitor — neverConnected precedence (Finding 2.5)", () => {
         emailAddress: "stale@example.com",
         sessionStatus: "not_setup",
         sessionConnectedAt: null,
+        firstConnectedAt: null,
         lastActiveAt: null,
         createdAt: tenDaysAgo,
       },
@@ -176,6 +177,33 @@ describe("inbox-monitor — neverConnected precedence (Finding 2.5)", () => {
     expect(change.staleProvisioning.find((e) => e.email === "stale@example.com")).toBeDefined();
     expect(change.criticalDisconnections.find((e) => e.email === "stale@example.com")).toBeUndefined();
     expect(change.persistentDisconnections.find((e) => e.email === "stale@example.com")).toBeUndefined();
+  });
+
+  it("previously connected sender is treated as reconnection-needed even if sessionStatus is not_setup", async () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000);
+    mockSenderFindMany.mockResolvedValue([
+      {
+        emailAddress: "reconnect@example.com",
+        sessionStatus: "not_setup",
+        sessionConnectedAt: null,
+        firstConnectedAt: tenDaysAgo,
+        lastActiveAt: null,
+        createdAt: tenDaysAgo,
+      },
+    ]);
+    mockSnapshotFindUnique.mockResolvedValue({
+      workspaceSlug: "ws",
+      statuses: JSON.stringify({ "reconnect@example.com": "Disconnected" }),
+      disconnectedEmails: JSON.stringify([
+        { email: "reconnect@example.com", firstDisconnectedAt: tenDaysAgo.toISOString() },
+      ]),
+      checkedAt: new Date(),
+    });
+    mockSenderEmails = [{ email: "reconnect@example.com", status: "Disconnected" }];
+
+    const change = (await checkAllWorkspaces())[0];
+    expect(change.staleProvisioning.find((e) => e.email === "reconnect@example.com")).toBeUndefined();
+    expect(change.criticalDisconnections.find((e) => e.email === "reconnect@example.com")).toBeDefined();
   });
 });
 

@@ -73,6 +73,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
           emailSenderName: true,
           channel: true,
           status: true,
+          firstConnectedAt: true,
         },
       });
 
@@ -96,6 +97,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
       let workspaceUnchanged = 0;
 
       for (const senderEmail of senderEmails) {
+        const now = new Date();
         liveEbIds.add(senderEmail.id);
         const emailKey = senderEmail.email.toLowerCase();
         const trimmedSenderName = senderEmail.name?.trim();
@@ -110,7 +112,8 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
             (trimmedSenderName &&
               matchedByEbId.emailSenderName !== trimmedSenderName) ||
             matchedByEbId.channel !== newChannel ||
-            matchedByEbId.status === "deactivated";
+            matchedByEbId.status === "deactivated" ||
+            matchedByEbId.firstConnectedAt == null;
 
           if (needsUpdate) {
             await prisma.sender.update({
@@ -123,6 +126,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
                   : {}),
                 // Reactivate if it was previously deactivated but now exists in EB again
                 ...(matchedByEbId.status === "deactivated" ? { status: "active" } : {}),
+                ...(matchedByEbId.firstConnectedAt == null ? { firstConnectedAt: now } : {}),
               },
             });
             console.log(`[sync-senders] ${slug}: updated sender by EB ID ${senderEmail.id} -- ${senderEmail.email}`);
@@ -143,7 +147,8 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
             (trimmedSenderName &&
               matchedByEmail.emailSenderName !== trimmedSenderName) ||
             matchedByEmail.channel !== newChannel ||
-            matchedByEmail.status === "deactivated";
+            matchedByEmail.status === "deactivated" ||
+            matchedByEmail.firstConnectedAt == null;
 
           if (needsUpdate) {
             await prisma.sender.update({
@@ -155,6 +160,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
                   ? { emailSenderName: trimmedSenderName }
                   : {}),
                 ...(matchedByEmail.status === "deactivated" ? { status: "active" } : {}),
+                ...(matchedByEmail.firstConnectedAt == null ? { firstConnectedAt: now } : {}),
               },
             });
             console.log(`[sync-senders] ${slug}: updated sender by email -- ${senderEmail.email}`);
@@ -178,6 +184,7 @@ export async function syncSendersForAllWorkspaces(): Promise<SyncSendersResult> 
               ? { emailSenderName: trimmedSenderName }
               : {}),
             status: "active",
+            firstConnectedAt: now,
           },
         });
         console.log(`[sync-senders] ${slug}: created new sender -- ${senderEmail.email}`);

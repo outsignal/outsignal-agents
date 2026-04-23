@@ -63,8 +63,10 @@ export async function POST(
     // Check previous status to know if this is a fresh session
     const existing = await prisma.sender.findUnique({
       where: { id },
-      select: { sessionStatus: true },
+      select: { sessionStatus: true, firstConnectedAt: true },
     });
+
+    const now = new Date();
 
     await prisma.sender.update({
       where: { id },
@@ -73,10 +75,11 @@ export async function POST(
         sessionStatus: "active",
         healthStatus: "healthy",
         status: "active",
-        lastActiveAt: new Date(),
-        lastKeepaliveAt: new Date(),
+        lastActiveAt: now,
+        lastKeepaliveAt: now,
         // Set sessionConnectedAt on fresh session establishment
-        ...(existing?.sessionStatus !== "active" ? { sessionConnectedAt: new Date() } : {}),
+        ...(existing?.sessionStatus !== "active" ? { sessionConnectedAt: now } : {}),
+        ...(existing?.firstConnectedAt == null ? { firstConnectedAt: now } : {}),
       },
     });
 

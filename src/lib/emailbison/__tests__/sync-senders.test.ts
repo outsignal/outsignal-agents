@@ -62,6 +62,7 @@ describe("syncSendersForAllWorkspaces", () => {
         channel: "email",
         emailSenderName: "Charlie Phillips",
         status: "active",
+        firstConnectedAt: expect.any(Date),
       },
     });
   });
@@ -76,6 +77,7 @@ describe("syncSendersForAllWorkspaces", () => {
         emailSenderName: "Old Name",
         channel: "email",
         status: "active",
+        firstConnectedAt: null,
       },
     ]);
 
@@ -95,6 +97,7 @@ describe("syncSendersForAllWorkspaces", () => {
         emailAddress: "charlie@riseheadwearusa.com",
         channel: "email",
         emailSenderName: "Charlie Phillips",
+        firstConnectedAt: expect.any(Date),
       },
     });
   });
@@ -109,6 +112,7 @@ describe("syncSendersForAllWorkspaces", () => {
         emailSenderName: "Old Name",
         channel: "email",
         status: "active",
+        firstConnectedAt: null,
       },
     ]);
 
@@ -128,6 +132,7 @@ describe("syncSendersForAllWorkspaces", () => {
         emailBisonSenderId: 123,
         channel: "email",
         emailSenderName: "Charlie Phillips",
+        firstConnectedAt: expect.any(Date),
       },
     });
   });
@@ -157,6 +162,7 @@ describe("syncSendersForAllWorkspaces", () => {
           emailBisonSenderId: 123,
           channel: "email",
           status: "active",
+          firstConnectedAt: expect.any(Date),
         },
       });
     },

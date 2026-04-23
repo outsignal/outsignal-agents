@@ -32,7 +32,7 @@ export async function POST(
     // Verify sender exists
     const sender = await prisma.sender.findUnique({
       where: { id },
-      select: { id: true, sessionStatus: true },
+      select: { id: true, sessionStatus: true, firstConnectedAt: true },
     });
     if (!sender) {
       return NextResponse.json({ error: "Sender not found" }, { status: 404 });
@@ -53,6 +53,7 @@ export async function POST(
         lastActiveAt: now,
         lastKeepaliveAt: now,
         sessionConnectedAt: now,
+        ...(sender.firstConnectedAt == null ? { firstConnectedAt: now } : {}),
       },
     });
 

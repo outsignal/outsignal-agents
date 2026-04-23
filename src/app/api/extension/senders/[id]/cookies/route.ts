@@ -62,6 +62,11 @@ export async function POST(
 
     // Encrypt and store
     const encryptedData = encrypt(JSON.stringify(cookies));
+    const existing = await prisma.sender.findUnique({
+      where: { id },
+      select: { firstConnectedAt: true, sessionStatus: true },
+    });
+    const now = new Date();
 
     await prisma.sender.update({
       where: { id },
@@ -70,7 +75,10 @@ export async function POST(
         sessionStatus: "active",
         status: "active",
         loginMethod: "extension",
-        lastActiveAt: new Date(),
+        lastActiveAt: now,
+        lastKeepaliveAt: now,
+        ...(existing?.sessionStatus !== "active" ? { sessionConnectedAt: now } : {}),
+        ...(existing?.firstConnectedAt == null ? { firstConnectedAt: now } : {}),
         healthStatus: "healthy", // Clear any prior session_expired flag
         ...(linkedinProfileUrl ? { linkedinProfileUrl } : {}),
       },

@@ -927,6 +927,7 @@ model Sender {
   lastPolledAt       DateTime?
   lastKeepaliveAt    DateTime? // timestamp of last successful keepalive ping
   sessionConnectedAt DateTime? // when the current session was first established
+  firstConnectedAt   DateTime? // first known successful auth / inbox connection; never cleared
 
   // Pending connection tracking (pull-model v1)
   pendingConnectionCount Int       @default(0)

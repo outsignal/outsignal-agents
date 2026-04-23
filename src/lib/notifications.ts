@@ -828,7 +828,7 @@ export interface InboxDisconnectEntry {
   email: string;
   firstDisconnectedAt: string;
   ageDays: number;
-  neverConnected: boolean;
+  neverConnected: boolean; // true => inbox needs onboarding, not reconnection
 }
 
 /**
@@ -1034,7 +1034,7 @@ export async function notifyInboxDisconnect(params: {
           bodyParts.push(
             emailDivider(),
             emailLabel(`Needs Onboarding — never authenticated (${staleCount})`),
-            buildEntryListHtml(params.staleProvisioning, 20, "Never Connected", "#1e3a8a", "#dbeafe"),
+            buildEntryListHtml(params.staleProvisioning, 20, "Needs Onboarding", "#1e3a8a", "#dbeafe"),
             `<div style="margin-bottom:24px;"></div>`,
           );
         }
