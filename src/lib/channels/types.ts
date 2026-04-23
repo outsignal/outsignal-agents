@@ -33,6 +33,11 @@ export interface DeployParams {
    * Threaded from executeDeploy's `opts.skipResume`. Default: false.
    */
   skipResume?: boolean;
+  /**
+   * Allow partial EmailBison lead uploads to continue instead of failing the
+   * deploy on the first under-accepted batch. Default: false.
+   */
+  allowPartial?: boolean;
 }
 
 /** Result returned from an adapter's deploy method. */

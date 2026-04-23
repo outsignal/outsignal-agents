@@ -131,6 +131,7 @@ async function finalizeDeployStatus(
  */
 export interface ExecuteDeployOptions {
   skipResume?: boolean;
+  allowPartial?: boolean;
 }
 
 /**
@@ -359,6 +360,7 @@ export async function executeDeploy(
           workspaceSlug: campaign.workspaceSlug,
           channels,
           skipResume: opts?.skipResume === true,
+          allowPartial: opts?.allowPartial === true,
         });
       } else {
         const statusField = channel === "email" ? "emailStatus" : "linkedinStatus";

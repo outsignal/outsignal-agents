@@ -12,6 +12,9 @@
  *                             IDs from stdin (newline or comma separated).
  *   --dry-run                 Validation-only. Does NOT mutate, does NOT fire
  *                             the deploy trigger. Default is LIVE.
+ *   --allow-partial           Allow EmailBison partial lead uploads to
+ *                             continue with warning telemetry instead of
+ *                             failing the deploy closed.
  *   --admin-email=<email>     AuditLog attribution. Defaults to 'ops@outsignal.ai'
  *                             — CLI runs as ops-authorised context, matching
  *                             the rationale of patch-content-approved.ts.
@@ -47,6 +50,7 @@ export const DEFAULT_ADMIN_EMAIL = "ops@outsignal.ai";
 export interface ParsedCliArgs {
   ids: string[];
   dryRun: boolean;
+  allowPartial: boolean;
   adminEmail: string;
   incident: string | null;
 }
@@ -70,6 +74,7 @@ export function parseCliArgs(
   stdinIds: string[] = [],
 ): ParsedCliArgs {
   let dryRun = false;
+  let allowPartial = false;
   let adminEmail = DEFAULT_ADMIN_EMAIL;
   let incident: string | null = null;
   const idsFromFlag: string[] = [];
@@ -78,6 +83,10 @@ export function parseCliArgs(
     if (raw.trim().length === 0) continue;
     if (raw === "--dry-run") {
       dryRun = true;
+      continue;
+    }
+    if (raw === "--allow-partial") {
+      allowPartial = true;
       continue;
     }
     const idsVal = takeFlagValue(raw, "--ids");
@@ -126,7 +135,7 @@ export function parseCliArgs(
     );
   }
 
-  return { ids, dryRun, adminEmail, incident };
+  return { ids, dryRun, allowPartial, adminEmail, incident };
 }
 
 /**
@@ -246,6 +255,7 @@ export async function main(): Promise<SummaryEnvelope> {
         campaignId: id,
         adminEmail: args.adminEmail,
         dryRun: args.dryRun,
+        allowPartial: args.allowPartial,
       });
       outcome = classifyResult(id, result);
     } catch (err) {
@@ -354,7 +364,7 @@ const invokedAsScript =
 
 if (invokedAsScript) {
   runWithHarness(
-    "campaign-deploy --ids=<csv> [--dry-run] [--admin-email=<email>] [--incident=<ref>]",
+    "campaign-deploy --ids=<csv> [--dry-run] [--allow-partial] [--admin-email=<email>] [--incident=<ref>]",
     main,
   );
 }

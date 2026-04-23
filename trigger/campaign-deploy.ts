@@ -5,6 +5,7 @@ interface CampaignDeployPayload {
   campaignId: string;
   deployId: string;
   retryChannel?: "email" | "linkedin";
+  allowPartial?: boolean;
 }
 
 export const campaignDeployTask = task({
@@ -29,8 +30,15 @@ export const campaignDeployTask = task({
       console.log(
         `[campaign-deploy] Executing deploy ${payload.deployId} for campaign ${payload.campaignId}`,
       );
-      await executeDeploy(payload.campaignId, payload.deployId);
-      return { deployId: payload.deployId, action: "deploy", campaignId: payload.campaignId };
+      await executeDeploy(payload.campaignId, payload.deployId, {
+        allowPartial: payload.allowPartial === true,
+      });
+      return {
+        deployId: payload.deployId,
+        action: "deploy",
+        campaignId: payload.campaignId,
+        allowPartial: payload.allowPartial === true,
+      };
     }
   },
 });

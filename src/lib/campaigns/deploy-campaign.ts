@@ -37,6 +37,8 @@ export interface InitiateDeployArgs {
   adminEmail: string;
   /** If true, validate only — do not mutate state, do not fire the task. */
   dryRun?: boolean;
+  /** If true, allow partial EmailBison uploads instead of failing closed. */
+  allowPartial?: boolean;
 }
 
 export type InitiateDeployResult =
@@ -72,6 +74,7 @@ export async function initiateCampaignDeploy(
 ): Promise<InitiateDeployResult> {
   const { campaignId, adminEmail } = args;
   const dryRun = args.dryRun === true;
+  const allowPartial = args.allowPartial === true;
 
   const campaign = await getCampaign(campaignId);
   if (!campaign) {
@@ -160,6 +163,7 @@ export async function initiateCampaignDeploy(
   await tasks.trigger("campaign-deploy", {
     campaignId,
     deployId: deploy.id,
+    allowPartial,
   });
 
   auditLog({
@@ -172,6 +176,7 @@ export async function initiateCampaignDeploy(
       workspaceSlug: campaign.workspaceSlug,
       channels,
       deployId: deploy.id,
+      allowPartial,
     },
   });
 

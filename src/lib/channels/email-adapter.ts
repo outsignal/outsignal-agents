@@ -10,6 +10,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
+import type { CreateLeadResult } from "@/lib/emailbison/types";
 import { isNotFoundError } from "@/lib/emailbison/errors";
 import { buildEmailLeadPayload } from "@/lib/emailbison/lead-payload";
 import { EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES } from "@/lib/emailbison/custom-variable-names";
@@ -18,6 +19,7 @@ import {
   type SenderRoster,
 } from "@/lib/emailbison/sender-name-transform";
 import { getCampaign } from "@/lib/campaigns/operations";
+import { notify } from "@/lib/notify";
 import { withRetry } from "@/lib/utils/retry";
 import { CHANNEL_TYPES } from "./constants";
 import type {
@@ -82,6 +84,41 @@ const LAUNCHED_STATUSES: ReadonlySet<string> = new Set([
   "launching",
   "active",
 ]);
+
+function normalizeEmailAddress(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function collectRejectedLeadEmails(
+  attempted: Array<{ email: string }>,
+  accepted: CreateLeadResult[],
+): string[] {
+  const acceptedEmails = new Set(
+    accepted.map((lead) => normalizeEmailAddress(lead.email)),
+  );
+  const rejected: string[] = [];
+  for (const lead of attempted) {
+    const normalized = normalizeEmailAddress(lead.email);
+    if (!acceptedEmails.has(normalized)) {
+      rejected.push(lead.email);
+    }
+  }
+  return rejected;
+}
+
+function buildPartialUploadSummary(args: {
+  attempted: number;
+  accepted: number;
+  chunkCount: number;
+  rejectedEmails: string[];
+}): string {
+  const rejectedCount = args.attempted - args.accepted;
+  const sample =
+    args.rejectedEmails.length > 0
+      ? ` sample=${args.rejectedEmails.slice(0, 10).join(", ")}`
+      : "";
+  return `PARTIAL_UPLOAD allowed — accepted ${args.accepted}/${args.attempted} leads across ${args.chunkCount} chunk(s); rejected=${rejectedCount}.${sample}`;
+}
 
 // ---------------------------------------------------------------------------
 // Local types for email deploy
@@ -523,6 +560,7 @@ export class EmailAdapter implements ChannelAdapter {
   async deploy(params: DeployParams): Promise<void> {
     const { deployId, campaignId, campaignName, workspaceSlug } = params;
     const skipResume = params.skipResume === true;
+    const allowPartial = params.allowPartial === true;
 
     // Mark email channel as running
     await prisma.campaignDeploy.update({
@@ -943,6 +981,10 @@ export class EmailAdapter implements ChannelAdapter {
 
       const createdLeadIds: number[] = [];
       let leadCount = 0;
+      let attemptedLeadCount = 0;
+      let totalChunkCount = 0;
+      let partialChunkCount = 0;
+      const rejectedLeadEmails: string[] = [];
       if (eligibleLeads.length > 0) {
         await ebClient.ensureCustomVariables([
           ...EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES,
@@ -988,24 +1030,63 @@ export class EmailAdapter implements ChannelAdapter {
         const LEAD_UPSERT_CHUNK_SIZE = 500;
         for (let i = 0; i < eligibleLeads.length; i += LEAD_UPSERT_CHUNK_SIZE) {
           const chunk = eligibleLeads.slice(i, i + LEAD_UPSERT_CHUNK_SIZE);
-          const upserted = await withRetry(() =>
-            ebClient.createOrUpdateLeadsMultiple(
-              chunk.map((entry) => ({
-                ...buildEmailLeadPayload(
-                  {
-                    email: entry.person.email!,
-                    firstName: entry.person.firstName,
-                    lastName: entry.person.lastName,
-                    jobTitle: entry.person.jobTitle,
-                    company: entry.person.company,
-                    companyDomain: entry.person.companyDomain,
-                    location: entry.person.location,
-                  },
-                  campaign.description,
-                ),
-              })),
+          const batchNumber = Math.floor(i / LEAD_UPSERT_CHUNK_SIZE) + 1;
+          totalChunkCount += 1;
+          const payload = chunk.map((entry) => ({
+            ...buildEmailLeadPayload(
+              {
+                email: entry.person.email!,
+                firstName: entry.person.firstName,
+                lastName: entry.person.lastName,
+                jobTitle: entry.person.jobTitle,
+                company: entry.person.company,
+                companyDomain: entry.person.companyDomain,
+                location: entry.person.location,
+              },
+              campaign.description,
             ),
+          }));
+          const upserted = await withRetry(() =>
+            ebClient.createOrUpdateLeadsMultiple(payload),
           );
+          attemptedLeadCount += payload.length;
+
+          if (upserted.length < payload.length) {
+            partialChunkCount += 1;
+            const rejected = collectRejectedLeadEmails(payload, upserted);
+            rejectedLeadEmails.push(...rejected);
+            const title = allowPartial
+              ? "Partial EmailBison lead upload allowed"
+              : "Partial EmailBison lead upload blocked deploy";
+            const message =
+              `Campaign "${campaignName}" uploaded ${upserted.length}/${payload.length} leads in chunk ${batchNumber}. ` +
+              `${allowPartial ? "Continuing because allowPartial=true." : "Aborting deploy to prevent a silent bad launch."}`;
+            await notify({
+              type: "error",
+              severity: allowPartial ? "warning" : "error",
+              title,
+              workspaceSlug,
+              message,
+              metadata: {
+                campaignId,
+                campaignName,
+                deployId,
+                attemptedCount: payload.length,
+                acceptedCount: upserted.length,
+                rejectedCount: payload.length - upserted.length,
+                rejectedEmailsSample: rejected.slice(0, 10),
+                allowPartial,
+              },
+            });
+
+            if (!allowPartial) {
+              throw new Error(
+                `EmailBison accepted ${upserted.length}/${payload.length} leads in Step 4. Rejected sample: ${rejected
+                  .slice(0, 10)
+                  .join(", ") || "(none returned)"}`,
+              );
+            }
+          }
 
           for (const lead of upserted) {
             createdLeadIds.push(lead.id);
@@ -1028,7 +1109,15 @@ export class EmailAdapter implements ChannelAdapter {
             emailStatus: "complete",
             emailStepCount,
             leadCount: 0,
-            emailError: "no_leads_to_deploy",
+            emailError:
+              attemptedLeadCount > 0
+                ? `${buildPartialUploadSummary({
+                    attempted: attemptedLeadCount,
+                    accepted: leadCount,
+                    chunkCount: totalChunkCount,
+                    rejectedEmails: rejectedLeadEmails,
+                  })} | no_leads_to_deploy`
+                : "no_leads_to_deploy",
           },
         });
         return;
@@ -1193,7 +1282,14 @@ export class EmailAdapter implements ChannelAdapter {
             emailStepCount,
             leadCount,
             emailError:
-              "STAGED — resume pending PM review via EB UI or manual resumeCampaign call",
+              partialChunkCount > 0
+                ? `${buildPartialUploadSummary({
+                    attempted: attemptedLeadCount,
+                    accepted: leadCount,
+                    chunkCount: totalChunkCount,
+                    rejectedEmails: rejectedLeadEmails,
+                  })} | STAGED — resume pending PM review via EB UI or manual resumeCampaign call`
+                : "STAGED — resume pending PM review via EB UI or manual resumeCampaign call",
           },
         });
         return;
@@ -1232,7 +1328,15 @@ export class EmailAdapter implements ChannelAdapter {
           emailStatus: "complete",
           emailStepCount,
           leadCount,
-          emailError: null,
+          emailError:
+            partialChunkCount > 0
+              ? buildPartialUploadSummary({
+                  attempted: attemptedLeadCount,
+                  accepted: leadCount,
+                  chunkCount: totalChunkCount,
+                  rejectedEmails: rejectedLeadEmails,
+                })
+              : null,
         },
       });
     } catch (err) {

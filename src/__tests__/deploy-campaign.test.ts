@@ -75,6 +75,8 @@ function fakeCampaign(
     leadsApprovedAt: new Date("2026-04-14T00:00:00Z"),
     contentFeedback: null,
     contentApprovedAt: new Date("2026-04-14T00:00:00Z"),
+    approvedContentHash: null,
+    approvedContentSnapshot: null,
     publishedAt: null,
     deployedAt: null,
     icpCriteria: null,
@@ -138,6 +140,7 @@ describe("initiateCampaignDeploy — happy path", () => {
     expect(triggerMock).toHaveBeenCalledWith("campaign-deploy", {
       campaignId: "camp-1",
       deployId: "deploy-1",
+      allowPartial: false,
     });
 
     expect(auditLogMock).toHaveBeenCalledWith(
@@ -151,6 +154,32 @@ describe("initiateCampaignDeploy — happy path", () => {
           workspaceSlug: "acme",
           channels: ["email", "linkedin"],
           deployId: "deploy-1",
+          allowPartial: false,
+        }),
+      }),
+    );
+  });
+
+  it("threads allowPartial through the trigger payload and audit metadata", async () => {
+    getCampaignMock.mockResolvedValue(fakeCampaign({ channels: ["email"] }));
+    prismaAny.campaign.updateMany.mockResolvedValue({ count: 1 });
+    prismaAny.campaignDeploy.create.mockResolvedValue({ id: "deploy-allow-partial" });
+
+    await initiateCampaignDeploy({
+      campaignId: "camp-1",
+      adminEmail: "ops@outsignal.ai",
+      allowPartial: true,
+    });
+
+    expect(triggerMock).toHaveBeenCalledWith("campaign-deploy", {
+      campaignId: "camp-1",
+      deployId: "deploy-allow-partial",
+      allowPartial: true,
+    });
+    expect(auditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          allowPartial: true,
         }),
       }),
     );

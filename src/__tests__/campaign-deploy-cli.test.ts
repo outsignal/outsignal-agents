@@ -18,6 +18,7 @@ const initiateDeployMock =
       campaignId: string;
       adminEmail: string;
       dryRun?: boolean;
+      allowPartial?: boolean;
     }) => Promise<InitiateDeployResult>
   >();
 vi.mock("@/lib/campaigns/deploy-campaign", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/lib/campaigns/deploy-campaign", () => ({
     campaignId: string;
     adminEmail: string;
     dryRun?: boolean;
+    allowPartial?: boolean;
   }) => initiateDeployMock(args),
 }));
 
@@ -79,6 +81,7 @@ describe("parseCliArgs", () => {
     expect(out).toEqual({
       ids: ["c1", "c2", "c3"],
       dryRun: false,
+      allowPartial: false,
       adminEmail: DEFAULT_ADMIN_EMAIL,
       incident: null,
     });
@@ -92,6 +95,11 @@ describe("parseCliArgs", () => {
   it("parses --dry-run", () => {
     const out = parseCliArgs(["--ids=c1", "--dry-run"]);
     expect(out.dryRun).toBe(true);
+  });
+
+  it("parses --allow-partial", () => {
+    const out = parseCliArgs(["--ids=c1", "--allow-partial"]);
+    expect(out.allowPartial).toBe(true);
   });
 
   it("parses --admin-email override", () => {
@@ -147,6 +155,7 @@ describe("parseCliArgs", () => {
     expect(out).toEqual({
       ids: ["c1", "c2"],
       dryRun: true,
+      allowPartial: false,
       adminEmail: "ops@outsignal.ai",
       incident: "BL-061",
     });
@@ -284,8 +293,9 @@ describe("main() — helper throw handling", () => {
 
   it("captures a mid-batch helper throw on the 2nd of 3 IDs: keeps prior success, records synthetic failure with helper_threw + zombie warning, stops early", async () => {
     // 1st ID: success (deployed). 2nd ID: helper throws. 3rd ID: never called.
-    initiateDeployMock.mockImplementation(async ({ campaignId }) => {
+    initiateDeployMock.mockImplementation(async ({ campaignId, allowPartial }) => {
       if (campaignId === "camp-1") {
+        expect(allowPartial).toBe(false);
         return {
           ok: true,
           dryRun: false,
@@ -368,5 +378,48 @@ describe("main() — helper throw handling", () => {
     // Loud-and-visible stderr warning must have fired with both lines.
     expect(stderrWrites).toMatch(/HELPER THREW for camp-2/);
     expect(stderrWrites).toMatch(/zombie deploy/i);
+  });
+
+  it("passes allowPartial through to initiateCampaignDeploy", async () => {
+    initiateDeployMock.mockResolvedValue({
+      ok: true,
+      dryRun: false,
+      deployId: "deploy-allow-partial",
+      beforeStatus: "approved",
+      afterStatus: "deployed",
+      channels: ["email"],
+      campaignName: "Acme E1",
+      workspaceSlug: "acme",
+    });
+    getCampaignMock.mockResolvedValue({
+      id: "camp-1",
+      status: "deployed",
+      deployedAt: new Date("2026-04-23T10:00:00.000Z"),
+    });
+
+    process.argv = [
+      "node",
+      "campaign-deploy.ts",
+      "--ids=camp-1",
+      "--allow-partial",
+    ];
+
+    try {
+      await main();
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", {
+        configurable: true,
+        value: originalStdinIsTTY,
+      });
+      stderrSpy.mockRestore();
+      process.argv = originalArgv;
+    }
+
+    expect(initiateDeployMock).toHaveBeenCalledWith({
+      campaignId: "camp-1",
+      adminEmail: DEFAULT_ADMIN_EMAIL,
+      dryRun: false,
+      allowPartial: true,
+    });
   });
 });
