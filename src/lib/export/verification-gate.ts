@@ -12,9 +12,15 @@
  * 5. Export readyPeople only (blocked are auto-excluded)
  */
 
-import { getVerificationStatus, verifyEmail, VerificationResult } from "@/lib/verification/bounceban";
+import { verifyEmail, VerificationResult } from "@/lib/verification/bounceban";
 import { verifyEmail as verifyEmailKitt } from "@/lib/verification/kitt";
 import { prisma } from "@/lib/db";
+import {
+  extractEmailVerificationSnapshot,
+  hasEmailVerificationProvider,
+  isEmailVerificationTrusted,
+  NEEDS_REVERIFICATION_STATUS,
+} from "@/lib/verification/provenance";
 
 /** Shape of a Person record as returned by the TargetListPerson include. */
 export interface ExportPerson {
@@ -98,23 +104,23 @@ export async function getListExportReadiness(listId: string): Promise<ExportRead
   const blockedPeople: ExportPerson[] = [];
   const verticalBreakdown: Record<string, number> = {};
 
-  // Check verification status for each person in parallel
-  const verificationResults = await Promise.all(
-    members.map(async (m) => {
-      const status = await getVerificationStatus(m.person.id);
-      return { person: m.person as ExportPerson, status };
-    })
-  );
+  for (const member of members) {
+    const person = member.person as ExportPerson;
+    const verification = extractEmailVerificationSnapshot(person.enrichmentData);
+    const status = verification.emailVerificationStatus;
 
-  for (const { person, status } of verificationResults) {
     // Accumulate vertical breakdown
     const vertical = person.vertical ?? "Unknown";
     verticalBreakdown[vertical] = (verticalBreakdown[vertical] ?? 0) + 1;
 
-    if (status === null) {
+    if (
+      !status ||
+      status === NEEDS_REVERIFICATION_STATUS ||
+      (status === "valid" && !hasEmailVerificationProvider(verification))
+    ) {
       // Never verified
       needsVerificationPeople.push(person);
-    } else if (status.isExportable) {
+    } else if (isEmailVerificationTrusted(verification)) {
       // Verified and exportable (status === "valid")
       readyPeople.push(person);
     } else {

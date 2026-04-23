@@ -20,6 +20,12 @@
  */
 
 import { prisma } from "@/lib/db";
+import {
+  extractEmailVerificationSnapshot,
+  hasEmailVerificationProvider,
+  isEmailVerificationTrusted,
+  NEEDS_REVERIFICATION_STATUS,
+} from "@/lib/verification/provenance";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,26 +57,7 @@ function isPlaceholderEmail(email: string): boolean {
   return PLACEHOLDER_DOMAINS.some((d) => lower.includes(d));
 }
 
-/** Accepted verification statuses for email campaigns. */
-const ACCEPTED_STATUSES = new Set(["valid", "deliverable"]);
 const CATCH_ALL_STATUSES = new Set(["catch_all", "valid_catch_all"]);
-
-/**
- * Parse emailVerificationStatus from a person's enrichmentData JSON string.
- * Returns null if unparseable or not present.
- */
-function getVerificationStatus(enrichmentData: string | null): string | null {
-  if (!enrichmentData) return null;
-  try {
-    const data = JSON.parse(enrichmentData);
-    if (typeof data === "object" && data !== null && typeof data.emailVerificationStatus === "string") {
-      return data.emailVerificationStatus;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // validatePeopleForChannel
@@ -138,18 +125,30 @@ export async function validatePeopleForChannel(
       } else if (isPlaceholderEmail(person.email)) {
         failures.push("placeholder email not allowed");
       } else {
-        // Check verification status
-        const status = getVerificationStatus(person.enrichmentData);
+        const verification = extractEmailVerificationSnapshot(
+          person.enrichmentData,
+        );
+        const status = verification.emailVerificationStatus;
         if (!status) {
           failures.push("email not verified (no verification status)");
-        } else if (ACCEPTED_STATUSES.has(status)) {
+        } else if (status === NEEDS_REVERIFICATION_STATUS) {
+          failures.push("email requires re-verification");
+        } else if (isEmailVerificationTrusted(verification)) {
           // Pass
         } else if (CATCH_ALL_STATUSES.has(status)) {
-          if (!allowCatchAll) {
+          if (!hasEmailVerificationProvider(verification)) {
+            failures.push(
+              "email not cleared (missing verification provider provenance)",
+            );
+          } else if (!allowCatchAll) {
             failures.push(`email verification status '${status}' not accepted (enable allowCatchAll to include)`);
           }
+        } else if (status === "valid" && !hasEmailVerificationProvider(verification)) {
+          failures.push(
+            "email not cleared (missing verification provider provenance)",
+          );
         } else {
-          // invalid, risky, unknown, or any other status
+          // invalid, risky, unknown, deliverable, or any other status
           failures.push(`email verification status '${status}' not accepted`);
         }
       }

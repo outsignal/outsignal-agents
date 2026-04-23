@@ -18,6 +18,11 @@ import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { incrementDailySpend } from "@/lib/enrichment/costs";
 import { recordEnrichment } from "@/lib/enrichment/log";
 import type { RateLimits } from "@/lib/discovery/rate-limit";
+import {
+  extractEmailVerificationSnapshot,
+  isEmailVerificationTrusted,
+  NEEDS_REVERIFICATION_STATUS,
+} from "./provenance";
 
 /**
  * BounceBan rate limits.
@@ -542,19 +547,15 @@ export async function getVerificationStatus(
 ): Promise<{ status: string; isExportable: boolean } | null> {
   const person = await prisma.person.findUnique({ where: { id: personId } });
   if (!person?.enrichmentData) return null;
+  const verification = extractEmailVerificationSnapshot(person.enrichmentData);
+  const status = verification.emailVerificationStatus;
+  if (!status || status === NEEDS_REVERIFICATION_STATUS) return null;
 
-  let data: Record<string, unknown>;
-  try {
-    data = JSON.parse(person.enrichmentData);
-  } catch {
+  if (status === "valid" && !isEmailVerificationTrusted(verification)) {
     return null;
   }
-
-  if (!data.emailVerificationStatus) return null;
-
-  const status = data.emailVerificationStatus as string;
   return {
     status,
-    isExportable: status === "valid",
+    isExportable: isEmailVerificationTrusted(verification),
   };
 }

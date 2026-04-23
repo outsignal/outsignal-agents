@@ -349,6 +349,7 @@ export async function verifyEmail(
           email,
           emailVerificationStatus: status,
           emailVerifiedAt: new Date().toISOString(),
+          emailVerificationProvider: "kitt",
           emailVerifiedBy: "kitt",
         }),
       },
