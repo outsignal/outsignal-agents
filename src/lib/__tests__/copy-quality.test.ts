@@ -11,6 +11,7 @@ import {
   type CopyStrategy,
   // Verify existing exports still work
   checkCopyQuality,
+  checkBusinessModelAssumption,
   checkSequenceQuality,
   formatSequenceViolations,
   // Phase 54: validateAllChecks aggregator
@@ -343,6 +344,36 @@ describe("checkSubjectLine", () => {
 });
 
 // ---------------------------------------------------------------------------
+// checkBusinessModelAssumption
+// ---------------------------------------------------------------------------
+describe("checkBusinessModelAssumption", () => {
+  it("flags 1210-style temp-agency copy when ICP is broad", () => {
+    const result = checkBusinessModelAssumption(
+      "Hi {FIRSTNAME}, as a temp agency navigating shift-cover pressure, you probably see planners lose hours every week. Worth a quick look?",
+      {
+        icpCriteriaPrompt:
+          "We sell to temp agencies, recruiters, and warehouse operators across the UK.",
+      },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("hard");
+    expect(result!.violation).toContain("business-model assumption");
+  });
+
+  it("does not flag the same copy when the ICP is tightly scoped to that business model", () => {
+    const result = checkBusinessModelAssumption(
+      "Hi {FIRSTNAME}, as a temp agency navigating shift-cover pressure, you probably see planners lose hours every week. Worth a quick look?",
+      {
+        icpCriteriaPrompt: "We only target UK temp agencies with 10-100 recruiters.",
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // BANNED_PATTERNS expansion
 // ---------------------------------------------------------------------------
 describe("BANNED_PATTERNS expansion", () => {
@@ -548,5 +579,22 @@ describe("validateAllChecks", () => {
     const text = "Hi {FIRSTNAME}, we help companies scale outreach.";
     const result = validateAllChecks(text, "body", emailOpts);
     expect(result.checks.some((c) => c.violation.includes("CTA must be a question"))).toBe(true);
+  });
+
+  it("adds business-model-assumption violations when context suggests a broad ICP", () => {
+    const text =
+      "Hi {FIRSTNAME}, as a temp agency navigating shift-cover pressure, you probably see planners lose hours every week. Worth a quick look?";
+    const result = validateAllChecks(text, "body", {
+      ...emailOpts,
+      businessModelContext: {
+        icpCriteriaPrompt:
+          "We target temp agencies, recruiters, and warehouse operators across the UK.",
+      },
+    });
+
+    expect(
+      result.checks.some((c) => c.violation.includes("business-model assumption")),
+    ).toBe(true);
+    expect(result.hasHardViolation).toBe(true);
   });
 });

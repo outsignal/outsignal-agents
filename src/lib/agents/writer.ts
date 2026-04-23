@@ -558,6 +558,7 @@ const writerTools = {
             tonalMismatch: "pass" as const,
             angleRepetition: "pass" as const,
             aiPatterns: "pass" as const,
+            businessModelAssumption: "pass" as const,
           },
         };
       } finally {

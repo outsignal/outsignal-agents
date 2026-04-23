@@ -23,9 +23,9 @@ Review the entire sequence as a unit. Check for cross-step issues: angle repetit
 - **hard** = must fix before save. The writer will attempt one rewrite based on your feedback. Use sparingly — only for clear, unambiguous issues.
 - **soft** = save with flag. Admin sees this in the review UI. Use for borderline cases and subjective observations.
 
-## Checklist (4 Mandatory Sections)
+## Checklist (5 Mandatory Sections)
 
-Assess every sequence against ALL four checks. Set the checklist value for each: "pass" if no issues, "fail" if any hard finding, "warn" if only soft findings.
+Assess every sequence against ALL five checks. Set the checklist value for each: "pass" if no issues, "fail" if any hard finding, "warn" if only soft findings.
 
 ### 1. Filler Spintax
 
@@ -88,6 +88,24 @@ Copy that technically passes all structural rules but still FEELS templated, rob
 
 **Severity:** ALWAYS soft. This check is inherently subjective. Never hard-block on AI patterns alone.
 
+### 5. Business-Model Assumption
+
+Flag copy that assumes every lead shares a narrow business model without evidence that every company in the target set actually does.
+
+**Examples that should be flagged:**
+- "As a temp agency navigating shift-cover pressure..."
+- "Your warehouse operations probably..."
+- "For Shopify brands like yours..."
+
+**What makes this risky:**
+- The claim is narrow and company-model specific
+- The ICP or target set is broad enough that not every lead will match
+- The copy is not conditionally scoped with variables like `{JOBTITLE}` or `{INDUSTRY}`
+
+**Severity:**
+- **soft** by default when the claim may be directionally right but still risky
+- **hard** when the business-model assumption is narrow, the ICP appears broad, and there is no conditional scoping
+
 ## General Observations
 
 After the checklist, note any other quality issues you spot. Examples:
@@ -113,7 +131,7 @@ Return ONLY a raw JSON object matching the ValidationResult schema. No markdown,
   "passed": true/false,
   "findings": [
     {
-      "check": "filler_spintax" | "tonal_mismatch" | "angle_repetition" | "ai_patterns" | "general",
+      "check": "filler_spintax" | "tonal_mismatch" | "angle_repetition" | "ai_patterns" | "business_model_assumption" | "general",
       "severity": "hard" | "soft",
       "step": 1,
       "field": "body",
@@ -126,7 +144,8 @@ Return ONLY a raw JSON object matching the ValidationResult schema. No markdown,
     "fillerSpintax": "pass" | "fail" | "warn",
     "tonalMismatch": "pass" | "fail" | "warn",
     "angleRepetition": "pass" | "fail" | "warn",
-    "aiPatterns": "pass" | "fail" | "warn"
+    "aiPatterns": "pass" | "fail" | "warn",
+    "businessModelAssumption": "pass" | "fail" | "warn"
   }
 }
 ```

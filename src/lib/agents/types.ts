@@ -478,6 +478,7 @@ export const validationFindingSchema = z.object({
     "tonal_mismatch",
     "angle_repetition",
     "ai_patterns",
+    "business_model_assumption",
     "structural",
     "general",
   ]),
@@ -497,6 +498,7 @@ export const validationResultSchema = z.object({
     tonalMismatch: z.enum(["pass", "fail", "warn"]),
     angleRepetition: z.enum(["pass", "fail", "warn"]),
     aiPatterns: z.enum(["pass", "fail", "warn"]),
+    businessModelAssumption: z.enum(["pass", "fail", "warn"]),
   }),
 });
 

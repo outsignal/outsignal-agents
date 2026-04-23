@@ -3,6 +3,7 @@ import { getPortalSession } from "@/lib/portal-session";
 import { getCampaign, approveCampaignContent } from "@/lib/campaigns/operations";
 import { notifyApproval } from "@/lib/notifications";
 import { notify } from "@/lib/notify";
+import { prisma } from "@/lib/db";
 import {
   runFullSequenceValidation,
   type CopyStrategy,
@@ -36,6 +37,17 @@ export async function POST(
   // --- Full copy quality validation (Phase 57 — hard-block on violations) ---
   const strategy = (campaign.copyStrategy as CopyStrategy) ?? "pvp";
   const channels = campaign.channels ?? ["email"];
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: campaign.workspaceSlug },
+    select: {
+      icpCriteriaPrompt: true,
+      icpIndustries: true,
+    },
+  });
+  const businessModelContext = {
+    icpCriteriaPrompt: workspace?.icpCriteriaPrompt ?? null,
+    icpIndustries: workspace?.icpIndustries ?? null,
+  };
 
   let allHardViolations: Array<{ step: number; field: string; violation: string }> = [];
   let allSoftWarnings: Array<{ step: number; field: string; violation: string }> = [];
@@ -52,6 +64,7 @@ export async function POST(
     const emailResult = runFullSequenceValidation(emailSequence, {
       strategy,
       channel: "email",
+      businessModelContext,
     });
     allHardViolations = allHardViolations.concat(emailResult.hardViolations);
     allSoftWarnings = allSoftWarnings.concat(emailResult.softWarnings);
@@ -69,6 +82,7 @@ export async function POST(
     const linkedinResult = runFullSequenceValidation(linkedinSequence, {
       strategy,
       channel: "linkedin",
+      businessModelContext,
     });
     allHardViolations = allHardViolations.concat(
       linkedinResult.hardViolations.map((v) => ({ ...v, field: `linkedin:${v.field}` })),

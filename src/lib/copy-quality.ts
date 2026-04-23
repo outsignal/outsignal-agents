@@ -163,6 +163,11 @@ export interface CheckResult {
   violation: string;
 }
 
+export interface BusinessModelAssumptionOptions {
+  icpCriteriaPrompt?: string | null;
+  icpIndustries?: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Validation aggregator types (Phase 54)
 // ---------------------------------------------------------------------------
@@ -171,12 +176,95 @@ export interface ValidateAllOptions {
   strategy: CopyStrategy;
   channel: "email" | "linkedin";
   isFirstStep: boolean;
+  businessModelContext?: BusinessModelAssumptionOptions;
 }
 
 export interface StepValidationResult {
   field: string; // "body" | "subject" | "subjectVariantB"
   checks: CheckResult[]; // All violations found
   hasHardViolation: boolean;
+}
+
+const BUSINESS_MODEL_PATTERNS = [
+  /\bas an?\s+([a-z][a-z/& -]{2,40})\b/i,
+  /\byour\s+([a-z][a-z/& -]{2,40})\s+(operations?|store|stores|agency|agencies|practice|practices|clinic|clinics|warehouse|warehouses)\b/i,
+  /\byour\s+(temp agency|staffing agency|recruitment agency|shopify store|warehouse operation|warehouse operations)\b/i,
+];
+
+function normaliseText(value: string | null | undefined): string {
+  return typeof value === "string" ? value.toLowerCase() : "";
+}
+
+function inferBusinessModelPhrase(text: string): string | null {
+  for (const pattern of BUSINESS_MODEL_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const rawPhrase = (match[1] ?? match[0]).trim().replace(/\s+/g, " ");
+    const phrase = rawPhrase
+      .split(/\b(?:navigating|dealing|handling|trying|who|that|with|under)\b/i)[0]
+      ?.trim()
+      .replace(/^[Aa]s an?\s+/, "")
+      .replace(/^your\s+/, "");
+    if (phrase.length > 0) return phrase.toLowerCase();
+  }
+  return null;
+}
+
+function hasConditionalScoping(text: string): boolean {
+  return /\{JOBTITLE\}|\{INDUSTRY\}/i.test(text);
+}
+
+function normaliseBusinessToken(token: string): string {
+  if (token.endsWith("ies")) return `${token.slice(0, -3)}y`;
+  if (token.endsWith("s")) return token.slice(0, -1);
+  return token;
+}
+
+function isBroadIcpContext(params: BusinessModelAssumptionOptions, phrase: string): boolean {
+  const icpText = [params.icpCriteriaPrompt, params.icpIndustries]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  if (!icpText) return true;
+
+  const normalisedIcpWords = new Set(
+    icpText
+      .split(/[^a-z]+/i)
+      .filter(Boolean)
+      .map((token) => normaliseBusinessToken(token)),
+  );
+  const phraseTokens = phrase
+    .split(/[^a-z]+/i)
+    .filter(Boolean)
+    .map((token) => normaliseBusinessToken(token));
+  const mentionsPhrase = phraseTokens.every((token) =>
+    normalisedIcpWords.has(token),
+  );
+  const hasBreadthMarkers = /,|;|\/|\bor\b|\band\b/.test(icpText);
+  return hasBreadthMarkers || !mentionsPhrase;
+}
+
+export function checkBusinessModelAssumption(
+  text: string,
+  options: BusinessModelAssumptionOptions = {},
+): CheckResult | null {
+  if (!text) return null;
+
+  const phrase = inferBusinessModelPhrase(text);
+  if (!phrase) return null;
+
+  const scoped = hasConditionalScoping(text);
+  const broadIcp = isBroadIcpContext(options, phrase);
+
+  if (!broadIcp && !scoped) {
+    return null;
+  }
+
+  return {
+    severity: broadIcp && !scoped ? "hard" : "soft",
+    violation: `business-model assumption: copy presumes every lead is a ${phrase} without per-lead company evidence`,
+  };
 }
 
 /**
@@ -430,6 +518,12 @@ export function validateAllChecks(
       const cta = checkCTAFormat(text);
       if (cta) checks.push(cta);
     }
+
+    const businessModel = checkBusinessModelAssumption(
+      text,
+      options.businessModelContext,
+    );
+    if (businessModel) checks.push(businessModel);
   } else {
     // subject or subjectVariantB
     const sl = checkSubjectLine(text);
@@ -482,6 +576,7 @@ export function runFullSequenceValidation(
   options?: {
     strategy?: CopyStrategy;
     channel?: "email" | "linkedin";
+    businessModelContext?: BusinessModelAssumptionOptions;
   },
 ): FullValidationResult {
   const hardViolations: FullValidationResult["hardViolations"] = [];
@@ -501,6 +596,7 @@ export function runFullSequenceValidation(
         strategy,
         channel,
         isFirstStep,
+        businessModelContext: options?.businessModelContext,
       });
       for (const check of bodyResult.checks) {
         const entry = { step: stepNum, field: "body", violation: check.violation };
