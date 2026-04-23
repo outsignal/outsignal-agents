@@ -63,6 +63,18 @@ interface SenderExecutionGuard {
   pausedCampaignNames: string[];
 }
 
+interface UsageBudgetSlot {
+  sent?: number;
+  limit?: number;
+  remaining?: number;
+}
+
+interface SenderUsageBudget {
+  connections?: UsageBudgetSlot;
+  messages?: UsageBudgetSlot;
+  profileViews?: UsageBudgetSlot;
+}
+
 export class ApiClient {
   private baseUrl: string;
   private secret: string;
@@ -163,8 +175,8 @@ export class ApiClient {
   /**
    * Get daily usage/budget for a sender.
    */
-  async getUsage(senderId: string): Promise<Record<string, unknown>> {
-    const result = await this.request<{ budget: Record<string, unknown> }>(
+  async getUsage(senderId: string): Promise<SenderUsageBudget> {
+    const result = await this.request<{ budget: SenderUsageBudget }>(
       `/api/linkedin/usage/${senderId}`,
     );
     return result.budget;

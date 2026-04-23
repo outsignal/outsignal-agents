@@ -146,28 +146,37 @@ export const SPREAD_MAX_DELAY = 1_800_000;
 export const SPREAD_FALLBACK_DELAY = 300_000;
 
 /**
- * Calculate delay between actions to spread them evenly across remaining business hours.
+ * Calculate delay between actions to spread a SINGLE action type evenly across
+ * the remaining business hours for that sender.
  *
- * IMPORTANT: `totalDailyRemaining` is the TOTAL daily budget remaining across
- * ALL action types for this sender (connections + messages + views), NOT the
- * current batch size. Using the batch size caused a front-loading bug where a
- * worker fetching 5 actions at 10 AM with 8h left would use 8h/5 = 30min spread
- * (clamped to MAX), drain all 5 in ~2.5h, then poll and fetch 5 more — consuming
- * the full daily budget by lunchtime instead of spreading across 10h business
- * window. James B-S sent 14 completions in 2h (10:29-12:19) on 2026-04-14.
+ * IMPORTANT: `remainingForType` is the remaining daily budget for the specific
+ * action type about to run (connections OR messages OR profile views), NOT the
+ * current batch size and NOT the pooled sum across all action types. Pooling
+ * the denominator let low-volume connection budgets race ahead because the
+ * worker divided by spare message/profile-view capacity too.
  *
  * @param remainingMs - milliseconds until end of business window today
- * @param totalDailyRemaining - total actions left in today's budget across all types
- * @returns delay in milliseconds, with ±20% random jitter, clamped to [MIN, MAX]
+ * @param remainingForType - actions left in today's budget for the current type
+ * @returns delay in milliseconds, with jitter at both clamp boundaries so
+ *          repeated MIN/MAX hits do not become perfectly periodic.
  */
 export function getSpreadDelay(
   remainingMs: number,
-  totalDailyRemaining: number,
+  remainingForType: number,
 ): number {
-  if (totalDailyRemaining <= 0) return SPREAD_FALLBACK_DELAY;
+  if (remainingForType <= 0) return SPREAD_FALLBACK_DELAY;
   if (remainingMs <= 0) return SPREAD_FALLBACK_DELAY;
 
-  const targetDelay = remainingMs / totalDailyRemaining;
+  const targetDelay = remainingMs / remainingForType;
+  if (targetDelay >= SPREAD_MAX_DELAY) {
+    const jitter = 0.9 + Math.random() * 0.2;
+    return SPREAD_MAX_DELAY * jitter;
+  }
+  if (targetDelay <= SPREAD_MIN_DELAY) {
+    const jitter = 0.9 + Math.random() * 0.2;
+    // Keep the 3-minute floor as a hard safety bound even when the clamp jitters.
+    return Math.max(SPREAD_MIN_DELAY, SPREAD_MIN_DELAY * jitter);
+  }
 
   // Add ±20% random jitter
   const jitter = 0.8 + Math.random() * 0.4;

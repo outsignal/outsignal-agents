@@ -70,6 +70,18 @@ interface ActionItem {
   linkedinUrl: string | null;
 }
 
+interface UsageBudgetSlot {
+  sent?: number;
+  limit?: number;
+  remaining?: number;
+}
+
+interface SenderUsageBudget {
+  connections?: UsageBudgetSlot;
+  messages?: UsageBudgetSlot;
+  profileViews?: UsageBudgetSlot;
+}
+
 interface WorkerOptions {
   apiUrl: string;
   apiSecret: string;
@@ -1059,8 +1071,9 @@ export class Worker {
         return true;
       };
 
-      // Fetch daily usage for spread delay calculation
-      let usageData: Record<string, unknown> | null = null;
+      // Fetch daily usage for spread delay calculation. Refreshed before each
+      // subsequent action so the delay follows the latest per-type counters.
+      let usageData: SenderUsageBudget | null = null;
       try {
         usageData = await this.api.getUsage(sender.id);
       } catch (err) {
@@ -1089,6 +1102,33 @@ export class Worker {
         const action = actions[i];
         const { guardedSender, pausedCampaignNames } = executionGuard;
 
+        if (i > 0) {
+          try {
+            usageData = await this.api.getUsage(sender.id);
+          } catch (err) {
+            console.warn(
+              `[Worker] Failed to refresh usage for ${sender.name} before ${action.actionType}, reusing prior budget snapshot:`,
+              err,
+            );
+          }
+        }
+
+        const remainingForType = this.getRemainingBudgetForActionType(
+          action.actionType,
+          usageData,
+        );
+        if (remainingForType !== null && remainingForType <= 0) {
+          console.warn(
+            `[Worker] ${sender.name}: no ${action.actionType} budget remaining — yielding ${action.id} for the next eligible tick`,
+          );
+          await this.safeMarkFailedIfRunning(action.id, "graceful_yield");
+          inFlight.delete(action.id);
+          if (inFlight.size === 0) {
+            this.inFlightActionIdsBySender.delete(sender.id);
+          }
+          continue;
+        }
+
         if (!this.isSenderRunnable(guardedSender)) {
           const effectiveState = this.getEffectiveSenderState(guardedSender);
           console.warn(
@@ -1108,6 +1148,60 @@ export class Worker {
             this.inFlightActionIdsBySender.delete(sender.id);
           }
           continue;
+        }
+
+        // Keep the existing inter-action pattern: the first claimed action
+        // runs immediately, and subsequent actions sleep beforehand using the
+        // next action's own remaining daily budget bucket.
+        if (i > 0 && this.running) {
+          const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
+          const elapsedMs = Date.now() - senderStartedAt;
+          if (shouldExitSenderLoop({ elapsedMs, nextDelayMs: delay })) {
+            console.log(
+              `[Worker] ${sender.name}: approaching timeout (${Math.round(elapsedMs / 1000)}s elapsed + ${Math.round(delay / 1000)}s spread), processed ${i}/${actions.length} — releasing ${inFlight.size} claimed action(s) for next tick`,
+            );
+            await releaseClaimedActions();
+            break;
+          }
+          const delaySec = Math.round(delay / 1000);
+          const totalRemaining = this.getTotalDailyRemaining(usageData);
+          const typeRemainingLabel =
+            remainingForType === null ? "n/a" : String(remainingForType);
+          const { hour, minute } = getLondonHoursMinutes();
+          const hoursLeft = Math.max(0, 18 - (hour + minute / 60));
+          console.log(
+            `[Worker] ${sender.name}: spread ${action.actionType} (${typeRemainingLabel} remaining; pooled ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
+          );
+          await sleep(delay);
+          if (!(await refreshExecutionGuard("after spread sleep"))) {
+            break;
+          }
+
+          const refreshedEffectiveState = this.getEffectiveSenderState(
+            executionGuard.guardedSender,
+          );
+          if (!this.isSenderRunnable(executionGuard.guardedSender)) {
+            console.warn(
+              `[Worker] ${sender.name}: sender is now status=${executionGuard.guardedSender.status} ${refreshedEffectiveState.healthStatus}/${refreshedEffectiveState.sessionStatus} after spread sleep — releasing ${inFlight.size} claimed action(s)`,
+            );
+            await releaseClaimedActions();
+            break;
+          }
+
+          if (
+            action.campaignName &&
+            executionGuard.pausedCampaignNames.has(action.campaignName)
+          ) {
+            console.warn(
+              `[Worker] ${sender.name}: campaign "${action.campaignName}" paused during spread sleep — cancelling ${action.id} before execution`,
+            );
+            await this.safeMarkFailedIfRunning(action.id, "campaign_paused");
+            inFlight.delete(action.id);
+            if (inFlight.size === 0) {
+              this.inFlightActionIdsBySender.delete(sender.id);
+            }
+            continue;
+          }
         }
 
         console.log(
@@ -1142,39 +1236,6 @@ export class Worker {
             `[Worker] ${sender.name}: sender is now ${effectiveState.healthStatus}/${effectiveState.sessionStatus} — stopping sender loop`,
           );
           break;
-        }
-
-        // Spread delay between actions (not after the last one)
-        if (i < actions.length - 1 && this.running) {
-          const delay = this.calculateSpreadDelay(action.actionType, sender, usageData);
-          const elapsedMs = Date.now() - senderStartedAt;
-          if (shouldExitSenderLoop({ elapsedMs, nextDelayMs: delay })) {
-            console.log(
-              `[Worker] ${sender.name}: approaching timeout (${Math.round(elapsedMs / 1000)}s elapsed + ${Math.round(delay / 1000)}s spread), processed ${i + 1}/${actions.length} — releasing ${inFlight.size} claimed action(s) for next tick`,
-            );
-            await releaseClaimedActions();
-            break;
-          }
-          const delaySec = Math.round(delay / 1000);
-          const totalRemaining = this.getTotalDailyRemaining(usageData);
-          // Pick remaining per type for log transparency. Same shape the
-          // /api/linkedin/usage endpoint returns.
-          const pick = (slot: unknown): number => {
-            const s = slot as { remaining?: number } | undefined;
-            return typeof s?.remaining === "number" ? Math.max(0, s.remaining) : 0;
-          };
-          const connRemaining = pick(usageData?.connections);
-          const msgRemaining = pick(usageData?.messages);
-          const pvRemaining = pick(usageData?.profileViews);
-          const { hour, minute } = getLondonHoursMinutes();
-          const hoursLeft = Math.max(0, 18 - (hour + minute / 60));
-          console.log(
-            `[Worker] ${sender.name}: spread ${connRemaining}c + ${msgRemaining}m + ${pvRemaining}pv (total ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
-          );
-          await sleep(delay);
-          if (!(await refreshExecutionGuard("after spread sleep"))) {
-            break;
-          }
         }
       }
     } finally {
@@ -1303,45 +1364,82 @@ export class Worker {
 
   /**
    * Sum the TOTAL remaining daily budget across every action type (connections,
-   * messages, profile views). This is the correct denominator for spread math —
-   * using a single action type or the current batch size causes front-loading
-   * (see getSpreadDelay docstring for the 2026-04-14 incident).
+   * messages, profile views). Used only as a fallback when the worker cannot
+   * determine a per-type budget bucket for the current action.
    *
    * Withdrawals are excluded: they have no daily limit and run outside the
    * business-hour spread entirely.
    */
   private getTotalDailyRemaining(
-    usageData: Record<string, unknown> | null,
+    usageData: SenderUsageBudget | null,
   ): number {
     if (!usageData) return 0;
-    const pickRemaining = (slot: unknown): number => {
-      const s = slot as { remaining?: number } | undefined;
-      return typeof s?.remaining === "number" ? Math.max(0, s.remaining) : 0;
-    };
     return (
-      pickRemaining(usageData.connections) +
-      pickRemaining(usageData.messages) +
-      pickRemaining(usageData.profileViews)
+      this.pickRemaining(usageData.connections) +
+      this.pickRemaining(usageData.messages) +
+      this.pickRemaining(usageData.profileViews)
     );
+  }
+
+  private pickRemaining(slot: UsageBudgetSlot | undefined): number {
+    return typeof slot?.remaining === "number" ? Math.max(0, slot.remaining) : 0;
+  }
+
+  private getBudgetSlotForActionType(
+    actionType: string,
+    usageData: SenderUsageBudget | null,
+  ): UsageBudgetSlot | null {
+    if (!usageData) return null;
+
+    switch (actionType) {
+      case "connect":
+      case "connection_request":
+        return usageData.connections ?? null;
+      case "message":
+        return usageData.messages ?? null;
+      case "profile_view":
+      case "check_connection":
+        return usageData.profileViews ?? null;
+      default:
+        return null;
+    }
+  }
+
+  private getRemainingBudgetForActionType(
+    actionType: string,
+    usageData: SenderUsageBudget | null,
+  ): number | null {
+    const slot = this.getBudgetSlotForActionType(actionType, usageData);
+    if (!slot) return null;
+    if (typeof slot.limit !== "number") return null;
+    return this.pickRemaining(slot);
   }
 
   /**
    * Calculate spread delay for an action, falling back to getActionDelay() if usage data unavailable.
    *
-   * Uses the sender's TOTAL daily remaining budget (connections + messages +
-   * views) — NOT the batch size — as the denominator, so N actions are spread
-   * evenly across the remaining business window.
+   * Uses the action type's OWN remaining daily budget (connections OR messages
+   * OR views) so low-volume connection caps are not artificially accelerated by
+   * spare message/profile-view capacity. Types without a configured budget
+   * bucket (e.g. withdrawals) fall back to the pooled denominator.
    */
   private calculateSpreadDelay(
-    _actionType: string,
+    actionType: string,
     _sender: SenderConfig,
-    usageData: Record<string, unknown> | null,
+    usageData: SenderUsageBudget | null,
   ): number {
     if (!usageData) return getActionDelay();
 
-    const totalRemaining = this.getTotalDailyRemaining(usageData);
     const remainingMs = getRemainingBusinessMs();
+    const remainingForType = this.getRemainingBudgetForActionType(
+      actionType,
+      usageData,
+    );
+    if (remainingForType !== null) {
+      return getSpreadDelay(remainingMs, remainingForType);
+    }
 
+    const totalRemaining = this.getTotalDailyRemaining(usageData);
     return getSpreadDelay(remainingMs, totalRemaining);
   }
 

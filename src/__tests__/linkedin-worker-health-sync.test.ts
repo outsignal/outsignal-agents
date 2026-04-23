@@ -428,4 +428,97 @@ describe("LinkedIn worker sender health sync fallback", () => {
     expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
     expect(worker.api.getExecutionGuard).toHaveBeenCalledTimes(1);
   });
+
+  it("uses per-action-type spread instead of pooled remaining budget", () => {
+    const worker = new Worker({
+      apiUrl: "http://localhost:3000",
+      apiSecret: "test-secret",
+      workspaceSlugs: [],
+    }) as any;
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-15T12:00:00Z"));
+
+    const usage = {
+      connections: { sent: 12, limit: 20, remaining: 8 },
+      messages: { sent: 0, limit: 30, remaining: 30 },
+      profileViews: { sent: 2, limit: 50, remaining: 48 },
+    };
+
+    expect(
+      worker.calculateSpreadDelay("connection_request", fullSender, usage),
+    ).toBe(1_800_000);
+    expect(
+      worker.calculateSpreadDelay("profile_view", fullSender, usage),
+    ).toBe(450_000);
+
+    randomSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("re-reads usage before each next action and yields exhausted types", async () => {
+    const worker = new Worker({
+      apiUrl: "http://localhost:3000",
+      apiSecret: "test-secret",
+      workspaceSlugs: [],
+    }) as any;
+    worker.running = true;
+    worker.api = {
+      getNextActions: vi.fn().mockResolvedValue([
+        {
+          id: "action-1",
+          personId: "person-1",
+          actionType: "connection_request",
+          messageBody: null,
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-1",
+          campaignName: "Campaign A",
+        },
+        {
+          id: "action-2",
+          personId: "person-2",
+          actionType: "connection_request",
+          messageBody: null,
+          priority: 1,
+          linkedinUrl: "https://www.linkedin.com/in/person-2",
+          campaignName: "Campaign B",
+        },
+      ]),
+      getUsage: vi
+        .fn()
+        .mockResolvedValueOnce({
+          connections: { sent: 19, limit: 20, remaining: 1 },
+          messages: { sent: 0, limit: 30, remaining: 30 },
+          profileViews: { sent: 0, limit: 10, remaining: 10 },
+        })
+        .mockResolvedValueOnce({
+          connections: { sent: 20, limit: 20, remaining: 0 },
+          messages: { sent: 0, limit: 30, remaining: 30 },
+          profileViews: { sent: 0, limit: 10, remaining: 10 },
+        }),
+      markFailedIfRunning: vi.fn().mockResolvedValue(undefined),
+      getExecutionGuard: vi.fn().mockResolvedValue({
+        sender: {
+          id: sender.id,
+          status: "active",
+          healthStatus: "healthy",
+          sessionStatus: "active",
+        },
+        pausedCampaignNames: [],
+      }),
+    };
+    worker.ensureSenderSessionHealthy = vi.fn().mockResolvedValue({});
+    worker.calculateSpreadDelay = vi.fn().mockReturnValue(0);
+    worker.executeAction = vi.fn().mockResolvedValue(undefined);
+
+    await worker.processSender(fullSender);
+
+    expect(worker.executeAction).toHaveBeenCalledTimes(1);
+    expect(worker.api.getUsage).toHaveBeenCalledTimes(2);
+    expect(worker.api.markFailedIfRunning).toHaveBeenCalledWith(
+      "action-2",
+      "graceful_yield",
+    );
+  });
 });

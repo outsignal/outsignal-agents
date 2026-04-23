@@ -1,12 +1,10 @@
 /**
  * Tests for the LinkedIn worker scheduler's getSpreadDelay function.
  *
- * Regression: James Bessey-Saldanha's LinkedIn account completed 14 actions
- * between 10:29–12:19 on 2026-04-14 (2 hours), not spread across the full
- * 10-hour business window. Root cause: getSpreadDelay received per-batch
- * remainingActions (batch size 5) instead of total daily budget remaining
- * (~20+ across all types), so the division produced the MIN clamp
- * aggressively and drained the batch fast.
+ * Regression: Lucy Marshall sent 12 connection requests in roughly one hour on
+ * 2026-04-23 because the worker divided by the pooled daily budget remaining
+ * across connections + messages + profile views. Connection actions were paced
+ * as if message/profile-view capacity belonged to the connection bucket.
  *
  * The worker source is excluded from the root tsconfig but vitest compiles
  * it via esbuild on-demand, so a relative import works at test time.
@@ -24,6 +22,7 @@ import {
 describe("getSpreadDelay (LinkedIn worker scheduler)", () => {
   // 10 business hours in ms (8 AM – 6 PM London)
   const TEN_HOURS_MS = 10 * 60 * 60 * 1000;
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
   const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 
   it("returns fallback when totalDailyRemaining is 0", () => {
@@ -39,23 +38,29 @@ describe("getSpreadDelay (LinkedIn worker scheduler)", () => {
   });
 
   it("clamps to MAX_DELAY (30 min) when daily remaining is small", () => {
-    // 10h / 6 = 100 min per action — should clamp to MAX (30 min)
-    // Even with jitter 1.2x, result must not exceed MAX_DELAY
+    // 10h / 6 = 100 min per action — should clamp near MAX (30 min) with
+    // ±10% jitter so the worker avoids perfectly periodic 30-minute sends.
     const delay = getSpreadDelay(TEN_HOURS_MS, 6);
-    expect(delay).toBe(SPREAD_MAX_DELAY);
+    expect(delay).toBeGreaterThanOrEqual(27 * 60 * 1000);
+    expect(delay).toBeLessThanOrEqual(33 * 60 * 1000);
   });
 
   it("clamps to MAX_DELAY across the jitter range when ideal > MAX", () => {
-    // Sanity: run several times and verify clamp holds regardless of jitter
+    // Sanity: run several times and verify the MAX clamp always jitters within
+    // a stable 27-33 minute band.
     for (let i = 0; i < 20; i++) {
-      expect(getSpreadDelay(TEN_HOURS_MS, 6)).toBe(SPREAD_MAX_DELAY);
+      const delay = getSpreadDelay(TEN_HOURS_MS, 6);
+      expect(delay).toBeGreaterThanOrEqual(27 * 60 * 1000);
+      expect(delay).toBeLessThanOrEqual(33 * 60 * 1000);
     }
   });
 
   it("clamps to MIN_DELAY (3 min) when daily remaining is huge", () => {
-    // 10h / 1000 actions = 36 seconds ideal — clamped up to 180s (3 min)
+    // 10h / 1000 actions = 36 seconds ideal — clamped up to the MIN band.
+    // The MIN floor remains hard at 3 minutes for rate-limit safety.
     const delay = getSpreadDelay(TEN_HOURS_MS, 1000);
-    expect(delay).toBe(SPREAD_MIN_DELAY);
+    expect(delay).toBeGreaterThanOrEqual(SPREAD_MIN_DELAY);
+    expect(delay).toBeLessThanOrEqual(3.3 * 60 * 1000);
   });
 
   it("produces intermediate delay when ideal falls inside [MIN, MAX]", () => {
@@ -69,24 +74,48 @@ describe("getSpreadDelay (LinkedIn worker scheduler)", () => {
     expect(delay).toBeLessThanOrEqual(1.3 * 600_000);
   });
 
-  it("regression: 6 daily remaining + 10h left → MAX_DELAY (not MIN), proving fix uses total budget not batch size", () => {
-    // Before the fix: the worker passed `dailyLimit=20, usedToday=0, batch=5`
-    // and the old signature computed `10h/20 = 30min` (clamped MAX). But the
-    // per-action spread was keyed off single action type, so a batch of 5
-    // connections would burn through in ~2.5h.
-    //
-    // With the fix: getSpreadDelay(remainingMs, totalDailyRemaining) receives
-    // the TRUE total across all types. If total remaining is 6 and 10h left,
-    // ideal = 10h/6 = 100min → clamped to 30min MAX. A batch of 5 actions
-    // then spreads across 2.5h — but the NEXT batch finds totalDailyRemaining=1
-    // and the clamp keeps pushing remaining actions toward EOB.
-    const delay = getSpreadDelay(TEN_HOURS_MS, 6);
-    expect(delay).toBe(SPREAD_MAX_DELAY);
+  it("Lucy-style connections: 20 remaining over 10h still land in the 27-33 min band", () => {
+    // 10h / 20 = 30 min exactly. This is the expected steady-state spread for
+    // fresh connection budget and should not be shortened by spare message or
+    // profile-view capacity.
+    const delay = getSpreadDelay(TEN_HOURS_MS, 20);
+    expect(delay).toBeGreaterThanOrEqual(27 * 60 * 1000);
+    expect(delay).toBeLessThanOrEqual(33 * 60 * 1000);
+  });
+
+  it("Lucy incident: 20-cap connections, 11 sent, 9 hours left — spread is 27-33 min, not 6 min", () => {
+    const remainingMs = 9 * 60 * 60 * 1000;
+    const remainingForType = 9;
+
+    const delay = getSpreadDelay(remainingMs, remainingForType);
+
+    // Pre-fix pooled denominator would have paced this around ~6 minutes.
+    // Per-type spread makes it 60 minutes ideal, then clamps into the jittered
+    // MAX band so connections do not burst at pooled-budget speed.
+    expect(delay).toBeGreaterThanOrEqual(27 * 60 * 1000);
+    expect(delay).toBeLessThanOrEqual(33 * 60 * 1000);
+  });
+
+  it("mid-day connections: 8 remaining over 6h still stay in the 27-33 min band", () => {
+    // 6h / 8 = 45 min → still clamped to MAX.
+    const delay = getSpreadDelay(SIX_HOURS_MS, 8);
+    expect(delay).toBeGreaterThanOrEqual(27 * 60 * 1000);
+    expect(delay).toBeLessThanOrEqual(33 * 60 * 1000);
+  });
+
+  it("profile views can still run with a shorter per-type spread", () => {
+    // 6h / 48 = 7.5 min, which should remain inside the clamp band.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const delay = getSpreadDelay(SIX_HOURS_MS, 48);
+    expect(delay).toBe(450_000);
+    randomSpy.mockRestore();
   });
 
   it("produces appropriately larger delays as remaining shrinks (8h left, 3 remaining → MAX)", () => {
     // 8h / 3 = 160 min — still clamped MAX. Late-day scenarios keep pressure on.
-    expect(getSpreadDelay(EIGHT_HOURS_MS, 3)).toBe(SPREAD_MAX_DELAY);
+    const delay = getSpreadDelay(EIGHT_HOURS_MS, 3);
+    expect(delay).toBeGreaterThanOrEqual(27 * 60 * 1000);
+    expect(delay).toBeLessThanOrEqual(33 * 60 * 1000);
   });
 
   it("handles fractional remainingMs without NaN/Infinity", () => {
