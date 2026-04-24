@@ -1044,10 +1044,30 @@ export class Worker {
         return;
       }
 
-      // Get next batch of actions only after session health is confirmed.
+      // Fetch daily usage for spread delay calculation. Refreshed before each
+      // subsequent action so the delay follows the latest per-type counters.
+      let usageData: SenderUsageBudget | null = null;
+      try {
+        usageData = await this.api.getUsage(sender.id);
+      } catch (err) {
+        console.warn(`[Worker] Failed to fetch usage for ${sender.name}, falling back to fixed delay:`, err);
+      }
+
       let actions: ActionItem[];
       try {
-        actions = await this.api.getNextActions(sender.id, 5);
+        const preview = await this.api.peekNextActions(sender.id, 5);
+        const plannedActionIds =
+          preview.length > 0
+            ? this.planClaimedBatch(preview, sender, usageData).actions.map(
+                (action) => action.id,
+              )
+            : [];
+
+        if (plannedActionIds.length > 0) {
+          actions = await this.api.claimActions(sender.id, plannedActionIds);
+        } else {
+          actions = await this.api.getNextActions(sender.id, 1);
+        }
       } catch (error) {
         console.error(`[Worker] Failed to get actions for ${sender.name}:`, error);
         return;
@@ -1106,15 +1126,6 @@ export class Worker {
         executionGuard = refreshed;
         return true;
       };
-
-      // Fetch daily usage for spread delay calculation. Refreshed before each
-      // subsequent action so the delay follows the latest per-type counters.
-      let usageData: SenderUsageBudget | null = null;
-      try {
-        usageData = await this.api.getUsage(sender.id);
-      } catch (err) {
-        console.warn(`[Worker] Failed to fetch usage for ${sender.name}, falling back to fixed delay:`, err);
-      }
 
       const batchPlan = this.planClaimedBatch(actions, sender, usageData);
       if (batchPlan.deferredActions.length > 0) {

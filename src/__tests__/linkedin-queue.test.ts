@@ -4,6 +4,7 @@ import {
   enqueueAction,
   getNextBatch,
   claimNextBatch,
+  claimSpecificActions,
   markComplete,
   markFailed,
   markFailedIfRunning,
@@ -1165,5 +1166,87 @@ describe("claimNextBatch", () => {
         }),
       }),
     );
+  });
+});
+
+describe("claimSpecificActions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("claims only the requested pending IDs and preserves requested order", async () => {
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "a1",
+        personId: "p1",
+        actionType: "message",
+        messageBody: "Hi",
+        priority: 1,
+        workspaceSlug: "ws",
+        campaignName: null,
+        linkedInConversationId: null,
+      },
+      {
+        id: "a2",
+        personId: "p2",
+        actionType: "profile_view",
+        messageBody: null,
+        priority: 2,
+        workspaceSlug: "ws",
+        campaignName: null,
+        linkedInConversationId: null,
+      },
+    ]);
+
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    const claimed = await claimSpecificActions("sender-1", ["a2", "a1"]);
+
+    expect(claimed.map((action) => action.id)).toEqual(["a2", "a1"]);
+    expect(prisma.linkedInAction.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "a2",
+          senderId: "sender-1",
+          status: "pending",
+        }),
+      }),
+    );
+  });
+
+  it("skips IDs that lose the pending -> running CAS race", async () => {
+    (prisma.linkedInAction.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "a1",
+        personId: "p1",
+        actionType: "message",
+        messageBody: "Hi",
+        priority: 1,
+        workspaceSlug: "ws",
+        campaignName: null,
+        linkedInConversationId: null,
+      },
+      {
+        id: "a2",
+        personId: "p2",
+        actionType: "profile_view",
+        messageBody: null,
+        priority: 2,
+        workspaceSlug: "ws",
+        campaignName: null,
+        linkedInConversationId: null,
+      },
+    ]);
+
+    (prisma.linkedInAction.updateMany as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const claimed = await claimSpecificActions("sender-1", ["a1", "a2"]);
+
+    expect(claimed.map((action) => action.id)).toEqual(["a1"]);
   });
 });

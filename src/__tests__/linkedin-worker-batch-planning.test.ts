@@ -56,6 +56,8 @@ describe("LinkedIn worker batch planning hotfix", () => {
         messages: { sent: 0, limit: 30, remaining: 30 },
         profileViews: { sent: 0, limit: 50, remaining: 50 },
       }),
+      peekNextActions: vi.fn(),
+      claimActions: vi.fn(),
       getNextActions: vi.fn(),
       markFailedIfRunning: vi.fn().mockResolvedValue(undefined),
     };
@@ -120,7 +122,11 @@ describe("LinkedIn worker batch planning hotfix", () => {
         campaignName: "BlankTag LinkedIn",
       },
     ];
-    worker.api.getNextActions.mockResolvedValue(actions);
+    worker.api.peekNextActions.mockResolvedValue(actions);
+    worker.api.claimActions.mockImplementation(
+      async (_senderId: string, actionIds: string[]) =>
+        actions.filter((action) => actionIds.includes(action.id)),
+    );
     worker.api.getUsage
       .mockResolvedValueOnce({
         connections: { sent: 0, limit: 20, remaining: 20 },
@@ -140,22 +146,12 @@ describe("LinkedIn worker batch planning hotfix", () => {
 
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(worker.api.markFailedIfRunning).toHaveBeenCalledTimes(3);
-    expect(worker.api.markFailedIfRunning).toHaveBeenNthCalledWith(
-      1,
-      "pv-3",
-      "graceful_yield",
-    );
-    expect(worker.api.markFailedIfRunning).toHaveBeenNthCalledWith(
-      2,
-      "pv-4",
-      "graceful_yield",
-    );
-    expect(worker.api.markFailedIfRunning).toHaveBeenNthCalledWith(
-      3,
-      "pv-5",
-      "graceful_yield",
-    );
+    expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
+    expect(worker.api.claimActions).toHaveBeenCalledWith(sender.id, [
+      "msg-1",
+      "pv-1",
+      "pv-2",
+    ]);
     expect(worker.executeAction).toHaveBeenCalledTimes(1);
     expect(worker.executeAction.mock.calls[0][1].id).toBe("msg-1");
 
@@ -171,8 +167,7 @@ describe("LinkedIn worker batch planning hotfix", () => {
 
   it("preserves the single-type burst fix by only executing a partial slow connection batch", async () => {
     const worker = createWorker();
-    worker.api.getNextActions.mockResolvedValue(
-      Array.from({ length: 5 }, (_, index) => ({
+    const actions = Array.from({ length: 5 }, (_, index) => ({
         id: `conn-${index + 1}`,
         personId: `person-${index + 1}`,
         actionType: "connection_request",
@@ -180,7 +175,11 @@ describe("LinkedIn worker batch planning hotfix", () => {
         priority: 1,
         linkedinUrl: `https://linkedin.com/in/person-${index + 1}`,
         campaignName: "Lucy LinkedIn",
-      })),
+      }));
+    worker.api.peekNextActions.mockResolvedValue(actions);
+    worker.api.claimActions.mockImplementation(
+      async (_senderId: string, actionIds: string[]) =>
+        actions.filter((action) => actionIds.includes(action.id)),
     );
     worker.api.getUsage.mockResolvedValue({
       connections: { sent: 15, limit: 20, remaining: 5 },
@@ -193,8 +192,11 @@ describe("LinkedIn worker batch planning hotfix", () => {
 
     await vi.advanceTimersByTimeAsync(0);
 
+    expect(worker.api.claimActions).toHaveBeenCalledWith(sender.id, [
+      "conn-1",
+    ]);
     expect(worker.executeAction).toHaveBeenCalledTimes(1);
-    expect(worker.api.markFailedIfRunning).toHaveBeenCalledTimes(4);
+    expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
 
     await vi.runAllTimersAsync();
     await promise;
@@ -204,8 +206,7 @@ describe("LinkedIn worker batch planning hotfix", () => {
 
   it("keeps the full batch when every action is on the fast 3-minute clamp", async () => {
     const worker = createWorker();
-    worker.api.getNextActions.mockResolvedValue(
-      Array.from({ length: 5 }, (_, index) => ({
+    const actions = Array.from({ length: 5 }, (_, index) => ({
         id: `action-${index + 1}`,
         personId: `person-${index + 1}`,
         actionType: index % 2 === 0 ? "message" : "profile_view",
@@ -213,7 +214,11 @@ describe("LinkedIn worker batch planning hotfix", () => {
         priority: 1,
         linkedinUrl: `https://linkedin.com/in/person-${index + 1}`,
         campaignName: "Fast Campaign",
-      })),
+      }));
+    worker.api.peekNextActions.mockResolvedValue(actions);
+    worker.api.claimActions.mockImplementation(
+      async (_senderId: string, actionIds: string[]) =>
+        actions.filter((action) => actionIds.includes(action.id)),
     );
     worker.calculateSpreadDelay = vi.fn().mockReturnValue(3 * 60 * 1000);
 
@@ -221,14 +226,20 @@ describe("LinkedIn worker batch planning hotfix", () => {
     await vi.runAllTimersAsync();
     await promise;
 
+    expect(worker.api.claimActions).toHaveBeenCalledWith(sender.id, [
+      "action-1",
+      "action-2",
+      "action-3",
+      "action-4",
+      "action-5",
+    ]);
     expect(worker.executeAction).toHaveBeenCalledTimes(5);
     expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
   });
 
   it("truncates a uniformly slow batch before the loop starts", async () => {
     const worker = createWorker();
-    worker.api.getNextActions.mockResolvedValue(
-      Array.from({ length: 5 }, (_, index) => ({
+    const actions = Array.from({ length: 5 }, (_, index) => ({
         id: `pv-${index + 1}`,
         personId: `person-${index + 1}`,
         actionType: "profile_view",
@@ -236,7 +247,11 @@ describe("LinkedIn worker batch planning hotfix", () => {
         priority: 1,
         linkedinUrl: `https://linkedin.com/in/person-${index + 1}`,
         campaignName: "Slow Campaign",
-      })),
+      }));
+    worker.api.peekNextActions.mockResolvedValue(actions);
+    worker.api.claimActions.mockImplementation(
+      async (_senderId: string, actionIds: string[]) =>
+        actions.filter((action) => actionIds.includes(action.id)),
     );
     worker.calculateSpreadDelay = vi.fn().mockReturnValue(6 * 60 * 1000);
 
@@ -244,13 +259,18 @@ describe("LinkedIn worker batch planning hotfix", () => {
 
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(worker.api.markFailedIfRunning).toHaveBeenCalledTimes(2);
+    expect(worker.api.claimActions).toHaveBeenCalledWith(sender.id, [
+      "pv-1",
+      "pv-2",
+      "pv-3",
+    ]);
+    expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
     expect(worker.executeAction).toHaveBeenCalledTimes(1);
 
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(worker.executeAction.mock.calls.length).toBeLessThan(5);
-    expect(worker.api.markFailedIfRunning).toHaveBeenCalledTimes(2);
+    expect(worker.executeAction.mock.calls.length).toBe(3);
+    expect(worker.api.markFailedIfRunning).not.toHaveBeenCalled();
   });
 });

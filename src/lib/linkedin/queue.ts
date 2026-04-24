@@ -316,6 +316,83 @@ export async function claimNextBatch(
 }
 
 /**
+ * Atomically claim a specific ordered subset of pending action IDs for a sender.
+ *
+ * Used by the worker's two-phase preview flow:
+ * 1. Preview a read-only candidate window
+ * 2. Decide exactly which actions fit the current sender tick
+ * 3. CAS-claim only those IDs
+ */
+export async function claimSpecificActions(
+  senderId: string,
+  actionIds: string[],
+): Promise<Array<{
+  id: string;
+  personId: string | null;
+  actionType: LinkedInActionType;
+  messageBody: string | null;
+  priority: number;
+  workspaceSlug: string;
+  campaignName: string | null;
+  linkedInConversationId: string | null;
+}>> {
+  if (actionIds.length === 0) {
+    return [];
+  }
+
+  const selectFields = {
+    id: true,
+    personId: true,
+    actionType: true,
+    messageBody: true,
+    priority: true,
+    workspaceSlug: true,
+    campaignName: true,
+    linkedInConversationId: true,
+  };
+
+  const candidates = await prisma.linkedInAction.findMany({
+    where: {
+      senderId,
+      id: { in: actionIds },
+      status: "pending",
+    },
+    select: selectFields,
+  });
+
+  const candidateMap = new Map(candidates.map((action) => [action.id, action]));
+  const claimed: typeof candidates = [];
+  const claimedAt = new Date();
+
+  for (const actionId of actionIds) {
+    const action = candidateMap.get(actionId);
+    if (!action) {
+      continue;
+    }
+
+    const update = await prisma.linkedInAction.updateMany({
+      where: {
+        id: action.id,
+        senderId,
+        status: "pending",
+      },
+      data: {
+        status: "running",
+        attempts: { increment: 1 },
+        lastAttemptAt: claimedAt,
+      },
+    });
+
+    if (update.count === 1) {
+      claimed.push(action);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return claimed as any;
+}
+
+/**
  * Mark an action as running (worker has picked it up).
  */
 export async function markRunning(actionId: string): Promise<boolean> {

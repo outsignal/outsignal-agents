@@ -122,6 +122,36 @@ export class ApiClient {
   }
 
   /**
+   * Preview the next candidate window for a sender without claiming it.
+   */
+  async peekNextActions(
+    senderId: string,
+    limit: number = 5,
+  ): Promise<ActionItem[]> {
+    const result = await this.request<{ actions: ActionItem[] }>(
+      `/api/linkedin/actions/peek?senderId=${senderId}&limit=${limit}`,
+    );
+    return result.actions;
+  }
+
+  /**
+   * Claim a worker-selected ordered subset of action IDs for a sender.
+   */
+  async claimActions(
+    senderId: string,
+    actionIds: string[],
+  ): Promise<ActionItem[]> {
+    const result = await this.request<{ actions: ActionItem[] }>(
+      "/api/linkedin/actions/claim",
+      {
+        method: "POST",
+        body: JSON.stringify({ senderId, actionIds }),
+      },
+    );
+    return result.actions;
+  }
+
+  /**
    * Mark an action as complete.
    */
   async markComplete(actionId: string, result?: Record<string, unknown>): Promise<void> {
