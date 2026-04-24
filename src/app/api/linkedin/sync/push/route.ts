@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWorkerAuth } from "@/lib/linkedin/auth";
 import { prisma } from "@/lib/db";
+import {
+  buildLinkedInMessageLookup,
+  findLinkedInMessageMatch,
+  getLinkedInMessageUpdatePatch,
+  mergeLinkedInMessageSnapshot,
+  rememberLinkedInMessage,
+  resolveLinkedInMessageDirection,
+} from "@/lib/linkedin/messages";
+import { extractLinkedInMessageId } from "@/lib/linkedin/urn";
 import { notifyLinkedInMessage } from "@/lib/notifications";
 import { cancelActionsForPerson } from "@/lib/linkedin/queue";
 import {
@@ -163,43 +172,84 @@ export async function POST(request: NextRequest) {
       let newInboundCount = 0;
       let latestInboundBody: string | null = null;
       let latestInboundTime = 0;
+      const existingMessages = await prisma.linkedInMessage.findMany({
+        where: { conversationId: internalConvId },
+        select: {
+          id: true,
+          eventUrn: true,
+          senderUrn: true,
+          senderName: true,
+          body: true,
+          isOutbound: true,
+          deliveredAt: true,
+        },
+      });
+      const messageLookup = buildLinkedInMessageLookup(existingMessages);
 
       for (const msg of conv.messages) {
-        const isOutbound = msg.senderUrn !== conv.participantUrn;
-
-        // Check if message already exists
-        const existing = await prisma.linkedInMessage.findUnique({
-          where: { eventUrn: msg.eventUrn },
-          select: { id: true, body: true },
-        });
-
-        if (existing) {
-          // Update body if worker now extracts more content (e.g. URLs from attachments)
-          if (msg.body && msg.body !== existing.body && msg.body.length > (existing.body?.length ?? 0)) {
-            await prisma.linkedInMessage.update({
-              where: { id: existing.id },
-              data: { body: msg.body },
-            });
-          }
-        } else {
-          await prisma.linkedInMessage.create({
-            data: {
-              conversationId: internalConvId,
-              eventUrn: msg.eventUrn,
+        const direction = resolveLinkedInMessageDirection(
+          msg.senderUrn,
+          conv.participantUrn,
+        );
+        if (!direction.confident) {
+          console.warn(
+            `[linkedin/sync/push] Unable to confidently classify direction for ${msg.eventUrn}; defaulting inbound`,
+            {
               senderUrn: msg.senderUrn,
-              senderName: msg.senderName,
-              body: msg.body,
-              isOutbound,
-              deliveredAt: new Date(msg.deliveredAt),
+              participantUrn: conv.participantUrn,
             },
-          });
+          );
+        }
 
-          if (!isOutbound) {
-            newInboundCount++;
-            if (msg.deliveredAt > latestInboundTime) {
-              latestInboundTime = msg.deliveredAt;
-              latestInboundBody = msg.body;
-            }
+        const isOutbound = direction.isOutbound;
+        const existing = findLinkedInMessageMatch(messageLookup, msg.eventUrn);
+
+        if (existing.entry) {
+          // Update body if worker now extracts more content (e.g. URLs from attachments)
+          const patch = getLinkedInMessageUpdatePatch(existing.entry, {
+            eventUrn: msg.eventUrn,
+            senderUrn: msg.senderUrn,
+            senderName: msg.senderName,
+            body: msg.body,
+            isOutbound,
+          });
+          if (patch) {
+            await prisma.linkedInMessage.update({
+              where: { id: existing.entry.id },
+              data: patch,
+            });
+            rememberLinkedInMessage(
+              messageLookup,
+              mergeLinkedInMessageSnapshot(existing.entry, patch),
+            );
+          }
+          continue;
+        }
+
+        if (!extractLinkedInMessageId(msg.eventUrn)) {
+          console.error(
+            `[linkedin/sync/push] Missing canonical message ID for live dedupe on ${msg.eventUrn}; storing by raw eventUrn`,
+          );
+        }
+
+        const created = await prisma.linkedInMessage.create({
+          data: {
+            conversationId: internalConvId,
+            eventUrn: msg.eventUrn,
+            senderUrn: msg.senderUrn,
+            senderName: msg.senderName,
+            body: msg.body,
+            isOutbound,
+            deliveredAt: new Date(msg.deliveredAt),
+          },
+        });
+        rememberLinkedInMessage(messageLookup, created);
+
+        if (!isOutbound) {
+          newInboundCount++;
+          if (msg.deliveredAt > latestInboundTime) {
+            latestInboundTime = msg.deliveredAt;
+            latestInboundBody = msg.body;
           }
         }
       }
@@ -221,11 +271,8 @@ export async function POST(request: NextRequest) {
 
           for (const act of completedOutboundActions) {
             const syntheticUrn = `urn:outsignal:outbound:${act.id}`;
-            const exists = await prisma.linkedInMessage.findUnique({
-              where: { eventUrn: syntheticUrn },
-              select: { id: true },
-            });
-            if (exists) continue;
+            const existing = findLinkedInMessageMatch(messageLookup, syntheticUrn);
+            if (existing.entry) continue;
 
             const bodyMatch = await prisma.linkedInMessage.findFirst({
               where: {
@@ -237,7 +284,7 @@ export async function POST(request: NextRequest) {
             });
             if (bodyMatch) continue;
 
-            await prisma.linkedInMessage.create({
+            const created = await prisma.linkedInMessage.create({
               data: {
                 conversationId: internalConvId,
                 eventUrn: syntheticUrn,
@@ -248,6 +295,7 @@ export async function POST(request: NextRequest) {
                 deliveredAt: act.completedAt ?? new Date(),
               },
             });
+            rememberLinkedInMessage(messageLookup, created);
           }
         }
 
@@ -265,11 +313,8 @@ export async function POST(request: NextRequest) {
 
         for (const act of actionsViaConvId) {
           const syntheticUrn = `urn:outsignal:outbound:${act.id}`;
-          const exists = await prisma.linkedInMessage.findUnique({
-            where: { eventUrn: syntheticUrn },
-            select: { id: true },
-          });
-          if (exists) continue;
+          const existing = findLinkedInMessageMatch(messageLookup, syntheticUrn);
+          if (existing.entry) continue;
 
           const bodyMatch = await prisma.linkedInMessage.findFirst({
             where: {
@@ -281,7 +326,7 @@ export async function POST(request: NextRequest) {
           });
           if (bodyMatch) continue;
 
-          await prisma.linkedInMessage.create({
+          const created = await prisma.linkedInMessage.create({
             data: {
               conversationId: internalConvId,
               eventUrn: syntheticUrn,
@@ -292,6 +337,7 @@ export async function POST(request: NextRequest) {
               deliveredAt: act.completedAt ?? new Date(),
             },
           });
+          rememberLinkedInMessage(messageLookup, created);
         }
       } catch (outboundErr) {
         console.error("[linkedin/sync/push] Failed to attach outbound messages:", outboundErr);
@@ -321,7 +367,10 @@ export async function POST(request: NextRequest) {
           (a, b) => a.deliveredAt - b.deliveredAt,
         );
         const firstMsg = sorted[0];
-        const firstIsOutbound = firstMsg.senderUrn !== conv.participantUrn;
+        const firstIsOutbound = resolveLinkedInMessageDirection(
+          firstMsg.senderUrn,
+          conv.participantUrn,
+        ).isOutbound;
         if (firstIsOutbound) initiatedByWorker = true;
       }
 

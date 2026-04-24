@@ -16,6 +16,7 @@ const prismaAny = prisma as unknown as {
   };
   linkedInMessage: {
     findUnique: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
@@ -55,6 +56,7 @@ describe("LinkedIn conversation sync exact person matching", () => {
     };
     prismaAny.linkedInMessage = {
       findUnique: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
@@ -216,6 +218,83 @@ describe("LinkedIn conversation sync exact person matching", () => {
         some: {
           workspace: "acme",
         },
+      },
+    });
+  });
+
+  it("push sync deduplicates mixed URN formats and corrects the stored direction", async () => {
+    prismaAny.linkedInConversation.findUnique.mockResolvedValue({
+      id: "internal-conv-1",
+      personId: "person-1",
+    });
+    prismaAny.linkedInMessage.findMany.mockResolvedValue([
+      {
+        id: "msg-1",
+        eventUrn: "urn:li:fs_event:(urn:li:messagingThread:2-conv,2-message-abc)",
+        senderUrn:
+          "urn:li:fs_messagingMember:(urn:li:messagingThread:2-conv,ACoAAProspect123)",
+        senderName: "Prospect",
+        body: "Thanks for reaching out",
+        isOutbound: true,
+        deliveredAt: new Date("2026-04-24T10:00:00.000Z"),
+      },
+    ]);
+
+    const request = new NextRequest("http://localhost/api/linkedin/sync/push", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        senderId: "sender-1",
+        conversations: [
+          {
+            entityUrn: "urn:li:msg_conversation:1",
+            conversationId: "2-conv",
+            participantName: "Prospect",
+            participantUrn:
+              "urn:li:fs_messagingMember:(urn:li:messagingThread:2-conv,ACoAAProspect123)",
+            participantProfileUrl: "https://www.linkedin.com/in/prospect/",
+            participantHeadline: "Head of Ops",
+            participantProfilePicUrl: null,
+            lastActivityAt: Date.now(),
+            unreadCount: 0,
+            lastMessageSnippet: "Thanks for reaching out",
+            messages: [
+              {
+                eventUrn:
+                  "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-message-abc)",
+                senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
+                senderName: "Prospect",
+                body: "Thanks for reaching out",
+                deliveredAt: Date.now(),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const res = await pushSyncPOST(request);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      conversationsProcessed: 1,
+      newInboundMessages: 0,
+    });
+    expect(prismaAny.linkedInMessage.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventUrn:
+            "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-message-abc)",
+        }),
+      }),
+    );
+    expect(prismaAny.linkedInMessage.update).toHaveBeenCalledWith({
+      where: { id: "msg-1" },
+      data: {
+        isOutbound: false,
+        senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
       },
     });
   });

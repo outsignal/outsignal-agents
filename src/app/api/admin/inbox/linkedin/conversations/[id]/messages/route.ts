@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminAuth } from "@/lib/require-admin-auth";
 import { prisma } from "@/lib/db";
+import {
+  buildLinkedInMessageLookup,
+  findLinkedInMessageMatch,
+  getLinkedInMessageUpdatePatch,
+  mergeLinkedInMessageSnapshot,
+  rememberLinkedInMessage,
+  resolveLinkedInMessageDirection,
+} from "@/lib/linkedin/messages";
+import { extractLinkedInMessageId } from "@/lib/linkedin/urn";
 import type { VoyagerMessage } from "@/lib/linkedin/types";
 
 /**
@@ -72,6 +81,7 @@ export async function GET(
     const WORKER_SECRET = process.env.WORKER_API_SECRET;
 
     let messages = dbMessages;
+    const messageLookup = buildLinkedInMessageLookup(dbMessages);
 
     if (WORKER_URL && WORKER_SECRET) {
       try {
@@ -87,19 +97,61 @@ export async function GET(
           const workerMessages: VoyagerMessage[] = raw?.messages ?? raw?.data ?? [];
 
           for (const msg of workerMessages) {
-            await prisma.linkedInMessage.upsert({
-              where: { eventUrn: msg.eventUrn },
-              create: {
-                conversationId: conv.id,
-                eventUrn: msg.eventUrn,
-                senderUrn: msg.senderUrn,
-                senderName: msg.senderName,
-                body: msg.body,
-                isOutbound: msg.senderUrn !== conv.participantUrn,
-                deliveredAt: new Date(msg.deliveredAt),
-              },
-              update: {},
+            const direction = resolveLinkedInMessageDirection(
+              msg.senderUrn,
+              conv.participantUrn,
+            );
+            if (!direction.confident) {
+              console.warn(
+                `[admin linkedin-messages] Unable to confidently classify direction for ${msg.eventUrn}; defaulting inbound`,
+                {
+                  senderUrn: msg.senderUrn,
+                  participantUrn: conv.participantUrn,
+                },
+              );
+            }
+
+            const existing = findLinkedInMessageMatch(messageLookup, msg.eventUrn);
+            if (!existing.entry) {
+              if (!extractLinkedInMessageId(msg.eventUrn)) {
+                console.error(
+                  `[admin linkedin-messages] Missing canonical message ID for live dedupe on ${msg.eventUrn}; storing by raw eventUrn`,
+                );
+              }
+
+              const created = await prisma.linkedInMessage.create({
+                data: {
+                  conversationId: conv.id,
+                  eventUrn: msg.eventUrn,
+                  senderUrn: msg.senderUrn,
+                  senderName: msg.senderName,
+                  body: msg.body,
+                  isOutbound: direction.isOutbound,
+                  deliveredAt: new Date(msg.deliveredAt),
+                },
+              });
+              rememberLinkedInMessage(messageLookup, created);
+              continue;
+            }
+
+            const patch = getLinkedInMessageUpdatePatch(existing.entry, {
+              eventUrn: msg.eventUrn,
+              senderUrn: msg.senderUrn,
+              senderName: msg.senderName,
+              body: msg.body,
+              isOutbound: direction.isOutbound,
             });
+
+            if (patch) {
+              await prisma.linkedInMessage.update({
+                where: { id: existing.entry.id },
+                data: patch,
+              });
+              rememberLinkedInMessage(
+                messageLookup,
+                mergeLinkedInMessageSnapshot(existing.entry, patch),
+              );
+            }
           }
 
           messages = await prisma.linkedInMessage.findMany({
