@@ -37,6 +37,11 @@ import {
 } from "./sender-timeout.js";
 import { KeepaliveManager } from "./keepalive.js";
 import {
+  buildWorkerHealthSnapshot,
+  type WorkerHealthSnapshot,
+  type WorkerPlannedSleepReason,
+} from "./health.js";
+import {
   clearSenderStateOverrides,
   getEffectiveSenderState as getSharedEffectiveSenderState,
   isSenderRecoverable as isSharedSenderRecoverable,
@@ -145,6 +150,14 @@ export class Worker {
   private senderAborted: Set<string> = new Set();
   /** Shared process-local fail-closed sender state for worker + keepalive. */
   private senderStateOverrides = senderStateOverrides;
+  /** Timestamp of the last top-level poll tick heartbeat. */
+  private lastPollTickAt: number | null = null;
+  /** Active intentional sleep windows tracked for health reporting. */
+  private activeSleepWindows = new Map<
+    number,
+    { until: number; reason: WorkerPlannedSleepReason }
+  >();
+  private nextSleepWindowId = 1;
   /**
    * Only spend ~70% of the sender tick budget on claimed work so we have
    * room for action execution, cleanup, and guard refreshes.
@@ -183,7 +196,7 @@ export class Worker {
       // Wait before next poll
       const delay = getPollDelay();
       console.log(`[Worker] Next poll in ${Math.round(delay / 1000)}s`);
-      await sleep(delay);
+      await this.sleepWithHealthTracking(delay, "between_ticks");
     }
 
     console.log("[Worker] Worker stopped");
@@ -440,6 +453,7 @@ export class Worker {
    * Single tick — process all senders.
    */
   private async tick(): Promise<void> {
+    this.markPollHeartbeat();
     const slugs = await this.getWorkspaceSlugs();
 
     // Run keepalives BEFORE business hours check — keepalives fire 24/7
@@ -481,7 +495,10 @@ export class Worker {
       const waitMs = msUntilBusinessHours();
       const waitMin = Math.round(waitMs / 60_000);
       console.log(`[Worker] Outside business hours. Waiting ${waitMin} minutes.`);
-      await sleep(Math.min(waitMs, 30 * 60_000)); // Cap at 30 min to re-check
+      await this.sleepWithHealthTracking(
+        Math.min(waitMs, 30 * 60_000),
+        "outside_business_hours",
+      ); // Cap at 30 min to re-check
       return;
     }
 
@@ -1211,7 +1228,7 @@ export class Worker {
           console.log(
             `[Worker] ${sender.name}: spread ${action.actionType} (${typeRemainingLabel} remaining; pooled ${totalRemaining}) over ${hoursLeft.toFixed(1)}h → ${delaySec}s`,
           );
-          await sleep(delay);
+          await this.sleepWithHealthTracking(delay, "spread_delay");
           if (!(await refreshExecutionGuard("after spread sleep"))) {
             break;
           }
@@ -1554,6 +1571,51 @@ export class Worker {
 
     const totalRemaining = this.getTotalDailyRemaining(usageData);
     return getSpreadDelay(remainingMs, totalRemaining);
+  }
+
+  getHealthSnapshot(now: Date = new Date()): WorkerHealthSnapshot {
+    let activeSleepUntil: number | null = null;
+    let activeSleepReason: WorkerPlannedSleepReason | null = null;
+
+    for (const sleepWindow of this.activeSleepWindows.values()) {
+      if (sleepWindow.until <= now.getTime()) {
+        continue;
+      }
+      if (activeSleepUntil === null || sleepWindow.until > activeSleepUntil) {
+        activeSleepUntil = sleepWindow.until;
+        activeSleepReason = sleepWindow.reason;
+      }
+    }
+
+    return buildWorkerHealthSnapshot(
+      {
+        lastPollTickAt: this.lastPollTickAt,
+        activeSleepUntil,
+        activeSleepReason,
+      },
+      { now },
+    );
+  }
+
+  private markPollHeartbeat(): void {
+    this.lastPollTickAt = Date.now();
+  }
+
+  private async sleepWithHealthTracking(
+    ms: number,
+    reason: WorkerPlannedSleepReason,
+  ): Promise<void> {
+    const sleepId = this.nextSleepWindowId++;
+    this.activeSleepWindows.set(sleepId, {
+      until: Date.now() + ms,
+      reason,
+    });
+
+    try {
+      await sleep(ms);
+    } finally {
+      this.activeSleepWindows.delete(sleepId);
+    }
   }
 
   /**

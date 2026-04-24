@@ -50,7 +50,9 @@ const worker = new Worker({
 });
 
 // Start session server (HTTP for headless login via agent-browser)
-const sessionServer = new SessionServer(api, API_SECRET);
+const sessionServer = new SessionServer(api, API_SECRET, () =>
+  worker.getHealthSnapshot(),
+);
 sessionServer.start(PORT);
 
 // Graceful shutdown

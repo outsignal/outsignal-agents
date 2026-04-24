@@ -14,6 +14,10 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { LinkedInBrowser } from "./linkedin-browser.js";
 import { ApiClient } from "./api-client.js";
 import { VoyagerClient, VoyagerError } from "./voyager-client.js";
+import {
+  buildWorkerHealthSnapshot,
+  type WorkerHealthSnapshot,
+} from "./health.js";
 
 interface SessionState {
   senderId: string;
@@ -24,12 +28,25 @@ interface SessionState {
 export class SessionServer {
   private api: ApiClient;
   private apiSecret: string;
+  private getWorkerHealth: () => WorkerHealthSnapshot;
   private sessionState: SessionState | null = null;
   private httpServer: ReturnType<typeof createServer> | null = null;
 
-  constructor(api: ApiClient, apiSecret: string) {
+  constructor(
+    api: ApiClient,
+    apiSecret: string,
+    getWorkerHealth: (() => WorkerHealthSnapshot) | null = null,
+  ) {
     this.api = api;
     this.apiSecret = apiSecret;
+    this.getWorkerHealth =
+      getWorkerHealth ??
+      (() =>
+        buildWorkerHealthSnapshot({
+          lastPollTickAt: null,
+          activeSleepUntil: null,
+          activeSleepReason: null,
+        }));
   }
 
   /**
@@ -75,9 +92,14 @@ export class SessionServer {
       if (path === "/health" && req.method === "GET") {
         // Return honest health status including session info
         const hasActiveSession = this.sessionState?.status === "logged_in";
+        const workerHealth = this.getWorkerHealth();
         this.jsonResponse(res, 200, {
           ok: true,
-          workerHealthy: true,
+          workerHealthy: workerHealth.workerHealthy,
+          lastPollTickAt: workerHealth.lastPollTickAt,
+          pollAgeSeconds: workerHealth.pollAgeSeconds,
+          businessHoursActive: workerHealth.businessHoursActive,
+          interpretation: workerHealth.interpretation,
           sessionActive: hasActiveSession,
           sessionState: this.sessionState
             ? { senderId: this.sessionState.senderId, status: this.sessionState.status }
