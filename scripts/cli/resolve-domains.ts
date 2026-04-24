@@ -26,9 +26,15 @@ const filePath = fileIdx !== -1 ? args[fileIdx + 1] : args[0];
 runWithHarness("resolve-domains --file <path>", async () => {
   if (!filePath) throw new Error("Missing required argument: --file <path>");
 
-  const input = JSON.parse(readFileSync(filePath, "utf8")) as {
+ const input = JSON.parse(readFileSync(filePath, "utf8")) as {
     companies: string[];
-    icpContext?: { location?: string; industry?: string };
+    icpContext?: {
+      location?: string;
+      industry?: string;
+      contextKeywords?: string[];
+      gl?: string;
+      hl?: string;
+    };
   };
 
   if (!input.companies || !Array.isArray(input.companies)) {

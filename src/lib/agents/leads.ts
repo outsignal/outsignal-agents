@@ -498,9 +498,12 @@ export const leadsTools = {
         .object({
           location: z.string().optional(),
           industry: z.string().optional(),
+          contextKeywords: z.array(z.string()).optional(),
+          gl: z.string().optional(),
+          hl: z.string().optional(),
         })
         .optional()
-        .describe("ICP context for disambiguation (location and/or industry)"),
+        .describe("ICP context for disambiguation (location, industry, optional context keywords, and locale hints)"),
     }),
     execute: async ({ companies, icpContext }) => {
       return resolveCompanyDomains(companies, icpContext ?? {});

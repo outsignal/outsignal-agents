@@ -45,6 +45,14 @@ export interface ResolutionSummary {
   totalCostUsd: number;
 }
 
+export interface CompanyDomainResolutionContext {
+  location?: string;
+  industry?: string;
+  contextKeywords?: string[];
+  gl?: string;
+  hl?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Simple concurrency limiter (no external deps)
 // ---------------------------------------------------------------------------
@@ -113,18 +121,6 @@ export async function verifyDomainLive(domain: string): Promise<boolean> {
 }
 
 /**
- * Extract domain from a URL, stripping "www." prefix.
- */
-function extractDomain(url: string): string | null {
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return hostname.startsWith("www.") ? hostname.slice(4) : hostname;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Resolve a single company name to a domain using the 4-step pipeline:
  * 1. DB lookup (Company table)
  * 2. Serper contextual search with ICP context
@@ -133,7 +129,7 @@ function extractDomain(url: string): string | null {
  */
 export async function resolveCompanyDomain(
   companyName: string,
-  icpContext: { location?: string; industry?: string },
+  icpContext: CompanyDomainResolutionContext,
 ): Promise<ResolutionResult & { costUsd: number }> {
   // Step 1: DB lookup
   const existing = await prisma.company.findFirst({
@@ -152,47 +148,38 @@ export async function resolveCompanyDomain(
   }
 
   // Step 2: Serper contextual search
-  const contextParts = [companyName];
-  if (icpContext.location) contextParts.push(icpContext.location);
-  if (icpContext.industry) contextParts.push(icpContext.industry);
-  const query = contextParts.join(" ") + " official website";
+  const contextKeywords = icpContext.contextKeywords && icpContext.contextKeywords.length > 0
+    ? icpContext.contextKeywords
+    : icpContext.industry
+      ? [icpContext.industry]
+      : [];
 
   let costUsd = 0;
   try {
-    const { results, costUsd: searchCost } = await serperAdapter.searchWeb(query, 3);
+    const { candidates, costUsd: searchCost } = await serperAdapter.searchCompanyDomains({
+      companyName,
+      contextKeywords,
+      location: icpContext.location,
+      gl: icpContext.gl,
+      hl: icpContext.hl,
+    });
     costUsd = searchCost;
 
-    // Try top results
-    for (const result of results) {
-      const domain = extractDomain(result.link);
-      if (!domain) continue;
-
-      // Skip search engine / directory domains
-      if (
-        domain.includes("linkedin.com") ||
-        domain.includes("facebook.com") ||
-        domain.includes("twitter.com") ||
-        domain.includes("wikipedia.org") ||
-        domain.includes("yelp.com") ||
-        domain.includes("crunchbase.com")
-      ) {
-        continue;
-      }
-
+    for (const candidate of candidates) {
       // Step 3: HTTP verification
-      const isLive = await verifyDomainLive(domain);
+      const isLive = await verifyDomainLive(candidate.domain);
       if (!isLive) continue;
 
       // Step 4: Persist to Company table
       await prisma.company.upsert({
-        where: { domain },
+        where: { domain: candidate.domain },
         update: { name: companyName },
-        create: { domain, name: companyName },
+        create: { domain: candidate.domain, name: companyName },
       });
 
       return {
         companyName,
-        domain,
+        domain: candidate.domain,
         source: "serper",
         httpVerified: true,
         costUsd,
@@ -217,7 +204,7 @@ export async function resolveCompanyDomain(
  */
 export async function resolveCompanyDomains(
   companies: string[],
-  icpContext: { location?: string; industry?: string },
+  icpContext: CompanyDomainResolutionContext,
 ): Promise<ResolutionSummary> {
   const semaphore = new Semaphore(10);
   let totalCostUsd = 0;

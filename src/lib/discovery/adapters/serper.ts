@@ -18,6 +18,13 @@
  */
 
 import type { RateLimits } from "../rate-limit";
+import {
+  buildSerperQueryAttempts,
+  rankSerperDomainCandidates,
+  type SerperRankedCandidate,
+  type SerperWebSearchContext,
+} from "../serper-domain-selection";
+import { SERPER_TOP_RESULT_COUNT } from "../serper-config";
 
 const SERPER_ENDPOINT = "https://google.serper.dev/search";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -149,9 +156,18 @@ function extractDomain(website: string | undefined): string | undefined {
  */
 async function searchWeb(
   query: string,
-  num?: number,
+  options?: number | { num?: number; gl?: string; hl?: string },
 ): Promise<{ results: SerperWebResult[]; costUsd: number; rawResponse: unknown }> {
-  const raw = await serperPost({ q: query, type: "search", num: num ?? 10 });
+  const num = typeof options === "number" ? options : options?.num;
+  const gl = typeof options === "number" ? undefined : options?.gl;
+  const hl = typeof options === "number" ? undefined : options?.hl;
+  const raw = await serperPost({
+    q: query,
+    type: "search",
+    num: num ?? SERPER_TOP_RESULT_COUNT,
+    ...(gl ? { gl } : {}),
+    ...(hl ? { hl } : {}),
+  });
 
   const organic = (raw as Record<string, unknown>)?.organic;
   const items = Array.isArray(organic) ? organic : [];
@@ -164,6 +180,87 @@ async function searchWeb(
   }));
 
   return { results, costUsd: 0.001, rawResponse: raw };
+}
+
+export interface SerperCompanyDomainCandidate extends SerperRankedCandidate {
+  attempt: number;
+  query: string;
+}
+
+export interface SerperCompanyDomainSearchResult {
+  candidates: SerperCompanyDomainCandidate[];
+  costUsd: number;
+  queries: string[];
+  rawResponses: unknown[];
+}
+
+export interface SerperLinkedInCompanyPageSearchOptions {
+  companyName: string;
+  gl?: string;
+  hl?: string;
+  num?: number;
+}
+
+async function searchCompanyDomains(
+  context: SerperWebSearchContext,
+): Promise<SerperCompanyDomainSearchResult> {
+  const attempts = buildSerperQueryAttempts(context);
+  const candidates: SerperCompanyDomainCandidate[] = [];
+  const rawResponses: unknown[] = [];
+  let costUsd = 0;
+
+  for (let index = 0; index < attempts.length; index++) {
+    const attempt = attempts[index];
+    const response = await searchWeb(attempt.query, {
+      num: SERPER_TOP_RESULT_COUNT,
+      gl: attempt.gl,
+      hl: attempt.hl,
+    });
+
+    costUsd += response.costUsd;
+    rawResponses.push(response.rawResponse);
+
+    const ranked = rankSerperDomainCandidates(response.results, context);
+    const deduped = ranked.filter((candidate) => (
+      !candidates.some((existing) => existing.domain === candidate.domain)
+    ));
+
+    candidates.push(
+      ...deduped.map((candidate) => ({
+        ...candidate,
+        attempt: index + 1,
+        query: attempt.query,
+      })),
+    );
+
+    if (deduped.length > 0) {
+      break;
+    }
+  }
+
+  candidates.sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    if (left.attempt !== right.attempt) return left.attempt - right.attempt;
+    return left.result.position - right.result.position;
+  });
+
+  return {
+    candidates,
+    costUsd,
+    queries: attempts.map((attempt) => attempt.query),
+    rawResponses,
+  };
+}
+
+async function searchLinkedInCompanyPages(
+  options: SerperLinkedInCompanyPageSearchOptions,
+): Promise<{ results: SerperWebResult[]; costUsd: number; rawResponse: unknown }> {
+  const query = `site:linkedin.com/company "${options.companyName}"`;
+  return searchWeb(query, {
+    num: options.num ?? 10,
+    gl: options.gl ?? "uk",
+    hl: options.hl ?? "en-GB",
+  });
 }
 
 /**
@@ -249,4 +346,6 @@ export const serperAdapter = {
   searchWeb,
   searchMaps,
   searchSocial,
+  searchCompanyDomains,
+  searchLinkedInCompanyPages,
 } as const;

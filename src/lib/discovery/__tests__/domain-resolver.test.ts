@@ -14,7 +14,7 @@ vi.mock("@/lib/db", () => ({
 // Mock serper adapter
 vi.mock("../adapters/serper", () => ({
   serperAdapter: {
-    searchWeb: vi.fn(),
+    searchCompanyDomains: vi.fn(),
   },
 }));
 
@@ -85,17 +85,36 @@ describe("resolveCompanyDomain", () => {
     expect(result.httpVerified).toBe(true);
     expect(result.costUsd).toBe(0);
     // Should NOT call serper
-    expect(serperAdapter.searchWeb).not.toHaveBeenCalled();
+    expect(serperAdapter.searchCompanyDomains).not.toHaveBeenCalled();
   });
 
   it("falls back to Serper when not in DB and HTTP verifies", async () => {
     vi.mocked(prisma.company.findFirst).mockResolvedValueOnce(null);
-    vi.mocked(serperAdapter.searchWeb).mockResolvedValueOnce({
-      results: [
-        { title: "Acme Corp", link: "https://www.acme.com/about", snippet: "Acme Corp official site", position: 1 },
+    vi.mocked(serperAdapter.searchCompanyDomains).mockResolvedValueOnce({
+      candidates: [
+        {
+          domain: "acme.com",
+          domainRoot: "acme",
+          score: 88,
+          fuzzyScore: 70,
+          tokenScore: 70,
+          keywordHits: ["tech"],
+          titleMatchScore: 10,
+          tldScore: 8,
+          distinctiveTokenMatches: ["acme"],
+          attempt: 1,
+          query: "\"Acme Corp\" \"UK\" (tech) -site:linkedin.com -site:facebook.com",
+          result: {
+            title: "Acme Corp",
+            link: "https://www.acme.com/about",
+            snippet: "Acme Corp official site",
+            position: 1,
+          },
+        },
       ],
       costUsd: 0.001,
-      rawResponse: {},
+      queries: [],
+      rawResponses: [],
     });
     // Mock HTTP verification success
     mockFetch.mockResolvedValueOnce({
@@ -115,26 +134,37 @@ describe("resolveCompanyDomain", () => {
 
   it("includes ICP context in Serper query", async () => {
     vi.mocked(prisma.company.findFirst).mockResolvedValueOnce(null);
-    vi.mocked(serperAdapter.searchWeb).mockResolvedValueOnce({
-      results: [],
+    vi.mocked(serperAdapter.searchCompanyDomains).mockResolvedValueOnce({
+      candidates: [],
       costUsd: 0.001,
-      rawResponse: {},
+      queries: [],
+      rawResponses: [],
     });
 
-    await resolveCompanyDomain("Acme Corp", { location: "UK", industry: "recruitment" });
+    await resolveCompanyDomain("Acme Corp", {
+      location: "West Midlands",
+      industry: "recruitment",
+      contextKeywords: ["haulage", "logistics"],
+      gl: "uk",
+      hl: "en-GB",
+    });
 
-    expect(serperAdapter.searchWeb).toHaveBeenCalledWith(
-      "Acme Corp UK recruitment official website",
-      3,
-    );
+    expect(serperAdapter.searchCompanyDomains).toHaveBeenCalledWith({
+      companyName: "Acme Corp",
+      contextKeywords: ["haulage", "logistics"],
+      location: "West Midlands",
+      gl: "uk",
+      hl: "en-GB",
+    });
   });
 
   it("returns failed when no Serper results", async () => {
     vi.mocked(prisma.company.findFirst).mockResolvedValueOnce(null);
-    vi.mocked(serperAdapter.searchWeb).mockResolvedValueOnce({
-      results: [],
+    vi.mocked(serperAdapter.searchCompanyDomains).mockResolvedValueOnce({
+      candidates: [],
       costUsd: 0.001,
-      rawResponse: {},
+      queries: [],
+      rawResponses: [],
     });
 
     const result = await resolveCompanyDomain("Unknown Corp", {});
@@ -143,15 +173,38 @@ describe("resolveCompanyDomain", () => {
     expect(result.httpVerified).toBe(false);
   });
 
-  it("skips LinkedIn/Facebook/Wikipedia results from Serper", async () => {
+  it("returns failed when the ranked candidates do not pass HTTP verification", async () => {
     vi.mocked(prisma.company.findFirst).mockResolvedValueOnce(null);
-    vi.mocked(serperAdapter.searchWeb).mockResolvedValueOnce({
-      results: [
-        { title: "Acme on LinkedIn", link: "https://www.linkedin.com/company/acme", snippet: "", position: 1 },
-        { title: "Acme on Wikipedia", link: "https://en.wikipedia.org/wiki/Acme", snippet: "", position: 2 },
+    vi.mocked(serperAdapter.searchCompanyDomains).mockResolvedValueOnce({
+      candidates: [
+        {
+          domain: "acme.com",
+          domainRoot: "acme",
+          score: 90,
+          fuzzyScore: 70,
+          tokenScore: 70,
+          keywordHits: ["logistics"],
+          titleMatchScore: 10,
+          tldScore: 8,
+          distinctiveTokenMatches: ["acme"],
+          attempt: 1,
+          query: "\"Acme Corp\" (logistics) -site:linkedin.com -site:facebook.com",
+          result: {
+            title: "Acme Logistics",
+            link: "https://acme.com",
+            snippet: "",
+            position: 1,
+          },
+        },
       ],
       costUsd: 0.001,
-      rawResponse: {},
+      queries: [],
+      rawResponses: [],
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      url: "https://acme.com",
     });
 
     const result = await resolveCompanyDomain("Acme Corp", {});
@@ -159,15 +212,52 @@ describe("resolveCompanyDomain", () => {
     expect(result.domain).toBe(null);
   });
 
-  it("tries second result when first fails HTTP verification", async () => {
+  it("tries the next ranked candidate when the first one fails HTTP verification", async () => {
     vi.mocked(prisma.company.findFirst).mockResolvedValueOnce(null);
-    vi.mocked(serperAdapter.searchWeb).mockResolvedValueOnce({
-      results: [
-        { title: "Bad Domain", link: "https://bad-domain.xyz/about", snippet: "", position: 1 },
-        { title: "Good Domain", link: "https://www.good-domain.com", snippet: "", position: 2 },
+    vi.mocked(serperAdapter.searchCompanyDomains).mockResolvedValueOnce({
+      candidates: [
+        {
+          domain: "bad-domain.xyz",
+          domainRoot: "bad-domain",
+          score: 84,
+          fuzzyScore: 66,
+          tokenScore: 66,
+          keywordHits: ["haulage"],
+          titleMatchScore: 10,
+          tldScore: 2,
+          distinctiveTokenMatches: ["good"],
+          attempt: 1,
+          query: "\"Good Corp\" (haulage) -site:linkedin.com -site:facebook.com",
+          result: {
+            title: "Bad Domain",
+            link: "https://bad-domain.xyz/about",
+            snippet: "",
+            position: 1,
+          },
+        },
+        {
+          domain: "good-domain.com",
+          domainRoot: "good-domain",
+          score: 82,
+          fuzzyScore: 64,
+          tokenScore: 64,
+          keywordHits: ["haulage"],
+          titleMatchScore: 10,
+          tldScore: 8,
+          distinctiveTokenMatches: ["good"],
+          attempt: 1,
+          query: "\"Good Corp\" (haulage) -site:linkedin.com -site:facebook.com",
+          result: {
+            title: "Good Domain",
+            link: "https://www.good-domain.com",
+            snippet: "",
+            position: 2,
+          },
+        },
       ],
       costUsd: 0.001,
-      rawResponse: {},
+      queries: [],
+      rawResponses: [],
     });
     // First HTTP check fails
     mockFetch.mockResolvedValueOnce({
@@ -214,10 +304,11 @@ describe("resolveCompanyDomains", () => {
       .mockResolvedValueOnce({ domain: "alpha.com", name: "Alpha" } as never)
       .mockResolvedValueOnce(null); // Beta not found
 
-    vi.mocked(serperAdapter.searchWeb).mockResolvedValueOnce({
-      results: [],
+    vi.mocked(serperAdapter.searchCompanyDomains).mockResolvedValueOnce({
+      candidates: [],
       costUsd: 0.001,
-      rawResponse: {},
+      queries: [],
+      rawResponses: [],
     });
 
     const summary = await resolveCompanyDomains(
@@ -236,9 +327,9 @@ describe("resolveCompanyDomains", () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
-    vi.mocked(serperAdapter.searchWeb)
-      .mockResolvedValueOnce({ results: [], costUsd: 0.001, rawResponse: {} })
-      .mockResolvedValueOnce({ results: [], costUsd: 0.001, rawResponse: {} });
+    vi.mocked(serperAdapter.searchCompanyDomains)
+      .mockResolvedValueOnce({ candidates: [], costUsd: 0.001, queries: [], rawResponses: [] })
+      .mockResolvedValueOnce({ candidates: [], costUsd: 0.001, queries: [], rawResponses: [] });
 
     const summary = await resolveCompanyDomains(["A", "B"], {});
     expect(summary.totalCostUsd).toBe(0.002);
