@@ -39,6 +39,11 @@ export interface InitiateDeployArgs {
   dryRun?: boolean;
   /** If true, allow partial EmailBison uploads instead of failing closed. */
   allowPartial?: boolean;
+  /**
+   * If true, allow leads with missing lastName to pass through with an empty
+   * string fallback instead of failing the deploy closed.
+   */
+  allowMissingLastName?: boolean;
 }
 
 export type InitiateDeployResult =
@@ -75,6 +80,7 @@ export async function initiateCampaignDeploy(
   const { campaignId, adminEmail } = args;
   const dryRun = args.dryRun === true;
   const allowPartial = args.allowPartial === true;
+  const allowMissingLastName = args.allowMissingLastName === true;
 
   const campaign = await getCampaign(campaignId);
   if (!campaign) {
@@ -164,6 +170,7 @@ export async function initiateCampaignDeploy(
     campaignId,
     deployId: deploy.id,
     allowPartial,
+    allowMissingLastName,
   });
 
   auditLog({
@@ -177,6 +184,7 @@ export async function initiateCampaignDeploy(
       channels,
       deployId: deploy.id,
       allowPartial,
+      allowMissingLastName,
     },
   });
 

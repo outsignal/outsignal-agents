@@ -141,6 +141,7 @@ describe("initiateCampaignDeploy — happy path", () => {
       campaignId: "camp-1",
       deployId: "deploy-1",
       allowPartial: false,
+      allowMissingLastName: false,
     });
 
     expect(auditLogMock).toHaveBeenCalledWith(
@@ -155,12 +156,13 @@ describe("initiateCampaignDeploy — happy path", () => {
           channels: ["email", "linkedin"],
           deployId: "deploy-1",
           allowPartial: false,
+          allowMissingLastName: false,
         }),
       }),
     );
   });
 
-  it("threads allowPartial through the trigger payload and audit metadata", async () => {
+  it("threads allowPartial and allowMissingLastName through the trigger payload and audit metadata", async () => {
     getCampaignMock.mockResolvedValue(fakeCampaign({ channels: ["email"] }));
     prismaAny.campaign.updateMany.mockResolvedValue({ count: 1 });
     prismaAny.campaignDeploy.create.mockResolvedValue({ id: "deploy-allow-partial" });
@@ -169,17 +171,20 @@ describe("initiateCampaignDeploy — happy path", () => {
       campaignId: "camp-1",
       adminEmail: "ops@outsignal.ai",
       allowPartial: true,
+      allowMissingLastName: true,
     });
 
     expect(triggerMock).toHaveBeenCalledWith("campaign-deploy", {
       campaignId: "camp-1",
       deployId: "deploy-allow-partial",
       allowPartial: true,
+      allowMissingLastName: true,
     });
     expect(auditLogMock).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({
           allowPartial: true,
+          allowMissingLastName: true,
         }),
       }),
     );

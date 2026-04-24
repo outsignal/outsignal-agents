@@ -109,7 +109,7 @@ function primeHappyPathTail() {
       person: {
         email: "a@acme.com",
         firstName: "A",
-        lastName: null,
+        lastName: "Lead",
         jobTitle: null,
         company: null,
         workspaces: [],

@@ -15,6 +15,9 @@
  *   --allow-partial           Allow EmailBison partial lead uploads to
  *                             continue with warning telemetry instead of
  *                             failing the deploy closed.
+ *   --allow-missing-lastname  Allow missing last names to pass through as
+ *                             empty strings instead of failing the deploy
+ *                             closed.
  *   --admin-email=<email>     AuditLog attribution. Defaults to 'ops@outsignal.ai'
  *                             — CLI runs as ops-authorised context, matching
  *                             the rationale of patch-content-approved.ts.
@@ -51,6 +54,7 @@ export interface ParsedCliArgs {
   ids: string[];
   dryRun: boolean;
   allowPartial: boolean;
+  allowMissingLastName: boolean;
   adminEmail: string;
   incident: string | null;
 }
@@ -75,6 +79,7 @@ export function parseCliArgs(
 ): ParsedCliArgs {
   let dryRun = false;
   let allowPartial = false;
+  let allowMissingLastName = false;
   let adminEmail = DEFAULT_ADMIN_EMAIL;
   let incident: string | null = null;
   const idsFromFlag: string[] = [];
@@ -87,6 +92,10 @@ export function parseCliArgs(
     }
     if (raw === "--allow-partial") {
       allowPartial = true;
+      continue;
+    }
+    if (raw === "--allow-missing-lastname") {
+      allowMissingLastName = true;
       continue;
     }
     const idsVal = takeFlagValue(raw, "--ids");
@@ -135,7 +144,7 @@ export function parseCliArgs(
     );
   }
 
-  return { ids, dryRun, allowPartial, adminEmail, incident };
+  return { ids, dryRun, allowPartial, allowMissingLastName, adminEmail, incident };
 }
 
 /**
@@ -256,6 +265,7 @@ export async function main(): Promise<SummaryEnvelope> {
         adminEmail: args.adminEmail,
         dryRun: args.dryRun,
         allowPartial: args.allowPartial,
+        allowMissingLastName: args.allowMissingLastName,
       });
       outcome = classifyResult(id, result);
     } catch (err) {
@@ -364,7 +374,7 @@ const invokedAsScript =
 
 if (invokedAsScript) {
   runWithHarness(
-    "campaign-deploy --ids=<csv> [--dry-run] [--allow-partial] [--admin-email=<email>] [--incident=<ref>]",
+    "campaign-deploy --ids=<csv> [--dry-run] [--allow-partial] [--allow-missing-lastname] [--admin-email=<email>] [--incident=<ref>]",
     main,
   );
 }

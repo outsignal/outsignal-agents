@@ -6,6 +6,7 @@ interface CampaignDeployPayload {
   deployId: string;
   retryChannel?: "email" | "linkedin";
   allowPartial?: boolean;
+  allowMissingLastName?: boolean;
 }
 
 export const campaignDeployTask = task({
@@ -32,12 +33,14 @@ export const campaignDeployTask = task({
       );
       await executeDeploy(payload.campaignId, payload.deployId, {
         allowPartial: payload.allowPartial === true,
+        allowMissingLastName: payload.allowMissingLastName === true,
       });
       return {
         deployId: payload.deployId,
         action: "deploy",
         campaignId: payload.campaignId,
         allowPartial: payload.allowPartial === true,
+        allowMissingLastName: payload.allowMissingLastName === true,
       };
     }
   },

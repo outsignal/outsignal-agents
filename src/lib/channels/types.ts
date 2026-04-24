@@ -38,6 +38,11 @@ export interface DeployParams {
    * deploy on the first under-accepted batch. Default: false.
    */
   allowPartial?: boolean;
+  /**
+   * Allow missing lead last names to pass through to EmailBison as empty
+   * strings instead of failing the deploy closed. Default: false.
+   */
+  allowMissingLastName?: boolean;
 }
 
 /** Result returned from an adapter's deploy method. */

@@ -152,7 +152,7 @@ describe("EmailAdapter.deploy() — BL-070 concurrent-deploy race guard", () => 
         person: {
           email: "a@acme.com",
           firstName: "A",
-          lastName: null,
+          lastName: "Lead",
           jobTitle: null,
           company: null,
           workspaces: [],
@@ -302,7 +302,7 @@ describe("EmailAdapter.deploy() — BL-070 true Promise.all concurrency", () => 
         person: {
           email: "a@acme.com",
           firstName: "A",
-          lastName: null,
+          lastName: "Lead",
           jobTitle: null,
           company: null,
           workspaces: [],
@@ -493,7 +493,7 @@ describe("EmailAdapter.deploy() — BL-070 defensive P2002 branches", () => {
         person: {
           email: "a@acme.com",
           firstName: "A",
-          lastName: null,
+          lastName: "Lead",
           jobTitle: null,
           company: null,
           workspaces: [],

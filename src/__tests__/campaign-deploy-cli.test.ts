@@ -19,6 +19,7 @@ const initiateDeployMock =
       adminEmail: string;
       dryRun?: boolean;
       allowPartial?: boolean;
+      allowMissingLastName?: boolean;
     }) => Promise<InitiateDeployResult>
   >();
 vi.mock("@/lib/campaigns/deploy-campaign", () => ({
@@ -27,6 +28,7 @@ vi.mock("@/lib/campaigns/deploy-campaign", () => ({
     adminEmail: string;
     dryRun?: boolean;
     allowPartial?: boolean;
+    allowMissingLastName?: boolean;
   }) => initiateDeployMock(args),
 }));
 
@@ -82,6 +84,7 @@ describe("parseCliArgs", () => {
       ids: ["c1", "c2", "c3"],
       dryRun: false,
       allowPartial: false,
+      allowMissingLastName: false,
       adminEmail: DEFAULT_ADMIN_EMAIL,
       incident: null,
     });
@@ -100,6 +103,11 @@ describe("parseCliArgs", () => {
   it("parses --allow-partial", () => {
     const out = parseCliArgs(["--ids=c1", "--allow-partial"]);
     expect(out.allowPartial).toBe(true);
+  });
+
+  it("parses --allow-missing-lastname", () => {
+    const out = parseCliArgs(["--ids=c1", "--allow-missing-lastname"]);
+    expect(out.allowMissingLastName).toBe(true);
   });
 
   it("parses --admin-email override", () => {
@@ -156,6 +164,7 @@ describe("parseCliArgs", () => {
       ids: ["c1", "c2"],
       dryRun: true,
       allowPartial: false,
+      allowMissingLastName: false,
       adminEmail: "ops@outsignal.ai",
       incident: "BL-061",
     });
@@ -293,9 +302,10 @@ describe("main() — helper throw handling", () => {
 
   it("captures a mid-batch helper throw on the 2nd of 3 IDs: keeps prior success, records synthetic failure with helper_threw + zombie warning, stops early", async () => {
     // 1st ID: success (deployed). 2nd ID: helper throws. 3rd ID: never called.
-    initiateDeployMock.mockImplementation(async ({ campaignId, allowPartial }) => {
+    initiateDeployMock.mockImplementation(async ({ campaignId, allowPartial, allowMissingLastName }) => {
       if (campaignId === "camp-1") {
         expect(allowPartial).toBe(false);
+        expect(allowMissingLastName).toBe(false);
         return {
           ok: true,
           dryRun: false,
@@ -380,7 +390,7 @@ describe("main() — helper throw handling", () => {
     expect(stderrWrites).toMatch(/zombie deploy/i);
   });
 
-  it("passes allowPartial through to initiateCampaignDeploy", async () => {
+  it("passes allowPartial and allowMissingLastName through to initiateCampaignDeploy", async () => {
     initiateDeployMock.mockResolvedValue({
       ok: true,
       dryRun: false,
@@ -402,6 +412,7 @@ describe("main() — helper throw handling", () => {
       "campaign-deploy.ts",
       "--ids=camp-1",
       "--allow-partial",
+      "--allow-missing-lastname",
     ];
 
     try {
@@ -420,6 +431,7 @@ describe("main() — helper throw handling", () => {
       adminEmail: DEFAULT_ADMIN_EMAIL,
       dryRun: false,
       allowPartial: true,
+      allowMissingLastName: true,
     });
   });
 });

@@ -12,7 +12,11 @@ import { prisma } from "@/lib/db";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import type { CreateLeadResult } from "@/lib/emailbison/types";
 import { isNotFoundError } from "@/lib/emailbison/errors";
-import { buildEmailLeadPayload } from "@/lib/emailbison/lead-payload";
+import {
+  buildEmailLeadPayload,
+  collectMissingRequiredLeadFields,
+  MissingRequiredLeadFieldError,
+} from "@/lib/emailbison/lead-payload";
 import { EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES } from "@/lib/emailbison/custom-variable-names";
 import {
   transformSenderNames,
@@ -151,7 +155,7 @@ const StoredEmailSequenceStepSchema = z
     body: z.string().optional(),
     bodyText: z.string().optional(),
     delayDays: z.number().optional(),
-    notes: z.string().optional(),
+    notes: z.string().nullish(),
   })
   .passthrough();
 
@@ -561,6 +565,7 @@ export class EmailAdapter implements ChannelAdapter {
     const { deployId, campaignId, campaignName, workspaceSlug } = params;
     const skipResume = params.skipResume === true;
     const allowPartial = params.allowPartial === true;
+    const allowMissingLastName = params.allowMissingLastName === true;
 
     // Mark email channel as running
     await prisma.campaignDeploy.update({
@@ -1032,9 +1037,27 @@ export class EmailAdapter implements ChannelAdapter {
           const chunk = eligibleLeads.slice(i, i + LEAD_UPSERT_CHUNK_SIZE);
           const batchNumber = Math.floor(i / LEAD_UPSERT_CHUNK_SIZE) + 1;
           totalChunkCount += 1;
+          const missingRequiredFields = collectMissingRequiredLeadFields(
+            chunk.map((entry) => ({
+              personId: entry.person.id,
+              email: entry.person.email!,
+              lastName: entry.person.lastName,
+            })),
+          );
+          if (missingRequiredFields.length > 0) {
+            if (!allowMissingLastName) {
+              throw new MissingRequiredLeadFieldError(missingRequiredFields);
+            }
+            console.warn(
+              `[email-adapter] allowMissingLastName=true — batch ${batchNumber} continuing with ${missingRequiredFields.length} lead(s) missing lastName. personIds=${missingRequiredFields
+                .map((entry) => entry.personId)
+                .join(", ")}`,
+            );
+          }
           const payload = chunk.map((entry) => ({
             ...buildEmailLeadPayload(
               {
+                personId: entry.person.id,
                 email: entry.person.email!,
                 firstName: entry.person.firstName,
                 lastName: entry.person.lastName,
@@ -1044,6 +1067,7 @@ export class EmailAdapter implements ChannelAdapter {
                 location: entry.person.location,
               },
               campaign.description,
+              { allowMissingLastName },
             ),
           }));
           const upserted = await withRetry(() =>

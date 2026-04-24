@@ -132,6 +132,7 @@ async function finalizeDeployStatus(
 export interface ExecuteDeployOptions {
   skipResume?: boolean;
   allowPartial?: boolean;
+  allowMissingLastName?: boolean;
 }
 
 /**
@@ -361,6 +362,7 @@ export async function executeDeploy(
           channels,
           skipResume: opts?.skipResume === true,
           allowPartial: opts?.allowPartial === true,
+          allowMissingLastName: opts?.allowMissingLastName === true,
         });
       } else {
         const statusField = channel === "email" ? "emailStatus" : "linkedinStatus";

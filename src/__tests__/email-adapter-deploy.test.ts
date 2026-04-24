@@ -111,7 +111,7 @@ function fakePersonEntry(overrides: {
     person: {
       email: overrides.email,
       firstName: overrides.firstName ?? null,
-      lastName: overrides.lastName ?? null,
+      lastName: overrides.lastName ?? "Lead",
       jobTitle: overrides.jobTitle ?? null,
       company: overrides.company ?? null,
       companyDomain: overrides.companyDomain ?? null,
@@ -251,8 +251,8 @@ describe("EmailAdapter.deploy()", () => {
     // with existing_lead_behavior='patch' so prior-run leads are tolerated.
     expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledTimes(1);
     expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledWith([
-      { email: "a@acme.com", firstName: "A" },
-      { email: "b@acme.com", firstName: "B" },
+      { email: "a@acme.com", firstName: "A", lastName: "Lead" },
+      { email: "b@acme.com", firstName: "B", lastName: "Lead" },
     ]);
     // Tripwire: per-lead createLead path is dead for Step 4.
     expect(ebMock.createLead).not.toHaveBeenCalled();
@@ -309,7 +309,7 @@ describe("EmailAdapter.deploy()", () => {
     });
   });
 
-  it("adds LOCATION and LASTEMAILMONTH custom variables during lead upsert", async () => {
+  it("adds lowercase EmailBison custom variables during lead upsert", async () => {
     stubCampaign({
       description: "Signal follow-up lastEmailMonth:March",
     });
@@ -329,19 +329,19 @@ describe("EmailAdapter.deploy()", () => {
     await adapter.deploy(DEPLOY_PARAMS);
 
     expect(ebMock.ensureCustomVariables).toHaveBeenCalledWith([
-      "LOCATION",
-      "LASTEMAILMONTH",
+      "location",
+      "lastemailmonth",
     ]);
     expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledWith([
       {
         email: "a@acme.com",
         firstName: "A",
-        lastName: undefined,
+        lastName: "Lead",
         jobTitle: undefined,
         company: "Acme",
         customVariables: [
-          { name: "LOCATION", value: "Leeds, UK" },
-          { name: "LASTEMAILMONTH", value: "March" },
+          { name: "location", value: "Leeds, UK" },
+          { name: "lastemailmonth", value: "March" },
         ],
       },
     ]);

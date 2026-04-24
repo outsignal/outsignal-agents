@@ -210,6 +210,61 @@ function assertCanonicalEmailSequencePositions(emailSequence: unknown[]): void {
 }
 
 /**
+ * Guard against delayDays semantic drift on email sequences.
+ *
+ * Canonical source-of-truth encoding is absolute day-from-start:
+ *   step 1 = day 0
+ *   later steps = strictly increasing absolute offsets
+ *
+ * Gap-encoded sequences such as [0,14,14] are forbidden in storage even
+ * though the adapter can translate absolute values to EmailBison's gap wire
+ * format. Keeping a single canonical source encoding prevents future mixed
+ * semantics from creeping back into Campaign.emailSequence.
+ */
+function assertCanonicalEmailSequenceDelayEncoding(
+  emailSequence: unknown[],
+): void {
+  if (emailSequence.length === 0) return;
+
+  const sortedSteps = emailSequence
+    .map((step) =>
+      step && typeof step === "object" ? (step as Record<string, unknown>) : null,
+    )
+    .filter((step): step is Record<string, unknown> => step !== null)
+    .sort((a, b) => Number(a.position) - Number(b.position));
+
+  const delayDays = sortedSteps.map((step) => step.delayDays);
+  const hasAnyDelayDays = delayDays.some((delay) => delay !== undefined);
+  if (!hasAnyDelayDays) {
+    return;
+  }
+
+  const numericDelayDays = delayDays.map((delay) =>
+    typeof delay === "number" && Number.isFinite(delay) ? delay : NaN,
+  );
+
+  if (numericDelayDays.some((delay) => Number.isNaN(delay))) {
+    throw new Error(
+      `emailSequence delayDays must be numeric absolute-day offsets; received ${JSON.stringify(delayDays)}`,
+    );
+  }
+
+  if (numericDelayDays[0] !== 0) {
+    throw new Error(
+      `emailSequence delayDays must use canonical absolute-from-start semantics beginning at day 0; received ${JSON.stringify(numericDelayDays)}`,
+    );
+  }
+
+  for (let idx = 1; idx < numericDelayDays.length; idx += 1) {
+    if (numericDelayDays[idx] <= numericDelayDays[idx - 1]) {
+      throw new Error(
+        `emailSequence delayDays must be strictly increasing absolute-day offsets; received ${JSON.stringify(numericDelayDays)}`,
+      );
+    }
+  }
+}
+
+/**
  * Shape a raw Prisma Campaign record into CampaignDetail.
  */
 function formatCampaignDetail(
@@ -828,6 +883,7 @@ export async function saveCampaignSequences(
 
   if (emailSequence !== undefined) {
     assertCanonicalEmailSequencePositions(emailSequence);
+    assertCanonicalEmailSequenceDelayEncoding(emailSequence);
   }
 
   const updateData: Record<string, unknown> = {};

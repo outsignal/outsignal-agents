@@ -382,6 +382,57 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
+  it("rejects gap-encoded email delayDays so source storage stays absolute-from-start", async () => {
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "step 1", body: "body 1", delayDays: 0 },
+          { position: 2, subjectLine: "step 2", body: "body 2", delayDays: 14 },
+          { position: 3, subjectLine: "step 3", body: "body 3", delayDays: 14 },
+        ],
+      }),
+    ).rejects.toThrow(/strictly increasing absolute-day offsets/);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("accepts canonical absolute delayDays sequences such as [0,14,28]", async () => {
+    const absoluteSequence = [
+      { position: 1, subjectLine: "step 1", body: "body 1", delayDays: 0 },
+      { position: 2, subjectLine: "step 2", body: "body 2", delayDays: 14 },
+      { position: 3, subjectLine: "step 3", body: "body 3", delayDays: 28 },
+    ];
+
+    mockFindUnique.mockResolvedValue({
+      workspaceSlug: "test-ws",
+      name: "Test Campaign",
+      status: "pending_approval",
+      updatedAt: new Date("2026-04-24T10:00:00.000Z"),
+      contentApproved: false,
+      contentApprovedAt: null,
+      approvedContentHash: null,
+      emailSequence: JSON.stringify(SAMPLE_EMAIL_SEQUENCE),
+      linkedinSequence: null,
+    });
+    mockUpdate.mockResolvedValue(
+      fakeRawCampaign({
+        emailSequence: JSON.stringify(absoluteSequence),
+      }),
+    );
+
+    await saveCampaignSequences(CAMPAIGN_ID, {
+      emailSequence: absoluteSequence,
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.calls[0][0].data.emailSequence).toBe(
+      JSON.stringify(absoluteSequence),
+    );
+  });
+
   // ---------------------------------------------------------------------------
   // Finding 3: copyStrategy-only saves are metadata, must NOT reset
   // ---------------------------------------------------------------------------

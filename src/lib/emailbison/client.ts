@@ -812,8 +812,8 @@ export class EmailBisonClient {
     const body: Record<string, unknown> = {
       email: params.email,
     };
-    if (params.firstName) body.first_name = params.firstName;
-    if (params.lastName) body.last_name = params.lastName;
+    if (params.firstName !== undefined) body.first_name = params.firstName;
+    if (params.lastName !== undefined) body.last_name = params.lastName;
     if (params.jobTitle) body.title = params.jobTitle;
     if (params.company) body.company = params.company;
     if (params.phone) body.phone = params.phone;
@@ -897,8 +897,8 @@ export class EmailBisonClient {
       existing_lead_behavior: "patch" as const,
       leads: leads.map((lead) => {
         const entry: Record<string, unknown> = { email: lead.email };
-        if (lead.firstName) entry.first_name = lead.firstName;
-        if (lead.lastName) entry.last_name = lead.lastName;
+        if (lead.firstName !== undefined) entry.first_name = lead.firstName;
+        if (lead.lastName !== undefined) entry.last_name = lead.lastName;
         if (lead.jobTitle) entry.title = lead.jobTitle;
         if (lead.company) entry.company = lead.company;
         if (lead.phone) entry.phone = lead.phone;
@@ -994,10 +994,20 @@ export class EmailBisonClient {
 
   async ensureCustomVariables(names: string[]): Promise<void> {
     const existing = await this.getCustomVariables();
-    const existingNames = new Set(existing.map(v => v.name));
+    const existingNames = new Set(existing.map(v => v.name.toLowerCase()));
     for (const name of names) {
-      if (!existingNames.has(name)) {
-        await this.createCustomVariable(name);
+      if (!existingNames.has(name.toLowerCase())) {
+        try {
+          await this.createCustomVariable(name);
+        } catch (err) {
+          // Tolerate "already taken" — race condition or case-insensitive match
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("already been taken")) {
+            console.log(`[EmailBison] Custom variable '${name}' already exists (tolerating 422)`);
+            continue;
+          }
+          throw err;
+        }
       }
     }
   }

@@ -198,7 +198,7 @@ function setupBaselinePrisma(opts: {
     person: {
       email: `lead${i + 1}@acme.com`,
       firstName: `L${i + 1}`,
-      lastName: null,
+      lastName: "Lead",
       jobTitle: null,
       company: null,
       workspaces: [],

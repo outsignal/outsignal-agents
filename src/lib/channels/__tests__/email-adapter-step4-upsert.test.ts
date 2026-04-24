@@ -27,6 +27,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MissingRequiredLeadFieldError } from "@/lib/emailbison/lead-payload";
 
 const { ebMock, getCampaignMock, prismaMock } = vi.hoisted(() => ({
   ebMock: {
@@ -90,6 +91,7 @@ const DEPLOY_PARAMS = {
 };
 
 function fakeEntry(p: {
+  id?: string;
   email: string | null;
   firstName?: string | null;
   lastName?: string | null;
@@ -98,9 +100,10 @@ function fakeEntry(p: {
 }) {
   return {
     person: {
+      id: p.id ?? p.email ?? "person-without-email",
       email: p.email,
       firstName: p.firstName ?? null,
-      lastName: p.lastName ?? null,
+      lastName: p.lastName === undefined ? "Lead" : p.lastName,
       jobTitle: p.jobTitle ?? null,
       company: p.company ?? null,
       workspaces: [],
@@ -222,8 +225,7 @@ describe("EmailAdapter.deploy Step 4 — batch upsert (BL-088)", () => {
         {
           email: "carol@acme.com",
           firstName: "Carol",
-          // lastName/jobTitle/company are undefined (null on person → ?? undefined)
-          lastName: undefined,
+          lastName: "Lead",
           jobTitle: undefined,
           company: undefined,
         },
@@ -405,4 +407,54 @@ describe("EmailAdapter.deploy Step 4 — batch upsert (BL-088)", () => {
       });
     },
   );
+
+  it("fails closed with a MissingRequiredLeadFieldError when lastName is missing by default", async () => {
+    prismaMock.targetListPerson.findMany.mockResolvedValue([
+      fakeEntry({
+        id: "person_missing_lastname",
+        email: "missing@acme.com",
+        firstName: "Missing",
+        lastName: null,
+      }),
+    ]);
+
+    await expect(adapter.deploy(DEPLOY_PARAMS)).rejects.toMatchObject({
+      name: "MissingRequiredLeadFieldError",
+      personIds: ["person_missing_lastname"],
+      emails: ["missing@acme.com"],
+    } satisfies Partial<MissingRequiredLeadFieldError>);
+
+    expect(ebMock.createOrUpdateLeadsMultiple).not.toHaveBeenCalled();
+    const lastUpdate = prismaMock.campaignDeploy.update.mock.calls.at(-1)?.[0];
+    expect(lastUpdate?.data.emailStatus).toBe("failed");
+    expect(String(lastUpdate?.data.emailError)).toMatch(/Missing required lead field lastName/);
+  });
+
+  it("uses an empty-string fallback and warns when allowMissingLastName=true", async () => {
+    prismaMock.targetListPerson.findMany.mockResolvedValue([
+      fakeEntry({ email: "missing@acme.com", firstName: "Missing", lastName: null }),
+    ]);
+    ebMock.createOrUpdateLeadsMultiple.mockResolvedValue([
+      { id: 9001, email: "missing@acme.com", status: "active" },
+    ]);
+
+    await adapter.deploy({
+      ...DEPLOY_PARAMS,
+      allowMissingLastName: true,
+    });
+
+    expect(ebMock.createOrUpdateLeadsMultiple).toHaveBeenCalledWith([
+      {
+        email: "missing@acme.com",
+        firstName: "Missing",
+        lastName: "",
+        jobTitle: undefined,
+        company: undefined,
+        customVariables: undefined,
+      },
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/allowMissingLastName=true/),
+    );
+  });
 });

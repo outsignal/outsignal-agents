@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildEmailLeadPayload } from "../lead-payload";
+import {
+  buildEmailLeadPayload,
+  collectMissingRequiredLeadFields,
+  MissingRequiredLeadFieldError,
+} from "../lead-payload";
 
 describe("buildEmailLeadPayload", () => {
   it("normalises company and adds supported custom variables", () => {
@@ -24,8 +28,8 @@ describe("buildEmailLeadPayload", () => {
       jobTitle: "Ops Director",
       company: "Acme",
       customVariables: [
-        { name: "LOCATION", value: "Leeds, UK" },
-        { name: "LASTEMAILMONTH", value: "February" },
+        { name: "location", value: "Leeds, UK" },
+        { name: "lastemailmonth", value: "February" },
       ],
     });
   });
@@ -44,5 +48,49 @@ describe("buildEmailLeadPayload", () => {
       lastName: undefined,
       jobTitle: undefined,
     });
+  });
+
+  it("uses an explicit empty-string fallback only when allowMissingLastName=true", () => {
+    const payload = buildEmailLeadPayload(
+      {
+        email: "lead@example.com",
+        firstName: "Alice",
+        lastName: null,
+      },
+      null,
+      { allowMissingLastName: true },
+    );
+
+    expect(payload).toEqual({
+      email: "lead@example.com",
+      firstName: "Alice",
+      lastName: "",
+      company: undefined,
+      customVariables: undefined,
+      jobTitle: undefined,
+    });
+  });
+
+  it("collects missing lastName fields into a structured error payload", () => {
+    const missing = collectMissingRequiredLeadFields([
+      {
+        personId: "person_123",
+        email: "lead@example.com",
+        lastName: null,
+      },
+    ]);
+    const error = new MissingRequiredLeadFieldError(missing);
+
+    expect(missing).toEqual([
+      {
+        fieldName: "lastName",
+        personId: "person_123",
+        email: "lead@example.com",
+      },
+    ]);
+    expect(error.name).toBe("MissingRequiredLeadFieldError");
+    expect(error.personIds).toEqual(["person_123"]);
+    expect(error.emails).toEqual(["lead@example.com"]);
+    expect(error.message).toContain("person_123");
   });
 });
