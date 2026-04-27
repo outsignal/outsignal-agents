@@ -111,6 +111,10 @@ const KNOWN_EB_TOKENS: ReadonlySet<string> = new Set([
   "SENDER_COMPANY",
 ]);
 
+const KNOWN_EB_CUSTOM_VARIABLE_TOKENS: ReadonlySet<string> = new Set(
+  Array.from(EMAILBISON_CUSTOM_VARIABLE_NAME_SET, (name) => name.toUpperCase()),
+);
+
 /**
  * Transform Outsignal canonical tokens to EB-vendor-documented tokens.
  *
@@ -146,7 +150,7 @@ export function transformVariablesForEB(text: string): string {
     }
     if (
       KNOWN_EB_TOKENS.has(token) ||
-      EMAILBISON_CUSTOM_VARIABLE_NAME_SET.has(token)
+      KNOWN_EB_CUSTOM_VARIABLE_TOKENS.has(token)
     ) {
       // Known-good EB token (vendor-confirmed or defensive). Preserve verbatim,
       // do NOT warn — this is the idempotent second-pass case or an already-
@@ -156,7 +160,6 @@ export function transformVariablesForEB(text: string): string {
     // Unknown single-curly UPPER token. Pass through verbatim (better than
     // silent mis-mapping), but warn so PM can chase writer drift or missing
     // EB custom variables before recipients see literal placeholders.
-    // eslint-disable-next-line no-console
     console.warn(
       `[variable-transform] unmapped token: ${full} — passing through verbatim (writer may be emitting a custom/unknown variable)`,
     );
