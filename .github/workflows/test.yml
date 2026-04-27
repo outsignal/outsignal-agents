@@ -29,19 +29,28 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             worker/package-lock.json
+            worker-signals/package-lock.json
 
       - name: Install root dependencies
-        run: npm ci
-
-      - name: Install worker dependencies
-        working-directory: worker
         run: npm ci
 
       - name: Typecheck root
         run: npx tsc --noEmit
 
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Install worker-signals dependencies
+        working-directory: worker-signals
+        run: npm ci
+
       - name: Typecheck worker
         working-directory: worker
+        run: npx tsc --noEmit
+
+      - name: Typecheck worker-signals
+        working-directory: worker-signals
         run: npx tsc --noEmit
 
       - name: Run tests
