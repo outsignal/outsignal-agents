@@ -4,6 +4,7 @@ import { PortalMobileMenu } from "@/components/portal/portal-mobile-menu";
 import { PageTransition } from "@/components/layout/page-transition";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SupportWidget } from "@/components/portal/support-widget";
+import { WorkspaceModeProvider } from "@/lib/hooks/useWorkspaceMode";
 
 interface PortalAppShellProps {
   workspaceSlug: string;
@@ -13,34 +14,36 @@ interface PortalAppShellProps {
 export async function PortalAppShell({ workspaceSlug, children }: PortalAppShellProps) {
   const workspace = await prisma.workspace.findUnique({
     where: { slug: workspaceSlug },
-    select: { name: true },
+    select: { name: true, package: true },
   });
 
   return (
-    <TooltipProvider delayDuration={0}>
-      <div className="flex h-screen overflow-hidden">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-4 focus:left-4 focus:bg-background focus:text-foreground focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg focus:text-sm focus:font-medium"
-        >
-          Skip to main content
-        </a>
+    <WorkspaceModeProvider workspacePackage={workspace?.package}>
+      <TooltipProvider delayDuration={0}>
+        <div className="flex h-screen overflow-hidden">
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-4 focus:left-4 focus:bg-background focus:text-foreground focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg focus:text-sm focus:font-medium"
+          >
+            Skip to main content
+          </a>
 
-        <div className="hidden md:flex">
-          <PortalSidebar
+          <div className="hidden md:flex">
+            <PortalSidebar
+              workspaceSlug={workspaceSlug}
+              workspaceName={workspace?.name ?? workspaceSlug}
+            />
+          </div>
+          <PortalMobileMenu
             workspaceSlug={workspaceSlug}
             workspaceName={workspace?.name ?? workspaceSlug}
           />
+          <main id="main-content" className="flex-1 overflow-auto min-w-0">
+            <PageTransition>{children}</PageTransition>
+          </main>
+          <SupportWidget />
         </div>
-        <PortalMobileMenu
-          workspaceSlug={workspaceSlug}
-          workspaceName={workspace?.name ?? workspaceSlug}
-        />
-        <main id="main-content" className="flex-1 overflow-auto min-w-0">
-          <PageTransition>{children}</PageTransition>
-        </main>
-        <SupportWidget />
-      </div>
-    </TooltipProvider>
+      </TooltipProvider>
+    </WorkspaceModeProvider>
   );
 }

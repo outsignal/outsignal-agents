@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { useWorkspaceMode } from "@/lib/hooks/useWorkspaceMode";
 
 interface PortalSidebarProps {
   workspaceSlug: string;
@@ -84,6 +85,7 @@ const navGroups: NavGroup[] = [
 
 export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarProps) {
   const pathname = usePathname();
+  const { hasEmail, hasLinkedIn } = useWorkspaceMode();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -164,6 +166,13 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
     return item.href === "/portal"
       ? pathname === "/portal"
       : pathname === item.href || pathname.startsWith(item.href + "/");
+  }
+
+  function shouldShowNavItem(item: NavItem) {
+    if (item.label === "LinkedIn") return hasLinkedIn;
+    if (item.label === "Out of Office") return hasEmail;
+    if (item.label === "Sender Health") return hasEmail;
+    return true;
   }
 
   function renderNavItem(item: NavItem) {
@@ -283,7 +292,9 @@ export function PortalSidebar({ workspaceSlug, workspaceName }: PortalSidebarPro
                 </p>
               )}
               <div className="space-y-0.5">
-                {group.items.map((item) => renderNavItem(item))}
+                {group.items
+                  .filter(shouldShowNavItem)
+                  .map((item) => renderNavItem(item))}
               </div>
             </div>
           ))}
