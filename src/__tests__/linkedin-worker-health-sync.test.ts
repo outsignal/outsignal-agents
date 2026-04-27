@@ -20,6 +20,16 @@ describe("LinkedIn worker sender health sync fallback", () => {
     dailyProfileViewLimit: 10,
   };
 
+  function claimableActions(actions: Array<{ id: string } & Record<string, unknown>>) {
+    return {
+      peekNextActions: vi.fn().mockResolvedValue(actions),
+      claimActions: vi.fn(async (_senderId: string, actionIds: string[]) =>
+        actions.filter((action) => actionIds.includes(action.id)),
+      ),
+      getNextActions: vi.fn().mockResolvedValue(actions.slice(0, 1)),
+    };
+  }
+
   beforeEach(() => {
     clearSenderStateOverrides();
     vi.restoreAllMocks();
@@ -136,7 +146,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
     }) as any;
     worker.running = true;
     worker.api = {
-      getNextActions: vi.fn().mockResolvedValue([
+      ...claimableActions([
         {
           id: "action-1",
           personId: "person-1",
@@ -215,7 +225,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
     }) as any;
     worker.running = true;
     worker.api = {
-      getNextActions: vi.fn().mockResolvedValue([
+      ...claimableActions([
         {
           id: "action-1",
           personId: "person-1",
@@ -280,7 +290,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
     }) as any;
     worker.running = true;
     worker.api = {
-      getNextActions: vi.fn().mockResolvedValue([
+      ...claimableActions([
         {
           id: "action-1",
           personId: "person-1",
@@ -345,7 +355,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
     }) as any;
     worker.running = true;
     worker.api = {
-      getNextActions: vi.fn().mockResolvedValue([
+      ...claimableActions([
         {
           id: "action-1",
           personId: "person-1",
@@ -396,7 +406,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
     }) as any;
     worker.running = true;
     worker.api = {
-      getNextActions: vi.fn().mockResolvedValue([
+      ...claimableActions([
         {
           id: "action-1",
           personId: "person-1",
@@ -465,7 +475,7 @@ describe("LinkedIn worker sender health sync fallback", () => {
     }) as any;
     worker.running = true;
     worker.api = {
-      getNextActions: vi.fn().mockResolvedValue([
+      ...claimableActions([
         {
           id: "action-1",
           personId: "person-1",
