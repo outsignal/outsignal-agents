@@ -399,6 +399,54 @@ describe("saveCampaignSequences — contentApproved reset (BL-053)", () => {
     expect(mockAuditCreate).not.toHaveBeenCalled();
   });
 
+  it("rejects gap-encoded email delayDays that omit the day-0 first step", async () => {
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "step 1", body: "body 1", delayDays: 3 },
+          { position: 2, subjectLine: "step 2", body: "body 2", delayDays: 7 },
+        ],
+      }),
+    ).rejects.toThrow(/beginning at day 0/);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects email delayDays when any present value is non-numeric", async () => {
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "step 1", body: "body 1", delayDays: 0 },
+          { position: 2, subjectLine: "step 2", body: "body 2", delayDays: "3" },
+        ],
+      }),
+    ).rejects.toThrow(/delayDays must be numeric absolute-day offsets/);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects email delayDays when only some steps provide the field", async () => {
+    await expect(
+      saveCampaignSequences(CAMPAIGN_ID, {
+        emailSequence: [
+          { position: 1, subjectLine: "step 1", body: "body 1", delayDays: 0 },
+          { position: 2, subjectLine: "step 2", body: "body 2" },
+        ],
+      }),
+    ).rejects.toThrow(/delayDays must be numeric absolute-day offsets/);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockAuditCreate).not.toHaveBeenCalled();
+  });
+
   it("accepts canonical absolute delayDays sequences such as [0,14,28]", async () => {
     const absoluteSequence = [
       { position: 1, subjectLine: "step 1", body: "body 1", delayDays: 0 },

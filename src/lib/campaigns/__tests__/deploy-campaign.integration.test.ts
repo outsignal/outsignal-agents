@@ -173,8 +173,9 @@ function routeFetch(routes: Array<{ match: RegExp; method?: string; handler: Rou
 function setupBaselinePrisma(opts: {
   preExistingEbId?: number | null;
   leadCount?: number;
+  leadOverrides?: Array<Record<string, unknown>>;
 } = {}) {
-  const { preExistingEbId = null, leadCount = 1 } = opts;
+  const { preExistingEbId = null, leadCount = 1, leadOverrides = [] } = opts;
 
   prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({
     apiToken: API_TOKEN,
@@ -196,12 +197,16 @@ function setupBaselinePrisma(opts: {
 
   const leads = Array.from({ length: leadCount }, (_, i) => ({
     person: {
+      id: `person-${i + 1}`,
       email: `lead${i + 1}@acme.com`,
       firstName: `L${i + 1}`,
       lastName: "Lead",
       jobTitle: null,
       company: null,
+      companyDomain: null,
+      location: null,
       workspaces: [],
+      ...(leadOverrides[i] ?? {}),
     },
   }));
   prismaMock.targetListPerson.findMany.mockResolvedValue(leads);
@@ -871,5 +876,119 @@ describe("deploy-campaign integration — EmailAdapter ↔ EmailBisonClient HTTP
       data: { emailStatus: "failed" },
     });
     expect(lastAdapterUpdate.data.emailError).toMatch(/\[step:6\]/);
+  });
+
+  it("blocks executeDeploy before lead upsert when an eligible lead is missing lastName", async () => {
+    setupBaselinePrisma({
+      preExistingEbId: null,
+      leadCount: 1,
+      leadOverrides: [{ id: "person-missing-last", lastName: null }],
+    });
+
+    getCampaignMock.mockReset();
+    getCampaignMock.mockResolvedValue({
+      id: "camp-integ-1",
+      name: "Integration Campaign",
+      workspaceSlug: WORKSPACE_SLUG,
+      status: "deployed",
+      channels: ["email"],
+      targetListId: "tl-1",
+      emailBisonCampaignId: null,
+      emailSequence: [
+        { position: 1, subjectLine: "hi", body: "hello", delayDays: 0 },
+      ],
+    });
+
+    prismaMock.campaignDeploy.findUniqueOrThrow.mockResolvedValueOnce({
+      status: "pending",
+      emailBisonCampaignId: null,
+    });
+    prismaMock.campaignDeploy.updateMany.mockResolvedValue({ count: 1 });
+
+    txMock.campaignDeploy.findUnique.mockResolvedValue({ status: "running" });
+    txMock.campaignDeploy.update.mockResolvedValue({});
+    txMock.campaignDeploy.findFirst.mockResolvedValue(null);
+    txMock.campaign.findUnique.mockResolvedValue({
+      emailBisonCampaignId: 10003,
+      status: "deployed",
+    });
+    txMock.campaign.updateMany.mockResolvedValue({ count: 1 });
+    txMock.auditLog.create.mockResolvedValue({});
+
+    fetchMock.mockImplementation(
+      routeFetch([
+        {
+          method: "GET",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: () => mockResponse({ data: [], meta: { last_page: 1 } }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/custom-variables(\?.*)?$/,
+          handler: (_url, options) => {
+            const body = JSON.parse(String(options.body ?? "{}"));
+            return mockResponse({ data: { id: 1, name: body.name } });
+          },
+        },
+        {
+          method: "POST",
+          match: /\/api\/campaigns$/,
+          handler: () =>
+            mockResponse({ data: { id: 10003, uuid: "uuid-10003" } }),
+        },
+        {
+          method: "POST",
+          match: /\/api\/campaigns\/v1\.1\/10003\/sequence-steps$/,
+          handler: () =>
+            mockResponse({
+              data: [
+                {
+                  id: 1,
+                  email_subject: "hi",
+                  email_body: "hello",
+                  wait_in_days: 1,
+                  order: 1,
+                },
+              ],
+            }),
+        },
+      ]),
+    );
+
+    await expect(
+      executeDeploy("camp-integ-1", "deploy-integ-1"),
+    ).rejects.toThrow(/Missing required lead field lastName/);
+
+    const calls = fetchMock.mock.calls.map((c) => {
+      const url = c[0] as string;
+      const method = ((c[1] as RequestInit)?.method ?? "GET").toUpperCase();
+      return `${method} ${url.replace(EB_BASE, "")}`;
+    });
+
+    expect(
+      calls.some((s) => /\/leads\/create-or-update\/multiple/.test(s)),
+    ).toBe(false);
+    expect(calls.some((s) => /attach-leads/.test(s))).toBe(false);
+    expect(calls.some((s) => /\/schedule/.test(s))).toBe(false);
+    expect(calls.some((s) => /\/resume/.test(s))).toBe(false);
+
+    const adapterUpdates = prismaMock.campaignDeploy.update.mock.calls;
+    const lastAdapterUpdate = adapterUpdates.at(-1)?.[0];
+    expect(lastAdapterUpdate).toMatchObject({
+      where: { id: "deploy-integ-1" },
+      data: { emailStatus: "failed" },
+    });
+    expect(lastAdapterUpdate.data.emailError).toMatch(
+      /Missing required lead field lastName/,
+    );
+
+    expect(txMock.campaign.updateMany).toHaveBeenCalledWith({
+      where: { id: "camp-integ-1", status: "deployed" },
+      data: {
+        status: "approved",
+        emailBisonCampaignId: null,
+        deployedAt: null,
+      },
+    });
   });
 });
