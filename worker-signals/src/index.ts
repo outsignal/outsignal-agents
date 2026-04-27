@@ -37,7 +37,10 @@ async function triggerSignalPipeline(): Promise<void> {
       const body = await res.text().catch(() => "");
       console.error(`[SignalWorker] Pipeline trigger failed (${res.status}): ${body}`);
     } else {
-      const result = await res.json().catch(() => ({}));
+      const result = await res.json().catch(() => ({})) as {
+        campaignsProcessed?: number;
+        totalLeadsAdded?: number;
+      };
       console.log(
         `[SignalWorker] Pipeline complete — campaigns: ${result.campaignsProcessed ?? 0}, ` +
         `leads added: ${result.totalLeadsAdded ?? 0}`

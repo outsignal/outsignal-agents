@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck + Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            worker/package-lock.json
+            worker-signals/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Install worker-signals dependencies
+        working-directory: worker-signals
+        run: npm ci
+
+      - name: Typecheck root
+        run: npx tsc --noEmit
+
+      - name: Typecheck worker
+        working-directory: worker
+        run: npx tsc --noEmit
+
+      - name: Typecheck worker-signals
+        working-directory: worker-signals
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npx vitest run --silent
