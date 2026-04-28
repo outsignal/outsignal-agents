@@ -55,6 +55,25 @@ const FindyMailResponseSchema = z
   })
   .passthrough();
 
+function extractFindyMailEmail(raw: unknown, parsedEmail?: string | null): string | null {
+  const response = raw as {
+    email?: unknown;
+    contact?: { email?: unknown };
+    data?: { email?: unknown };
+    verified_email?: unknown;
+  };
+
+  const email =
+    parsedEmail ??
+    response.contact?.email ??
+    response.email ??
+    response.data?.email ??
+    response.verified_email ??
+    null;
+
+  return typeof email === "string" && email.trim() ? email : null;
+}
+
 // ---------------------------------------------------------------------------
 // Bulk parallel fan-out
 // ---------------------------------------------------------------------------
@@ -161,12 +180,10 @@ export async function bulkFindEmail(
           const raw = await res.json();
           const parsed = FindyMailResponseSchema.safeParse(raw);
 
-          const email = parsed.success
-            ? parsed.data.email ?? null
-            : (raw as any)?.email ??
-              (raw as any)?.data?.email ??
-              (raw as any)?.verified_email ??
-              null;
+          const email = extractFindyMailEmail(
+            raw,
+            parsed.success ? parsed.data.email ?? null : null,
+          );
 
           results.set(person.personId, {
             email,
@@ -265,12 +282,10 @@ export const findymailAdapter: EmailAdapter = async (
   const parsed = FindyMailResponseSchema.safeParse(raw);
 
   // Fallback email extraction for unknown schema variations
-  const email = parsed.success
-    ? parsed.data.email ?? null
-    : (raw as any)?.email ??
-      (raw as any)?.data?.email ??
-      (raw as any)?.verified_email ??
-      null;
+  const email = extractFindyMailEmail(
+    raw,
+    parsed.success ? parsed.data.email ?? null : null,
+  );
 
   if (!parsed.success) {
     console.warn("[findymailAdapter] Zod validation failed:", parsed.error.message, "rawResponse:", raw);

@@ -236,18 +236,14 @@ export async function stageDiscoveredPeople(
     .map((person, i) => {
       if (dupeIndices.has(i)) return null;
 
-      // Build rawResponse JSON — merge per-person raw response with sourceId
-      // so it survives staging and can be read during promotion.
-      // DiscoveredPerson table has no sourceId column, so we embed it here.
+      // Build rawResponse JSON from the provider payload only. Source IDs are
+      // persisted separately on DiscoveredPerson.sourceId for promotion.
       let rawResponseJson: string | null = null;
-      if (hasRawResponses || person.sourceId) {
-        const baseRaw = hasRawResponses ? input.rawResponses![i] : {};
+      if (hasRawResponses) {
+        const baseRaw = input.rawResponses![i];
         const merged: Record<string, unknown> = typeof baseRaw === "object" && baseRaw !== null
           ? { ...baseRaw as Record<string, unknown> }
           : { _rawResponse: baseRaw };
-        if (person.sourceId) {
-          merged._discoverySourceId = person.sourceId;
-        }
         rawResponseJson = JSON.stringify(merged);
       }
 
@@ -262,6 +258,7 @@ export async function stageDiscoveredPeople(
         phone: person.phone ?? null,
         location: person.location ?? null,
         discoverySource: input.discoverySource,
+        sourceId: person.sourceId ?? null,
         searchQuery: input.searchQuery ?? null,
         workspaceSlug: input.workspaceSlug,
         discoveryRunId: runId,

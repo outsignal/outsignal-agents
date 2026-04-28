@@ -128,24 +128,9 @@ interface StagedRecord {
   phone: string | null;
   location: string | null;
   discoverySource: string;
+  sourceId: string | null;
   workspaceSlug: string;
   rawResponse: string | null;
-}
-
-/**
- * Extract the discovery source ID (e.g. Prospeo person_id, AI Ark person id)
- * from the rawResponse JSON. Staging embeds it as `_discoverySourceId`.
- */
-function extractSourceId(rawResponse: string | null): string | null {
-  if (!rawResponse) return null;
-  try {
-    const parsed = JSON.parse(rawResponse);
-    return typeof parsed._discoverySourceId === "string"
-      ? parsed._discoverySourceId
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -277,10 +262,9 @@ function recordRichnessScore(dp: StagedRecord): number {
 async function ensurePersonWorkspaceLink(
   personId: string,
   workspaceSlug: string,
-  rawResponse: string | null,
+  discoverySourceId: string | null,
   score?: PromotionScore,
 ): Promise<void> {
-  const discoverySourceId = extractSourceId(rawResponse);
   const scorePayload = score
     ? {
         icpScore: score.icpScore,
@@ -399,7 +383,7 @@ async function promoteToPerson(
   // `existing.icpScoreSource !== "manual"` to avoid clobbering hand-edited
   // ICP scores during a re-discovery / re-promotion. Tracked in Finding 3.1
   // — schema migration deferred so we don't ship an unmigrated column today.
-  await ensurePersonWorkspaceLink(person.id, workspaceSlug, dp.rawResponse, score);
+  await ensurePersonWorkspaceLink(person.id, workspaceSlug, dp.sourceId, score);
 
   return person;
 }
@@ -492,6 +476,7 @@ export async function deduplicateAndPromote(
       phone: true,
       location: true,
       discoverySource: true,
+      sourceId: true,
       workspaceSlug: true,
       rawResponse: true,
     },
@@ -750,7 +735,7 @@ export async function deduplicateAndPromote(
     // Duplicate check (already resolved above)
     if (duplicateIndices.has(i)) {
       const existingPersonId = findExistingPersonFromMaps(dp, dedupMaps)!;
-      await ensurePersonWorkspaceLink(existingPersonId, workspaceSlug, dp.rawResponse);
+      await ensurePersonWorkspaceLink(existingPersonId, workspaceSlug, dp.sourceId);
       await prisma.discoveredPerson.update({
         where: { id: dp.id },
         data: {

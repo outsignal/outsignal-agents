@@ -101,6 +101,7 @@ function makeStagedRecord(overrides: Record<string, unknown> = {}) {
     phone: null,
     location: "London, UK",
     discoverySource: "prospeo",
+    sourceId: null,
     workspaceSlug: "test",
     rawResponse: null,
     ...overrides,
@@ -332,5 +333,41 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     expect(result.promoted).toBe(1);
     expect(result.enrichmentJobId).toBeUndefined();
     expect(enqueueJobMock).not.toHaveBeenCalled();
+  });
+
+  it("copies DiscoveredPerson.sourceId to PersonWorkspace without parsing rawResponse", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+
+    discoveredPersonFindManyMock.mockResolvedValue([
+      makeStagedRecord({
+        id: "dp-source-id",
+        sourceId: "prospeo-person-123",
+        rawResponse: JSON.stringify({ person: { first_name: "John" } }),
+      }),
+    ]);
+
+    const result = await deduplicateAndPromote("test", ["run-1"]);
+
+    expect(result.promoted).toBe(1);
+    expect(personWorkspaceUpsertMock).toHaveBeenCalledWith({
+      where: {
+        personId_workspace: {
+          personId: "person-john@acme.com",
+          workspace: "test",
+        },
+      },
+      create: {
+        personId: "person-john@acme.com",
+        workspace: "test",
+        sourceId: "prospeo-person-123",
+      },
+      update: {
+        sourceId: "prospeo-person-123",
+      },
+    });
   });
 });
