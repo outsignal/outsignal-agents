@@ -76,6 +76,7 @@ function makeStagedPerson(overrides: Partial<{
   phone: string | null;
   location: string | null;
   discoverySource: string;
+  sourceId: string | null;
   workspaceSlug: string;
   rawResponse: string | null;
 }> = {}) {
@@ -91,6 +92,7 @@ function makeStagedPerson(overrides: Partial<{
     phone: overrides.phone ?? null,
     location: overrides.location ?? "London",
     discoverySource: overrides.discoverySource ?? "prospeo",
+    sourceId: overrides.sourceId ?? null,
     workspaceSlug: overrides.workspaceSlug ?? "test-ws",
     rawResponse: overrides.rawResponse ?? null,
   };
@@ -281,5 +283,41 @@ describe("promotion ICP gate", () => {
 
     expect(result.promoted).toBe(1);
     expect(result.enrichmentJobId).toBeUndefined();
+  });
+
+  it("copies DiscoveredPerson.sourceId to PersonWorkspace without parsing rawResponse", async () => {
+    mockWorkspace.mockResolvedValue({
+      slug: "test-ws",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+
+    mockFindManyDiscovered.mockResolvedValue([
+      makeStagedPerson({
+        id: "dp-source-id",
+        sourceId: "prospeo-person-123",
+        rawResponse: JSON.stringify({ person: { first_name: "John" } }),
+      }),
+    ]);
+
+    const result = await deduplicateAndPromote("test-ws", ["run-1"]);
+
+    expect(result.promoted).toBe(1);
+    expect(mockUpsertPw).toHaveBeenCalledWith({
+      where: {
+        personId_workspace: {
+          personId: "person-1",
+          workspace: "test-ws",
+        },
+      },
+      create: {
+        personId: "person-1",
+        workspace: "test-ws",
+        sourceId: "prospeo-person-123",
+      },
+      update: {
+        sourceId: "prospeo-person-123",
+      },
+    });
   });
 });

@@ -64,6 +64,7 @@ async function main() {
     workspaceSlug: WORKSPACE_SLUG,
     searchQuery: JSON.stringify({ pipeline: "blanktag-shopify-google-ads", sources: ["prospeo", "aiark"] }),
     discoveryRunId: RUN_ID,
+    rawResponses: contacts,
   });
 
   console.log(`Staged: ${stagingResult.staged} contacts (runId: ${stagingResult.runId})`);
