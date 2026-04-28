@@ -243,6 +243,7 @@ model DiscoveredPerson {
 
   // Provenance tracking
   discoverySource  String   // "apollo" | "prospeo" | "serper" | "firecrawl" | "aiark" etc.
+  sourceId         String?  // Provider's native person ID (e.g., Prospeo person_id, AI Ark person id) — used for source-first enrichment lookups
   searchQuery      String?  // The query/filters used to find this person (JSON or text)
   workspaceSlug    String   // Which workspace's discovery run produced this record
 
@@ -268,6 +269,7 @@ model DiscoveredPerson {
   @@index([workspaceSlug, status])
   @@index([email])
   @@index([linkedinUrl])
+  @@index([discoverySource, sourceId])
   @@index([discoveryRunId])
   @@index([personId])
   @@index([workspaceSlug, promotedAt])
