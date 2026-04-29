@@ -69,6 +69,31 @@ describe("merge existing-data-wins helpers", () => {
     });
   });
 
+  it("deep-merges FindyMail contact IDs into existing person providerIds", async () => {
+    personFindUniqueOrThrowMock.mockResolvedValue({
+      id: "person-1",
+      providerIds: { prospeoPersonId: "prospeo-456" },
+      jobTitle: null,
+    });
+
+    const fieldsWritten = await mergePersonData("person-1", {
+      providerIds: { findymailContactId: "1229081678" },
+      jobTitle: "Director",
+    });
+
+    expect(fieldsWritten).toEqual(["providerIds", "jobTitle"]);
+    expect(personUpdateMock).toHaveBeenCalledWith({
+      where: { id: "person-1" },
+      data: {
+        providerIds: {
+          prospeoPersonId: "prospeo-456",
+          findymailContactId: "1229081678",
+        },
+        jobTitle: "Director",
+      },
+    });
+  });
+
   it("treats blank company fields as mergeable rather than authoritative", async () => {
     companyFindUniqueOrThrowMock.mockResolvedValue({
       domain: "acme.com",

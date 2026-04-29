@@ -55,6 +55,89 @@ const FindyMailResponseSchema = z
   })
   .passthrough();
 
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function splitName(name: string | undefined): { firstName?: string; lastName?: string } {
+  if (!name) return {};
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { firstName: parts[0] };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+type FindyMailContact = {
+  id?: unknown;
+  name?: unknown;
+  first_name?: unknown;
+  last_name?: unknown;
+  email?: unknown;
+  domain?: unknown;
+  company?: unknown;
+  linkedin_url?: unknown;
+  job_title?: unknown;
+  city?: unknown;
+  region?: unknown;
+  country?: unknown;
+  company_city?: unknown;
+  company_region?: unknown;
+  company_country?: unknown;
+};
+
+/**
+ * Maps the live FindyMail contact shape observed in EnrichmentLog.rawResponse.
+ * FindyMail flattens company fields onto contact.* rather than returning
+ * a separate company object.
+ */
+export function mapFindyMailPayload(raw: unknown): Partial<EmailProviderResult> {
+  const response = raw as { contact?: FindyMailContact };
+  const contact = response.contact;
+  if (!contact) return {};
+
+  const fullName = asString(contact.name);
+  const split = splitName(fullName);
+  const firstName = asString(contact.first_name) ?? split.firstName;
+  const lastName = asString(contact.last_name) ?? split.lastName;
+  const contactId =
+    typeof contact.id === "number" || typeof contact.id === "string"
+      ? String(contact.id)
+      : undefined;
+
+  const companyName = asString(contact.company);
+  const companyDomain = asString(contact.domain);
+  const companyCity = asString(contact.company_city);
+  const companyState = asString(contact.company_region);
+  const companyCountry = asString(contact.company_country);
+
+  return {
+    ...(firstName ? { firstName } : {}),
+    ...(lastName ? { lastName } : {}),
+    ...(asString(contact.job_title) ? { jobTitle: asString(contact.job_title) } : {}),
+    ...(asString(contact.linkedin_url) ? { linkedinUrl: asString(contact.linkedin_url) } : {}),
+    ...(companyName ? { company: companyName } : {}),
+    ...(companyDomain ? { companyDomain } : {}),
+    ...(contactId ? { providerIds: { findymailContactId: contactId } } : {}),
+    ...(asString(contact.city) ? { locationCity: asString(contact.city) } : {}),
+    ...(asString(contact.region) ? { locationState: asString(contact.region) } : {}),
+    ...(asString(contact.country) ? { locationCountry: asString(contact.country) } : {}),
+    ...(companyName || companyDomain || companyCity || companyState || companyCountry
+      ? {
+          companyData: {
+            ...(companyName ? { name: companyName } : {}),
+            ...(companyDomain ? { domain: companyDomain } : {}),
+            ...(companyCity ? { hqCity: companyCity } : {}),
+            ...(companyState ? { hqState: companyState } : {}),
+            ...(companyCountry ? { hqCountry: companyCountry } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 function extractFindyMailEmail(raw: unknown, parsedEmail?: string | null): string | null {
   const response = raw as {
     email?: unknown;
@@ -187,6 +270,7 @@ export async function bulkFindEmail(
 
           results.set(person.personId, {
             email,
+            ...mapFindyMailPayload(raw),
             source: "findymail",
             rawResponse: raw,
             costUsd: PROVIDER_COSTS.findymail,
@@ -293,6 +377,7 @@ export const findymailAdapter: EmailAdapter = async (
 
   return {
     email,
+    ...mapFindyMailPayload(raw),
     source: "findymail",
     rawResponse: raw,
     costUsd: PROVIDER_COSTS.findymail,

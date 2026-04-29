@@ -145,6 +145,52 @@ async function mergeProspeoBroadeningData(
   return fieldsWritten;
 }
 
+async function mergeFindyMailExtendedData(
+  personId: string,
+  result: EmailProviderResult,
+): Promise<string[]> {
+  const fieldsWritten: string[] = [];
+  const personData: Parameters<typeof mergePersonData>[1] = {};
+
+  if (result.providerIds) personData.providerIds = result.providerIds;
+  if (result.firstName) personData.firstName = result.firstName;
+  if (result.lastName) personData.lastName = result.lastName;
+  if (result.jobTitle) personData.jobTitle = result.jobTitle;
+  if (result.linkedinUrl) personData.linkedinUrl = result.linkedinUrl;
+  if (result.company) personData.company = result.company;
+  if (result.companyDomain) personData.companyDomain = result.companyDomain;
+  if (result.locationCity) personData.locationCity = result.locationCity;
+  if (result.locationState) personData.locationState = result.locationState;
+  if (result.locationCountry) personData.locationCountry = result.locationCountry;
+  if (result.locationCountryCode) personData.locationCountryCode = result.locationCountryCode;
+
+  if (Object.keys(personData).length > 0) {
+    fieldsWritten.push(...await mergePersonData(personId, personData));
+  }
+
+  const companyData = result.companyData;
+  const companyDomain = companyData?.domain ?? result.companyDomain;
+  if (companyData && companyDomain) {
+    await ensureCompanyForMerge(companyDomain, companyData.name);
+
+    const data: Parameters<typeof mergeCompanyData>[1] = {};
+    if (companyData.name) data.name = companyData.name;
+    if (companyData.hqCity) data.hqCity = companyData.hqCity;
+    if (companyData.hqState) data.hqState = companyData.hqState;
+    if (companyData.hqCountry) data.hqCountry = companyData.hqCountry;
+    if (companyData.hqCountryCode) data.hqCountryCode = companyData.hqCountryCode;
+
+    if (Object.keys(data).length > 0) {
+      fieldsWritten.push(
+        ...await mergeCompanyData(companyDomain, data)
+          .then((fields) => fields.map((field) => `company.${field}`)),
+      );
+    }
+  }
+
+  return fieldsWritten;
+}
+
 // ---------------------------------------------------------------------------
 // Email verification helper
 // ---------------------------------------------------------------------------
@@ -610,10 +656,12 @@ export async function enrichEmail(
 
     if (!result) continue;
 
-    const prospeoBroadeningFields =
+    const providerExtendedFields =
       name === "prospeo"
         ? await mergeProspeoBroadeningData(personId, result, input.companyDomain)
-        : [];
+        : name === "findymail"
+          ? await mergeFindyMailExtendedData(personId, result)
+          : [];
 
     // --- No email found (API call succeeded but returned null) ---
     if (result.email === null) {
@@ -622,7 +670,7 @@ export async function enrichEmail(
         entityType: "person",
         provider: name,
         status: "success",
-        fieldsWritten: prospeoBroadeningFields,
+        fieldsWritten: providerExtendedFields,
         costUsd: result.costUsd,
         rawResponse: result.rawResponse,
         workspaceSlug,
@@ -639,7 +687,7 @@ export async function enrichEmail(
       entityType: "person",
       provider: name,
       status: "success",
-      fieldsWritten: result.email ? [...prospeoBroadeningFields, "email"] : prospeoBroadeningFields,
+      fieldsWritten: result.email ? [...providerExtendedFields, "email"] : providerExtendedFields,
       costUsd: result.costUsd,
       rawResponse: result.rawResponse,
       workspaceSlug,
@@ -1077,12 +1125,13 @@ export async function enrichEmailBatch(
           if (result.costUsd > 0) {
             await incrementDailySpend("findymail", result.costUsd);
           }
+          const findymailFieldsWritten = await mergeFindyMailExtendedData(personId, result);
           await recordEnrichment({
             entityId: personId,
             entityType: "person",
             provider: "findymail",
             status: "success",
-            fieldsWritten: result.email ? ["email"] : [],
+            fieldsWritten: result.email ? [...findymailFieldsWritten, "email"] : findymailFieldsWritten,
             costUsd: result.costUsd,
             rawResponse: result.rawResponse,
             workspaceSlug,
