@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const discoveredPersonFindManyMock = vi.fn();
 const discoveredPersonUpdateMock = vi.fn();
 const personFindManyMock = vi.fn();
+const personFindUniqueOrThrowMock = vi.fn();
+const personUpdateMock = vi.fn();
 const personUpsertMock = vi.fn();
 const personFindFirstMock = vi.fn();
 const personCreateMock = vi.fn();
@@ -11,6 +13,10 @@ const personWorkspaceUpsertMock = vi.fn();
 const workspaceFindUniqueOrThrowMock = vi.fn();
 const campaignFindUniqueMock = vi.fn();
 const companyFindManyMock = vi.fn();
+const companyFindUniqueMock = vi.fn();
+const companyFindUniqueOrThrowMock = vi.fn();
+const companyCreateMock = vi.fn();
+const companyUpdateMock = vi.fn();
 const exclusionEntryFindManyMock = vi.fn();
 const exclusionEmailFindManyMock = vi.fn();
 
@@ -22,6 +28,8 @@ vi.mock("@/lib/db", () => ({
     },
     person: {
       findMany: (...args: unknown[]) => personFindManyMock(...args),
+      findUniqueOrThrow: (...args: unknown[]) => personFindUniqueOrThrowMock(...args),
+      update: (...args: unknown[]) => personUpdateMock(...args),
       upsert: (...args: unknown[]) => personUpsertMock(...args),
       findFirst: (...args: unknown[]) => personFindFirstMock(...args),
       create: (...args: unknown[]) => personCreateMock(...args),
@@ -37,6 +45,10 @@ vi.mock("@/lib/db", () => ({
     },
     company: {
       findMany: (...args: unknown[]) => companyFindManyMock(...args),
+      findUnique: (...args: unknown[]) => companyFindUniqueMock(...args),
+      findUniqueOrThrow: (...args: unknown[]) => companyFindUniqueOrThrowMock(...args),
+      create: (...args: unknown[]) => companyCreateMock(...args),
+      update: (...args: unknown[]) => companyUpdateMock(...args),
     },
     exclusionEntry: {
       findMany: (...args: unknown[]) => exclusionEntryFindManyMock(...args),
@@ -73,6 +85,8 @@ beforeEach(() => {
 
   // Default: no existing people (no dupes)
   personFindManyMock.mockResolvedValue([]);
+  personFindUniqueOrThrowMock.mockResolvedValue({ id: "person-john@acme.com" });
+  personUpdateMock.mockResolvedValue({});
   personUpsertMock.mockImplementation(async (args: { create: { email: string } }) => ({
     id: `person-${args.create.email ?? "nomail"}`,
   }));
@@ -83,6 +97,10 @@ beforeEach(() => {
   enqueueJobMock.mockResolvedValue("job-123");
   prefetchDomainsMock.mockResolvedValue({ cached: 0, crawled: 0, failed: 0 });
   companyFindManyMock.mockResolvedValue([]);
+  companyFindUniqueMock.mockResolvedValue(null);
+  companyFindUniqueOrThrowMock.mockResolvedValue({ domain: "acme.com" });
+  companyCreateMock.mockResolvedValue({});
+  companyUpdateMock.mockResolvedValue({});
   exclusionEntryFindManyMock.mockResolvedValue([]);
   exclusionEmailFindManyMock.mockResolvedValue([]);
   campaignFindUniqueMock.mockResolvedValue(null);
@@ -369,5 +387,193 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
         sourceId: "prospeo-person-123",
       },
     });
+  });
+
+  it("merges Apify Leads Finder rich person and company fields at promotion", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+    personFindUniqueOrThrowMock.mockResolvedValue({
+      id: "person-apify@example.com",
+      headline: null,
+      mobilePhone: null,
+      location: null,
+      locationCity: null,
+      locationState: null,
+      locationCountry: null,
+      company: null,
+      companyDomain: null,
+      linkedinUrl: null,
+    });
+    companyFindUniqueMock.mockResolvedValue(null);
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "apifyco.com",
+      providerIds: { prospeoCompanyId: "prospeo-company-1" },
+      linkedinUrl: null,
+      socialUrls: null,
+      fundingTotal: null,
+      technologies: null,
+      location: null,
+    });
+
+    discoveredPersonFindManyMock.mockResolvedValue([
+      makeStagedRecord({
+        id: "dp-apify",
+        email: "apify@example.com",
+        firstName: "Existing",
+        lastName: "Person",
+        discoverySource: "apify-leads-finder",
+        rawResponse: JSON.stringify({
+          full_name: "Ada Lovelace",
+          headline: "Founder at Apify Co",
+          linkedin: "https://linkedin.com/in/ada",
+          mobile_number: "+447700900123",
+          city: "London",
+          state: "England",
+          country: "United Kingdom",
+          company_name: "Apify Co",
+          company_domain: "apifyco.com",
+          company_website: "https://apifyco.com",
+          company_linkedin: "https://linkedin.com/company/apifyco",
+          company_linkedin_uid: "123456",
+          industry: "Staffing and Recruiting",
+          company_description: "Recruiting platform",
+          company_annual_revenue: "$1M-$10M",
+          company_total_funding_clean: "1250000",
+          company_founded_year: "2020",
+          company_phone: "+442071234567",
+          company_street_address: "1 Hiring Street",
+          company_full_address: "1 Hiring Street, London",
+          company_city: "London",
+          company_state: "England",
+          company_country: "United Kingdom",
+          company_technologies: ["HubSpot", "Greenhouse"],
+        }),
+      }),
+    ]);
+
+    const result = await deduplicateAndPromote("test", ["run-1"]);
+
+    expect(result.promoted).toBe(1);
+    expect(personUpdateMock).toHaveBeenCalledWith({
+      where: { id: "person-apify@example.com" },
+      data: expect.objectContaining({
+        firstName: "Ada",
+        lastName: "Lovelace",
+        headline: "Founder at Apify Co",
+        linkedinUrl: "https://linkedin.com/in/ada",
+        mobilePhone: "+447700900123",
+        location: "London, England, United Kingdom",
+        locationCity: "London",
+        locationState: "England",
+        locationCountry: "United Kingdom",
+        company: "Apify Co",
+        companyDomain: "apifyco.com",
+      }),
+    });
+    expect(companyCreateMock).toHaveBeenCalledWith({
+      data: {
+        domain: "apifyco.com",
+        name: "Apify Co",
+      },
+    });
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "apifyco.com" },
+      data: expect.objectContaining({
+        providerIds: {
+          prospeoCompanyId: "prospeo-company-1",
+          apifyLeadsFinderCompanyLinkedinUid: "123456",
+        },
+        linkedinUrl: "https://linkedin.com/company/apifyco",
+        socialUrls: { linkedin: "https://linkedin.com/company/apifyco" },
+        fundingTotal: BigInt(1250000),
+        technologies: ["HubSpot", "Greenhouse"],
+        location: "1 Hiring Street, London",
+        hqAddress: "1 Hiring Street",
+        hqCity: "London",
+        hqState: "England",
+        hqCountry: "United Kingdom",
+      }),
+    });
+  });
+
+  it("does not clobber existing Apify broadening fields and skips unparsable funding", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+    personFindUniqueOrThrowMock.mockResolvedValue({
+      id: "person-apify@example.com",
+      headline: "Existing headline",
+      mobilePhone: "+440000000000",
+      company: "Existing Co",
+      companyDomain: "existing.com",
+      location: "Existing location",
+      locationCity: "Existing city",
+      locationState: null,
+      locationCountry: null,
+    });
+    companyFindUniqueMock.mockResolvedValue({ domain: "apifyco.com" });
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "apifyco.com",
+      providerIds: { aiarkCompanyId: "aiark-company-1" },
+      linkedinUrl: "https://linkedin.com/company/existing",
+      socialUrls: { twitter: "https://twitter.com/existing" },
+      fundingTotal: null,
+      location: "Existing HQ",
+      hqAddress: "Existing address",
+      hqCity: null,
+    });
+
+    discoveredPersonFindManyMock.mockResolvedValue([
+      makeStagedRecord({
+        id: "dp-apify-existing",
+        email: "apify@example.com",
+        discoverySource: "apify-leads-finder",
+        rawResponse: JSON.stringify({
+          first_name: "Ada",
+          last_name: "Lovelace",
+          headline: "New headline",
+          mobile_number: "+447700900123",
+          city: "London",
+          state: "England",
+          country: "United Kingdom",
+          company_name: "Apify Co",
+          company_domain: "apifyco.com",
+          company_linkedin: "https://linkedin.com/company/apifyco",
+          company_linkedin_uid: "123456",
+          company_total_funding_clean: "not-a-number",
+          company_full_address: "1 Hiring Street, London",
+          company_city: "London",
+        }),
+      }),
+    ]);
+
+    await deduplicateAndPromote("test", ["run-1"]);
+
+    expect(personUpdateMock).toHaveBeenCalledWith({
+      where: { id: "person-apify@example.com" },
+      data: {
+        firstName: "Ada",
+        lastName: "Lovelace",
+        locationState: "England",
+        locationCountry: "United Kingdom",
+      },
+    });
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "apifyco.com" },
+      data: {
+        name: "Apify Co",
+        providerIds: {
+          aiarkCompanyId: "aiark-company-1",
+          apifyLeadsFinderCompanyLinkedinUid: "123456",
+        },
+        hqCity: "London",
+      },
+    });
+    expect(companyCreateMock).not.toHaveBeenCalled();
   });
 });

@@ -132,15 +132,67 @@ interface LeadsFinderItem {
   personal_email?: string;
   first_name?: string;
   last_name?: string;
+  full_name?: string;
   job_title?: string;
+  headline?: string;
   linkedin?: string;
   company_name?: string;
   company_domain?: string;
+  company_website?: string;
+  company_linkedin?: string;
+  company_linkedin_uid?: string;
+  industry?: string;
+  company_description?: string;
+  company_annual_revenue?: string;
+  company_total_funding_clean?: string | number;
+  company_founded_year?: string | number;
+  company_phone?: string;
+  company_street_address?: string;
+  company_full_address?: string;
+  company_city?: string;
+  company_state?: string;
+  company_country?: string;
+  company_technologies?: unknown;
   mobile_number?: string;
   city?: string;
   state?: string;
   country?: string;
   [key: string]: unknown;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function splitName(fullName: string | undefined): { firstName?: string; lastName?: string } {
+  if (!fullName) return {};
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { firstName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+function locationString(city?: string, state?: string, country?: string): string | undefined {
+  const parts = [city, state, country].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : undefined;
+}
+
+export function mapLeadsFinderItem(item: LeadsFinderItem): DiscoveredPersonResult {
+  const split = splitName(asString(item.full_name));
+  const city = asString(item.city);
+  const state = asString(item.state);
+  const country = asString(item.country);
+
+  return {
+    email: asString(item.email) ?? undefined,
+    firstName: asString(item.first_name) ?? split.firstName,
+    lastName: asString(item.last_name) ?? split.lastName,
+    jobTitle: asString(item.job_title),
+    linkedinUrl: asString(item.linkedin),
+    company: asString(item.company_name),
+    companyDomain: asString(item.company_domain),
+    location: locationString(city, state, country),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -214,21 +266,7 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
     const items = await runApifyActor<LeadsFinderItem>(ACTOR_ID, input);
 
     // Map actor output → DiscoveredPersonResult
-    const people: DiscoveredPersonResult[] = items.map((item) => {
-      const locationParts = [item.city, item.state, item.country].filter(Boolean);
-
-      return {
-        email: item.email || item.personal_email || undefined,
-        firstName: item.first_name ?? undefined,
-        lastName: item.last_name ?? undefined,
-        jobTitle: item.job_title ?? undefined,
-        linkedinUrl: item.linkedin ?? undefined,
-        company: item.company_name ?? undefined,
-        companyDomain: item.company_domain ?? undefined,
-        phone: item.mobile_number ?? undefined,
-        location: locationParts.length > 0 ? locationParts.join(", ") : undefined,
-      };
-    });
+    const people: DiscoveredPersonResult[] = items.map(mapLeadsFinderItem);
 
     const costUsd = people.length * this.estimatedCostPerResult;
 
@@ -245,6 +283,7 @@ export class ApifyLeadsFinderAdapter implements DiscoveryAdapter {
       nextPageToken: undefined,
       costUsd,
       rawResponse: items,
+      rawResponses: items,
     };
   }
 }
