@@ -27,6 +27,11 @@ import { prefetchDomains } from "@/lib/icp/crawl-cache";
 import { getExclusionDomains, getExclusionEmails, extractDomain } from "@/lib/exclusions";
 import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
 import { mergeCompanyData, mergePersonData } from "@/lib/enrichment/merge";
+import {
+  asAiArkPersonRecord,
+  mapAiArkCompanyData,
+  mapAiArkPersonData,
+} from "@/lib/enrichment/providers/aiark-mapping";
 import { normalizeJobTitle } from "@/lib/normalize";
 
 // ---------------------------------------------------------------------------
@@ -359,6 +364,25 @@ async function mergeApifyLeadsFinderRichFields(dp: StagedRecord, personId: strin
   await mergeCompanyData(company.domain, company.data);
 }
 
+async function mergeAiArkRichFields(dp: StagedRecord, personId: string): Promise<void> {
+  if (dp.discoverySource !== "aiark") return;
+
+  const raw = parseJsonObject(dp.rawResponse);
+  const record = asAiArkPersonRecord(raw);
+  if (!record) return;
+
+  const personData = mapAiArkPersonData(record);
+  if (Object.keys(personData).length > 0) {
+    await mergePersonData(personId, personData);
+  }
+
+  const company = mapAiArkCompanyData(record);
+  if (!company.domain || Object.keys(company.data).length === 0) return;
+
+  await ensureCompanyForMerge(company.domain, company.data.name);
+  await mergeCompanyData(company.domain, company.data);
+}
+
 /**
  * Find existing person match using pre-loaded dedup maps (in-memory).
  * Three-leg matching: email → LinkedIn → fuzzy name+domain.
@@ -533,6 +557,7 @@ async function promoteToPerson(
   }
 
   await mergeApifyLeadsFinderRichFields(dp, person.id);
+  await mergeAiArkRichFields(dp, person.id);
 
   // Upsert PersonWorkspace junction — idempotent
   // Preserve discovery sourceId (Prospeo person_id, AI Ark id, etc.) for

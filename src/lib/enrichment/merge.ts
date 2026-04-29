@@ -63,6 +63,14 @@ export async function mergePersonData(
     locationState: string;
     locationCountry: string;
     locationCountryCode: string;
+    profileSummary: string;
+    profileImageUrl: string;
+    seniority: string;
+    departments: unknown[];
+    functions: unknown[];
+    education: unknown[];
+    certifications: unknown[];
+    languages: unknown;
   }>,
 ): Promise<string[]> {
   const person = await prisma.person.findUniqueOrThrow({ where: { id: personId } });
@@ -125,6 +133,13 @@ export async function mergeCompanyData(
     fundingEvents: unknown;
     jobPostingsActiveCount: number;
     jobPostingTitles: string[];
+    itSpend: bigint;
+    hqPostalCode: string;
+    officeLocations: unknown;
+    industries: unknown[];
+    naicsCodes: unknown[];
+    companyKeywords: unknown[];
+    hashtags: unknown[];
   }>,
 ): Promise<string[]> {
   const company = await prisma.company.findUniqueOrThrow({ where: { domain } });

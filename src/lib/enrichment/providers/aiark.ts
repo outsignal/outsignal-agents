@@ -12,6 +12,7 @@ import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { CompanyAdapter, CompanyProviderResult } from "../types";
 import type { RateLimits } from "@/lib/discovery/rate-limit";
+import { extractAiArkCompanies, mapAiArkCompanyData } from "./aiark-mapping";
 
 /**
  * AI Ark company enrichment rate limits.
@@ -46,45 +47,25 @@ function getApiKey(): string {
   return key;
 }
 
-/** Loose validation schema — AI Ark response shape is LOW confidence. */
+/** Loose validation schema for a nested AI Ark company record. */
 const AiArkCompanySchema = z
   .object({
-    name: z.string().optional(),
-    description: z.string().optional(),
-    industry: z.string().optional(),
-    staff: z.object({ total: z.number().optional() }).optional(),
-    links: z.object({ website: z.string().optional() }).optional(),
-    headquarter: z.string().optional(),
-    founded_year: z.number().optional(),
+    id: z.string().optional(),
+    summary: z.object({}).passthrough().optional(),
+    link: z.object({}).passthrough().optional(),
+    location: z.object({}).passthrough().optional(),
+    financial: z.object({}).passthrough().optional(),
+    technologies: z.array(z.unknown()).optional(),
   })
   .passthrough();
 
 type AiArkCompany = z.infer<typeof AiArkCompanySchema>;
 
-/**
- * Normalize raw API response to an array of company records.
- * AI Ark may return a single object, an array, or wrap results in a `data` key.
- */
-function extractCompanies(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw;
-  if (raw && typeof raw === "object") {
-    const obj = raw as Record<string, unknown>;
-    if (obj.data !== undefined) {
-      return Array.isArray(obj.data) ? obj.data : [obj.data];
-    }
-  }
-  return [raw];
-}
-
 function mapToResult(company: AiArkCompany, raw: unknown): CompanyProviderResult {
+  const mapped = mapAiArkCompanyData(company);
   return {
-    name: company.name,
-    industry: company.industry,
-    headcount: company.staff?.total,
-    description: company.description,
-    website: company.links?.website,
-    location: company.headquarter,
-    yearFounded: company.founded_year,
+    ...mapped.data,
+    ...(mapped.domain ? { domain: mapped.domain } : {}),
     source: "aiark",
     rawResponse: raw,
     costUsd: PROVIDER_COSTS.aiark,
@@ -149,7 +130,7 @@ export const aiarkAdapter: CompanyAdapter = async (domain: string): Promise<Comp
     throw err;
   }
 
-  const companies = extractCompanies(raw);
+  const companies = extractAiArkCompanies(raw);
   const firstCompany = companies[0];
 
   if (!firstCompany) {
