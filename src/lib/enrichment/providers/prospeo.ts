@@ -600,8 +600,14 @@ export const prospeoAdapter: EmailAdapter = async (
   let raw: unknown;
   try {
     const body = hasLinkedin
-      ? { data: { linkedin_url: input.linkedinUrl } }
+      ? {
+          enrich_mobile: true,
+          only_verified_mobile: true,
+          data: { linkedin_url: input.linkedinUrl },
+        }
       : {
+          enrich_mobile: true,
+          only_verified_mobile: true,
           data: {
             first_name: input.firstName,
             last_name: input.lastName,
