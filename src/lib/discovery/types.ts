@@ -84,6 +84,8 @@ export interface DiscoveryResult {
   costUsd: number;
   /** Raw API response for debugging/audit */
   rawResponse?: unknown;
+  /** Per-person raw API response objects parallel to people, when adapter can provide them. */
+  rawResponses?: unknown[];
 }
 
 export interface DiscoveryAdapter {

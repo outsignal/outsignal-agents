@@ -12,6 +12,21 @@ function isBlank(value: unknown): boolean {
   );
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeProviderIds(
+  existing: unknown,
+  incoming: Record<string, string>,
+): Record<string, string> | null {
+  const current = isPlainObject(existing) ? existing : {};
+  const merged = { ...current, ...incoming };
+  return JSON.stringify(merged) === JSON.stringify(current)
+    ? null
+    : merged as Record<string, string>;
+}
+
 /**
  * Merge provider data into a Person record.
  * Only fills null/empty fields — never overwrites existing data.
@@ -28,6 +43,15 @@ export async function mergePersonData(
     phone: string;
     company: string;
     companyDomain: string;
+    providerIds: Record<string, string>;
+    headline: string;
+    skills: unknown[];
+    jobHistory: unknown[];
+    mobilePhone: string;
+    locationCity: string;
+    locationState: string;
+    locationCountry: string;
+    locationCountryCode: string;
   }>,
 ): Promise<string[]> {
   const person = await prisma.person.findUniqueOrThrow({ where: { id: personId } });
@@ -36,6 +60,15 @@ export async function mergePersonData(
   const fieldsWritten: string[] = [];
 
   for (const [key, value] of Object.entries(data)) {
+    if (key === "providerIds" && isPlainObject(value)) {
+      const merged = mergeProviderIds(person.providerIds, value as Record<string, string>);
+      if (merged) {
+        updates.providerIds = merged;
+        fieldsWritten.push("providerIds");
+      }
+      continue;
+    }
+
     if (!isBlank(value) && isBlank((person as Record<string, unknown>)[key])) {
       updates[key] = value;
       fieldsWritten.push(key);
@@ -63,7 +96,24 @@ export async function mergeCompanyData(
     website: string;
     location: string;
     yearFounded: number;
+    revenue: string;
+    linkedinUrl: string;
     companyType: string;
+    providerIds: Record<string, string>;
+    hqPhone: string;
+    hqAddress: string;
+    hqCity: string;
+    hqState: string;
+    hqCountry: string;
+    hqCountryCode: string;
+    socialUrls: Record<string, string>;
+    technologies: unknown;
+    fundingTotal: bigint;
+    fundingStageLatest: string;
+    fundingLatestDate: Date;
+    fundingEvents: unknown;
+    jobPostingsActiveCount: number;
+    jobPostingTitles: string[];
   }>,
 ): Promise<string[]> {
   const company = await prisma.company.findUniqueOrThrow({ where: { domain } });
@@ -72,6 +122,15 @@ export async function mergeCompanyData(
   const fieldsWritten: string[] = [];
 
   for (const [key, value] of Object.entries(data)) {
+    if (key === "providerIds" && isPlainObject(value)) {
+      const merged = mergeProviderIds(company.providerIds, value as Record<string, string>);
+      if (merged) {
+        updates.providerIds = merged;
+        fieldsWritten.push("providerIds");
+      }
+      continue;
+    }
+
     if (!isBlank(value) && isBlank((company as Record<string, unknown>)[key])) {
       updates[key] = value;
       fieldsWritten.push(key);

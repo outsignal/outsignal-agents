@@ -36,7 +36,7 @@ import { verifyEmail as bouncebanVerify } from "@/lib/verification/bounceban";
 import { verifyEmail as kittVerify } from "@/lib/verification/kitt";
 import { CreditExhaustionError, isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import { notifyCreditExhaustion } from "@/lib/notifications";
-import type { Provider, EmailAdapterInput, EmailAdapter, CompanyAdapter, PersonAdapter, PersonProviderResult } from "./types";
+import type { Provider, EmailAdapterInput, EmailAdapter, CompanyAdapter, PersonAdapter, PersonProviderResult, EmailProviderResult } from "./types";
 
 // ---------------------------------------------------------------------------
 // Circuit breaker
@@ -65,6 +65,85 @@ function exponentialBackoff(attempt: number): number {
 
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 const MAX_RETRIES = 3;
+
+async function ensureCompanyForMerge(
+  domain: string,
+  name?: string,
+): Promise<void> {
+  const existing = await prisma.company.findUnique({ where: { domain } });
+  if (existing) return;
+
+  await prisma.company.create({
+    data: {
+      domain,
+      name: name ?? domain,
+    },
+  });
+}
+
+async function mergeProspeoBroadeningData(
+  personId: string,
+  result: EmailProviderResult,
+  fallbackCompanyDomain?: string,
+): Promise<string[]> {
+  const fieldsWritten: string[] = [];
+  const personData: Parameters<typeof mergePersonData>[1] = {};
+
+  if (result.providerIds) personData.providerIds = result.providerIds;
+  if (result.headline) personData.headline = result.headline;
+  if (result.skills) personData.skills = result.skills;
+  if (result.jobHistory) personData.jobHistory = result.jobHistory;
+  if (result.mobilePhone) personData.mobilePhone = result.mobilePhone;
+  if (result.locationCity) personData.locationCity = result.locationCity;
+  if (result.locationState) personData.locationState = result.locationState;
+  if (result.locationCountry) personData.locationCountry = result.locationCountry;
+  if (result.locationCountryCode) personData.locationCountryCode = result.locationCountryCode;
+
+  if (Object.keys(personData).length > 0) {
+    fieldsWritten.push(...await mergePersonData(personId, personData));
+  }
+
+  const companyData = result.companyData;
+  const companyDomain = companyData?.domain ?? fallbackCompanyDomain;
+  if (companyData && companyDomain) {
+    await ensureCompanyForMerge(companyDomain, companyData.name);
+
+    const data: Parameters<typeof mergeCompanyData>[1] = {};
+    if (companyData.name) data.name = companyData.name;
+    if (companyData.industry) data.industry = companyData.industry;
+    if (companyData.headcount !== undefined) data.headcount = companyData.headcount;
+    if (companyData.description) data.description = companyData.description;
+    if (companyData.website) data.website = companyData.website;
+    if (companyData.location) data.location = companyData.location;
+    if (companyData.yearFounded !== undefined) data.yearFounded = companyData.yearFounded;
+    if (companyData.revenue) data.revenue = companyData.revenue;
+    if (companyData.linkedinUrl) data.linkedinUrl = companyData.linkedinUrl;
+    if (companyData.providerIds) data.providerIds = companyData.providerIds;
+    if (companyData.hqPhone) data.hqPhone = companyData.hqPhone;
+    if (companyData.hqAddress) data.hqAddress = companyData.hqAddress;
+    if (companyData.hqCity) data.hqCity = companyData.hqCity;
+    if (companyData.hqState) data.hqState = companyData.hqState;
+    if (companyData.hqCountry) data.hqCountry = companyData.hqCountry;
+    if (companyData.hqCountryCode) data.hqCountryCode = companyData.hqCountryCode;
+    if (companyData.socialUrls) data.socialUrls = companyData.socialUrls;
+    if (companyData.technologies) data.technologies = companyData.technologies;
+    if (companyData.fundingTotal !== undefined) data.fundingTotal = companyData.fundingTotal;
+    if (companyData.fundingStageLatest) data.fundingStageLatest = companyData.fundingStageLatest;
+    if (companyData.fundingLatestDate) data.fundingLatestDate = companyData.fundingLatestDate;
+    if (companyData.fundingEvents) data.fundingEvents = companyData.fundingEvents;
+    if (companyData.jobPostingsActiveCount !== undefined) data.jobPostingsActiveCount = companyData.jobPostingsActiveCount;
+    if (companyData.jobPostingTitles) data.jobPostingTitles = companyData.jobPostingTitles;
+
+    if (Object.keys(data).length > 0) {
+      fieldsWritten.push(
+        ...await mergeCompanyData(companyDomain, data)
+          .then((fields) => fields.map((field) => `company.${field}`)),
+      );
+    }
+  }
+
+  return fieldsWritten;
+}
 
 // ---------------------------------------------------------------------------
 // Email verification helper
@@ -531,6 +610,11 @@ export async function enrichEmail(
 
     if (!result) continue;
 
+    const prospeoBroadeningFields =
+      name === "prospeo"
+        ? await mergeProspeoBroadeningData(personId, result, input.companyDomain)
+        : [];
+
     // --- No email found (API call succeeded but returned null) ---
     if (result.email === null) {
       await recordEnrichment({
@@ -538,7 +622,7 @@ export async function enrichEmail(
         entityType: "person",
         provider: name,
         status: "success",
-        fieldsWritten: [],
+        fieldsWritten: prospeoBroadeningFields,
         costUsd: result.costUsd,
         rawResponse: result.rawResponse,
         workspaceSlug,
@@ -555,7 +639,7 @@ export async function enrichEmail(
       entityType: "person",
       provider: name,
       status: "success",
-      fieldsWritten: result.email ? ["email"] : [],
+      fieldsWritten: result.email ? [...prospeoBroadeningFields, "email"] : prospeoBroadeningFields,
       costUsd: result.costUsd,
       rawResponse: result.rawResponse,
       workspaceSlug,
@@ -729,6 +813,7 @@ export async function enrichEmailBatch(
   // Track which people still need an email
   // Map of personId → found email (null means not found yet)
   const foundEmails = new Map<string, string | null>();
+  const peopleById = new Map(people.map((person) => [person.personId, person]));
 
   // People who already have emails go to verification — EXCEPT aiark-export
   // sourced people whose emails are pre-verified by AI Ark (BounceBan).
@@ -797,12 +882,17 @@ export async function enrichEmailBatch(
           if (result.costUsd > 0) {
             await incrementDailySpend("prospeo", result.costUsd);
           }
+          const prospeoBroadeningFields = await mergeProspeoBroadeningData(
+            personId,
+            result,
+            peopleById.get(personId)?.companyDomain ?? undefined,
+          );
           await recordEnrichment({
             entityId: personId,
             entityType: "person",
             provider: "prospeo",
             status: "success",
-            fieldsWritten: result.email ? ["email"] : [],
+            fieldsWritten: result.email ? [...prospeoBroadeningFields, "email"] : prospeoBroadeningFields,
             costUsd: result.costUsd,
             rawResponse: result.rawResponse,
             workspaceSlug,
@@ -919,12 +1009,17 @@ export async function enrichEmailBatch(
           if (result.costUsd > 0) {
             await incrementDailySpend("prospeo", result.costUsd);
           }
+          const prospeoBroadeningFields = await mergeProspeoBroadeningData(
+            personId,
+            result,
+            peopleById.get(personId)?.companyDomain ?? undefined,
+          );
           await recordEnrichment({
             entityId: personId,
             entityType: "person",
             provider: "prospeo",
             status: "success",
-            fieldsWritten: result.email ? ["email"] : [],
+            fieldsWritten: result.email ? [...prospeoBroadeningFields, "email"] : prospeoBroadeningFields,
             costUsd: result.costUsd,
             rawResponse: result.rawResponse,
             workspaceSlug,
