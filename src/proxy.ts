@@ -2,103 +2,150 @@ import { NextRequest, NextResponse } from "next/server";
 import "@/lib/env"; // Validate critical env vars on startup
 import { verifySessionEdge } from "@/lib/portal-auth-edge";
 import {
-  verifyAdminSessionEdge,
   ADMIN_COOKIE_NAME,
+  verifyAdminSessionEdge,
 } from "@/lib/admin-auth-edge";
 
 const PORTAL_COOKIE_NAME = "portal_session";
+const NOINDEX_VALUE = "noindex, nofollow";
 
-// ─── Public API routes ──────────────────────────────────────────────
-// These routes have their own authentication (API keys, signatures,
-// worker tokens, cron secrets) and must remain publicly accessible.
-const PUBLIC_API_PREFIXES = [
-  "/api/csrf",             // CSRF token (has own admin/portal auth check)
-  "/api/admin/login",      // Public login endpoint
-  "/api/admin/logout",     // Logout endpoint (has own session check)
-  "/api/webhooks/",        // EmailBison webhooks (HMAC auth)
-  "/api/extension/",       // Chrome extension (JWT auth)
-  "/api/portal/",          // Client portal (magic link session)
-  "/api/inbox-health/",    // Cron job (API_SECRET)
-  "/api/enrichment/jobs/", // Cron job (API_SECRET)
-  "/api/enrichment/run",   // Enqueue enrichment job (API_SECRET)
-  "/api/linkedin/",        // Worker API (WORKER_API_SECRET)
-  "/api/pipeline/",        // Railway worker (PIPELINE_INTERNAL_SECRET)
-  "/api/people/enrich",    // Ingest webhook (x-api-key)
-  "/api/companies/enrich", // Ingest webhook (x-api-key)
-  "/api/exclusions",       // Ingest webhook (x-api-key)
-  "/api/stripe/",          // Stripe webhook (signature verification)
-  "/api/onboard",          // Public onboarding form (has own x-api-key check)
-  "/api/auth/google-postmaster", // Google Postmaster OAuth flow (initiate + callback)
+/**
+ * CSRF-exempt API paths use alternative auth (signatures, API keys, server-to-server).
+ */
+const CSRF_EXEMPT_PREFIXES = [
+  "/api/webhooks/",
+  "/api/cron/",
+  "/api/trigger/",
+  "/api/extension/",
+  "/api/linkedin/",
+  "/api/people/enrich",
+  "/api/companies/enrich",
+  "/api/portal/",
 ];
 
-// Proposal accept is customer-facing (POST /api/proposals/:id/accept)
+const CSRF_EXEMPT_EXACT = [
+  "/api/admin/login",
+  "/api/portal/login",
+  "/api/csrf",
+  "/api/stripe/webhook",
+];
+
+// Public API routes have their own authentication and must remain reachable.
+const PUBLIC_API_PREFIXES = [
+  "/api/csrf",
+  "/api/admin/login",
+  "/api/admin/logout",
+  "/api/webhooks/",
+  "/api/extension/",
+  "/api/portal/",
+  "/api/inbox-health/",
+  "/api/enrichment/jobs/",
+  "/api/enrichment/run",
+  "/api/linkedin/",
+  "/api/pipeline/",
+  "/api/people/enrich",
+  "/api/companies/enrich",
+  "/api/exclusions",
+  "/api/stripe/",
+  "/api/onboard",
+  "/api/auth/google-postmaster",
+];
+
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function withNoIndex(response: NextResponse): NextResponse {
+  response.headers.set("X-Robots-Tag", NOINDEX_VALUE);
+  return response;
+}
+
+function isCsrfExempt(pathname: string): boolean {
+  if (CSRF_EXEMPT_EXACT.includes(pathname)) return true;
+  return CSRF_EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 function isPublicProposalRoute(pathname: string): boolean {
   return /^\/api\/proposals\/[^/]+\/accept$/.test(pathname);
 }
 
 function isPublicApiRoute(pathname: string): boolean {
-  if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return true;
-  }
-  if (isPublicProposalRoute(pathname)) {
-    return true;
-  }
-  return false;
+  return (
+    PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    isPublicProposalRoute(pathname)
+  );
 }
 
-// ─── Admin page routes ──────────────────────────────────────────────
-// The (admin) route group serves pages at these top-level paths.
-// If a new admin section is added, add its prefix here.
-const ADMIN_PAGE_PREFIXES = [
-  "/people",
-  "/companies",
-  "/settings",
-  "/enrichment-costs",
-  "/lists",
-  "/onboard",
-  "/workspace",
-  "/campaigns",
-  "/signals",
-  "/notifications",
-  "/pipeline",
-  "/clients",
-  "/email",
-  "/webhook-log",
-  "/senders",
-  "/linkedin-queue",
-  "/financials",
-  "/revenue",
-  "/agent-runs",
-  "/packages",
-  "/integrations",
-];
+function isStaticAsset(pathname: string): boolean {
+  return (
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    /\.[a-z0-9]+$/i.test(pathname)
+  );
+}
+
+function isCustomerPageRoute(pathname: string): boolean {
+  return pathname.startsWith("/p/") || pathname.startsWith("/o/");
+}
 
 function isAdminPageRoute(pathname: string): boolean {
-  // Root dashboard
-  if (pathname === "/") return true;
-
-  for (const prefix of ADMIN_PAGE_PREFIXES) {
-    if (pathname === prefix || pathname.startsWith(prefix + "/")) {
-      return true;
-    }
-  }
-  return false;
+  if (pathname === "/login") return false;
+  if (pathname.startsWith("/portal")) return false;
+  if (isCustomerPageRoute(pathname)) return false;
+  if (isStaticAsset(pathname)) return false;
+  return !pathname.startsWith("/api/");
 }
 
-// ─── Proxy ──────────────────────────────────────────────────────────
+function csrfResponse(req: NextRequest): NextResponse | null {
+  const { pathname } = req.nextUrl;
+  if (
+    !pathname.startsWith("/api/") ||
+    !MUTATION_METHODS.has(req.method) ||
+    isCsrfExempt(pathname)
+  ) {
+    return null;
+  }
+
+  const headerToken = req.headers.get("x-csrf-token");
+  const cookieToken = req.cookies.get("__csrf")?.value;
+
+  if (!headerToken || !cookieToken) {
+    return NextResponse.json(
+      { error: "CSRF token missing" },
+      { status: 403 },
+    );
+  }
+
+  if (headerToken.length !== cookieToken.length) {
+    return NextResponse.json(
+      { error: "CSRF token invalid" },
+      { status: 403 },
+    );
+  }
+
+  let mismatch = 0;
+  for (let i = 0; i < headerToken.length; i++) {
+    mismatch |= headerToken.charCodeAt(i) ^ cookieToken.charCodeAt(i);
+  }
+
+  if (mismatch !== 0) {
+    return NextResponse.json(
+      { error: "CSRF token invalid" },
+      { status: 403 },
+    );
+  }
+
+  return null;
+}
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  // Portal subdomain routing handled by next.config.ts beforeFiles rewrites.
 
-  // ── Portal auth ──────────────────────────────────────────────────
   if (pathname.startsWith("/portal")) {
-    // Allow login page through
     if (pathname === "/portal/login") {
-      return NextResponse.next();
+      return withNoIndex(NextResponse.next());
     }
 
-    // Local dev bypass — skip auth and inject a default session
     if (process.env.NODE_ENV === "development") {
       const cookie = req.cookies.get(PORTAL_COOKIE_NAME)?.value;
       if (!cookie) {
@@ -106,41 +153,31 @@ export async function proxy(req: NextRequest) {
         requestHeaders.set("x-portal-workspace", "outsignal");
         requestHeaders.set("x-portal-email", "dev@localhost");
         requestHeaders.set("x-portal-role", "owner");
-        return NextResponse.next({ request: { headers: requestHeaders } });
+        return withNoIndex(NextResponse.next({ request: { headers: requestHeaders } }));
       }
     }
 
-    // All other /portal/* routes require a valid portal session
     const cookie = req.cookies.get(PORTAL_COOKIE_NAME)?.value;
-
-    if (!cookie) {
-      return redirectToPortalLogin(req);
-    }
+    if (!cookie) return withNoIndex(redirectToPortalLogin(req));
 
     const session = await verifySessionEdge(cookie);
+    if (!session) return withNoIndex(redirectToPortalLogin(req));
 
-    if (!session) {
-      return redirectToPortalLogin(req);
-    }
-
-    // Pass session data to server components via request headers
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set("x-portal-workspace", session.workspaceSlug);
     requestHeaders.set("x-portal-email", session.email);
     requestHeaders.set("x-portal-role", session.role);
 
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
+    return withNoIndex(NextResponse.next({ request: { headers: requestHeaders } }));
   }
 
-  // ── Public API routes — pass through ─────────────────────────────
   if (pathname.startsWith("/api/") && isPublicApiRoute(pathname)) {
-    return NextResponse.next();
+    return withNoIndex(NextResponse.next());
   }
 
-  // ── Admin auth ───────────────────────────────────────────────────
-  // Protect admin API routes and admin pages.
+  const csrfFailure = csrfResponse(req);
+  if (csrfFailure) return withNoIndex(csrfFailure);
+
   const isAdminApi = pathname.startsWith("/api/");
   const isAdminPage = isAdminPageRoute(pathname);
 
@@ -148,33 +185,23 @@ export async function proxy(req: NextRequest) {
     const cookie = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
 
     if (!cookie) {
-      // API routes return 401; pages redirect to login
       if (isAdminApi) {
-        return NextResponse.json(
-          { error: "Unauthorized" },
-          { status: 401 },
-        );
+        return withNoIndex(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
       }
-      return redirectToAdminLogin(req);
+      return withNoIndex(redirectToAdminLogin(req));
     }
 
     const session = await verifyAdminSessionEdge(cookie);
 
     if (!session) {
       if (isAdminApi) {
-        return NextResponse.json(
-          { error: "Unauthorized" },
-          { status: 401 },
-        );
+        return withNoIndex(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
       }
-      return redirectToAdminLogin(req);
+      return withNoIndex(redirectToAdminLogin(req));
     }
-
-    return NextResponse.next();
   }
 
-  // ── Everything else (login page, customer routes, etc.) ──────────
-  return NextResponse.next();
+  return withNoIndex(NextResponse.next());
 }
 
 function redirectToPortalLogin(req: NextRequest): NextResponse {
@@ -189,33 +216,6 @@ function redirectToAdminLogin(req: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    // Portal routes (subdomain + path)
-    "/login",
-    "/portal/:path*",
-    // Admin pages (root + named sections)
-    "/",
-    "/people/:path*",
-    "/companies/:path*",
-    "/settings/:path*",
-    "/enrichment-costs/:path*",
-    "/lists/:path*",
-    "/onboard/:path*",
-    "/workspace/:path*",
-    "/campaigns/:path*",
-    "/signals/:path*",
-    "/notifications/:path*",
-    "/pipeline/:path*",
-    "/clients/:path*",
-    "/email/:path*",
-    "/webhook-log/:path*",
-    "/senders/:path*",
-    "/linkedin-queue/:path*",
-    "/financials/:path*",
-    "/revenue/:path*",
-    "/agent-runs/:path*",
-    "/packages/:path*",
-    "/integrations/:path*",
-    // API routes (all — public ones are filtered in proxy logic)
-    "/api/:path*",
+    "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };
