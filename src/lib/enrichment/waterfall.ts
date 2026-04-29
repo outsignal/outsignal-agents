@@ -509,14 +509,7 @@ export async function enrichEmail(
           const aiarkFieldsWritten = await mergePersonData(personId, personData);
           const companyData = aiarkResult.companyData;
           if (aiarkResult.companyDomain && companyData && Object.keys(companyData).length > 0) {
-            await prisma.company.upsert({
-              where: { domain: aiarkResult.companyDomain },
-              create: {
-                domain: aiarkResult.companyDomain,
-                name: companyData.name ?? aiarkResult.company ?? aiarkResult.companyDomain,
-              },
-              update: {},
-            });
+            await ensureCompanyForMerge(aiarkResult.companyDomain, companyData.name ?? aiarkResult.company);
             const companyFieldsWritten = await mergeCompanyData(aiarkResult.companyDomain, companyData);
             aiarkFieldsWritten.push(...companyFieldsWritten.map((field) => `company.${field}`));
           }
