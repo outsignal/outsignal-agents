@@ -41,6 +41,8 @@ export interface EmailProviderResult {
   jobTitle?: string;
   linkedinUrl?: string;
   location?: string;
+  company?: string;
+  companyDomain?: string;
   providerIds?: Record<string, string>;
   headline?: string;
   skills?: unknown[];
