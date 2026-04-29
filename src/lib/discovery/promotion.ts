@@ -26,6 +26,7 @@ import type {
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
 import { getExclusionDomains, getExclusionEmails, extractDomain } from "@/lib/exclusions";
 import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
+import { mergeCompanyData, mergePersonData } from "@/lib/enrichment/merge";
 import { normalizeJobTitle } from "@/lib/normalize";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,69 @@ const PLACEHOLDER_EMAIL_DOMAINS = ["@discovery.internal", "@discovered.local"];
 function isPlaceholderEmail(email: string): boolean {
   const lower = email.toLowerCase();
   return PLACEHOLDER_EMAIL_DOMAINS.some((domain) => lower.endsWith(domain));
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function splitName(fullName: string | undefined): { firstName?: string; lastName?: string } {
+  if (!fullName) return {};
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { firstName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+function parseInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function parseMoneyToBigInt(value: unknown): bigint | undefined {
+  if (typeof value === "bigint") return value >= BigInt(0) ? value : undefined;
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : undefined;
+  }
+  if (typeof value !== "string") return undefined;
+
+  const cleaned = value.trim().replace(/[^0-9.KMB]/gi, "").toUpperCase();
+  const match = cleaned.match(/^(\d+(?:\.\d+)?)([KMB])?$/);
+  if (!match) return undefined;
+
+  const amount = Number.parseFloat(match[1]);
+  if (!Number.isFinite(amount) || amount < 0) return undefined;
+
+  const multiplier = match[2] === "K"
+    ? 1_000
+    : match[2] === "M"
+      ? 1_000_000
+      : match[2] === "B"
+        ? 1_000_000_000
+        : 1;
+  const total = Math.round(amount * multiplier);
+  return Number.isSafeInteger(total) ? BigInt(total) : undefined;
+}
+
+function parseJsonObject(rawResponse: string | null): Record<string, unknown> | null {
+  if (!rawResponse) return null;
+  try {
+    const parsed = JSON.parse(rawResponse);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function locationString(city?: string, state?: string, country?: string): string | undefined {
+  const parts = [city, state, country].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +257,106 @@ async function buildDedupMaps(staged: StagedRecord[]): Promise<DedupMaps> {
   }
 
   return { byEmail, byLinkedin, byDomain };
+}
+
+async function ensureCompanyForMerge(domain: string, name?: string): Promise<void> {
+  const existing = await prisma.company.findUnique({ where: { domain } });
+  if (existing) return;
+
+  await prisma.company.create({
+    data: {
+      domain,
+      name: name ?? domain,
+    },
+  });
+}
+
+export function mapApifyLeadsFinderPersonFields(
+  raw: Record<string, unknown> | null,
+): Parameters<typeof mergePersonData>[1] {
+  if (!raw) return {};
+
+  const split = splitName(asString(raw.full_name));
+  const city = asString(raw.city);
+  const state = asString(raw.state);
+  const country = asString(raw.country);
+  const companyName = asString(raw.company_name);
+  const companyDomain = asString(raw.company_domain);
+  const location = locationString(city, state, country);
+  const firstName = asString(raw.first_name) ?? split.firstName;
+  const lastName = asString(raw.last_name) ?? split.lastName;
+
+  return {
+    ...(firstName ? { firstName } : {}),
+    ...(lastName ? { lastName } : {}),
+    ...(asString(raw.job_title) ? { jobTitle: asString(raw.job_title) } : {}),
+    ...(asString(raw.headline) ? { headline: asString(raw.headline) } : {}),
+    ...(asString(raw.linkedin) ? { linkedinUrl: asString(raw.linkedin) } : {}),
+    ...(asString(raw.mobile_number) ? { mobilePhone: asString(raw.mobile_number) } : {}),
+    ...(companyName ? { company: companyName } : {}),
+    ...(companyDomain ? { companyDomain } : {}),
+    ...(city ? { locationCity: city } : {}),
+    ...(state ? { locationState: state } : {}),
+    ...(country ? { locationCountry: country } : {}),
+    ...(location ? { location } : {}),
+  };
+}
+
+export function mapApifyLeadsFinderCompanyFields(
+  raw: Record<string, unknown> | null,
+): { domain?: string; data: Parameters<typeof mergeCompanyData>[1] } {
+  if (!raw) return { data: {} };
+
+  const domain = asString(raw.company_domain);
+  const linkedinUrl = asString(raw.company_linkedin);
+  const companyLinkedinUid = asString(raw.company_linkedin_uid);
+  const hqAddress = asString(raw.company_street_address) ?? asString(raw.company_full_address);
+  const legacyLocation = asString(raw.company_full_address) ?? hqAddress;
+  const fundingTotal = parseMoneyToBigInt(raw.company_total_funding_clean);
+  const yearFounded = parseInteger(raw.company_founded_year);
+
+  return {
+    domain,
+    data: {
+      ...(asString(raw.company_name) ? { name: asString(raw.company_name) } : {}),
+      ...(asString(raw.industry) ? { industry: asString(raw.industry) } : {}),
+      ...(asString(raw.company_website) ? { website: asString(raw.company_website) } : {}),
+      ...(linkedinUrl ? { linkedinUrl } : {}),
+      ...(linkedinUrl ? { socialUrls: { linkedin: linkedinUrl } } : {}),
+      ...(companyLinkedinUid
+        ? { providerIds: { apifyLeadsFinderCompanyLinkedinUid: companyLinkedinUid } }
+        : {}),
+      ...(asString(raw.company_description) ? { description: asString(raw.company_description) } : {}),
+      ...(asString(raw.company_annual_revenue) ? { revenue: asString(raw.company_annual_revenue) } : {}),
+      ...(fundingTotal !== undefined ? { fundingTotal } : {}),
+      ...(yearFounded !== undefined ? { yearFounded } : {}),
+      ...(asString(raw.company_phone) ? { hqPhone: asString(raw.company_phone) } : {}),
+      ...(hqAddress ? { hqAddress } : {}),
+      ...(legacyLocation ? { location: legacyLocation } : {}),
+      ...(asString(raw.company_city) ? { hqCity: asString(raw.company_city) } : {}),
+      ...(asString(raw.company_state) ? { hqState: asString(raw.company_state) } : {}),
+      ...(asString(raw.company_country) ? { hqCountry: asString(raw.company_country) } : {}),
+      ...(raw.company_technologies != null ? { technologies: raw.company_technologies } : {}),
+    },
+  };
+}
+
+async function mergeApifyLeadsFinderRichFields(dp: StagedRecord, personId: string): Promise<void> {
+  if (dp.discoverySource !== "apify-leads-finder") return;
+
+  const raw = parseJsonObject(dp.rawResponse);
+  if (!raw) return;
+
+  const personData = mapApifyLeadsFinderPersonFields(raw);
+  if (Object.keys(personData).length > 0) {
+    await mergePersonData(personId, personData);
+  }
+
+  const company = mapApifyLeadsFinderCompanyFields(raw);
+  if (!company.domain || Object.keys(company.data).length === 0) return;
+
+  await ensureCompanyForMerge(company.domain, company.data.name);
+  await mergeCompanyData(company.domain, company.data);
 }
 
 /**
@@ -367,6 +531,8 @@ async function promoteToPerson(
     // No email and no LinkedIn URL — should not reach here (filtered by caller)
     throw new Error(`Cannot promote person ${dp.id}: no email and no LinkedIn URL`);
   }
+
+  await mergeApifyLeadsFinderRichFields(dp, person.id);
 
   // Upsert PersonWorkspace junction — idempotent
   // Preserve discovery sourceId (Prospeo person_id, AI Ark id, etc.) for
