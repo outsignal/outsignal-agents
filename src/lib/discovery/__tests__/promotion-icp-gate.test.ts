@@ -499,7 +499,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     });
   });
 
-  it("does not clobber existing Apify broadening fields and skips unparsable funding", async () => {
+  it("does not clobber existing Apify broadening fields, merges social URLs, and skips unparsable funding", async () => {
     workspaceFindUniqueOrThrowMock.mockResolvedValue({
       slug: "test",
       icpCriteriaPrompt: null,
@@ -570,6 +570,10 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
         providerIds: {
           aiarkCompanyId: "aiark-company-1",
           apifyLeadsFinderCompanyLinkedinUid: "123456",
+        },
+        socialUrls: {
+          twitter: "https://twitter.com/existing",
+          linkedin: "https://linkedin.com/company/apifyco",
         },
         hqCity: "London",
       },

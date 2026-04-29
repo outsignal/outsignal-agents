@@ -27,6 +27,17 @@ function mergeProviderIds(
     : merged as Record<string, string>;
 }
 
+function mergeSocialUrls(
+  existing: unknown,
+  incoming: Record<string, string>,
+): Record<string, string> | null {
+  const current = isPlainObject(existing) ? existing : {};
+  const merged = { ...current, ...incoming };
+  return JSON.stringify(merged) === JSON.stringify(current)
+    ? null
+    : merged as Record<string, string>;
+}
+
 /**
  * Merge provider data into a Person record.
  * Only fills null/empty fields — never overwrites existing data.
@@ -127,6 +138,15 @@ export async function mergeCompanyData(
       if (merged) {
         updates.providerIds = merged;
         fieldsWritten.push("providerIds");
+      }
+      continue;
+    }
+
+    if (key === "socialUrls" && isPlainObject(value)) {
+      const merged = mergeSocialUrls(company.socialUrls, value as Record<string, string>);
+      if (merged) {
+        updates.socialUrls = merged;
+        fieldsWritten.push("socialUrls");
       }
       continue;
     }

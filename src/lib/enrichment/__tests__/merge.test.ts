@@ -140,4 +140,84 @@ describe("merge existing-data-wins helpers", () => {
       },
     });
   });
+
+  it("deep-merges company socialUrls instead of rejecting incoming non-overlapping keys", async () => {
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "acme.com",
+      socialUrls: { linkedin: "https://www.linkedin.com/company/acme" },
+    });
+
+    const fieldsWritten = await mergeCompanyData("acme.com", {
+      socialUrls: { twitter: "https://twitter.com/acme" },
+    });
+
+    expect(fieldsWritten).toEqual(["socialUrls"]);
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "acme.com" },
+      data: {
+        socialUrls: {
+          linkedin: "https://www.linkedin.com/company/acme",
+          twitter: "https://twitter.com/acme",
+        },
+      },
+    });
+  });
+
+  it("lets incoming company socialUrls overwrite overlapping keys like providerIds", async () => {
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "acme.com",
+      socialUrls: {
+        linkedin: "https://www.linkedin.com/company/acme",
+        twitter: "https://twitter.com/old-acme",
+      },
+    });
+
+    const fieldsWritten = await mergeCompanyData("acme.com", {
+      socialUrls: { twitter: "https://twitter.com/acme" },
+    });
+
+    expect(fieldsWritten).toEqual(["socialUrls"]);
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "acme.com" },
+      data: {
+        socialUrls: {
+          linkedin: "https://www.linkedin.com/company/acme",
+          twitter: "https://twitter.com/acme",
+        },
+      },
+    });
+  });
+
+  it("skips company socialUrls writes when incoming keys are empty or unchanged", async () => {
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "acme.com",
+      socialUrls: { linkedin: "https://www.linkedin.com/company/acme" },
+    });
+
+    const fieldsWritten = await mergeCompanyData("acme.com", {
+      socialUrls: {},
+    });
+
+    expect(fieldsWritten).toEqual([]);
+    expect(companyUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("handles null company socialUrls when merging new keys", async () => {
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "acme.com",
+      socialUrls: null,
+    });
+
+    const fieldsWritten = await mergeCompanyData("acme.com", {
+      socialUrls: { instagram: "https://instagram.com/acme" },
+    });
+
+    expect(fieldsWritten).toEqual(["socialUrls"]);
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "acme.com" },
+      data: {
+        socialUrls: { instagram: "https://instagram.com/acme" },
+      },
+    });
+  });
 });
