@@ -580,4 +580,145 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
     });
     expect(companyCreateMock).not.toHaveBeenCalled();
   });
+
+  it("parses AI Ark per-person rawResponse at promotion time", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: null,
+      icpScoreThreshold: null,
+    });
+    personFindUniqueOrThrowMock.mockResolvedValue({
+      id: "person-aiark@example.com",
+      providerIds: { prospeoPersonId: "prospeo-1" },
+      headline: null,
+      profileSummary: null,
+      skills: null,
+      departments: null,
+      company: null,
+      companyDomain: null,
+    });
+    companyFindUniqueMock.mockResolvedValue(null);
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "asu.edu",
+      providerIds: { prospeoCompanyId: "prospeo-company-1" },
+      socialUrls: { twitter: "https://x.com/existing" },
+      hqPostalCode: null,
+      industries: null,
+    });
+
+    discoveredPersonFindManyMock.mockResolvedValue([
+      makeStagedRecord({
+        id: "dp-aiark-rich",
+        email: "aiark@example.com",
+        discoverySource: "aiark",
+        sourceId: "aiark-person-1",
+        rawResponse: JSON.stringify({
+          id: "aiark-person-1",
+          profile: {
+            first_name: "Rami",
+            last_name: "Skooti",
+            title: "Corporate Partnerships Manager",
+            headline: "Executive Education",
+            summary: "Builds executive education partnerships.",
+          },
+          location: {
+            default: "Phoenix, Arizona, United States, North America",
+            city: "Phoenix",
+            state: "Arizona",
+            country: "United States",
+          },
+          department: {
+            seniority: "manager",
+            departments: ["education"],
+            functions: ["education", "business_development"],
+          },
+          skills: ["Sales Development"],
+          educations: [{ school: { name: "Thunderbird" } }],
+          certifications: [{ name: "Learning Program Management" }],
+          languages: { profile_languages: [{ name: "Arabic" }] },
+          company: {
+            id: "aiark-company-1",
+            summary: {
+              name: "Thunderbird School of Global Management",
+              industry: "higher education",
+              staff: { total: 737 },
+              founded_year: 1946,
+            },
+            link: {
+              domain: "asu.edu",
+              linkedin: "https://www.linkedin.com/school/thunderbird",
+            },
+            location: {
+              headquarter: {
+                city: "Phoenix",
+                country: "United States",
+                postal_code: "85004",
+              },
+            },
+            technologies: [{ name: "office 365" }],
+            industries: ["higher education"],
+          },
+        }),
+      }),
+    ]);
+
+    await deduplicateAndPromote("test", ["run-1"]);
+
+    expect(personUpdateMock).toHaveBeenCalledWith({
+      where: { id: "person-aiark@example.com" },
+      data: {
+        providerIds: {
+          prospeoPersonId: "prospeo-1",
+          aiarkPersonId: "aiark-person-1",
+        },
+        firstName: "Rami",
+        lastName: "Skooti",
+        jobTitle: "Corporate Partnerships Manager",
+        headline: "Executive Education",
+        skills: ["Sales Development"],
+        location: "Phoenix, Arizona, United States, North America",
+        locationCity: "Phoenix",
+        locationState: "Arizona",
+        locationCountry: "United States",
+        profileSummary: "Builds executive education partnerships.",
+        seniority: "manager",
+        departments: ["education"],
+        functions: ["education", "business_development"],
+        education: [{ school: { name: "Thunderbird" } }],
+        certifications: [{ name: "Learning Program Management" }],
+        languages: { profile_languages: [{ name: "Arabic" }] },
+        company: "Thunderbird School of Global Management",
+        companyDomain: "asu.edu",
+      },
+    });
+    expect(companyCreateMock).toHaveBeenCalledWith({
+      data: {
+        domain: "asu.edu",
+        name: "Thunderbird School of Global Management",
+      },
+    });
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "asu.edu" },
+      data: {
+        name: "Thunderbird School of Global Management",
+        industry: "higher education",
+        headcount: 737,
+        yearFounded: 1946,
+        linkedinUrl: "https://www.linkedin.com/school/thunderbird",
+        providerIds: {
+          prospeoCompanyId: "prospeo-company-1",
+          aiarkCompanyId: "aiark-company-1",
+        },
+        socialUrls: {
+          twitter: "https://x.com/existing",
+          linkedin: "https://www.linkedin.com/school/thunderbird",
+        },
+        hqCity: "Phoenix",
+        hqCountry: "United States",
+        hqPostalCode: "85004",
+        technologies: [{ name: "office 365" }],
+        industries: ["higher education"],
+      },
+    });
+  });
 });

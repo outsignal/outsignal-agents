@@ -462,7 +462,23 @@ export async function enrichEmail(
           aiarkResult.location != null ||
           aiarkResult.company != null ||
           aiarkResult.companyDomain != null ||
-          aiarkResult.email != null;
+          aiarkResult.email != null ||
+          aiarkResult.providerIds != null ||
+          aiarkResult.headline != null ||
+          aiarkResult.skills != null ||
+          aiarkResult.jobHistory != null ||
+          aiarkResult.locationCity != null ||
+          aiarkResult.locationState != null ||
+          aiarkResult.locationCountry != null ||
+          aiarkResult.profileSummary != null ||
+          aiarkResult.profileImageUrl != null ||
+          aiarkResult.seniority != null ||
+          aiarkResult.departments != null ||
+          aiarkResult.functions != null ||
+          aiarkResult.education != null ||
+          aiarkResult.certifications != null ||
+          aiarkResult.languages != null ||
+          aiarkResult.companyData != null;
 
         if (hasPersonData) {
           const personData: Parameters<typeof mergePersonData>[1] = {};
@@ -474,8 +490,36 @@ export async function enrichEmail(
           if (aiarkResult.company) personData.company = aiarkResult.company;
           if (aiarkResult.companyDomain) personData.companyDomain = aiarkResult.companyDomain;
           if (aiarkResult.email) personData.email = aiarkResult.email;
+          if (aiarkResult.providerIds) personData.providerIds = aiarkResult.providerIds;
+          if (aiarkResult.headline) personData.headline = aiarkResult.headline;
+          if (aiarkResult.skills) personData.skills = aiarkResult.skills;
+          if (aiarkResult.jobHistory) personData.jobHistory = aiarkResult.jobHistory;
+          if (aiarkResult.locationCity) personData.locationCity = aiarkResult.locationCity;
+          if (aiarkResult.locationState) personData.locationState = aiarkResult.locationState;
+          if (aiarkResult.locationCountry) personData.locationCountry = aiarkResult.locationCountry;
+          if (aiarkResult.profileSummary) personData.profileSummary = aiarkResult.profileSummary;
+          if (aiarkResult.profileImageUrl) personData.profileImageUrl = aiarkResult.profileImageUrl;
+          if (aiarkResult.seniority) personData.seniority = aiarkResult.seniority;
+          if (aiarkResult.departments) personData.departments = aiarkResult.departments;
+          if (aiarkResult.functions) personData.functions = aiarkResult.functions;
+          if (aiarkResult.education) personData.education = aiarkResult.education;
+          if (aiarkResult.certifications) personData.certifications = aiarkResult.certifications;
+          if (aiarkResult.languages) personData.languages = aiarkResult.languages;
 
           const aiarkFieldsWritten = await mergePersonData(personId, personData);
+          const companyData = aiarkResult.companyData;
+          if (aiarkResult.companyDomain && companyData && Object.keys(companyData).length > 0) {
+            await prisma.company.upsert({
+              where: { domain: aiarkResult.companyDomain },
+              create: {
+                domain: aiarkResult.companyDomain,
+                name: companyData.name ?? aiarkResult.company ?? aiarkResult.companyDomain,
+              },
+              update: {},
+            });
+            const companyFieldsWritten = await mergeCompanyData(aiarkResult.companyDomain, companyData);
+            aiarkFieldsWritten.push(...companyFieldsWritten.map((field) => `company.${field}`));
+          }
 
           await incrementDailySpend("aiark", aiarkResult.costUsd);
           await recordEnrichment({
@@ -1583,6 +1627,31 @@ export async function enrichCompany(
     if (result.website) companyData.website = result.website;
     if (result.location) companyData.location = result.location;
     if (result.yearFounded) companyData.yearFounded = result.yearFounded;
+    if (result.revenue) companyData.revenue = result.revenue;
+    if (result.linkedinUrl) companyData.linkedinUrl = result.linkedinUrl;
+    if (result.companyType) companyData.companyType = result.companyType;
+    if (result.providerIds) companyData.providerIds = result.providerIds;
+    if (result.hqPhone) companyData.hqPhone = result.hqPhone;
+    if (result.hqAddress) companyData.hqAddress = result.hqAddress;
+    if (result.hqCity) companyData.hqCity = result.hqCity;
+    if (result.hqState) companyData.hqState = result.hqState;
+    if (result.hqCountry) companyData.hqCountry = result.hqCountry;
+    if (result.hqCountryCode) companyData.hqCountryCode = result.hqCountryCode;
+    if (result.socialUrls) companyData.socialUrls = result.socialUrls;
+    if (result.technologies) companyData.technologies = result.technologies;
+    if (result.fundingTotal) companyData.fundingTotal = result.fundingTotal;
+    if (result.fundingStageLatest) companyData.fundingStageLatest = result.fundingStageLatest;
+    if (result.fundingLatestDate) companyData.fundingLatestDate = result.fundingLatestDate;
+    if (result.fundingEvents) companyData.fundingEvents = result.fundingEvents;
+    if (result.jobPostingsActiveCount) companyData.jobPostingsActiveCount = result.jobPostingsActiveCount;
+    if (result.jobPostingTitles) companyData.jobPostingTitles = result.jobPostingTitles;
+    if (result.itSpend) companyData.itSpend = result.itSpend;
+    if (result.hqPostalCode) companyData.hqPostalCode = result.hqPostalCode;
+    if (result.officeLocations) companyData.officeLocations = result.officeLocations;
+    if (result.industries) companyData.industries = result.industries;
+    if (result.naicsCodes) companyData.naicsCodes = result.naicsCodes;
+    if (result.companyKeywords) companyData.companyKeywords = result.companyKeywords;
+    if (result.hashtags) companyData.hashtags = result.hashtags;
 
     const fieldsWritten = await mergeCompanyData(domain, companyData);
 

@@ -12,6 +12,12 @@ import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { PROVIDER_COSTS } from "../costs";
 import type { EmailAdapterInput, PersonAdapter, PersonProviderResult } from "../types";
 import type { RateLimits } from "@/lib/discovery/rate-limit";
+import {
+  asAiArkPersonRecord,
+  extractAiArkPeople,
+  mapAiArkCompanyData,
+  mapAiArkPersonData,
+} from "./aiark-mapping";
 
 /**
  * AI Ark person enrichment rate limits.
@@ -46,54 +52,28 @@ function getApiKey(): string {
   return key;
 }
 
-/**
- * Loose validation schema — AI Ark people response shape is MEDIUM confidence.
- * All fields are optional to be defensive.
- */
+/** Loose validation schema for a nested AI Ark person record. */
 const AiArkPersonSchema = z
   .object({
-    first_name: z.string().optional(),
-    last_name: z.string().optional(),
-    title: z.string().optional(),
-    linkedin_url: z.string().optional(),
-    email: z.string().optional(),
-    location: z.string().optional(),
-    company: z
-      .object({
-        name: z.string().optional(),
-        domain: z.string().optional(),
-      })
-      .optional(),
+    id: z.string().optional(),
+    profile: z.object({}).passthrough().optional(),
+    link: z.object({}).passthrough().optional(),
+    location: z.object({}).passthrough().optional(),
+    department: z.object({}).passthrough().optional(),
+    company: z.object({}).passthrough().optional(),
   })
   .passthrough();
 
 type AiArkPerson = z.infer<typeof AiArkPersonSchema>;
 
-/**
- * Normalize raw API response to an array of person records.
- * AI Ark may return a single object, an array, or wrap results in a `data` key.
- */
-function extractPeople(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw;
-  if (raw && typeof raw === "object") {
-    const obj = raw as Record<string, unknown>;
-    if (obj.data !== undefined) {
-      return Array.isArray(obj.data) ? obj.data : [obj.data];
-    }
-  }
-  return [raw];
-}
-
 function mapToResult(person: AiArkPerson, raw: unknown): PersonProviderResult {
+  const record = asAiArkPersonRecord(person);
+  const personData = mapAiArkPersonData(record);
+  const company = mapAiArkCompanyData(record);
+
   return {
-    firstName: person.first_name,
-    lastName: person.last_name,
-    jobTitle: person.title,
-    linkedinUrl: person.linkedin_url,
-    email: person.email,
-    location: person.location,
-    company: person.company?.name,
-    companyDomain: person.company?.domain,
+    ...personData,
+    ...(Object.keys(company.data).length > 0 ? { companyData: company.data } : {}),
     source: "aiark",
     rawResponse: raw,
     costUsd: PROVIDER_COSTS.aiark,
@@ -193,7 +173,7 @@ export const aiarkPersonAdapter: PersonAdapter = async (input: EmailAdapterInput
     throw err;
   }
 
-  const people = extractPeople(raw);
+  const people = extractAiArkPeople(raw);
   const firstPerson = people[0];
 
   if (!firstPerson) {

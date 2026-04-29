@@ -31,6 +31,10 @@ import { z } from "zod";
 import type { DiscoveredPersonResult, DiscoveryAdapter, DiscoveryFilter, DiscoveryResult } from "../types";
 import { CreditExhaustionError, isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import { stripWwwAll, type RateLimits } from "../rate-limit";
+import {
+  asAiArkPersonRecord,
+  mapAiArkPersonData,
+} from "@/lib/enrichment/providers/aiark-mapping";
 
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_PEOPLE_EXPORT_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people/export";
@@ -397,14 +401,15 @@ function buildRequestBody(
  * Map an AI Ark person record to the common DiscoveredPersonResult shape.
  */
 function mapPerson(person: z.infer<typeof AiArkPersonSchema>): DiscoveredPersonResult {
+  const richPerson = mapAiArkPersonData(asAiArkPersonRecord(person));
   return {
-    firstName: person.profile?.first_name ?? undefined,
-    lastName: person.profile?.last_name ?? undefined,
-    jobTitle: person.profile?.title ?? undefined,
-    linkedinUrl: person.link?.linkedin ?? undefined,
-    location: person.location?.default ?? person.location?.country ?? undefined,
-    company: person.company?.summary?.name ?? undefined,
-    companyDomain: person.company?.link?.domain ?? undefined,
+    firstName: richPerson.firstName,
+    lastName: richPerson.lastName,
+    jobTitle: richPerson.jobTitle,
+    linkedinUrl: richPerson.linkedinUrl,
+    location: richPerson.location ?? person.location?.country ?? undefined,
+    company: richPerson.company,
+    companyDomain: richPerson.companyDomain,
     sourceId: person.id,
   };
 }
@@ -588,15 +593,18 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
     const data = parsed.data;
     const totalElements = data.totalElements ?? 0;
 
-    // Map each person record from data.content
-    const people: DiscoveredPersonResult[] = data.content.flatMap((item) => {
+    // Map each person record from data.content and preserve the same valid
+    // records as per-person raw payloads for the staging writer.
+    const mapped = data.content.flatMap((item) => {
       const personParsed = AiArkPersonSchema.safeParse(item);
       if (!personParsed.success) {
         console.warn("AI Ark search: skipping invalid person record:", personParsed.error.message);
         return [];
       }
-      return [mapPerson(personParsed.data)];
+      return [{ person: mapPerson(personParsed.data), raw: item }];
     });
+    const people = mapped.map((entry) => entry.person);
+    const rawResponses = mapped.map((entry) => entry.raw);
 
     // Next page exists if we've fetched fewer total records than available
     const fetchedSoFar = (page + 1) * size;
@@ -613,6 +621,7 @@ export class AiArkSearchAdapter implements DiscoveryAdapter {
       nextPageToken,
       costUsd: 0.003 + extraCost,
       rawResponse: raw,
+      rawResponses,
     };
   }
 }

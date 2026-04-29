@@ -164,6 +164,14 @@ model Person {
   locationState       String? // Prospeo: person.location.state
   locationCountry     String? // Prospeo: person.location.country
   locationCountryCode String? // Prospeo: person.location.country_code ISO-2
+  profileSummary      String? // AI Ark: profile.summary
+  profileImageUrl     String? // AI Ark: profile.picture.source
+  seniority           String? // AI Ark: department.seniority
+  departments         Json?   // AI Ark: department.departments string array
+  functions           Json?   // AI Ark: department.functions string array
+  education           Json?   // AI Ark: educations
+  certifications      Json?   // AI Ark: certifications
+  languages           Json?   // AI Ark: languages
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -244,6 +252,13 @@ model Company {
   fundingEvents      Json?     // Prospeo: company.funding events/rounds
   jobPostingsActiveCount Int?  // Prospeo: company.job_postings active count
   jobPostingTitles   Json?     // Prospeo: company.job_postings titles
+  itSpend        BigInt?   // AI Ark: company.financial.aberdeen.it_spend
+  hqPostalCode   String?   // AI Ark: company.location.headquarter.postal_code
+  officeLocations Json?    // AI Ark: company.location.locations
+  industries     Json?     // AI Ark: company.industries string array
+  naicsCodes     Json?     // AI Ark: company.naics string array
+  companyKeywords Json?    // AI Ark: company.keywords string array
+  hashtags       Json?     // AI Ark: company.hashtags string array
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
