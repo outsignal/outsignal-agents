@@ -722,15 +722,18 @@ export const leadsTools = {
 
       // Apply ICP title + company-type filters before staging
       const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+      const rawByPerson = new Map(
+        result.people.map((person, i) => [person, result.rawResponses?.[i]]),
+      );
 
       const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
         people: passed,
         discoverySource: "prospeo",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
-        // rawResponses: parallel array of the same raw response object so the
-        // full Prospeo blob (and embedded sourceId) survives staging (BL-027).
-        rawResponses: passed.map(() => result.rawResponse),
+        // Prefer per-person raw blobs when the adapter can provide them; fall
+        // back to the page blob for older adapters.
+        rawResponses: passed.map((person) => rawByPerson.get(person) ?? result.rawResponse),
       });
       return {
         source: "prospeo",

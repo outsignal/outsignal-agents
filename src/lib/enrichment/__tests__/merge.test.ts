@@ -44,6 +44,31 @@ describe("merge existing-data-wins helpers", () => {
     });
   });
 
+  it("deep-merges person providerIds instead of overwriting existing provider keys", async () => {
+    personFindUniqueOrThrowMock.mockResolvedValue({
+      id: "person-1",
+      providerIds: { aiarkPersonId: "aiark-123" },
+      headline: null,
+    });
+
+    const fieldsWritten = await mergePersonData("person-1", {
+      providerIds: { prospeoPersonId: "prospeo-456" },
+      headline: "Founder at Acme",
+    });
+
+    expect(fieldsWritten).toEqual(["providerIds", "headline"]);
+    expect(personUpdateMock).toHaveBeenCalledWith({
+      where: { id: "person-1" },
+      data: {
+        providerIds: {
+          aiarkPersonId: "aiark-123",
+          prospeoPersonId: "prospeo-456",
+        },
+        headline: "Founder at Acme",
+      },
+    });
+  });
+
   it("treats blank company fields as mergeable rather than authoritative", async () => {
     companyFindUniqueOrThrowMock.mockResolvedValue({
       domain: "acme.com",
@@ -60,6 +85,34 @@ describe("merge existing-data-wins helpers", () => {
     expect(companyUpdateMock).toHaveBeenCalledWith({
       where: { domain: "acme.com" },
       data: { description: "Acme builds industrial sensors." },
+    });
+  });
+
+  it("deep-merges company providerIds and mirrors new social columns independently", async () => {
+    companyFindUniqueOrThrowMock.mockResolvedValue({
+      domain: "acme.com",
+      providerIds: { aiarkCompanyId: "aiark-company-123" },
+      linkedinUrl: null,
+      socialUrls: null,
+    });
+
+    const fieldsWritten = await mergeCompanyData("acme.com", {
+      providerIds: { prospeoCompanyId: "prospeo-company-456" },
+      linkedinUrl: "https://www.linkedin.com/company/acme",
+      socialUrls: { linkedin: "https://www.linkedin.com/company/acme" },
+    });
+
+    expect(fieldsWritten).toEqual(["providerIds", "linkedinUrl", "socialUrls"]);
+    expect(companyUpdateMock).toHaveBeenCalledWith({
+      where: { domain: "acme.com" },
+      data: {
+        providerIds: {
+          aiarkCompanyId: "aiark-company-123",
+          prospeoCompanyId: "prospeo-company-456",
+        },
+        linkedinUrl: "https://www.linkedin.com/company/acme",
+        socialUrls: { linkedin: "https://www.linkedin.com/company/acme" },
+      },
     });
   });
 });

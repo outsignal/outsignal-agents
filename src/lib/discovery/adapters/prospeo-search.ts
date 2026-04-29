@@ -367,7 +367,8 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     const totalCount = data.pagination?.total_count ?? 0;
 
     // Map Prospeo results to DiscoveredPersonResult
-    const people: DiscoveredPersonResult[] = (data.results ?? []).map(
+    const rawResults = data.results ?? [];
+    const people: DiscoveredPersonResult[] = rawResults.map(
       (result) => ({
         firstName: result.person.first_name ?? undefined,
         lastName: result.person.last_name ?? undefined,
@@ -399,6 +400,7 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
       nextPageToken,
       costUsd: PROSPEO_SEARCH_CREDIT_COST,
       rawResponse: raw,
+      rawResponses: rawResults,
     };
   }
 }

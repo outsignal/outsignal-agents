@@ -155,6 +155,15 @@ model Person {
   source         String // "clay" | "emailbison" | "manual"
   status         String   @default("new") // new | contacted | replied | interested | bounced | unsubscribed
   enrichmentData String?
+  providerIds    Json?    // Prospeo: { prospeoPersonId: "..." } — deep-merged by provider
+  headline       String?  // Prospeo: person.headline
+  skills         Json?    // Prospeo: person.skills string array
+  jobHistory     Json?    // Prospeo: person.job_history entries with seniority/departments
+  mobilePhone    String?  // Prospeo: person.mobile.mobile only when revealed=true
+  locationCity        String? // Prospeo: person.location.city
+  locationState       String? // Prospeo: person.location.state
+  locationCountry     String? // Prospeo: person.location.country
+  locationCountryCode String? // Prospeo: person.location.country_code ISO-2
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -220,6 +229,21 @@ model Company {
   enrichmentData String?  // JSON — extra fields from Clay
   crawlMarkdown  String?   // Raw homepage markdown from Firecrawl scrape (ICP scoring cache)
   crawledAt      DateTime? // When the homepage was last crawled (null = not yet crawled)
+  providerIds    Json?     // Prospeo: { prospeoCompanyId: "..." } — deep-merged by provider
+  hqPhone        String?   // Prospeo: company.phone_hq.phone_hq
+  hqAddress      String?   // Prospeo: company.location.raw_address
+  hqCity         String?   // Prospeo: company.location.city
+  hqState        String?   // Prospeo: company.location.state
+  hqCountry      String?   // Prospeo: company.location.country
+  hqCountryCode  String?   // Prospeo: company.location.country_code
+  socialUrls     Json?     // Prospeo: linkedin/twitter/facebook/instagram/youtube/crunchbase URLs
+  technologies   Json?     // Prospeo: company.technology object
+  fundingTotal       BigInt?   // Prospeo: company.funding total, nullable when absent
+  fundingStageLatest String?   // Prospeo: company.funding latest stage, nullable when absent
+  fundingLatestDate  DateTime? // Prospeo: company.funding latest date, nullable when absent
+  fundingEvents      Json?     // Prospeo: company.funding events/rounds
+  jobPostingsActiveCount Int?  // Prospeo: company.job_postings active count
+  jobPostingTitles   Json?     // Prospeo: company.job_postings titles
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

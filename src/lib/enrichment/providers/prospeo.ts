@@ -52,7 +52,9 @@ const ProspeoResponseSchema = z.object({
         })
         .optional(),
     })
+    .passthrough()
     .optional(),
+  company: z.object({}).passthrough().optional(),
 });
 
 /**
@@ -95,6 +97,182 @@ export interface BulkEnrichPersonInput {
   lastName?: string;
   linkedinUrl?: string;
   companyDomain?: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function asBigInt(value: unknown): bigint | undefined {
+  const numberValue = asNumber(value);
+  if (numberValue == null || !Number.isFinite(numberValue)) return undefined;
+  return BigInt(Math.trunc(numberValue));
+}
+
+function asDate(value: unknown): Date | undefined {
+  const stringValue = asString(value);
+  if (!stringValue) return undefined;
+  const date = new Date(stringValue);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function asArray(value: unknown): unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined;
+}
+
+function compactRecord(values: Record<string, string | undefined>): Record<string, string> | undefined {
+  const compacted = Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value != null),
+  ) as Record<string, string>;
+  return Object.keys(compacted).length > 0 ? compacted : undefined;
+}
+
+function extractFunding(funding: Record<string, unknown> | null): Pick<
+  NonNullable<EmailProviderResult["companyData"]>,
+  "fundingTotal" | "fundingStageLatest" | "fundingLatestDate" | "fundingEvents"
+> {
+  if (!funding) return {};
+
+  const latest = asRecord(funding.latest) ?? asRecord(funding.latest_round) ?? asRecord(funding.last_round);
+  return {
+    fundingTotal:
+      asBigInt(funding.total) ??
+      asBigInt(funding.total_funding) ??
+      asBigInt(funding.funding_total),
+    fundingStageLatest:
+      asString(funding.stage_latest) ??
+      asString(funding.latest_stage) ??
+      asString(latest?.stage),
+    fundingLatestDate:
+      asDate(funding.latest_date) ??
+      asDate(funding.last_funding_date) ??
+      asDate(latest?.date),
+    fundingEvents:
+      asArray(funding.events) ??
+      asArray(funding.rounds) ??
+      asArray(funding.funding_rounds),
+  };
+}
+
+function extractJobPostings(jobPostings: Record<string, unknown> | null): Pick<
+  NonNullable<EmailProviderResult["companyData"]>,
+  "jobPostingsActiveCount" | "jobPostingTitles"
+> {
+  if (!jobPostings) return {};
+
+  const postings =
+    asArray(jobPostings.jobs) ??
+    asArray(jobPostings.postings) ??
+    asArray(jobPostings.job_postings);
+  const titles =
+    asArray(jobPostings.titles)
+      ?.map(asString)
+      .filter((title): title is string => Boolean(title)) ??
+    postings
+      ?.map((posting) => asString(asRecord(posting)?.title))
+      .filter((title): title is string => Boolean(title));
+
+  return {
+    jobPostingsActiveCount:
+      asNumber(jobPostings.active_count) ??
+      asNumber(jobPostings.active) ??
+      asNumber(jobPostings.count) ??
+      asNumber(jobPostings.total) ??
+      postings?.length,
+    jobPostingTitles: titles && titles.length > 0 ? titles : undefined,
+  };
+}
+
+export function mapProspeoPayload(raw: unknown): Omit<EmailProviderResult, "source" | "rawResponse" | "costUsd"> {
+  const root = asRecord(raw) ?? {};
+  const person = asRecord(root.person);
+  const company = asRecord(root.company);
+  const email = asString(asRecord(person?.email)?.email) ?? null;
+  const personId = asString(person?.person_id);
+  const companyId = asString(company?.company_id);
+  const mobile = asRecord(person?.mobile);
+  const personLocation = asRecord(person?.location);
+  const companyLocation = asRecord(company?.location);
+  const phoneHq = asRecord(company?.phone_hq);
+  const funding = asRecord(company?.funding);
+  const jobPostings = asRecord(company?.job_postings);
+
+  const mobilePhone =
+    mobile?.revealed === true
+      ? asString(mobile.mobile) ?? asString(mobile.phone)
+      : undefined;
+  const socialUrls = compactRecord({
+    linkedin: asString(company?.linkedin_url),
+    twitter: asString(company?.twitter_url),
+    facebook: asString(company?.facebook_url),
+    instagram: asString(company?.instagram_url),
+    youtube: asString(company?.youtube_url),
+    crunchbase: asString(company?.crunchbase_url),
+  });
+
+  return {
+    email,
+    providerIds: personId ? { prospeoPersonId: personId } : undefined,
+    headline: asString(person?.headline),
+    skills: asArray(person?.skills),
+    jobHistory: asArray(person?.job_history),
+    mobilePhone,
+    locationCity: asString(personLocation?.city),
+    locationState: asString(personLocation?.state),
+    locationCountry: asString(personLocation?.country),
+    locationCountryCode: asString(personLocation?.country_code),
+    companyData: company ? {
+      name: asString(company.name),
+      domain: asString(company.domain),
+      industry: asString(company.industry),
+      headcount:
+        asNumber(company.employee_count) ??
+        asNumber(company.employees) ??
+        asNumber(company.headcount),
+      website: asString(company.website) ?? asString(company.domain),
+      location: asString(companyLocation?.city) && asString(companyLocation?.country)
+        ? `${asString(companyLocation?.city)}, ${asString(companyLocation?.country)}`
+        : asString(companyLocation?.country),
+      yearFounded: asNumber(company.founded),
+      revenue: asString(company.revenue_range_printed),
+      linkedinUrl: asString(company.linkedin_url),
+      providerIds: companyId ? { prospeoCompanyId: companyId } : undefined,
+      hqPhone: asString(phoneHq?.phone_hq),
+      hqAddress: asString(companyLocation?.address) ?? asString(companyLocation?.raw_address),
+      hqCity: asString(companyLocation?.city),
+      hqState: asString(companyLocation?.state),
+      hqCountry: asString(companyLocation?.country),
+      hqCountryCode: asString(companyLocation?.country_code),
+      socialUrls,
+      technologies: company.technology,
+      ...extractFunding(funding),
+      ...extractJobPostings(jobPostings),
+    } : undefined,
+  };
+}
+
+function buildProspeoResult(raw: unknown, costUsd: number): EmailProviderResult {
+  return {
+    ...mapProspeoPayload(raw),
+    source: "prospeo",
+    rawResponse: raw,
+    costUsd,
+  };
 }
 
 /**
@@ -208,13 +386,7 @@ export async function bulkEnrichPerson(
       if (parsed.data.matched) {
         for (const match of parsed.data.matched) {
           matchedIds.add(match.identifier);
-          const email = match.person?.email?.email ?? null;
-          results.set(match.identifier, {
-            email,
-            source: "prospeo",
-            rawResponse: match,
-            costUsd: PROVIDER_COSTS.prospeo,
-          });
+          results.set(match.identifier, buildProspeoResult(match, PROVIDER_COSTS.prospeo));
         }
       }
 
@@ -346,13 +518,7 @@ export async function bulkEnrichByPersonId(
       if (parsed.data.matched) {
         for (const match of parsed.data.matched) {
           matchedIds.add(match.identifier);
-          const email = match.person?.email?.email ?? null;
-          results.set(match.identifier, {
-            email,
-            source: "prospeo",
-            rawResponse: match,
-            costUsd: PROVIDER_COSTS.prospeo,
-          });
+          results.set(match.identifier, buildProspeoResult(match, PROVIDER_COSTS.prospeo));
         }
       }
 
@@ -489,12 +655,5 @@ export const prospeoAdapter: EmailAdapter = async (
     };
   }
 
-  const email = parsed.data.person?.email?.email ?? null;
-
-  return {
-    email,
-    source: "prospeo",
-    rawResponse: raw,
-    costUsd: PROVIDER_COSTS.prospeo,
-  };
+  return buildProspeoResult(raw, PROVIDER_COSTS.prospeo);
 };
