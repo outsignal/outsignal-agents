@@ -80,6 +80,12 @@ interface PromptPersonInput {
   lastName: string | null;
   jobTitle: string | null;
   headline?: string | null;
+  skills?: unknown;
+  jobHistory?: unknown;
+  profileSummary?: string | null;
+  education?: unknown;
+  certifications?: unknown;
+  languages?: unknown;
   company: string | null;
   vertical: string | null;
   location: string | null;
@@ -98,6 +104,11 @@ interface PromptCompanyInput {
   revenue?: string | null;
   technologies?: unknown;
   fundingTotal?: bigint | number | null;
+  socialUrls?: unknown;
+  jobPostingsActiveCount?: number | null;
+  jobPostingTitles?: unknown;
+  industries?: unknown;
+  naicsCodes?: unknown;
 }
 
 function parseLegacySeniority(enrichmentData: string | null): string | null {
@@ -178,6 +189,219 @@ function formatFundingUsd(value: bigint | number | null | undefined): string {
   return `$${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
+function asTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function uniqueStrings(values: unknown[], limit: number): string[] {
+  const strings: string[] = [];
+  for (const value of values) {
+    const str = asTrimmedString(value);
+    if (str && !strings.includes(str)) strings.push(str);
+    if (strings.length >= limit) break;
+  }
+  return strings;
+}
+
+function formatSkills(value: unknown, limit = 8): string {
+  if (!Array.isArray(value)) return "Unknown";
+  const skills = uniqueStrings(value, limit);
+  return skills.length > 0 ? skills.join(", ") : "Unknown";
+}
+
+function getRecordString(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    const str = asTrimmedString(value);
+    if (str) return str;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = value as Record<string, unknown>;
+      const nestedStr = asTrimmedString(nested.name) ?? asTrimmedString(nested.title);
+      if (nestedStr) return nestedStr;
+    }
+  }
+  return null;
+}
+
+function extractYear(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value !== "string") return null;
+  const match = value.match(/\b(19|20)\d{2}\b/);
+  return match ? Number(match[0]) : null;
+}
+
+function formatYear(value: unknown, currentFallback = false): string {
+  if (value == null && currentFallback) return "Present";
+  const year = extractYear(value);
+  return year ? String(year) : currentFallback ? "Present" : "Unknown";
+}
+
+function formatJobHistory(value: unknown, limit = 3): string {
+  if (!Array.isArray(value)) return "Career: Unknown";
+
+  const entries = value
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item))
+    .map((item, index) => ({
+      item,
+      index,
+      sortYear:
+        extractYear(item.end) ??
+        extractYear(item.end_date) ??
+        extractYear(item.to) ??
+        (item.current === true || item.is_current === true ? 9999 : null) ??
+        extractYear(item.start) ??
+        extractYear(item.start_date) ??
+        extractYear(item.from) ??
+        0,
+    }))
+    .sort((a, b) => b.sortYear - a.sortYear || a.index - b.index)
+    .slice(0, limit)
+    .map(({ item }) => {
+      const company =
+        getRecordString(item, ["company", "companyName", "company_name", "organization"]) ?? "Unknown company";
+      const title = getRecordString(item, ["title", "jobTitle", "job_title", "position"]) ?? "Unknown title";
+      const start = formatYear(item.start ?? item.start_date ?? item.from);
+      const end = formatYear(item.end ?? item.end_date ?? item.to, item.current === true || item.is_current === true);
+      return `${start}-${end} ${company} (${title})`;
+    });
+
+  return entries.length > 0 ? `Career: ${entries.join("; ")}` : "Career: Unknown";
+}
+
+function formatProfileSummary(value: string | null | undefined, limit = 500): string {
+  const summary = asTrimmedString(value);
+  if (!summary) return "Unknown";
+  return summary.length > limit ? `${summary.slice(0, limit).trimEnd()}...` : summary;
+}
+
+function formatEducation(value: unknown, limit = 2): string {
+  if (!Array.isArray(value)) return "Unknown";
+
+  const entries = value
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item))
+    .slice(0, limit)
+    .map((item) => {
+      const institution =
+        getRecordString(item, ["institution", "school", "school_name", "university", "name"]) ?? null;
+      const degree = getRecordString(item, ["degree", "degree_name", "degreeName", "qualification"]) ?? null;
+      const field = getRecordString(item, ["field", "field_of_study", "fieldOfStudy", "major"]) ?? null;
+      return [institution, degree, field].filter(Boolean).join(" - ");
+    })
+    .filter((entry) => entry.length > 0);
+
+  return entries.length > 0 ? entries.join("; ") : "Unknown";
+}
+
+function formatCertifications(value: unknown, limit = 3): string {
+  if (!Array.isArray(value)) return "Unknown";
+
+  const names = value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        return getRecordString(item as Record<string, unknown>, ["name", "title", "certification"]);
+      }
+      return null;
+    })
+    .filter((name): name is string => typeof name === "string");
+
+  const unique = uniqueStrings(names, limit);
+  return unique.length > 0 ? unique.join(", ") : "Unknown";
+}
+
+function flattenLanguageNames(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["profile_languages", "languages", "spoken_languages"]) {
+      const candidate = record[key];
+      if (Array.isArray(candidate)) return candidate;
+    }
+  }
+  return [];
+}
+
+function formatLanguages(value: unknown, limit = 8): string {
+  const names = flattenLanguageNames(value)
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        return getRecordString(item as Record<string, unknown>, ["name", "language"]);
+      }
+      return null;
+    })
+    .filter((name): name is string => typeof name === "string");
+
+  const unique = uniqueStrings(names, limit);
+  return unique.length > 0 ? unique.join(", ") : "Unknown";
+}
+
+function formatSocialPresence(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Social: Unknown";
+
+  const labels: Record<string, string> = {
+    linkedin: "LinkedIn",
+    twitter: "Twitter",
+    x: "X",
+    facebook: "Facebook",
+    instagram: "Instagram",
+    youtube: "YouTube",
+    crunchbase: "Crunchbase",
+    github: "GitHub",
+  };
+
+  const present = Object.entries(value as Record<string, unknown>)
+    .filter(([, url]) => asTrimmedString(url) != null)
+    .map(([platform]) => labels[platform] ?? platform.charAt(0).toUpperCase() + platform.slice(1))
+    .sort();
+
+  return present.length > 0 ? `Social: ${present.map((label) => `${label} ✓`).join(", ")}` : "Social: Unknown";
+}
+
+function getTitleName(value: unknown): string | null {
+  if (typeof value === "string") return asTrimmedString(value);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return getRecordString(value as Record<string, unknown>, ["title", "name", "jobTitle", "job_title"]);
+  }
+  return null;
+}
+
+function formatHiring(count: number | null | undefined, titles: unknown, limit = 5): string {
+  if (count == null || count <= 0) return "Hiring: None visible";
+
+  const titleList = Array.isArray(titles)
+    ? uniqueStrings(titles.map(getTitleName).filter((title): title is string => title != null), limit)
+    : [];
+
+  return titleList.length > 0
+    ? `Currently hiring: ${count} open roles (${titleList.join(", ")})`
+    : `Currently hiring: ${count} open roles`;
+}
+
+function formatIndustries(value: unknown, fallback: string | null | undefined, limit = 8): string {
+  if (Array.isArray(value)) {
+    const industries = uniqueStrings(value, limit);
+    if (industries.length > 0) return industries.join(", ");
+  }
+  return fallback ?? "Unknown";
+}
+
+function formatNaicsCodes(value: unknown, limit = 3): string {
+  if (!Array.isArray(value)) return "Unknown";
+  const codes = value
+    .map((item) => {
+      if (typeof item === "string" || typeof item === "number") return String(item);
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        return getRecordString(item as Record<string, unknown>, ["code", "naics", "id"]);
+      }
+      return null;
+    })
+    .filter((code): code is string => typeof code === "string");
+
+  const unique = uniqueStrings(codes, limit);
+  return unique.length > 0 ? unique.join(", ") : "Unknown";
+}
+
 /**
  * Build a scoring prompt from person + company + website data.
  */
@@ -194,20 +418,29 @@ export function buildScoringPrompt(params: {
 - Name: ${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() + `
 - Job Title: ${person.jobTitle ?? "Unknown"}
 - Headline: ${person.headline ?? "Unknown"}
+- Profile Summary: ${formatProfileSummary(person.profileSummary)}
 - Company: ${person.company ?? "Unknown"}
 - Industry: ${person.vertical ?? "Unknown"}
 - Location: ${formatPersonLocation(person)}
-- Seniority: ${seniority}`;
+- Seniority: ${seniority}
+- Skills: ${formatSkills(person.skills)}
+- ${formatJobHistory(person.jobHistory)}
+- Education: ${formatEducation(person.education)}
+- Certifications: ${formatCertifications(person.certifications)}
+- Languages: ${formatLanguages(person.languages)}`;
 
   const companySection = company
     ? `## Company Data
 - Headcount: ${company.headcount ?? "Unknown"}
-- Industry: ${company.industry ?? "Unknown"}
+- Industry: ${formatIndustries(company.industries, company.industry)}
 - Description: ${company.description ?? "Unknown"}
 - Year Founded: ${company.yearFounded ?? "Unknown"}
 - Revenue: ${company.revenue ?? "Unknown"}
 - Technologies: ${formatTechnologies(company.technologies)}
-- Funding: ${formatFundingUsd(company.fundingTotal)}`
+- Funding: ${formatFundingUsd(company.fundingTotal)}
+- ${formatSocialPresence(company.socialUrls)}
+- ${formatHiring(company.jobPostingsActiveCount, company.jobPostingTitles)}
+- NAICS: ${formatNaicsCodes(company.naicsCodes)}`
     : `## Company Data
 - No company record found`;
 
@@ -399,6 +632,12 @@ export async function scorePersonIcp(
       lastName: person.lastName,
       jobTitle: person.jobTitle,
       headline: person.headline,
+      skills: person.skills,
+      jobHistory: person.jobHistory,
+      profileSummary: person.profileSummary,
+      education: person.education,
+      certifications: person.certifications,
+      languages: person.languages,
       company: person.company,
       vertical: person.vertical,
       location: person.location,
@@ -417,6 +656,11 @@ export async function scorePersonIcp(
           revenue: company.revenue,
           technologies: company.technologies,
           fundingTotal: company.fundingTotal,
+          socialUrls: company.socialUrls,
+          jobPostingsActiveCount: company.jobPostingsActiveCount,
+          jobPostingTitles: company.jobPostingTitles,
+          industries: company.industries,
+          naicsCodes: company.naicsCodes,
         }
       : null,
     websiteMarkdown,
@@ -491,20 +735,29 @@ function buildBatchPersonEntry(params: {
     `Name: ${(person.firstName ?? "")} ${(person.lastName ?? "")}`.trim(),
     `Title: ${person.jobTitle ?? "Unknown"}`,
     `Headline: ${person.headline ?? "Unknown"}`,
+    `Profile Summary: ${formatProfileSummary(person.profileSummary)}`,
     `Company: ${person.company ?? "Unknown"}`,
     `Industry: ${person.vertical ?? "Unknown"}`,
     `Location: ${formatPersonLocation(person)}`,
     `Seniority: ${seniority}`,
+    `Skills: ${formatSkills(person.skills)}`,
+    formatJobHistory(person.jobHistory),
+    `Education: ${formatEducation(person.education)}`,
+    `Certifications: ${formatCertifications(person.certifications)}`,
+    `Languages: ${formatLanguages(person.languages)}`,
   ];
 
   if (company) {
     lines.push(`Company Headcount: ${company.headcount ?? "Unknown"}`);
-    lines.push(`Company Industry: ${company.industry ?? "Unknown"}`);
+    lines.push(`Company Industry: ${formatIndustries(company.industries, company.industry)}`);
     lines.push(`Company Description: ${company.description ?? "Unknown"}`);
     lines.push(`Company Year Founded: ${company.yearFounded ?? "Unknown"}`);
     lines.push(`Company Revenue: ${company.revenue ?? "Unknown"}`);
     lines.push(`Company Technologies: ${formatTechnologies(company.technologies)}`);
     lines.push(`Company Funding: ${formatFundingUsd(company.fundingTotal)}`);
+    lines.push(formatSocialPresence(company.socialUrls));
+    lines.push(formatHiring(company.jobPostingsActiveCount, company.jobPostingTitles));
+    lines.push(`Company NAICS: ${formatNaicsCodes(company.naicsCodes)}`);
   } else {
     lines.push("Company Data: No company record found");
   }
@@ -689,6 +942,12 @@ export async function scorePersonIcpBatch(
             lastName: person.lastName,
             jobTitle: person.jobTitle,
             headline: person.headline,
+            skills: person.skills,
+            jobHistory: person.jobHistory,
+            profileSummary: person.profileSummary,
+            education: person.education,
+            certifications: person.certifications,
+            languages: person.languages,
             company: person.company,
             vertical: person.vertical,
             location: person.location,
@@ -707,6 +966,11 @@ export async function scorePersonIcpBatch(
                 revenue: company.revenue,
                 technologies: company.technologies,
                 fundingTotal: company.fundingTotal,
+                socialUrls: company.socialUrls,
+                jobPostingsActiveCount: company.jobPostingsActiveCount,
+                jobPostingTitles: company.jobPostingTitles,
+                industries: company.industries,
+                naicsCodes: company.naicsCodes,
               }
             : null,
           websiteMarkdown,
