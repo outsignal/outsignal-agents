@@ -58,6 +58,49 @@ describe("updateCampaignStatus optimistic concurrency", () => {
     vi.clearAllMocks();
   });
 
+  it("permits paused static campaigns to return to pending approval", async () => {
+    txCampaign.findUnique
+      .mockResolvedValueOnce({ status: "paused", type: "static" })
+      .mockResolvedValueOnce(fakeRawCampaign({ status: "pending_approval" }));
+    txCampaign.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await updateCampaignStatus(CAMPAIGN_ID, "pending_approval");
+
+    expect(txCampaign.updateMany).toHaveBeenCalledWith({
+      where: { id: CAMPAIGN_ID, status: "paused" },
+      data: { status: "pending_approval" },
+    });
+    expect(result.status).toBe("pending_approval");
+  });
+
+  it.each(["active", "completed"])(
+    "keeps paused -> %s valid for static campaigns",
+    async (targetStatus) => {
+      txCampaign.findUnique
+        .mockResolvedValueOnce({ status: "paused", type: "static" })
+        .mockResolvedValueOnce(fakeRawCampaign({ status: targetStatus }));
+      txCampaign.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await updateCampaignStatus(CAMPAIGN_ID, targetStatus);
+
+      expect(txCampaign.updateMany).toHaveBeenCalledWith({
+        where: { id: CAMPAIGN_ID, status: "paused" },
+        data: { status: targetStatus },
+      });
+      expect(result.status).toBe(targetStatus);
+    },
+  );
+
+  it("continues rejecting unsupported non-paused -> pending approval transitions", async () => {
+    txCampaign.findUnique.mockResolvedValueOnce({ status: "active", type: "static" });
+
+    await expect(
+      updateCampaignStatus(CAMPAIGN_ID, "pending_approval"),
+    ).rejects.toThrow("Invalid status transition: 'active' -> 'pending_approval'");
+
+    expect(txCampaign.updateMany).not.toHaveBeenCalled();
+  });
+
   it("compares on the originally read status before applying the transition", async () => {
     txCampaign.findUnique
       .mockResolvedValueOnce({ status: "deployed", type: "static" })
