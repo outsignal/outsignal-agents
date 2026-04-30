@@ -103,7 +103,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   approved: ["deployed"],
   deployed: ["active"],
   active: ["paused", "completed"],
-  paused: ["active", "completed"],
+  paused: ["active", "completed", "pending_approval"],
 };
 
 // Signal campaigns use a simplified state machine (per CONTEXT.md decision):
@@ -535,7 +535,7 @@ export async function updateCampaign(
  *   approved -> deployed
  *   deployed -> active
  *   active -> paused | completed
- *   paused -> active | completed
+ *   paused -> active | completed | pending_approval
  *   any -> completed (always allowed)
  *
  * @param id - Campaign ID
