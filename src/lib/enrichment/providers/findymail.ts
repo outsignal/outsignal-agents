@@ -207,6 +207,7 @@ export async function bulkFindEmail(
   const results = new Map<string, EmailProviderResult>();
   const limiter = createLimiter(200);
   let creditExhausted = false;
+  let creditExhaustionError: CreditExhaustionError | null = null;
 
   const apiKey = getApiKey();
 
@@ -277,12 +278,7 @@ export async function bulkFindEmail(
           });
         } catch (err) {
           if (err instanceof CreditExhaustionError) {
-            results.set(person.personId, {
-              email: null,
-              source: "findymail",
-              rawResponse: { error: "credit_exhaustion" },
-              costUsd: 0,
-            });
+            creditExhaustionError ??= err;
             return;
           }
           results.set(person.personId, {
@@ -299,6 +295,9 @@ export async function bulkFindEmail(
   }
 
   await Promise.allSettled(promises);
+  if (creditExhaustionError) {
+    throw creditExhaustionError;
+  }
 
   return results;
 }

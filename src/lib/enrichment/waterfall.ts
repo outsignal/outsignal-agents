@@ -832,21 +832,21 @@ export async function enrichEmailBatch(
     }
   }
 
-  // NOTE: AI Ark source-first emails are added to foundEmails and verified via
-  // the shared BounceBan bulk step (Step 4), not inline. People with foundEmails
-  // entries are skipped by downstream providers via the `stillNeedEmail` filter
-  // (line: needEmail.filter(p => !foundEmails.get(p.personId))), not via
-  // shouldEnrich() dedup gate. The shouldEnrich() call in Prospeo/FindyMail/Kitt
-  // steps provides a secondary dedup layer against prior enrichment runs.
+  // NOTE: Source-first emails are added to foundEmails and verified via the
+  // shared BounceBan bulk step (Step 4), not inline. People with foundEmails
+  // entries are skipped by downstream providers via remaining-email filters.
+  // shouldEnrich() still provides a secondary dedup layer against prior
+  // enrichment runs.
 
   // -------------------------------------------------------------------------
   // Step 1: Prospeo bulk for all eligible people (generic — no person_id)
   // -------------------------------------------------------------------------
   const prospeoFailures = breaker.consecutiveFailures.get("prospeo") ?? 0;
-  if (prospeoFailures < CIRCUIT_BREAKER_THRESHOLD && needEmail.length > 0) {
+  const stillNeedProspeo = needEmail.filter((p) => !foundEmails.get(p.personId));
+  if (prospeoFailures < CIRCUIT_BREAKER_THRESHOLD && stillNeedProspeo.length > 0) {
     // Filter to people eligible for Prospeo (dedup gate)
     const prospeoEligible: typeof needEmail = [];
-    for (const person of needEmail) {
+    for (const person of stillNeedProspeo) {
       const shouldRun = await shouldEnrich(person.personId, "person", "prospeo");
       if (shouldRun) {
         prospeoEligible.push(person);
@@ -1036,8 +1036,8 @@ export async function enrichEmailBatch(
   // -------------------------------------------------------------------------
   // Step 4: BounceBan bulk verify all found emails
   //
-  // EXCEPTION: AI Ark source-first emails are pre-verified by BounceBan
-  // on AI Ark's side — skip our own verification for those to save credits.
+  // Source-first emails are NOT treated as pre-verified by providers. They go
+  // through this standard BounceBan verification step.
   // Apify Leads Finder emails are NOT pre-verified — must go through BounceBan
   // despite Apify claiming "validated" status.
   // -------------------------------------------------------------------------
@@ -1129,7 +1129,18 @@ export async function enrichEmailBatch(
         failed = allFoundEmails.length;
         return { total: people.length, enriched, verified, failed, costs };
       }
-      throw err;
+      console.warn(`[waterfall-batch] BounceBan bulk verify error — falling back to Kitt verify for ${allFoundEmails.length} emails:`, err);
+      verificationResults = new Map(
+        allFoundEmails.map((entry) => [
+          entry.personId,
+          {
+            email: entry.email,
+            status: "unknown",
+            isExportable: false,
+            costUsd: 0,
+          } satisfies import("@/lib/verification/bounceban").VerificationResult,
+        ]),
+      );
     }
 
     // -----------------------------------------------------------------------

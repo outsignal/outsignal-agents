@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { bulkFindEmail, findymailAdapter, mapFindyMailPayload } from "../providers/findymail";
+import { CreditExhaustionError } from "../credit-exhaustion";
 
 const liveShapedFindyMailPayload = {
   contact: {
@@ -151,5 +152,22 @@ describe("FindyMail contact.email extraction", () => {
         hqCity: "Ringwood",
       },
     });
+  });
+
+  it("throws CreditExhaustionError from bulk FindyMail when credits are exhausted", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+    } as Response);
+
+    await expect(
+      bulkFindEmail([
+        {
+          personId: "person-1",
+          linkedinUrl: "https://linkedin.com/in/joao-virtudes-77115298",
+        },
+      ]),
+    ).rejects.toBeInstanceOf(CreditExhaustionError);
   });
 });
