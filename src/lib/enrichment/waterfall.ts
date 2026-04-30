@@ -1,15 +1,14 @@
 /**
  * Waterfall enrichment orchestrators.
  *
- * enrichEmail: AI Ark (person data) → FindyMail → Prospeo → Kitt (cheapest-first).
- *   AI Ark runs first as a person-data step (fills jobTitle, company, location, etc.).
- *   Then FindyMail → Prospeo → Kitt run in cheapest-first order to find the email.
+ * enrichEmail: FindyMail → Prospeo → Kitt (cheapest-first).
+ *   FindyMail → Prospeo → Kitt run in cheapest-first order to find the email.
  *   Each found email is verified via BounceBan (+ Kitt fallback for unknowns).
  *   If verification fails, the email is rejected and the next provider is tried.
  *   Only verified-valid emails are accepted and saved.
  * enrichCompany: Tries AI Ark → Firecrawl in order, stopping at first success with data.
  *
- * Waterfall order: AI Ark (person data) → FindyMail → Prospeo → Kitt.
+ * Waterfall order: FindyMail → Prospeo → Kitt.
  * Verification: BounceBan (primary) → Kitt (fallback for unknowns).
  *
  * Both functions apply:
@@ -28,7 +27,6 @@ import { prospeoAdapter } from "./providers/prospeo";
 import { findymailAdapter } from "./providers/findymail";
 import { kittAdapter } from "./providers/kitt";
 import { aiarkAdapter } from "./providers/aiark";
-import { aiarkPersonAdapter } from "./providers/aiark-person";
 import { firecrawlCompanyAdapter } from "./providers/firecrawl-company";
 import { classifyIndustry, classifyJobTitle, classifyCompanyName } from "@/lib/normalizer";
 import { isRateLimited } from "@/lib/http-error";
@@ -36,7 +34,7 @@ import { verifyEmail as bouncebanVerify } from "@/lib/verification/bounceban";
 import { verifyEmail as kittVerify } from "@/lib/verification/kitt";
 import { CreditExhaustionError, isCreditExhaustion } from "@/lib/enrichment/credit-exhaustion";
 import { notifyCreditExhaustion } from "@/lib/notifications";
-import type { Provider, EmailAdapterInput, EmailAdapter, CompanyAdapter, PersonAdapter, PersonProviderResult, EmailProviderResult } from "./types";
+import type { Provider, EmailAdapterInput, EmailAdapter, CompanyAdapter, EmailProviderResult } from "./types";
 
 // ---------------------------------------------------------------------------
 // Circuit breaker
@@ -393,223 +391,6 @@ export async function enrichEmail(
   }
 
   // ---------------------------------------------------------------------------
-  // AI Ark person data enrichment (fills jobTitle, company, location, etc.)
-  // ---------------------------------------------------------------------------
-  // Runs BEFORE email providers because it enriches person fields that can
-  // improve downstream email-finding accuracy. This satisfies the ENRICH-02
-  // waterfall order: FindyMail -> Prospeo -> Kitt (cheapest-first) by making
-  // AI Ark a separate person-data step before the email-finding loop.
-  // If AI Ark also returns an email, we treat it as an email-finding success
-  // and stop early (same as any email provider).
-  const aiarkFailures = breaker.consecutiveFailures.get("aiark") ?? 0;
-  if (aiarkFailures < CIRCUIT_BREAKER_THRESHOLD) {
-    const aiarkShouldRun = await shouldEnrich(personId, "person", "aiark");
-    if (aiarkShouldRun) {
-      const capHit = await checkDailyCap();
-      if (capHit) throw new Error("DAILY_CAP_HIT");
-
-      let aiarkResult: PersonProviderResult | null = null;
-      let aiarkError: Error | null = null;
-
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        try {
-          aiarkResult = await aiarkPersonAdapter(input);
-          aiarkError = null;
-          break;
-        } catch (err) {
-          // Credit exhaustion — notify admin but DON'T halt the waterfall.
-          // AI Ark is optional person-data enrichment, not email finding.
-          // Skip to email providers instead of pausing the entire job.
-          if (isCreditExhaustion(err)) {
-            await notifyCreditExhaustion({
-              provider: (err as CreditExhaustionError).provider,
-              httpStatus: (err as CreditExhaustionError).httpStatus,
-              context: `enrichment waterfall (aiark person data) for person ${personId} — skipping, continuing to email providers`,
-            });
-            console.warn(`[waterfall] AI Ark credit exhaustion for ${personId} — skipping person data, continuing to email providers`);
-            break; // exit retry loop, fall through to email providers
-          }
-          const error = err instanceof Error ? err : new Error(String(err));
-          const is429 = isRateLimited(err) || error.message.includes("429");
-          if (is429 && attempt < MAX_RETRIES - 1) {
-            await sleep(exponentialBackoff(attempt));
-            continue;
-          }
-          aiarkError = error;
-          break;
-        }
-      }
-
-      if (aiarkError !== null) {
-        await recordEnrichment({
-          entityId: personId,
-          entityType: "person",
-          provider: "aiark",
-          status: "error",
-          errorMessage: aiarkError.message,
-          costUsd: 0,
-          workspaceSlug,
-        });
-        // Don't increment circuit breaker for credit exhaustion (already re-thrown above)
-        breaker.consecutiveFailures.set("aiark", aiarkFailures + 1);
-      } else if (aiarkResult && aiarkResult.costUsd > 0) {
-        // Only record and spend when an actual API call was made (costUsd > 0)
-        const hasPersonData =
-          aiarkResult.firstName != null ||
-          aiarkResult.lastName != null ||
-          aiarkResult.jobTitle != null ||
-          aiarkResult.linkedinUrl != null ||
-          aiarkResult.location != null ||
-          aiarkResult.company != null ||
-          aiarkResult.companyDomain != null ||
-          aiarkResult.email != null ||
-          aiarkResult.providerIds != null ||
-          aiarkResult.headline != null ||
-          aiarkResult.skills != null ||
-          aiarkResult.jobHistory != null ||
-          aiarkResult.locationCity != null ||
-          aiarkResult.locationState != null ||
-          aiarkResult.locationCountry != null ||
-          aiarkResult.profileSummary != null ||
-          aiarkResult.profileImageUrl != null ||
-          aiarkResult.seniority != null ||
-          aiarkResult.departments != null ||
-          aiarkResult.functions != null ||
-          aiarkResult.education != null ||
-          aiarkResult.certifications != null ||
-          aiarkResult.languages != null ||
-          aiarkResult.companyData != null;
-
-        if (hasPersonData) {
-          const personData: Parameters<typeof mergePersonData>[1] = {};
-          if (aiarkResult.firstName) personData.firstName = aiarkResult.firstName;
-          if (aiarkResult.lastName) personData.lastName = aiarkResult.lastName;
-          if (aiarkResult.jobTitle) personData.jobTitle = aiarkResult.jobTitle;
-          if (aiarkResult.linkedinUrl) personData.linkedinUrl = aiarkResult.linkedinUrl;
-          if (aiarkResult.location) personData.location = aiarkResult.location;
-          if (aiarkResult.company) personData.company = aiarkResult.company;
-          if (aiarkResult.companyDomain) personData.companyDomain = aiarkResult.companyDomain;
-          if (aiarkResult.email) personData.email = aiarkResult.email;
-          if (aiarkResult.providerIds) personData.providerIds = aiarkResult.providerIds;
-          if (aiarkResult.headline) personData.headline = aiarkResult.headline;
-          if (aiarkResult.skills) personData.skills = aiarkResult.skills;
-          if (aiarkResult.jobHistory) personData.jobHistory = aiarkResult.jobHistory;
-          if (aiarkResult.locationCity) personData.locationCity = aiarkResult.locationCity;
-          if (aiarkResult.locationState) personData.locationState = aiarkResult.locationState;
-          if (aiarkResult.locationCountry) personData.locationCountry = aiarkResult.locationCountry;
-          if (aiarkResult.profileSummary) personData.profileSummary = aiarkResult.profileSummary;
-          if (aiarkResult.profileImageUrl) personData.profileImageUrl = aiarkResult.profileImageUrl;
-          if (aiarkResult.seniority) personData.seniority = aiarkResult.seniority;
-          if (aiarkResult.departments) personData.departments = aiarkResult.departments;
-          if (aiarkResult.functions) personData.functions = aiarkResult.functions;
-          if (aiarkResult.education) personData.education = aiarkResult.education;
-          if (aiarkResult.certifications) personData.certifications = aiarkResult.certifications;
-          if (aiarkResult.languages) personData.languages = aiarkResult.languages;
-
-          const aiarkFieldsWritten = await mergePersonData(personId, personData);
-          const companyData = aiarkResult.companyData;
-          if (aiarkResult.companyDomain && companyData && Object.keys(companyData).length > 0) {
-            await ensureCompanyForMerge(aiarkResult.companyDomain, companyData.name ?? aiarkResult.company);
-            const companyFieldsWritten = await mergeCompanyData(aiarkResult.companyDomain, companyData);
-            aiarkFieldsWritten.push(...companyFieldsWritten.map((field) => `company.${field}`));
-          }
-
-          await incrementDailySpend("aiark", aiarkResult.costUsd);
-          await recordEnrichment({
-            entityId: personId,
-            entityType: "person",
-            provider: "aiark",
-            status: "success",
-            fieldsWritten: aiarkFieldsWritten,
-            costUsd: aiarkResult.costUsd,
-            rawResponse: aiarkResult.rawResponse,
-            workspaceSlug,
-          });
-          breaker.consecutiveFailures.set("aiark", 0);
-
-          // --- Run normalizers inline for AI Ark person data ---
-          const updatedPersonAiArk = await prisma.person.findUnique({ where: { id: personId } });
-          if (updatedPersonAiArk) {
-            if (updatedPersonAiArk.jobTitle) {
-              try {
-                const titleResult = await classifyJobTitle(updatedPersonAiArk.jobTitle);
-                if (titleResult) {
-                  const normalizedUpdates: Record<string, unknown> = {
-                    jobTitle: titleResult.canonical,
-                  };
-                  const existing = updatedPersonAiArk.enrichmentData
-                    ? (() => {
-                        try {
-                          return JSON.parse(updatedPersonAiArk.enrichmentData) as Record<string, unknown>;
-                        } catch {
-                          return {} as Record<string, unknown>;
-                        }
-                      })()
-                    : {};
-                  normalizedUpdates.enrichmentData = JSON.stringify({
-                    ...existing,
-                    seniority: titleResult.seniority,
-                  });
-                  await prisma.person.update({
-                    where: { id: personId },
-                    data: normalizedUpdates,
-                  });
-                }
-              } catch (err) {
-                console.warn(`[waterfall] classifyJobTitle (aiark) failed for person ${personId}:`, err);
-              }
-            }
-
-            if (aiarkFieldsWritten.includes("company") && updatedPersonAiArk.company) {
-              try {
-                const normalizedName = await classifyCompanyName(updatedPersonAiArk.company);
-                if (normalizedName) {
-                  await prisma.person.update({
-                    where: { id: personId },
-                    data: { company: normalizedName },
-                  });
-                }
-              } catch (err) {
-                console.warn(`[waterfall] classifyCompanyName (aiark) failed for person ${personId}:`, err);
-              }
-            }
-          }
-
-          // If AI Ark returned an email, verify it before accepting
-          if (aiarkResult.email) {
-            const verified = await verifyFoundEmail(aiarkResult.email, personId);
-            if (verified) {
-              return; // verified valid — waterfall success
-            }
-            // Verification failed — null out the email and continue to email-finding waterfall
-            console.warn(`[waterfall] AI Ark email ${aiarkResult.email} failed verification for person ${personId} — continuing waterfall`);
-            await prisma.person.update({
-              where: { id: personId },
-              data: { email: null },
-            });
-          }
-        } else {
-          // API call succeeded but no data returned
-          await recordEnrichment({
-            entityId: personId,
-            entityType: "person",
-            provider: "aiark",
-            status: "success",
-            fieldsWritten: [],
-            costUsd: aiarkResult.costUsd,
-            rawResponse: aiarkResult.rawResponse,
-            workspaceSlug,
-          });
-          breaker.consecutiveFailures.set("aiark", 0);
-        }
-      }
-      // If costUsd === 0 (no API call made), skip recording — no cost, no data
-    }
-  } else {
-    console.warn(`[waterfall] Circuit breaker OPEN for aiark (${aiarkFailures} consecutive failures) — skipping person data step`);
-  }
-
-  // ---------------------------------------------------------------------------
   // Email-finding waterfall: FindyMail → Prospeo → Kitt (cheapest-first)
   // Each found email is verified before acceptance. Invalid → try next provider.
   // ---------------------------------------------------------------------------
@@ -823,7 +604,7 @@ export interface PersonForEnrichment {
   linkedinUrl?: string | null;
   companyDomain?: string | null;
   companyName?: string | null;
-  email?: string | null; // existing email from AI Ark step
+  email?: string | null; // existing email from discovery or prior enrichment
   /** Discovery platform source ID (Prospeo person_id, AI Ark person id) for source-first enrichment */
   sourceId?: string | null;
   /** Which discovery platform found this person: 'prospeo', 'aiark', 'apify-leads-finder', etc. */
@@ -1273,7 +1054,7 @@ export async function enrichEmailBatch(
       }
     }
   }
-  // Include pre-existing emails (from AI Ark enrichment step)
+  // Include pre-existing emails from discovery or prior enrichment.
   for (const entry of alreadyHaveEmail) {
     if (!allFoundEmails.find((e) => e.personId === entry.personId) &&
         !preVerifiedEmails.find((e) => e.personId === entry.personId)) {
