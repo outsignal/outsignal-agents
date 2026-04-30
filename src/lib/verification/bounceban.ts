@@ -44,6 +44,9 @@ export const RATE_LIMITS: RateLimits = {
   cooldownOnRateLimit: 60_000,   // 60s wait after 429
 };
 
+// TODO: BounceBan public docs reference api.bounceban.com; we use
+// api-waterfall.bounceban.com, vendor-provided and working in prod since
+// 2026-04-30. Confirm the canonical host with BounceBan on next contact.
 const VERIFY_ENDPOINT =
   "https://api-waterfall.bounceban.com/v1/verify/single";
 const TIMEOUT_MS = 90_000; // 80s server timeout + 10s buffer

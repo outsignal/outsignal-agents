@@ -175,6 +175,7 @@ describe("W6 stage 2 AI Ark identity deprecation", () => {
   });
 
   it("keeps Prospeo source-first lookup but does not fire generic AI Ark identity", async () => {
+    mocks.shouldEnrich.mockResolvedValue(true);
     mocks.bulkEnrichByPersonId.mockResolvedValue(
       new Map([
         [
@@ -206,9 +207,83 @@ describe("W6 stage 2 AI Ark identity deprecation", () => {
     expect(mocks.bulkEnrichByPersonId).toHaveBeenCalledWith([
       { personId: "person-prospeo", prospeoPersonId: "prospeo-123" },
     ]);
+    expect(mocks.bulkEnrichPerson).not.toHaveBeenCalled();
     expect(mocks.aiarkPersonAdapter).not.toHaveBeenCalled();
     expect(mocks.mergePersonData).toHaveBeenCalledWith("person-prospeo", {
       email: "source-first@example.com",
+    });
+  });
+
+  it("includes AI Ark source-first emails in BounceBan bulk verification", async () => {
+    mocks.bulkEnrichByAiArkId.mockResolvedValue(
+      new Map([
+        [
+          "person-aiark",
+          {
+            email: "aiark@example.com",
+            rawResponse: { id: "aiark-123" },
+            costUsd: 0.003,
+            source: "aiark",
+          },
+        ],
+      ]),
+    );
+    mocks.bulkVerifyEmails.mockResolvedValue(
+      new Map([
+        [
+          "person-aiark",
+          { status: "valid", email: "aiark@example.com", costUsd: 0.001 },
+        ],
+      ]),
+    );
+
+    await enrichEmailBatch(
+      [
+        {
+          personId: "person-aiark",
+          firstName: "Ada",
+          lastName: "Lovelace",
+          companyDomain: "example.com",
+          discoverySource: "aiark",
+          sourceId: "aiark-123",
+        },
+      ],
+      createCircuitBreaker(),
+    );
+
+    expect(mocks.bulkVerifyEmails).toHaveBeenCalledWith([
+      { email: "aiark@example.com", personId: "person-aiark" },
+    ]);
+    expect(mocks.mergePersonData).toHaveBeenCalledWith("person-aiark", {
+      email: "aiark@example.com",
+    });
+  });
+
+  it("falls back to Kitt verify when BounceBan bulk has a non-credit error", async () => {
+    mocks.bulkVerifyEmails.mockRejectedValue(new Error("BounceBan unavailable"));
+    mocks.kittVerify.mockResolvedValue({
+      status: "valid",
+      email: "existing@example.com",
+      costUsd: 0.0015,
+    });
+
+    await enrichEmailBatch(
+      [
+        {
+          personId: "person-existing",
+          email: "existing@example.com",
+          firstName: "Ada",
+          lastName: "Lovelace",
+          companyDomain: "example.com",
+          discoverySource: "prospeo",
+        },
+      ],
+      createCircuitBreaker(),
+    );
+
+    expect(mocks.kittVerify).toHaveBeenCalledWith("existing@example.com", "person-existing");
+    expect(mocks.mergePersonData).toHaveBeenCalledWith("person-existing", {
+      email: "existing@example.com",
     });
   });
 });
