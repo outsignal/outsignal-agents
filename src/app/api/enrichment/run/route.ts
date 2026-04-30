@@ -3,7 +3,7 @@
  *
  * Enqueue a batch enrichment job.
  *
- * Body: { entityType: "person" | "company", workspaceSlug?: string, limit?: number }
+ * Body: { entityType: "person" | "company", workspaceSlug?: string, limit?: number, targetListId?: string }
  *
  * For "person": finds people without email who have a LinkedIn URL or name+company,
  *   then queues them for the email waterfall (FindyMail → Prospeo → Kitt).
@@ -32,9 +32,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await parseJsonBody<{ entityType: string; workspaceSlug?: string; limit?: number }>(request);
+    const body = await parseJsonBody<{
+      entityType: string;
+      workspaceSlug?: string;
+      limit?: number;
+      targetListId?: string;
+    }>(request);
     if (body instanceof Response) return body;
-    const { entityType, workspaceSlug, limit = 100 } = body;
+    const { entityType, workspaceSlug, limit = 100, targetListId } = body;
 
     if (!entityType || !["person", "company"].includes(entityType)) {
       return NextResponse.json(
@@ -46,31 +51,71 @@ export async function POST(request: NextRequest) {
     let entityIds: string[];
 
     if (entityType === "person") {
-      // Find people without email who have sufficient data for at least one provider
-      // Find people with enrichable data (LinkedIn URL or name+company).
-      // Dedup is enforced per-provider inside the waterfall — this just builds
-      // the candidate list. If a person was already enriched by all providers,
-      // their waterfall calls will be no-ops.
-      const people = await prisma.person.findMany({
-        where: {
-          OR: [
-            { linkedinUrl: { not: null } },
-            {
-              AND: [
-                { firstName: { not: null } },
-                { company: { not: null } },
-              ],
-            },
-          ],
-          ...(workspaceSlug
-            ? { workspaces: { some: { workspace: workspaceSlug } } }
-            : {}),
-        },
-        select: { id: true },
-        take: limit,
-      });
-      entityIds = people.map((p) => p.id);
+      if (targetListId) {
+        if (!workspaceSlug) {
+          return NextResponse.json(
+            { error: "workspaceSlug is required when targetListId is provided" },
+            { status: 400 },
+          );
+        }
+
+        const targetList = await prisma.targetList.findUnique({
+          where: { id: targetListId },
+          select: { id: true, workspaceSlug: true },
+        });
+
+        if (!targetList) {
+          return NextResponse.json({ error: "Target list not found" }, { status: 404 });
+        }
+
+        if (targetList.workspaceSlug !== workspaceSlug) {
+          return NextResponse.json(
+            { error: "Target list does not belong to workspace" },
+            { status: 403 },
+          );
+        }
+
+        const targetListPeople = await prisma.targetListPerson.findMany({
+          where: { listId: targetListId },
+          select: { personId: true },
+          orderBy: { addedAt: "asc" },
+          take: limit,
+        });
+        entityIds = targetListPeople.map((p) => p.personId);
+      } else {
+        // Find people without email who have sufficient data for at least one provider
+        // Find people with enrichable data (LinkedIn URL or name+company).
+        // Dedup is enforced per-provider inside the waterfall — this just builds
+        // the candidate list. If a person was already enriched by all providers,
+        // their waterfall calls will be no-ops.
+        const people = await prisma.person.findMany({
+          where: {
+            OR: [
+              { linkedinUrl: { not: null } },
+              {
+                AND: [
+                  { firstName: { not: null } },
+                  { company: { not: null } },
+                ],
+              },
+            ],
+            ...(workspaceSlug
+              ? { workspaces: { some: { workspace: workspaceSlug } } }
+              : {}),
+          },
+          select: { id: true },
+          take: limit,
+        });
+        entityIds = people.map((p) => p.id);
+      }
     } else {
+      if (targetListId) {
+        return NextResponse.json(
+          { error: "targetListId is only supported for person enrichment" },
+          { status: 400 },
+        );
+      }
+
       // Find companies missing key enrichment data
       const companies = await prisma.company.findMany({
         where: {
