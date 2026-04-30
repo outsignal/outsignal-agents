@@ -1,9 +1,17 @@
 import { timingSafeEqual } from "crypto";
 
-export function validateApiSecret(req: Request): boolean {
-  const secret = process.env.API_SECRET;
-  if (!secret) {
-    console.warn("[api-auth] API_SECRET not configured — rejecting request");
+type ApiSecretEnvName = "API_SECRET" | "WORKER_API_SECRET";
+
+export function validateApiSecret(
+  req: Request,
+  secretEnvNames: ApiSecretEnvName[] = ["API_SECRET"],
+): boolean {
+  const secrets = secretEnvNames
+    .map((name) => ({ name, value: process.env[name] }))
+    .filter((entry): entry is { name: ApiSecretEnvName; value: string } => Boolean(entry.value));
+
+  if (secrets.length === 0) {
+    console.warn(`[api-auth] ${secretEnvNames.join(" or ")} not configured — rejecting request`);
     return false;
   }
 
@@ -13,10 +21,12 @@ export function validateApiSecret(req: Request): boolean {
   if (!token) return false;
 
   try {
-    const secretBuf = Buffer.from(secret);
     const tokenBuf = Buffer.from(token);
-    if (secretBuf.length !== tokenBuf.length) return false;
-    return timingSafeEqual(secretBuf, tokenBuf);
+    return secrets.some(({ value }) => {
+      const secretBuf = Buffer.from(value);
+      if (secretBuf.length !== tokenBuf.length) return false;
+      return timingSafeEqual(secretBuf, tokenBuf);
+    });
   } catch {
     return false;
   }

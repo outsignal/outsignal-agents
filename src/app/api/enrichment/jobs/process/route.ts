@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 }
 
 async function handleProcess(request: Request) {
-  if (!validateApiSecret(request)) {
+  if (!validateApiSecret(request, ["API_SECRET", "WORKER_API_SECRET"])) {
     console.log(`[${new Date().toISOString()}] Unauthorized: POST /api/enrichment/jobs/process`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
