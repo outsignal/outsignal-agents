@@ -75,47 +75,128 @@ function createNeedsWebsiteResult(): NeedsWebsiteIcpResult {
   };
 }
 
+interface PromptPersonInput {
+  firstName: string | null;
+  lastName: string | null;
+  jobTitle: string | null;
+  headline?: string | null;
+  company: string | null;
+  vertical: string | null;
+  location: string | null;
+  locationCity?: string | null;
+  locationState?: string | null;
+  locationCountry?: string | null;
+  seniority?: string | null;
+  enrichmentData: string | null;
+}
+
+interface PromptCompanyInput {
+  headcount: number | null;
+  industry: string | null;
+  description: string | null;
+  yearFounded: number | null;
+  revenue?: string | null;
+  technologies?: unknown;
+  fundingTotal?: bigint | number | null;
+}
+
+function parseLegacySeniority(enrichmentData: string | null): string | null {
+  if (!enrichmentData) return null;
+
+  try {
+    const data = JSON.parse(enrichmentData) as { seniority?: unknown; seniorityLevel?: unknown };
+    if (typeof data.seniority === "string" && data.seniority.trim()) {
+      return data.seniority;
+    }
+    if (typeof data.seniorityLevel === "string" && data.seniorityLevel.trim()) {
+      return data.seniorityLevel;
+    }
+  } catch {
+    // Ignore legacy JSON parse errors.
+  }
+
+  return null;
+}
+
+function formatPersonLocation(person: PromptPersonInput): string {
+  const granular = [
+    person.locationCity,
+    person.locationState,
+    person.locationCountry,
+  ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+
+  if (granular.length > 0) return granular.join(", ");
+  return person.location ?? "Unknown";
+}
+
+function getTechnologyName(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.name === "string" && record.name.trim()) return record.name.trim();
+    if (typeof record.technology === "string" && record.technology.trim()) {
+      return record.technology.trim();
+    }
+  }
+  return null;
+}
+
+function formatTechnologies(value: unknown, limit = 8): string {
+  if (value == null) return "Unknown";
+
+  const names: string[] = [];
+  const pushName = (candidate: unknown) => {
+    const name = getTechnologyName(candidate);
+    if (name && !names.includes(name)) names.push(name);
+  };
+
+  if (Array.isArray(value)) {
+    for (const item of value) pushName(item);
+  } else if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidates = [
+      record.technology_names,
+      record.technology_list,
+      record.technologies,
+      record.names,
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        for (const item of candidate) pushName(item);
+      }
+    }
+  }
+
+  return names.length > 0 ? names.slice(0, limit).join(", ") : "Unknown";
+}
+
+function formatFundingUsd(value: bigint | number | null | undefined): string {
+  if (value == null) return "Unknown";
+  const amount = typeof value === "bigint" ? Number(value) : value;
+  if (!Number.isFinite(amount)) return "Unknown";
+  return `$${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
 /**
  * Build a scoring prompt from person + company + website data.
  */
 export function buildScoringPrompt(params: {
-  person: {
-    firstName: string | null;
-    lastName: string | null;
-    jobTitle: string | null;
-    company: string | null;
-    vertical: string | null;
-    location: string | null;
-    enrichmentData: string | null;
-  };
-  company: {
-    headcount: number | null;
-    industry: string | null;
-    description: string | null;
-    yearFounded: number | null;
-  } | null;
+  person: PromptPersonInput;
+  company: PromptCompanyInput | null;
   websiteMarkdown: string | null;
 }): string {
   const { person, company, websiteMarkdown } = params;
 
-  // Extract seniority from enrichmentData JSON if present
-  let seniority: string = "Unknown";
-  if (person.enrichmentData) {
-    try {
-      const data = JSON.parse(person.enrichmentData);
-      if (data.seniority) seniority = data.seniority;
-      else if (data.seniorityLevel) seniority = data.seniorityLevel;
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  const seniority = person.seniority ?? parseLegacySeniority(person.enrichmentData) ?? "Unknown";
 
   const personSection = `## Person Data
 - Name: ${person.firstName ?? ""} ${person.lastName ?? ""}`.trim() + `
 - Job Title: ${person.jobTitle ?? "Unknown"}
+- Headline: ${person.headline ?? "Unknown"}
 - Company: ${person.company ?? "Unknown"}
 - Industry: ${person.vertical ?? "Unknown"}
-- Location: ${person.location ?? "Unknown"}
+- Location: ${formatPersonLocation(person)}
 - Seniority: ${seniority}`;
 
   const companySection = company
@@ -123,7 +204,10 @@ export function buildScoringPrompt(params: {
 - Headcount: ${company.headcount ?? "Unknown"}
 - Industry: ${company.industry ?? "Unknown"}
 - Description: ${company.description ?? "Unknown"}
-- Year Founded: ${company.yearFounded ?? "Unknown"}`
+- Year Founded: ${company.yearFounded ?? "Unknown"}
+- Revenue: ${company.revenue ?? "Unknown"}
+- Technologies: ${formatTechnologies(company.technologies)}
+- Funding: ${formatFundingUsd(company.fundingTotal)}`
     : `## Company Data
 - No company record found`;
 
@@ -314,9 +398,14 @@ export async function scorePersonIcp(
       firstName: person.firstName,
       lastName: person.lastName,
       jobTitle: person.jobTitle,
+      headline: person.headline,
       company: person.company,
       vertical: person.vertical,
       location: person.location,
+      locationCity: person.locationCity,
+      locationState: person.locationState,
+      locationCountry: person.locationCountry,
+      seniority: person.seniority,
       enrichmentData: person.enrichmentData,
     },
     company: company
@@ -325,6 +414,9 @@ export async function scorePersonIcp(
           industry: company.industry,
           description: company.description,
           yearFounded: company.yearFounded,
+          revenue: company.revenue,
+          technologies: company.technologies,
+          fundingTotal: company.fundingTotal,
         }
       : null,
     websiteMarkdown,
@@ -386,43 +478,22 @@ export async function scorePersonIcp(
  */
 function buildBatchPersonEntry(params: {
   personId: string;
-  person: {
-    firstName: string | null;
-    lastName: string | null;
-    jobTitle: string | null;
-    company: string | null;
-    vertical: string | null;
-    location: string | null;
-    enrichmentData: string | null;
-  };
-  company: {
-    headcount: number | null;
-    industry: string | null;
-    description: string | null;
-    yearFounded: number | null;
-  } | null;
+  person: PromptPersonInput;
+  company: PromptCompanyInput | null;
   websiteMarkdown: string | null;
 }): string {
   const { personId, person, company, websiteMarkdown } = params;
 
-  let seniority: string = "Unknown";
-  if (person.enrichmentData) {
-    try {
-      const data = JSON.parse(person.enrichmentData);
-      if (data.seniority) seniority = data.seniority;
-      else if (data.seniorityLevel) seniority = data.seniorityLevel;
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  const seniority = person.seniority ?? parseLegacySeniority(person.enrichmentData) ?? "Unknown";
 
   const lines = [
     `Person (ID: ${personId}):`,
     `Name: ${(person.firstName ?? "")} ${(person.lastName ?? "")}`.trim(),
     `Title: ${person.jobTitle ?? "Unknown"}`,
+    `Headline: ${person.headline ?? "Unknown"}`,
     `Company: ${person.company ?? "Unknown"}`,
     `Industry: ${person.vertical ?? "Unknown"}`,
-    `Location: ${person.location ?? "Unknown"}`,
+    `Location: ${formatPersonLocation(person)}`,
     `Seniority: ${seniority}`,
   ];
 
@@ -431,6 +502,9 @@ function buildBatchPersonEntry(params: {
     lines.push(`Company Industry: ${company.industry ?? "Unknown"}`);
     lines.push(`Company Description: ${company.description ?? "Unknown"}`);
     lines.push(`Company Year Founded: ${company.yearFounded ?? "Unknown"}`);
+    lines.push(`Company Revenue: ${company.revenue ?? "Unknown"}`);
+    lines.push(`Company Technologies: ${formatTechnologies(company.technologies)}`);
+    lines.push(`Company Funding: ${formatFundingUsd(company.fundingTotal)}`);
   } else {
     lines.push("Company Data: No company record found");
   }
@@ -614,9 +688,14 @@ export async function scorePersonIcpBatch(
             firstName: person.firstName,
             lastName: person.lastName,
             jobTitle: person.jobTitle,
+            headline: person.headline,
             company: person.company,
             vertical: person.vertical,
             location: person.location,
+            locationCity: person.locationCity,
+            locationState: person.locationState,
+            locationCountry: person.locationCountry,
+            seniority: person.seniority,
             enrichmentData: person.enrichmentData,
           },
           company: company
@@ -625,6 +704,9 @@ export async function scorePersonIcpBatch(
                 industry: company.industry,
                 description: company.description,
                 yearFounded: company.yearFounded,
+                revenue: company.revenue,
+                technologies: company.technologies,
+                fundingTotal: company.fundingTotal,
               }
             : null,
           websiteMarkdown,
