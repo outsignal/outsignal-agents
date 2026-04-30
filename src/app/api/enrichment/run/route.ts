@@ -26,7 +26,7 @@ import { validateApiSecret } from "@/lib/api-auth";
 import { parseJsonBody } from "@/lib/parse-json";
 
 export async function POST(request: NextRequest) {
-  if (!validateApiSecret(request)) {
+  if (!validateApiSecret(request, ["API_SECRET", "WORKER_API_SECRET"])) {
     console.log(`[${new Date().toISOString()}] Unauthorized: POST /api/enrichment/run`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

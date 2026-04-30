@@ -30,6 +30,7 @@ vi.mock("@/lib/enrichment/queue", () => ({
 import { POST } from "@/app/api/enrichment/run/route";
 
 const originalApiSecret = process.env.API_SECRET;
+const originalWorkerApiSecret = process.env.WORKER_API_SECRET;
 
 function postRequest(body: unknown, token = "test-secret") {
   return new Request("https://admin.outsignal.ai/api/enrichment/run", {
@@ -45,12 +46,73 @@ function postRequest(body: unknown, token = "test-secret") {
 describe("POST /api/enrichment/run target-list scoping", () => {
   beforeEach(() => {
     process.env.API_SECRET = "test-secret";
+    process.env.WORKER_API_SECRET = originalWorkerApiSecret;
     enqueueJobMock.mockResolvedValue("job-1");
   });
 
   afterEach(() => {
     process.env.API_SECRET = originalApiSecret;
+    process.env.WORKER_API_SECRET = originalWorkerApiSecret;
     vi.clearAllMocks();
+  });
+
+  it("accepts API_SECRET", async () => {
+    prismaMock.person.findMany.mockResolvedValue([{ id: "person-1" }]);
+
+    const response = await POST(
+      postRequest({
+        entityType: "person",
+        workspaceSlug: "1210-solutions",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(enqueueJobMock).toHaveBeenCalledWith({
+      entityType: "person",
+      provider: "prospeo",
+      entityIds: ["person-1"],
+      workspaceSlug: "1210-solutions",
+    });
+  });
+
+  it("accepts WORKER_API_SECRET for worker-driven enrichment runs", async () => {
+    process.env.WORKER_API_SECRET = "worker-secret";
+    prismaMock.person.findMany.mockResolvedValue([{ id: "person-1" }]);
+
+    const response = await POST(
+      postRequest(
+        {
+          entityType: "person",
+          workspaceSlug: "1210-solutions",
+        },
+        "worker-secret",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(enqueueJobMock).toHaveBeenCalledWith({
+      entityType: "person",
+      provider: "prospeo",
+      entityIds: ["person-1"],
+      workspaceSlug: "1210-solutions",
+    });
+  });
+
+  it("rejects missing or wrong secrets", async () => {
+    const missing = await POST(
+      new Request("https://admin.outsignal.ai/api/enrichment/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ entityType: "person" }),
+      }) as NextRequest,
+    );
+    const wrong = await POST(postRequest({ entityType: "person" }, "wrong-secret"));
+
+    expect(missing.status).toBe(401);
+    expect(await missing.json()).toEqual({ error: "Unauthorized" });
+    expect(wrong.status).toBe(401);
+    expect(await wrong.json()).toEqual({ error: "Unauthorized" });
+    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
   it("enqueues only people from the requested target list", async () => {
