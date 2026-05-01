@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checkWordCount,
+  countWords,
   checkGreeting,
   checkCTAFormat,
   checkLinkedInSpintax,
@@ -133,6 +134,41 @@ describe("checkWordCount", () => {
     const result = checkWordCount(text, "linkedin");
     expect(result).not.toBeNull();
     expect(result!.severity).toBe("hard");
+  });
+
+  it("counts spintax blocks as one rendered variant, not all options", () => {
+    expect(countWords("Hello {there|friend}, hope you're well")).toBe(5);
+  });
+
+  it("passes when combined spintax text is over 70 words but the longest render is under", () => {
+    const prefix = Array(67).fill("word").join(" ");
+    const text = `${prefix} {one two|three four|five six} closer`;
+
+    expect(countWords(text)).toBe(70);
+    expect(text.trim().split(/\s+/).filter(Boolean)).toHaveLength(72);
+    expect(checkWordCount(text, "pvp")).toBeNull();
+  });
+
+  it("fails when the longest spintax render is over the 70-word PVP limit", () => {
+    const prefix = Array(69).fill("word").join(" ");
+    const text = `${prefix} {short|${Array(11).fill("long").join(" ")}}`;
+    const result = checkWordCount(text, "pvp");
+
+    expect(countWords(text)).toBe(80);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("hard");
+  });
+
+  it("preserves variables while choosing the longest spintax variant", () => {
+    expect(countWords("Hi {FIRSTNAME}, {how|hey}")).toBe(3);
+  });
+
+  it("skips empty spintax options when choosing the longest variant", () => {
+    expect(countWords("Hello {a||two words} now")).toBe(4);
+  });
+
+  it("leaves single-option brace blocks untouched", () => {
+    expect(countWords("Hello {just this} now")).toBe(4);
   });
 });
 
@@ -340,6 +376,13 @@ describe("checkSubjectLine", () => {
 
   it("returns null for 6-word subject", () => {
     expect(checkSubjectLine("scaling your team this quarter here")).toBeNull();
+  });
+
+  it("counts subject spintax by longest rendered variant and preserves variables", () => {
+    const result = checkSubjectLine("Re: {how|when} {COMPANY} {handles|deals with} projects");
+
+    expect(countWords("Re: {how|when} {COMPANY} {handles|deals with} projects")).toBe(6);
+    expect(result).toBeNull();
   });
 });
 
