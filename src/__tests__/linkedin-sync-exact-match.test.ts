@@ -24,6 +24,39 @@ const prismaAny = prisma as unknown as {
   linkedInSyncStatus: { upsert: ReturnType<typeof vi.fn> };
 };
 
+function buildPushRequest(messages: Array<{
+  eventUrn: string;
+  senderUrn: string;
+  deliveredAt: number;
+}>) {
+  return new NextRequest("http://localhost/api/linkedin/sync/push", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      senderId: "sender-1",
+      conversations: [
+        {
+          entityUrn: "urn:li:msg_conversation:1",
+          conversationId: "conv-1",
+          participantName: "Prospect One",
+          participantUrn: "urn:li:fsd_profile:ACoAAProspect123",
+          participantProfileUrl: "https://www.linkedin.com/in/prospect/",
+          participantHeadline: "Head of Ops",
+          participantProfilePicUrl: null,
+          lastActivityAt: Date.now(),
+          unreadCount: 0,
+          lastMessageSnippet: "hello",
+          messages: messages.map((message) => ({
+            ...message,
+            senderName: "Prospect One",
+            body: "Fresh inbound reply",
+          })),
+        },
+      ],
+    }),
+  });
+}
+
 vi.mock("@/lib/linkedin/auth", () => ({
   verifyWorkerAuth: (...args: unknown[]) => verifyWorkerAuthMock(...args),
 }));
@@ -297,5 +330,157 @@ describe("LinkedIn conversation sync exact person matching", () => {
         senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
       },
     });
+  });
+
+  it("notifies and increments unread count for a newly-created inbound message delivered now", async () => {
+    prismaAny.linkedInMessage.create.mockImplementation(async ({ data }) => ({
+      id: "fresh-now",
+      ...data,
+    }));
+
+    const res = await pushSyncPOST(
+      buildPushRequest([
+        {
+          eventUrn: "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-fresh-now)",
+          senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
+          deliveredAt: Date.now(),
+        },
+      ]),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      conversationsProcessed: 1,
+      newInboundMessages: 1,
+    });
+    expect(notifyLinkedInMessageMock).toHaveBeenCalledTimes(1);
+    expect(prismaAny.linkedInConversation.update).toHaveBeenCalledWith({
+      where: { id: "internal-conv-1" },
+      data: { unreadCount: { increment: 1 } },
+    });
+    expect(cancelActionsForPersonMock).toHaveBeenCalledWith("person-1", "acme");
+  });
+
+  it("notifies and increments unread count for a newly-created inbound message delivered one hour ago", async () => {
+    prismaAny.linkedInMessage.create.mockImplementation(async ({ data }) => ({
+      id: "fresh-one-hour",
+      ...data,
+    }));
+
+    const res = await pushSyncPOST(
+      buildPushRequest([
+        {
+          eventUrn: "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-fresh-hour)",
+          senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
+          deliveredAt: Date.now() - 60 * 60 * 1000,
+        },
+      ]),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.newInboundMessages).toBe(1);
+    expect(notifyLinkedInMessageMock).toHaveBeenCalledTimes(1);
+    expect(prismaAny.linkedInConversation.update).toHaveBeenCalledWith({
+      where: { id: "internal-conv-1" },
+      data: { unreadCount: { increment: 1 } },
+    });
+  });
+
+  it("stores but does not notify, increment unread, or cancel actions for a stale inbound message delivered three hours ago", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    prismaAny.linkedInMessage.create.mockImplementation(async ({ data }) => ({
+      id: "stale-three-hours",
+      ...data,
+    }));
+
+    const res = await pushSyncPOST(
+      buildPushRequest([
+        {
+          eventUrn: "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-stale-three-hours)",
+          senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
+          deliveredAt: Date.now() - 3 * 60 * 60 * 1000,
+        },
+      ]),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.newInboundMessages).toBe(0);
+    expect(prismaAny.linkedInMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventUrn:
+            "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-stale-three-hours)",
+        }),
+      }),
+    );
+    expect(notifyLinkedInMessageMock).not.toHaveBeenCalled();
+    expect(prismaAny.linkedInConversation.update).not.toHaveBeenCalledWith({
+      where: { id: "internal-conv-1" },
+      data: { unreadCount: { increment: 1 } },
+    });
+    expect(cancelActionsForPersonMock).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[sync/push] Skipped notification for stale inbound message stale-three-hours",
+      ),
+    );
+    logSpy.mockRestore();
+  });
+
+  it("stores but does not notify for a years-old inbound backfill", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    prismaAny.linkedInMessage.create.mockImplementation(async ({ data }) => ({
+      id: "james-court-regression",
+      ...data,
+    }));
+
+    const res = await pushSyncPOST(
+      buildPushRequest([
+        {
+          eventUrn: "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-stale-years)",
+          senderUrn: "urn:li:msg_messagingParticipant:ACoAAProspect123",
+          deliveredAt: new Date("2020-01-07T11:04:44.930Z").getTime(),
+        },
+      ]),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.newInboundMessages).toBe(0);
+    expect(prismaAny.linkedInMessage.create).toHaveBeenCalledTimes(1);
+    expect(notifyLinkedInMessageMock).not.toHaveBeenCalled();
+    expect(prismaAny.linkedInConversation.update).not.toHaveBeenCalledWith({
+      where: { id: "internal-conv-1" },
+      data: { unreadCount: { increment: 1 } },
+    });
+    logSpy.mockRestore();
+  });
+
+  it("does not apply the inbound freshness notification path to outbound messages", async () => {
+    prismaAny.linkedInMessage.create.mockImplementation(async ({ data }) => ({
+      id: "old-outbound",
+      ...data,
+    }));
+
+    const res = await pushSyncPOST(
+      buildPushRequest([
+        {
+          eventUrn: "urn:li:msg_message:(urn:li:fsd_profile:ACoAAProspect123,2-old-outbound)",
+          senderUrn: "urn:li:msg_messagingParticipant:ACoAASender456",
+          deliveredAt: new Date("2020-01-07T11:04:44.930Z").getTime(),
+        },
+      ]),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.newInboundMessages).toBe(0);
+    expect(prismaAny.linkedInMessage.create).toHaveBeenCalledTimes(1);
+    expect(notifyLinkedInMessageMock).not.toHaveBeenCalled();
+    expect(cancelActionsForPersonMock).not.toHaveBeenCalled();
   });
 });
