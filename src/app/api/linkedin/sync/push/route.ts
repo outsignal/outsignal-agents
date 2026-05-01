@@ -19,6 +19,8 @@ import {
 
 export const maxDuration = 30;
 
+const FRESHNESS_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -232,6 +234,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        const deliveredAt = new Date(msg.deliveredAt);
         const created = await prisma.linkedInMessage.create({
           data: {
             conversationId: internalConvId,
@@ -240,12 +243,21 @@ export async function POST(request: NextRequest) {
             senderName: msg.senderName,
             body: msg.body,
             isOutbound,
-            deliveredAt: new Date(msg.deliveredAt),
+            deliveredAt,
           },
         });
         rememberLinkedInMessage(messageLookup, created);
 
         if (!isOutbound) {
+          const ageMs = Date.now() - deliveredAt.getTime();
+          if (ageMs > FRESHNESS_THRESHOLD_MS) {
+            const ageMinutes = Math.round(ageMs / (60 * 1000));
+            console.log(
+              `[sync/push] Skipped notification for stale inbound message ${created.id} (age: ${ageMinutes}min)`,
+            );
+            continue;
+          }
+
           newInboundCount++;
           if (msg.deliveredAt > latestInboundTime) {
             latestInboundTime = msg.deliveredAt;
