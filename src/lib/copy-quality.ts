@@ -267,6 +267,28 @@ export function checkBusinessModelAssumption(
   };
 }
 
+function countPlainWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function countWords(text: string): number {
+  const expanded = text.replace(/\{([^{}]+)\}/g, (match: string, content: string) => {
+    if (!content.includes("|")) return match;
+
+    const options = content
+      .split("|")
+      .map((option) => option.trim())
+      .filter(Boolean);
+    if (options.length === 0) return "";
+
+    return options.reduce((longest, option) =>
+      countPlainWords(option) > countPlainWords(longest) ? option : longest,
+    );
+  });
+
+  return countPlainWords(expanded);
+}
+
 /**
  * Check word count against strategy-specific limit with 10% grace period.
  *
@@ -281,7 +303,7 @@ export function checkWordCount(
   if (!text) return null;
 
   const limit = WORD_COUNT_LIMITS[strategy];
-  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = countWords(text);
   const softLimit = Math.floor(limit * 1.1);
 
   if (wordCount > softLimit) {
@@ -464,7 +486,7 @@ export function checkSubjectLine(text: string): CheckResult | null {
   }
 
   // Word count: over 6 words = soft violation
-  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = countWords(text);
   if (wordCount > 6) {
     return {
       severity: "soft",
