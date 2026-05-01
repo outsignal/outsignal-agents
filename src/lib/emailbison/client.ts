@@ -21,6 +21,7 @@ import type {
   CreateScheduleParams,
   UpdateScheduleParams,
   ScheduleResponse,
+  UpdateSequenceStepParams,
 } from "./types";
 import { EmailBisonError } from "./types";
 import { transformVariablesForEB } from "./variable-transform";
@@ -307,6 +308,7 @@ export class EmailBisonClient {
         delay_days: z.number().nullable().optional(),
         order: z.number().nullable().optional(),
         position: z.number().nullable().optional(),
+        variant: z.boolean().nullable().optional(),
       })
       .passthrough();
     // BL-096 (2026-04-16): EB v1.1 GET now returns a nested shape
@@ -347,14 +349,20 @@ export class EmailBisonClient {
     // on v1.1 we keep the fallbacks so a partial-response edge-case (e.g.
     // `position` populated but `order` null for a legacy step) maps
     // consistently to the internal SequenceStep shape.
-    return raw.map((s) => ({
-      id: s.id,
-      campaign_id: s.campaign_id ?? campaignId,
-      position: (s.order ?? s.position ?? 0) as number,
-      subject: (s.email_subject ?? s.subject ?? "") as string,
-      body: (s.email_body ?? s.body ?? "") as string,
-      delay_days: (s.wait_in_days ?? s.delay_days ?? 0) as number,
-    }));
+    return raw.map((s) => {
+      const step: SequenceStep = {
+        id: s.id,
+        campaign_id: s.campaign_id ?? campaignId,
+        position: (s.order ?? s.position ?? 0) as number,
+        subject: (s.email_subject ?? s.subject ?? "") as string,
+        body: (s.email_body ?? s.body ?? "") as string,
+        delay_days: (s.wait_in_days ?? s.delay_days ?? 0) as number,
+      };
+      if (typeof s.variant === "boolean") {
+        step.variant = s.variant;
+      }
+      return step;
+    });
   }
 
   /**
@@ -482,6 +490,7 @@ export class EmailBisonClient {
     const EbSequenceStepSchema = z
       .object({
         id: z.number(),
+        campaign_id: z.number().nullable().optional(),
         email_subject: z.string().nullable().optional(),
         email_body: z.string().nullable().optional(),
         wait_in_days: z.number().nullable().optional(),
@@ -527,6 +536,108 @@ export class EmailBisonClient {
       body: (s.email_body ?? "") as string,
       delay_days: (s.wait_in_days ?? 0) as number,
     }));
+  }
+
+  /**
+   * Update existing sequence steps for a sequence.
+   *
+   * Endpoint: `PUT /api/campaigns/v1.1/sequence-steps/{sequence_id}`.
+   *
+   * EB support confirmed 2026-04-30/2026-05-01 that each step MUST include
+   * `variant`; omitting it returns a 500. Callers should read the current
+   * sequence first via getSequenceSteps() and pass through the existing
+   * variant value so A/B state is preserved.
+   */
+  async updateSequenceSteps(
+    sequenceId: number,
+    title: string,
+    steps: UpdateSequenceStepParams[],
+  ): Promise<SequenceStep[]> {
+    const body = {
+      title,
+      sequence_steps: steps.map((step) => {
+        let variant = step.variant;
+        if (variant === undefined) {
+          // TODO: Make variant required once all callers are confirmed to
+          // read current sequence state before PUTting. EB requires the field;
+          // false matches legacy non-variant steps and prevents 500s.
+          console.warn(
+            `[EmailBison] updateSequenceSteps: missing variant for step ${step.id}; defaulting to false. Read current sequence state before PUT to preserve A/B variant flags.`,
+          );
+          variant = false;
+        }
+
+        return {
+          id: step.id,
+          order: step.position,
+          email_subject: transformVariablesForEB(step.subject ?? ""),
+          email_body: transformVariablesForEB(step.body),
+          wait_in_days: Math.max(1, step.delay_days ?? 1),
+          thread_reply: step.thread_reply ?? false,
+          variant,
+        };
+      }),
+    };
+
+    const res = await this.request<unknown>(
+      `/campaigns/v1.1/sequence-steps/${sequenceId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+        revalidate: 0,
+      },
+    );
+
+    const EbSequenceStepSchema = z
+      .object({
+        id: z.number(),
+        email_subject: z.string().nullable().optional(),
+        email_body: z.string().nullable().optional(),
+        wait_in_days: z.number().nullable().optional(),
+        order: z.number().nullable().optional(),
+        position: z.number().nullable().optional(),
+        variant: z.boolean().nullable().optional(),
+      })
+      .passthrough();
+    const EbResponseSchema = z.union([
+      z.object({
+        data: z.object({
+          sequence_steps: z.array(EbSequenceStepSchema),
+        }).passthrough(),
+      }),
+      z.object({ data: z.array(EbSequenceStepSchema) }),
+      z.array(EbSequenceStepSchema),
+    ]);
+
+    const parsed = EbResponseSchema.safeParse(res);
+    if (!parsed.success) {
+      throw new EmailBisonError(
+        "UNEXPECTED_RESPONSE",
+        200,
+        `updateSequenceSteps response failed schema validation: ${parsed.error.message}. Raw: ${JSON.stringify(res).slice(0, 500)}`,
+      );
+    }
+
+    const raw = Array.isArray(parsed.data)
+      ? parsed.data
+      : Array.isArray(parsed.data.data)
+        ? parsed.data.data
+        : parsed.data.data.sequence_steps;
+
+    return raw.map((s) => {
+      const step: SequenceStep = {
+        id: s.id,
+        campaign_id: typeof s.campaign_id === "number" ? s.campaign_id : 0,
+        position: (s.order ?? s.position ?? 0) as number,
+        subject: (s.email_subject ?? "") as string,
+        body: (s.email_body ?? "") as string,
+        delay_days: (s.wait_in_days ?? 0) as number,
+      };
+      if (typeof s.variant === "boolean") {
+        step.variant = s.variant;
+      }
+      return step;
+    });
   }
 
   async testConnection(): Promise<boolean> {

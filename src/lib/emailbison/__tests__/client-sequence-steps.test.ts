@@ -535,6 +535,7 @@ describe("EmailBisonClient.getSequenceSteps — v1.1 READ path (BL-074 follow-th
             email_body: "Body 1",
             wait_in_days: 1,
             order: 1,
+            variant: false,
           },
           {
             id: 302,
@@ -542,6 +543,7 @@ describe("EmailBisonClient.getSequenceSteps — v1.1 READ path (BL-074 follow-th
             email_body: "Body 2",
             wait_in_days: 3,
             order: 2,
+            variant: true,
           },
         ],
       }),
@@ -577,6 +579,7 @@ describe("EmailBisonClient.getSequenceSteps — v1.1 READ path (BL-074 follow-th
         subject: "Hi there",
         body: "Body 1",
         delay_days: 1,
+        variant: false,
       },
       {
         id: 302,
@@ -585,6 +588,7 @@ describe("EmailBisonClient.getSequenceSteps — v1.1 READ path (BL-074 follow-th
         subject: "Follow up",
         body: "Body 2",
         delay_days: 3,
+        variant: true,
       },
     ]);
   });
@@ -622,5 +626,146 @@ describe("EmailBisonClient.getSequenceSteps — v1.1 READ path (BL-074 follow-th
     await expect(client.getSequenceSteps(CAMPAIGN_ID)).rejects.toThrow(
       /UNEXPECTED_RESPONSE|getSequenceSteps response failed schema validation/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EB-PUT variant requirement (2026-05-01)
+// ---------------------------------------------------------------------------
+//
+// EB support confirmed that PUT /campaigns/v1.1/sequence-steps/{sequence_id}
+// returns 500 unless each sequence_steps entry includes `variant`. This pins
+// the update helper to the live-working wire shape verified against
+// yoopknows campaign 123 / sequence 87 / step 363.
+// ---------------------------------------------------------------------------
+
+describe("EmailBisonClient.updateSequenceSteps — v1.1 UPDATE path requires variant", () => {
+  let client: EmailBisonClient;
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+    client = new EmailBisonClient(TOKEN);
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("PUTs the v1.1 sequence update path and preserves caller-provided variant", async () => {
+    fetchMock.mockResolvedValue(
+      mockResponse({
+        data: {
+          id: 87,
+          type: "Campaign sequence",
+          title: TITLE,
+          sequence_steps: [
+            {
+              id: 363,
+              email_subject: "Re: how {COMPANY} manages projects",
+              email_body: "Body",
+              wait_in_days: 7,
+              order: 2,
+              variant: true,
+              thread_reply: false,
+            },
+          ],
+        },
+      }),
+    );
+
+    const result = await client.updateSequenceSteps(87, TITLE, [
+      {
+        id: 363,
+        position: 2,
+        subject: "Re: how {COMPANYNAME} manages projects",
+        body: "Body",
+        delay_days: 7,
+        thread_reply: false,
+        variant: true,
+      },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const call = fetchMock.mock.calls[0];
+    const url = call[0] as string;
+    const options = call[1] as RequestInit;
+    expect(url).toBe(`${EB_BASE}/campaigns/v1.1/sequence-steps/87`);
+    expect(options.method).toBe("PUT");
+
+    const body = readFetchBody(call);
+    expect(body.title).toBe(TITLE);
+    expect(body.sequence_steps).toEqual([
+      {
+        id: 363,
+        order: 2,
+        email_subject: "Re: how {COMPANY} manages projects",
+        email_body: "Body",
+        wait_in_days: 7,
+        thread_reply: false,
+        variant: true,
+      },
+    ]);
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(result).toEqual([
+      {
+        id: 363,
+        campaign_id: 0,
+        position: 2,
+        subject: "Re: how {COMPANY} manages projects",
+        body: "Body",
+        delay_days: 7,
+        variant: true,
+      },
+    ]);
+  });
+
+  it("defaults omitted variant to false and warns so the PUT does not hit EB's 500 path", async () => {
+    fetchMock.mockResolvedValue(
+      mockResponse({
+        data: {
+          id: 87,
+          sequence_steps: [
+            {
+              id: 363,
+              email_subject: "Subject",
+              email_body: "Body",
+              wait_in_days: 7,
+              order: 2,
+              variant: false,
+            },
+          ],
+        },
+      }),
+    );
+
+    await client.updateSequenceSteps(87, TITLE, [
+      {
+        id: 363,
+        position: 2,
+        subject: "Subject",
+        body: "Body",
+        delay_days: 7,
+      },
+    ]);
+
+    const body = readFetchBody(fetchMock.mock.calls[0]);
+    expect(body.sequence_steps).toEqual([
+      {
+        id: 363,
+        order: 2,
+        email_subject: "Subject",
+        email_body: "Body",
+        wait_in_days: 7,
+        thread_reply: false,
+        variant: false,
+      },
+    ]);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toMatch(/missing variant.*defaulting to false/i);
   });
 });
