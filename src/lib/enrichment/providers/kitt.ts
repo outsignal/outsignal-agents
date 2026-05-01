@@ -45,7 +45,7 @@ export const kittAdapter: EmailAdapter = async (input) => {
   return {
     email: result.email,
     source: "kitt-find",
-    rawResponse: result,
+    rawResponse: result.rawResponse ?? result,
     costUsd: result.costUsd,
   };
 };

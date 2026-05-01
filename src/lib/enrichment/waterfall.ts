@@ -1010,9 +1010,20 @@ export async function enrichEmailBatch(
               domain,
               linkedinUrl: person.linkedinUrl ?? undefined,
               personId: person.personId,
+              log: false,
             });
 
             addCost("kitt-find", result.costUsd);
+            await recordEnrichment({
+              entityId: person.personId,
+              entityType: "person",
+              provider: "kitt-find",
+              status: "success",
+              fieldsWritten: result.email ? ["email"] : [],
+              costUsd: result.costUsd,
+              rawResponse: result.rawResponse,
+              workspaceSlug,
+            });
 
             if (result.email) {
               foundEmails.set(person.personId, result.email.trim() || null);
@@ -1024,6 +1035,15 @@ export async function enrichEmailBatch(
             } else {
               console.error(`[waterfall-batch] Kitt error for ${person.personId}:`, err);
             }
+            await recordEnrichment({
+              entityId: person.personId,
+              entityType: "person",
+              provider: "kitt-find",
+              status: "error",
+              errorMessage: err instanceof Error ? err.message : String(err),
+              costUsd: 0,
+              workspaceSlug,
+            });
           }
         }),
       );

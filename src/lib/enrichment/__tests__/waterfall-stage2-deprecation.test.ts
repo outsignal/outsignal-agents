@@ -286,4 +286,193 @@ describe("W6 stage 2 AI Ark identity deprecation", () => {
       email: "existing@example.com",
     });
   });
+
+  it("runs and records Kitt find in batch when Prospeo misses a lead with name and domain", async () => {
+    mocks.shouldEnrich.mockResolvedValue(true);
+    mocks.bulkEnrichPerson.mockResolvedValue(
+      new Map([
+        [
+          "person-kitt",
+          {
+            email: null,
+            rawResponse: { provider: "prospeo", result: null },
+            costUsd: 0.002,
+            source: "prospeo",
+          },
+        ],
+      ]),
+    );
+    mocks.kittFindEmail.mockResolvedValue({
+      email: "kitt@example.com",
+      confidence: 0.91,
+      costUsd: 0.005,
+      rawResponse: { id: "kitt-job-1", result: { email: "kitt@example.com" } },
+    });
+    mocks.bulkVerifyEmails.mockResolvedValue(
+      new Map([
+        [
+          "person-kitt",
+          { status: "valid", email: "kitt@example.com", costUsd: 0.001 },
+        ],
+      ]),
+    );
+
+    const summary = await enrichEmailBatch(
+      [
+        {
+          personId: "person-kitt",
+          firstName: "Ada",
+          lastName: "Lovelace",
+          companyDomain: "example.com",
+        },
+      ],
+      createCircuitBreaker(),
+      "1210-solutions",
+    );
+
+    expect(mocks.kittFindEmail).toHaveBeenCalledWith({
+      fullName: "Ada Lovelace",
+      domain: "example.com",
+      linkedinUrl: undefined,
+      personId: "person-kitt",
+      log: false,
+    });
+    expect(mocks.recordEnrichment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: "person-kitt",
+        entityType: "person",
+        provider: "kitt-find",
+        status: "success",
+        fieldsWritten: ["email"],
+        costUsd: 0.005,
+        rawResponse: { id: "kitt-job-1", result: { email: "kitt@example.com" } },
+        workspaceSlug: "1210-solutions",
+      }),
+    );
+    expect(mocks.mergePersonData).toHaveBeenCalledWith("person-kitt", {
+      email: "kitt@example.com",
+    });
+    expect(summary.costs["kitt-find"]).toBe(0.005);
+  });
+
+  it("does not run or record Kitt find in batch when Prospeo finds an email", async () => {
+    mocks.shouldEnrich.mockResolvedValue(true);
+    mocks.bulkEnrichPerson.mockResolvedValue(
+      new Map([
+        [
+          "person-prospeo-email",
+          {
+            email: "prospeo@example.com",
+            rawResponse: { provider: "prospeo", email: "prospeo@example.com" },
+            costUsd: 0.002,
+            source: "prospeo",
+          },
+        ],
+      ]),
+    );
+    mocks.bulkVerifyEmails.mockResolvedValue(
+      new Map([
+        [
+          "person-prospeo-email",
+          { status: "valid", email: "prospeo@example.com", costUsd: 0.001 },
+        ],
+      ]),
+    );
+
+    await enrichEmailBatch(
+      [
+        {
+          personId: "person-prospeo-email",
+          firstName: "Grace",
+          lastName: "Hopper",
+          companyDomain: "example.com",
+        },
+      ],
+      createCircuitBreaker(),
+    );
+
+    expect(mocks.kittFindEmail).not.toHaveBeenCalled();
+    expect(mocks.recordEnrichment).not.toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "kitt-find" }),
+    );
+  });
+
+  it("skips Kitt find in batch when Prospeo misses but name/domain inputs are incomplete", async () => {
+    mocks.shouldEnrich.mockResolvedValue(true);
+    mocks.bulkEnrichPerson.mockResolvedValue(
+      new Map([
+        [
+          "person-no-domain",
+          {
+            email: null,
+            rawResponse: { provider: "prospeo", result: null },
+            costUsd: 0.002,
+            source: "prospeo",
+          },
+        ],
+      ]),
+    );
+
+    await enrichEmailBatch(
+      [
+        {
+          personId: "person-no-domain",
+          firstName: "Katherine",
+          lastName: "Johnson",
+        },
+      ],
+      createCircuitBreaker(),
+    );
+
+    expect(mocks.kittFindEmail).not.toHaveBeenCalled();
+    expect(mocks.recordEnrichment).not.toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "kitt-find" }),
+    );
+  });
+
+  it("keeps single-path Kitt logging through the normal waterfall adapter", async () => {
+    mocks.shouldEnrich.mockResolvedValue(true);
+    mocks.prospeoAdapter.mockResolvedValue({
+      email: null,
+      rawResponse: { provider: "prospeo", result: null },
+      costUsd: 0.002,
+      source: "prospeo",
+    });
+    mocks.kittAdapter.mockResolvedValue({
+      email: "single-kitt@example.com",
+      rawResponse: { id: "single-kitt-job" },
+      costUsd: 0.005,
+      source: "kitt-find",
+    });
+    mocks.bouncebanVerify.mockResolvedValue({
+      status: "valid",
+      email: "single-kitt@example.com",
+      costUsd: 0.001,
+    });
+
+    await enrichEmail(
+      "person-single-kitt",
+      {
+        firstName: "Dorothy",
+        lastName: "Vaughan",
+        companyDomain: "example.com",
+      },
+      createCircuitBreaker(),
+      "1210-solutions",
+    );
+
+    expect(mocks.recordEnrichment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: "person-single-kitt",
+        provider: "kitt-find",
+        status: "success",
+        fieldsWritten: ["email"],
+        rawResponse: { id: "single-kitt-job" },
+        workspaceSlug: "1210-solutions",
+      }),
+    );
+    expect(mocks.mergePersonData).toHaveBeenCalledWith("person-single-kitt", {
+      email: "single-kitt@example.com",
+    });
+  });
 });
