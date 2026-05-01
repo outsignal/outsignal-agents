@@ -89,6 +89,7 @@ export interface FindEmailResult {
   email: string | null;
   confidence: number;
   costUsd: number;
+  rawResponse?: unknown;
 }
 
 // Re-export VerificationResult for consumers that import from this module
@@ -148,6 +149,7 @@ async function kittFetch(endpoint: string, body: Record<string, unknown>): Promi
  * @param params.domain - Company domain (required)
  * @param params.linkedinUrl - LinkedIn profile URL (optional, improves accuracy)
  * @param params.personId - Person record ID for enrichment logging + caching
+ * @param params.log - Set false when the caller records enrichment provenance itself
  * @returns FindEmailResult with email (or null), confidence, and cost
  */
 export async function findEmail(params: {
@@ -155,6 +157,7 @@ export async function findEmail(params: {
   domain: string;
   linkedinUrl?: string;
   personId?: string;
+  log?: boolean;
 }): Promise<FindEmailResult> {
   const body: Record<string, unknown> = {
     fullName: params.fullName,
@@ -171,7 +174,7 @@ export async function findEmail(params: {
     raw = result.raw;
   } catch (err) {
     // Log error enrichment if personId available
-    if (params.personId) {
+    if (params.personId && params.log !== false) {
       await recordEnrichment({
         entityId: params.personId,
         entityType: "person",
@@ -188,12 +191,12 @@ export async function findEmail(params: {
 
   if (!parsed.success) {
     console.error("[kitt-find] Zod validation failed:", parsed.error.message, "rawResponse:", raw);
-    return { email: null, confidence: 0, costUsd: 0 };
+    return { email: null, confidence: 0, costUsd: 0, rawResponse: raw };
   }
 
   // Non-completed status means the job did not finish
   if (parsed.data.status !== "completed" || !parsed.data.result) {
-    if (params.personId) {
+    if (params.personId && params.log !== false) {
       await recordEnrichment({
         entityId: params.personId,
         entityType: "person",
@@ -204,7 +207,7 @@ export async function findEmail(params: {
         rawResponse: raw,
       });
     }
-    return { email: null, confidence: 0, costUsd: 0 };
+    return { email: null, confidence: 0, costUsd: 0, rawResponse: raw };
   }
 
   const email = parsed.data.result.email;
@@ -217,7 +220,7 @@ export async function findEmail(params: {
   }
 
   // Log enrichment provenance
-  if (params.personId) {
+  if (params.personId && params.log !== false) {
     await recordEnrichment({
       entityId: params.personId,
       entityType: "person",
@@ -229,7 +232,7 @@ export async function findEmail(params: {
     });
   }
 
-  return { email, confidence, costUsd };
+  return { email, confidence, costUsd, rawResponse: raw };
 }
 
 // ---------------------------------------------------------------------------
