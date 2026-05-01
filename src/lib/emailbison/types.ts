@@ -150,6 +150,7 @@ export interface SequenceStep {
   subject?: string;
   body?: string;
   delay_days?: number;
+  variant?: boolean;
 }
 
 /**
@@ -307,6 +308,21 @@ export interface CreateSequenceStepParams {
    * whatever the caller passes.
    */
   thread_reply?: boolean;
+}
+
+export interface UpdateSequenceStepParams {
+  id: number;
+  position: number;
+  subject?: string;
+  body: string;
+  delay_days?: number;
+  thread_reply?: boolean;
+  /**
+   * EB v1.1 PUT /sequence-steps/{sequence_id} requires this field on each
+   * sequence step. Preserve the value returned by getSequenceSteps() when
+   * updating an existing step so A/B variant flags are not clobbered.
+   */
+  variant?: boolean;
 }
 
 export interface PatchSenderEmailParams {
