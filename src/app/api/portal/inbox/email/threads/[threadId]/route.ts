@@ -6,7 +6,7 @@ interface OutboundContextMessage {
   id: "outbound-context";
   direction: "outbound";
   subject: string | null;
-  bodyText: string | null;
+  bodyText: string;
   htmlBody: null;
   senderEmail: string | null;
   receivedAt: null;
@@ -82,13 +82,15 @@ export async function GET(
     // Find first inbound reply for outbound context
     const firstInbound = replies.find((r) => r.direction === "inbound");
 
-    // Prepend outbound context message if we have the outbound email content
-    if (firstInbound && (firstInbound.outboundSubject || firstInbound.outboundBody)) {
+    // Prepend outbound context message only when we have a body to render.
+    // Some legacy EmailBison rows have outboundSubject without outboundBody.
+    const outboundBody = firstInbound?.outboundBody?.trim();
+    if (firstInbound && outboundBody) {
       const outboundContext: OutboundContextMessage = {
         id: "outbound-context",
         direction: "outbound",
         subject: firstInbound.outboundSubject ?? null,
-        bodyText: firstInbound.outboundBody ?? null,
+        bodyText: firstInbound.outboundBody ?? "",
         htmlBody: null,
         senderEmail: null,
         receivedAt: null,
