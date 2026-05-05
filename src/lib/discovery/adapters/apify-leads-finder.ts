@@ -11,6 +11,7 @@
  * `fetch_count`. Set hasMore: false always.
  */
 import { runApifyActor } from "../../apify/client";
+import { decomposeRangesToVendorBands } from "../format-adapters";
 import { stripWwwAll, type RateLimits } from "../rate-limit";
 import type {
   DiscoveryAdapter,
@@ -20,6 +21,20 @@ import type {
 } from "../types";
 
 const ACTOR_ID = "code_crafter/leads-finder";
+const APIFY_COMPANY_SIZE_BANDS = [
+  "1-10",
+  "11-20",
+  "21-50",
+  "51-100",
+  "101-200",
+  "201-500",
+  "501-1000",
+  "1001-5000",
+  "5001-10000",
+  "10001-20000",
+  "20001-50000",
+  "50000+",
+];
 
 /**
  * Apify Leads Finder rate limits.
@@ -57,28 +72,7 @@ function mapSeniority(values: string[]): string[] {
  * DiscoveryFilter uses coarse ranges; the actor uses finer bands.
  */
 function mapCompanySizes(sizes: string[]): string[] {
-  const expansions: Record<string, string[]> = {
-    "1-10": ["1-10"],
-    "11-50": ["11-20", "21-50"],
-    "51-200": ["51-100", "101-200"],
-    "201-500": ["201-500"],
-    "501-1000": ["501-1000"],
-    "1001-5000": ["1001-2000", "2001-5000"],
-    "5001-10000": ["5001-10000"],
-    "10001+": ["10001-20000", "20001-50000", "50000+"],
-  };
-
-  const result: string[] = [];
-  for (const s of sizes) {
-    const mapped = expansions[s];
-    if (mapped) {
-      result.push(...mapped);
-    } else {
-      // Pass through if already in actor format
-      result.push(s);
-    }
-  }
-  return result;
+  return decomposeRangesToVendorBands(sizes, APIFY_COMPANY_SIZE_BANDS);
 }
 
 /**
