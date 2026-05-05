@@ -13,6 +13,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "preflight:deploy-auth": "scripts/preflight/check-deploy-auth.sh",
     "chat": "tsx scripts/chat.ts",
     "build:cli": "tsup --config tsup.cli.config.ts",
     "build:dev-cli": "tsup --config tsup.dev-cli.config.ts",
