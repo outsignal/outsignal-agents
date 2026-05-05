@@ -64,6 +64,107 @@ describe("AI Ark search adapter", () => {
       "Warehousing and Storage",
       "Warehousing",
       "Information Technology",
+      "IT Services and IT Consulting",
+    ]);
+  });
+
+  it("maps representative client verticals into live-verified AI Ark taxonomy values", () => {
+    const cases: Array<{
+      workspace: string;
+      industries: string[];
+      expected: string[];
+    }> = [
+      {
+        workspace: "Rise",
+        industries: ["Branded Merchandise", "Promotional Products", "Apparel"],
+        expected: ["Advertising Services", "Consumer Goods", "Retail", "Retail Apparel and Fashion"],
+      },
+      {
+        workspace: "Lime Recruitment",
+        industries: ["Staffing", "Recruitment", "Talent Acquisition"],
+        expected: ["Staffing and Recruiting", "Recruiting", "Human Resources Services"],
+      },
+      {
+        workspace: "YoopKnows",
+        industries: ["Architecture & Planning", "AEC", "Design Services"],
+        expected: ["Architecture and Planning", "Construction", "Civil Engineering", "Design Services"],
+      },
+      {
+        workspace: "Outsignal",
+        industries: ["B2B SaaS", "Marketing & Advertising"],
+        expected: ["Software Development", "Enterprise Software", "Marketing", "Advertising Services", "Advertising"],
+      },
+      {
+        workspace: "MyAcq",
+        industries: ["Mergers & Acquisitions", "Private Equity", "Business Brokerage"],
+        expected: [
+          "Investment Management",
+          "Financial Services",
+          "Capital Markets",
+          "Venture Capital and Private Equity Principals",
+        ],
+      },
+      {
+        workspace: "1210 legacy",
+        industries: ["Recruitment Agencies", "Temp Agencies"],
+        expected: ["Staffing and Recruiting", "Recruiting"],
+      },
+      {
+        workspace: "BlankTag",
+        industries: ["Digital Marketing", "Media", "Advertising"],
+        expected: ["Digital Marketing", "Marketing", "Advertising Services", "Media Production", "Advertising"],
+      },
+      {
+        workspace: "Covenco",
+        industries: ["Cloud Computing", "Computer Networking", "Systems Integration"],
+        expected: ["Cloud Computing", "IT Services and IT Consulting", "Computer Networking Products"],
+      },
+    ];
+
+    for (const { workspace, industries, expected } of cases) {
+      expect(mapIcpIndustriesToAiArk(industries), workspace).toEqual(expected);
+    }
+  });
+
+  it("maps partial input and warns only for unknown AI Ark industry values", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    expect(mapIcpIndustriesToAiArk(["Transport", "Quantum Cryptography"])).toEqual([
+      "Transportation",
+      "Truck Transportation",
+    ]);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Quantum Cryptography"),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("handles empty industry input without warnings", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    expect(mapIcpIndustriesToAiArk([])).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it("maps AI Ark industry aliases case-insensitively", () => {
+    expect(mapIcpIndustriesToAiArk(["TRANSPORT", "transportation"])).toEqual([
+      "Transportation",
+      "Truck Transportation",
+    ]);
+  });
+
+  it("maps Data Storage as IT instead of warehousing", () => {
+    expect(mapIcpIndustriesToAiArk(["Data Storage"])).toEqual([
+      "Data Storage",
+      "Information Technology",
+    ]);
+    expect(mapIcpIndustriesToAiArk(["Cloud Data Storage"])).toEqual([
+      "Data Storage",
+      "Information Technology",
     ]);
   });
 
