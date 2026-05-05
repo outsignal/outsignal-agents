@@ -70,23 +70,49 @@ export interface BatchIcpScoreResult {
   skipped: number;
 }
 
+export function normalizeScoreValue(
+  score: unknown,
+  source: string,
+  personId: string,
+): number | null {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    console.warn(
+      `[icp-scorer] ${source} returned non-finite score for ${personId}; rejecting.`,
+    );
+    return null;
+  }
+
+  if (score < 0 || score > 100) {
+    const clampedScore = Math.max(0, Math.min(100, score));
+    console.warn(
+      `[icp-scorer] ${source} returned out-of-range score ${score} for ${personId}; clamped to ${clampedScore}.`,
+    );
+    return clampedScore;
+  }
+
+  return score;
+}
+
 export function normalizeBatchIcpScoreEntry(
   entry: unknown,
   source = "batch ICP scoring",
 ): BatchIcpScoreEntry | null {
-  const validated = BatchIcpScoreSchema.element.safeParse(entry);
-  if (!validated.success) return null;
+  if (entry && typeof entry === "object" && "score" in entry) {
+    const rawEntry = entry as Record<string, unknown>;
+    const personId =
+      typeof rawEntry.personId === "string" ? rawEntry.personId : "unknown";
+    const score = normalizeScoreValue(rawEntry.score, source, personId);
+    if (score === null) return null;
 
-  const score = validated.data.score;
-  if (score < 0 || score > 100) {
-    const clampedScore = Math.max(0, Math.min(100, score));
-    console.warn(
-      `[icp-scorer] ${source} returned out-of-range score ${score} for ${validated.data.personId}; clamped to ${clampedScore}.`,
-    );
-    return { ...validated.data, score: clampedScore };
+    const validated = BatchIcpScoreSchema.element.safeParse({
+      ...rawEntry,
+      score,
+    });
+    return validated.success ? validated.data : null;
   }
 
-  return validated.data;
+  const validated = BatchIcpScoreSchema.element.safeParse(entry);
+  return validated.success ? validated.data : null;
 }
 
 function hasWebsiteMarkdown(value: string | null): value is string {
@@ -505,6 +531,21 @@ export interface StagedPersonInput {
   location: string | null;
 }
 
+function describeStagedPerson(input: StagedPersonInput): string {
+  return (
+    [
+      input.firstName,
+      input.lastName,
+      input.jobTitle ? `(${input.jobTitle})` : null,
+      input.company ? `at ${input.company}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    input.companyDomain ||
+    "staged-person"
+  );
+}
+
 /**
  * Score a staged DiscoveredPerson's ICP fit BEFORE promotion.
  *
@@ -569,10 +610,18 @@ export async function scoreStagedPersonIcp(
     system: systemPrompt,
     prompt: scoringPrompt,
   });
+  const score = normalizeScoreValue(
+    object.score,
+    "staged ICP scoring",
+    describeStagedPerson(input),
+  );
+  if (score === null) {
+    throw new Error("ICP scoring returned an invalid score");
+  }
 
   return {
     status: "scored",
-    score: object.score,
+    score,
     reasoning: object.reasoning,
     confidence: object.confidence,
     scoringMethod: ICP_SCORING_METHOD,
@@ -718,8 +767,16 @@ export async function scorePersonIcp(
       system: systemPrompt,
       prompt: scoringPrompt,
     });
+    const score = normalizeScoreValue(
+      object.score,
+      "single-person ICP scoring",
+      personId,
+    );
+    if (score === null) {
+      throw new Error("ICP scoring returned an invalid score");
+    }
     result = {
-      score: object.score,
+      score,
       reasoning: object.reasoning,
       confidence: object.confidence,
     };
