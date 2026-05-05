@@ -30,7 +30,11 @@ import { APOLLO_DISABLED_MESSAGE } from "@/lib/discovery/apollo-disabled";
 import { resolveCompanyDomains } from "@/lib/discovery/domain-resolver";
 import type { DiscoveredPersonResult } from "@/lib/discovery/types";
 import { expandJobTitles } from "@/lib/discovery/title-expansion";
-import { applyDiscoveryFilters, getUncoveredDomains } from "@/lib/discovery/filters";
+import {
+  applyDiscoveryFilters,
+  getUncoveredDomains,
+  logDiscoveryTitleRejections,
+} from "@/lib/discovery/filters";
 import { stripWwwAll } from "@/lib/discovery/rate-limit";
 import { prisma } from "@/lib/db";
 import {
@@ -808,7 +812,22 @@ export const leadsTools = {
       await incrementDailySpend("prospeo-search", result.costUsd);
 
       // Apply ICP title + company-type filters before staging
-      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+      const {
+        passed,
+        titleFiltered,
+        companyFiltered,
+        titleRejections,
+      } = applyDiscoveryFilters(result.people, undefined, undefined, {
+        targetTitles: scopedFilters.jobTitles,
+      });
+      await logDiscoveryTitleRejections({
+        provider: "prospeo",
+        workspaceSlug: params.workspaceSlug,
+        discoveryRunId: discovery.runId,
+        icpProfileId: discovery.icpContext.profileId,
+        targetTitles: scopedFilters.jobTitles,
+        rejections: titleRejections,
+      });
       const rawByPerson = new Map(
         result.people.map((person, i) => [person, result.rawResponses?.[i]]),
       );
@@ -954,7 +973,22 @@ export const leadsTools = {
       await incrementDailySpend("aiark-search", result.costUsd);
 
       // Apply ICP title + company-type filters before staging
-      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+      const {
+        passed,
+        titleFiltered,
+        companyFiltered,
+        titleRejections,
+      } = applyDiscoveryFilters(result.people, undefined, undefined, {
+        targetTitles: scopedFilters.jobTitles,
+      });
+      await logDiscoveryTitleRejections({
+        provider: "aiark",
+        workspaceSlug: params.workspaceSlug,
+        discoveryRunId: discovery.runId,
+        icpProfileId: discovery.icpContext.profileId,
+        targetTitles: scopedFilters.jobTitles,
+        rejections: titleRejections,
+      });
 
       const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
         people: passed,
@@ -1104,7 +1138,22 @@ export const leadsTools = {
       await incrementDailySpend("apify-leads-finder", result.costUsd);
 
       // Apply ICP title + company-type filters before staging
-      const { passed, titleFiltered, companyFiltered } = applyDiscoveryFilters(result.people);
+      const {
+        passed,
+        titleFiltered,
+        companyFiltered,
+        titleRejections,
+      } = applyDiscoveryFilters(result.people, undefined, undefined, {
+        targetTitles: scopedFilters.jobTitles,
+      });
+      await logDiscoveryTitleRejections({
+        provider: "apify-leads-finder",
+        workspaceSlug: params.workspaceSlug,
+        discoveryRunId: discovery.runId,
+        icpProfileId: discovery.icpContext.profileId,
+        targetTitles: scopedFilters.jobTitles,
+        rejections: titleRejections,
+      });
 
       const { staged, duplicatesSkipped, runId } = await stageDiscoveredPeople({
         people: passed,
