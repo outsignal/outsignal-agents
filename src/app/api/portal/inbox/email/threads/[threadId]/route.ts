@@ -1,24 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPortalSession } from "@/lib/portal-session";
 import { prisma } from "@/lib/db";
-
-interface OutboundContextMessage {
-  id: "outbound-context";
-  direction: "outbound";
-  subject: string | null;
-  bodyText: string;
-  htmlBody: null;
-  senderEmail: string | null;
-  receivedAt: null;
-  isOutboundContext: true;
-  intent: null;
-  sentiment: null;
-  interested: false;
-  aiSuggestedReply: null;
-  ebSenderEmailId: null;
-  emailBisonReplyId: null;
-  senderName: null;
-}
+import {
+  buildOutboundContextMessage,
+  type OutboundContextMessage,
+} from "@/lib/inbox/outbound-context";
 
 interface ReplyMessage {
   id: string;
@@ -82,27 +68,8 @@ export async function GET(
     // Find first inbound reply for outbound context
     const firstInbound = replies.find((r) => r.direction === "inbound");
 
-    // Prepend outbound context message only when we have a body to render.
-    // Some legacy EmailBison rows have outboundSubject without outboundBody.
-    const outboundBody = firstInbound?.outboundBody?.trim();
-    if (firstInbound && outboundBody) {
-      const outboundContext: OutboundContextMessage = {
-        id: "outbound-context",
-        direction: "outbound",
-        subject: firstInbound.outboundSubject ?? null,
-        bodyText: firstInbound.outboundBody ?? "",
-        htmlBody: null,
-        senderEmail: null,
-        receivedAt: null,
-        isOutboundContext: true,
-        intent: null,
-        sentiment: null,
-        interested: false,
-        aiSuggestedReply: null,
-        ebSenderEmailId: null,
-        emailBisonReplyId: null,
-        senderName: null,
-      };
+    const outboundContext = buildOutboundContextMessage(firstInbound);
+    if (outboundContext) {
       messages.push(outboundContext);
     }
 
