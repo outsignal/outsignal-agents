@@ -129,6 +129,9 @@ model Workspace {
 
   monitoringEnabled Boolean @default(true)
 
+  defaultIcpProfileId String?     @unique
+  defaultIcpProfile   IcpProfile? @relation("WorkspaceDefaultIcpProfile", fields: [defaultIcpProfileId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -138,6 +141,47 @@ model Workspace {
   exclusionEmails       ExclusionEmail[]
   supportConversations  SupportConversation[]
   members               Member[]
+  icpProfiles           IcpProfile[] @relation("WorkspaceIcpProfiles")
+}
+
+model IcpProfile {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  slug           String
+  name           String
+  active         Boolean  @default(true)
+  currentVersion Int      @default(1)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace           Workspace           @relation("WorkspaceIcpProfiles", fields: [workspaceId], references: [id], onDelete: Cascade)
+  defaultForWorkspace Workspace?          @relation("WorkspaceDefaultIcpProfile")
+  versions            IcpProfileVersion[]
+  campaigns           Campaign[]          @relation("CampaignIcpProfiles")
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, active])
+}
+
+model IcpProfileVersion {
+  id            String   @id @default(cuid())
+  profileId     String
+  version       Int
+  description   String
+  targetTitles  Json?
+  locations     Json?
+  industries    Json?
+  companySizes  Json?
+  scoringRubric Json?
+  createdBy     String?
+  changeReason  String?
+  createdAt     DateTime @default(now())
+
+  profile IcpProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, version])
+  @@index([profileId])
 }
 
 model Person {
@@ -774,6 +818,10 @@ model Campaign {
   targetListId String?
   targetList   TargetList? @relation(fields: [targetListId], references: [id], onDelete: SetNull)
 
+  // Reusable ICP profile shell. Scoring records pin the version used.
+  icpProfileId String?
+  icpProfile   IcpProfile? @relation("CampaignIcpProfiles", fields: [icpProfileId], references: [id], onDelete: SetNull)
+
   // Content storage (JSON per step)
   // emailSequence: array of { position, subjectLine, subjectVariantB?, body, delayDays, notes? }
   // linkedinSequence: array of { position, type, body, delayDays, notes? }
@@ -850,6 +898,7 @@ model Campaign {
   @@index([status])
   @@index([type, status])
   @@index([parentCampaignId])
+  @@index([icpProfileId])
 }
 
 model CampaignDeploy {
