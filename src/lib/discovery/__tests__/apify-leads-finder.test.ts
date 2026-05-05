@@ -90,4 +90,21 @@ describe("Apify Leads Finder adapter", () => {
     expect(result.firstName).toBe("Ada");
     expect(result.lastName).toBe("Lovelace");
   });
+
+  it("sends decomposed company-size bands to the actor", async () => {
+    runApifyActorMock.mockResolvedValueOnce([]);
+
+    await apifyLeadsFinderAdapter.search(
+      { companySizes: ["5-100"], locations: ["United Kingdom"] },
+      10,
+    );
+
+    expect(runApifyActorMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        size: ["1-10", "11-20", "21-50", "51-100"],
+        contact_location: ["united kingdom"],
+      }),
+    );
+  });
 });
