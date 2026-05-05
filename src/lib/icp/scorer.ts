@@ -54,16 +54,39 @@ export const IcpScoreSchema = z.object({
 export const BatchIcpScoreSchema = z.array(
   z.object({
     personId: z.string(),
-    score: z.number().min(0).max(100),
-    reasoning: z.string(),
-    confidence: z.enum(["high", "medium", "low"]),
+    score: z.number().describe("ICP fit score from 0 to 100"),
+    reasoning: z.string().describe("1-3 sentence explanation of ICP fit"),
+    confidence: z.enum(["high", "medium", "low"]).describe(
+      "Data completeness: high=all signals, medium=2/3, low=sparse"
+    ),
   }),
 );
+
+export type BatchIcpScoreEntry = z.infer<typeof BatchIcpScoreSchema>[number];
 
 export interface BatchIcpScoreResult {
   scored: number;
   failed: number;
   skipped: number;
+}
+
+export function normalizeBatchIcpScoreEntry(
+  entry: unknown,
+  source = "batch ICP scoring",
+): BatchIcpScoreEntry | null {
+  const validated = BatchIcpScoreSchema.element.safeParse(entry);
+  if (!validated.success) return null;
+
+  const score = validated.data.score;
+  if (score < 0 || score > 100) {
+    const clampedScore = Math.max(0, Math.min(100, score));
+    console.warn(
+      `[icp-scorer] ${source} returned out-of-range score ${score} for ${validated.data.personId}; clamped to ${clampedScore}.`,
+    );
+    return { ...validated.data, score: clampedScore };
+  }
+
+  return validated.data;
 }
 
 function hasWebsiteMarkdown(value: string | null): value is string {
@@ -1042,9 +1065,12 @@ export async function scorePersonIcpBatch(
       >();
 
       for (const entry of parsed) {
-        const validated = BatchIcpScoreSchema.element.safeParse(entry);
-        if (validated.success) {
-          resultMap.set(validated.data.personId, validated.data);
+        const normalized = normalizeBatchIcpScoreEntry(
+          entry,
+          "promoted batch ICP scoring",
+        );
+        if (normalized) {
+          resultMap.set(normalized.personId, normalized);
         }
       }
 
@@ -1240,13 +1266,16 @@ export async function scoreStagedPersonIcpBatch(
       });
 
       for (const entry of object) {
-        const validated = BatchIcpScoreSchema.element.safeParse(entry);
-        if (validated.success) {
-          results.set(validated.data.personId, {
+        const normalized = normalizeBatchIcpScoreEntry(
+          entry,
+          "staged batch ICP scoring",
+        );
+        if (normalized) {
+          results.set(normalized.personId, {
             status: "scored",
-            score: validated.data.score,
-            reasoning: validated.data.reasoning,
-            confidence: validated.data.confidence,
+            score: normalized.score,
+            reasoning: normalized.reasoning,
+            confidence: normalized.confidence,
             scoringMethod: ICP_SCORING_METHOD,
           });
         }
