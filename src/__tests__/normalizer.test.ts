@@ -12,8 +12,14 @@ vi.mock("@ai-sdk/anthropic", () => ({
 
 import { generateObject } from "ai";
 import { classifyIndustry } from "@/lib/normalizer/industry";
-import { classifyCompanyName } from "@/lib/normalizer/company";
-import { classifyJobTitle } from "@/lib/normalizer/job-title";
+import {
+  classifyCompanyName,
+  normalizeCompanyNameClassification,
+} from "@/lib/normalizer/company";
+import {
+  classifyJobTitle,
+  normalizeJobTitleClassification,
+} from "@/lib/normalizer/job-title";
 import { CANONICAL_VERTICALS, SENIORITY_LEVELS } from "@/lib/normalizer/vocabulary";
 import { normalizeJobTitle, normalizeLocation, normalizeIndustry, singulariseJobTitle } from "@/lib/normalize";
 
@@ -110,6 +116,28 @@ describe("classifyCompanyName", () => {
     expect(result).toBe("Accenture");
     expect(mockGenerateObject).toHaveBeenCalledTimes(1);
   });
+
+  it("normalizes empty and oversized AI company names after parsing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(
+      normalizeCompanyNameClassification(
+        { canonical: "   ", confidence: "high" },
+        "Fallback Co",
+      ),
+    ).toEqual({ canonical: "Fallback Co", confidence: "high" });
+
+    const oversized = `${"A".repeat(210)}   `;
+    expect(
+      normalizeCompanyNameClassification(
+        { canonical: oversized, confidence: "high" },
+        "Fallback Co",
+      ).canonical,
+    ).toHaveLength(200);
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
+  });
 });
 
 describe("classifyJobTitle", () => {
@@ -175,6 +203,40 @@ describe("classifyJobTitle", () => {
     expect(result).not.toBeNull();
     expect(result!.seniority).toBe("Unknown");
     consoleSpy.mockRestore();
+  });
+
+  it("normalizes empty and oversized AI job titles after parsing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(
+      normalizeJobTitleClassification(
+        {
+          canonical: "   ",
+          seniority: "Unknown",
+          confidence: "high",
+        },
+        "Fallback Title",
+      ),
+    ).toEqual({
+      canonical: "Fallback Title",
+      seniority: "Unknown",
+      confidence: "high",
+    });
+
+    const oversized = `${"T".repeat(210)}   `;
+    expect(
+      normalizeJobTitleClassification(
+        {
+          canonical: oversized,
+          seniority: "Unknown",
+          confidence: "high",
+        },
+        "Fallback Title",
+      ).canonical,
+    ).toHaveLength(200);
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
   });
 });
 

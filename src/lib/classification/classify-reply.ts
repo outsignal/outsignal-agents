@@ -4,7 +4,7 @@ import { z } from "zod";
 import { INTENTS, SENTIMENTS, OBJECTION_SUBTYPES } from "./types";
 import type { ClassificationResult } from "./types";
 
-const ClassificationSchema = z.object({
+export const ClassificationSchema = z.object({
   intent: z.enum(INTENTS),
   sentiment: z.enum(SENTIMENTS),
   objectionSubtype: z
@@ -13,9 +13,27 @@ const ClassificationSchema = z.object({
     .describe("Only set when intent is 'objection', null otherwise"),
   summary: z
     .string()
-    .max(200)
-    .describe("One sentence explaining the classification reasoning"),
+    .describe("One sentence explaining the classification reasoning, max 200 characters"),
 });
+
+const MAX_SUMMARY_LENGTH = 200;
+
+export function normalizeClassificationResult(
+  result: ClassificationResult,
+): ClassificationResult {
+  const summary = result.summary.trim();
+  if (summary.length > MAX_SUMMARY_LENGTH) {
+    console.warn(
+      `[reply-classification] Anthropic returned ${summary.length}-character summary; truncating to ${MAX_SUMMARY_LENGTH}.`,
+    );
+    return {
+      ...result,
+      summary: summary.slice(0, MAX_SUMMARY_LENGTH),
+    };
+  }
+
+  return { ...result, summary };
+}
 
 export async function classifyReply(params: {
   subject: string | null;
@@ -59,5 +77,5 @@ RULES:
 5. Sentiment should reflect the prospect's attitude: positive (warm, open), neutral (factual, no emotion), negative (hostile, annoyed, dismissive).`,
   });
 
-  return object;
+  return normalizeClassificationResult(object);
 }

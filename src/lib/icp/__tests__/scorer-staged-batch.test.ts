@@ -39,7 +39,11 @@ vi.mock("@/lib/icp/resolver", () => ({
 }));
 
 import { asSchema } from "ai";
+import { ClassificationSchema } from "@/lib/classification/classify-reply";
 import { icpCriteriaSchema } from "../extract-criteria";
+import { InsightSchema } from "@/lib/insights/types";
+import { CompanyNameSchema } from "@/lib/normalizer/company";
+import { JobTitleSchema } from "@/lib/normalizer/job-title";
 import {
   BatchIcpScoreSchema,
   IcpScoreSchema,
@@ -102,6 +106,10 @@ describe("scoreStagedPersonIcpBatch", () => {
     ["IcpScoreSchema", IcpScoreSchema],
     ["BatchIcpScoreSchema", BatchIcpScoreSchema],
     ["icpCriteriaSchema", icpCriteriaSchema],
+    ["InsightSchema", InsightSchema],
+    ["CompanyNameSchema", CompanyNameSchema],
+    ["JobTitleSchema", JobTitleSchema],
+    ["ClassificationSchema", ClassificationSchema],
   ])("serializes %s without Anthropic-rejected constraint keys", async (_name, schema) => {
     const jsonSchema = await asSchema<unknown>(schema).jsonSchema;
     const schemaKeys = collectSchemaKeys(jsonSchema);

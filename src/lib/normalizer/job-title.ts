@@ -7,8 +7,10 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { SENIORITY_LEVELS } from "./vocabulary";
 
-const JobTitleSchema = z.object({
-  canonical: z.string().min(1).max(200),
+export const JobTitleSchema = z.object({
+  canonical: z
+    .string()
+    .describe("Canonical professional job title, max 200 characters"),
   seniority: z.enum(SENIORITY_LEVELS as unknown as [string, ...string[]]),
   confidence: z.enum(["high", "medium", "low"]),
 });
@@ -16,6 +18,35 @@ const JobTitleSchema = z.object({
 export interface JobTitleResult {
   canonical: string;
   seniority: string;
+}
+
+export type JobTitleClassification = z.infer<typeof JobTitleSchema>;
+
+const MAX_CANONICAL_LENGTH = 200;
+
+export function normalizeJobTitleClassification(
+  result: JobTitleClassification,
+  fallback: string,
+): JobTitleClassification {
+  const trimmed = result.canonical.trim();
+  if (!trimmed) {
+    console.warn(
+      "[job-title-normalizer] Anthropic returned an empty canonical job title; using raw fallback.",
+    );
+    return { ...result, canonical: fallback };
+  }
+
+  if (trimmed.length > MAX_CANONICAL_LENGTH) {
+    console.warn(
+      `[job-title-normalizer] Anthropic returned ${trimmed.length}-character canonical job title; truncating to ${MAX_CANONICAL_LENGTH}.`,
+    );
+    return {
+      ...result,
+      canonical: trimmed.slice(0, MAX_CANONICAL_LENGTH),
+    };
+  }
+
+  return { ...result, canonical: trimmed };
 }
 
 /** Seniority keywords for rule-based fast path. */
@@ -68,10 +99,11 @@ Raw title: "${trimmed}"
 Seniority levels: ${SENIORITY_LEVELS.join(", ")}
 Return the title in standard professional form (e.g., "Chief Executive Officer", "VP of Sales", "Software Engineer"). Use "Unknown" seniority if unclear.`,
     });
+    const normalized = normalizeJobTitleClassification(object, trimmed);
 
     return {
-      canonical: object.canonical,
-      seniority: object.seniority,
+      canonical: normalized.canonical,
+      seniority: normalized.seniority,
     };
   } catch (error) {
     console.error("Job title classification failed:", error);
