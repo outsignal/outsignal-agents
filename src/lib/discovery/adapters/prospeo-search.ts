@@ -24,9 +24,24 @@ import type {
 } from "../types";
 import { CreditExhaustionError } from "@/lib/enrichment/credit-exhaustion";
 import { stripWwwAll, type RateLimits } from "../rate-limit";
+import { toProspeoLocationFormat } from "../country-codes";
+import { decomposeRangesToVendorBands } from "../format-adapters";
 
 const PROSPEO_SEARCH_ENDPOINT = "https://api.prospeo.io/search-person";
 const TIMEOUT_MS = 15_000;
+const PROSPEO_HEADCOUNT_BANDS = [
+  "1-10",
+  "11-20",
+  "21-50",
+  "51-100",
+  "101-200",
+  "201-500",
+  "501-1000",
+  "1001-2000",
+  "2001-5000",
+  "5001-10000",
+  "10000+",
+];
 
 /**
  * Map internal seniority values (lowercase/underscore) to Prospeo's expected
@@ -186,16 +201,9 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.locations?.length) {
-      // Prospeo requires "Country Name #CC" format (e.g., "United Kingdom #GB")
-      // Warn if any location doesn't match expected format
-      for (const loc of filters.locations) {
-        if (!loc.includes("#")) {
-          console.warn(
-            `[ProspeoSearchAdapter] Location "${loc}" missing country code (expected format: "Country Name #CC"). Filter may not apply correctly.`
-          );
-        }
-      }
-      f.person_location_search = { include: filters.locations };
+      f.person_location_search = {
+        include: filters.locations.map(toProspeoLocationFormat),
+      };
     }
 
     if (filters.industries?.length) {
@@ -203,27 +211,13 @@ export class ProspeoSearchAdapter implements DiscoveryAdapter {
     }
 
     if (filters.companySizes?.length) {
-      // Map our generic ranges to Prospeo's finer-grained enum values
-      const PROSPEO_HEADCOUNT_MAP: Record<string, string[]> = {
-        "1-10": ["1-10"],
-        "11-50": ["11-20", "21-50"],
-        "51-200": ["51-100", "101-200"],
-        "201-500": ["201-500"],
-        "501-1000": ["501-1000"],
-        "1001-5000": ["1001-2000", "2001-5000"],
-        "5001-10000": ["5001-10000"],
-        "10000+": ["10000+"],
-        "500+": ["501-1000", "1001-2000", "2001-5000", "5001-10000", "10000+"],
-      };
-      const VALID_PROSPEO_VALUES = new Set([
-        "1-10", "11-20", "21-50", "51-100", "101-200", "201-500",
-        "501-1000", "1001-2000", "2001-5000", "5001-10000", "10000+",
-      ]);
-      const mapped = filters.companySizes.flatMap((size) => {
-        if (VALID_PROSPEO_VALUES.has(size)) return [size];
-        return PROSPEO_HEADCOUNT_MAP[size] ?? [size];
-      });
-      f.company_headcount_range = [...new Set(mapped)];
+      const mapped = decomposeRangesToVendorBands(
+        filters.companySizes,
+        PROSPEO_HEADCOUNT_BANDS,
+      );
+      if (mapped.length > 0) {
+        f.company_headcount_range = mapped;
+      }
     }
 
     if (filters.companyDomains?.length) {

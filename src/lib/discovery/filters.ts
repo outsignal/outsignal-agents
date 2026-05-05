@@ -6,6 +6,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { expandCountryTerms } from "./country-codes";
 import type { DiscoveredPersonResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -440,64 +441,6 @@ export function filterByCompanyType(
 // ---------------------------------------------------------------------------
 // 4. Post-search location filter
 // ---------------------------------------------------------------------------
-
-/**
- * Country name aliases — maps common codes/abbreviations to their canonical names
- * and vice versa. Used for lenient matching so "UK", "GB", and "United Kingdom"
- * all resolve to the same country.
- */
-const COUNTRY_ALIASES: Record<string, string[]> = {
-  "united kingdom": ["uk", "gb", "great britain", "england", "scotland", "wales", "northern ireland"],
-  "united states": ["us", "usa", "united states of america", "america"],
-  "australia": ["au", "aus"],
-  "canada": ["ca", "can"],
-  "germany": ["de", "deu", "deutschland"],
-  "france": ["fr", "fra"],
-  "netherlands": ["nl", "nld", "holland"],
-  "ireland": ["ie", "irl", "republic of ireland"],
-  "spain": ["es", "esp"],
-  "italy": ["it", "ita"],
-  "sweden": ["se", "swe"],
-  "norway": ["no", "nor"],
-  "denmark": ["dk", "dnk"],
-  "finland": ["fi", "fin"],
-  "belgium": ["be", "bel"],
-  "switzerland": ["ch", "che"],
-  "singapore": ["sg", "sgp"],
-  "new zealand": ["nz", "nzl"],
-};
-
-/**
- * Normalise a location string or expected country token to a set of lowercase
- * terms that can be matched against. Strips Prospeo's "#CC" suffix and
- * expands abbreviations via COUNTRY_ALIASES.
- */
-function expandCountryTerms(token: string): Set<string> {
-  // Strip Prospeo's " #CC" suffix (e.g. "United Kingdom #GB" -> "United Kingdom")
-  const stripped = token.replace(/\s*#[A-Z]{2,3}$/, "").toLowerCase().trim();
-  const terms = new Set<string>([stripped]);
-
-  // Add all aliases for this canonical name
-  const aliases = COUNTRY_ALIASES[stripped];
-  if (aliases) {
-    for (const alias of aliases) {
-      terms.add(alias);
-    }
-  }
-
-  // Also check if the stripped value IS an alias — resolve to canonical + its aliases
-  for (const [canonical, aliasList] of Object.entries(COUNTRY_ALIASES)) {
-    if (aliasList.includes(stripped)) {
-      terms.add(canonical);
-      for (const alias of aliasList) {
-        terms.add(alias);
-      }
-      break;
-    }
-  }
-
-  return terms;
-}
 
 /**
  * Check whether a person's location string matches any of the expected country terms.
