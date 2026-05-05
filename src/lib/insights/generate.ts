@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/db";
-import { InsightSchema } from "./types";
+import { InsightSchema, normalizeInsightGeneration } from "./types";
 import { buildDedupKey, filterDuplicates } from "./dedup";
 import type { CampaignSnapshot } from "@/lib/analytics/snapshot";
 
@@ -142,9 +142,10 @@ export async function generateInsights(
     schema: InsightSchema,
     prompt,
   });
+  const normalized = normalizeInsightGeneration(object);
 
   // --- 4. Deduplicate ---
-  const filtered = await filterDuplicates(object.insights, workspaceSlug);
+  const filtered = await filterDuplicates(normalized.insights, workspaceSlug);
 
   if (filtered.length === 0) {
     return 0;

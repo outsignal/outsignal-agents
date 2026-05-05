@@ -7,10 +7,41 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { normalizeCompanyName } from "@/lib/normalize";
 
-const CompanyNameSchema = z.object({
-  canonical: z.string().min(1).max(200),
+export const CompanyNameSchema = z.object({
+  canonical: z
+    .string()
+    .describe("Canonical company name, no legal suffixes, max 200 characters"),
   confidence: z.enum(["high", "medium", "low"]),
 });
+
+export type CompanyNameClassification = z.infer<typeof CompanyNameSchema>;
+
+const MAX_CANONICAL_LENGTH = 200;
+
+export function normalizeCompanyNameClassification(
+  result: CompanyNameClassification,
+  fallback: string,
+): CompanyNameClassification {
+  const trimmed = result.canonical.trim();
+  if (!trimmed) {
+    console.warn(
+      "[company-normalizer] Anthropic returned an empty canonical company name; using rule-based fallback.",
+    );
+    return { ...result, canonical: fallback };
+  }
+
+  if (trimmed.length > MAX_CANONICAL_LENGTH) {
+    console.warn(
+      `[company-normalizer] Anthropic returned ${trimmed.length}-character canonical company name; truncating to ${MAX_CANONICAL_LENGTH}.`,
+    );
+    return {
+      ...result,
+      canonical: trimmed.slice(0, MAX_CANONICAL_LENGTH),
+    };
+  }
+
+  return { ...result, canonical: trimmed };
+}
 
 /**
  * Normalize a company name. Uses rule-based logic first, escalates to Claude
@@ -43,8 +74,9 @@ export async function classifyCompanyName(raw: string): Promise<string | null> {
 Raw company name: "${trimmed}"
 If the input is unrecognizable, return the best-effort cleanup. Set confidence to "low" if the result is a guess.`,
     });
+    const normalized = normalizeCompanyNameClassification(object, ruleBased);
 
-    return object.confidence === "low" ? ruleBased : object.canonical;
+    return normalized.confidence === "low" ? ruleBased : normalized.canonical;
   } catch (error) {
     console.error("Company name classification failed:", error);
     return ruleBased; // Fall back to rule-based on AI failure

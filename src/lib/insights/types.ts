@@ -87,13 +87,54 @@ export const InsightSchema = z.object({
         confidence: z.enum(["high", "medium", "low"]),
         priority: z
           .number()
-          .min(1)
-          .max(10)
           .describe("1 = highest priority, 10 = lowest"),
       }),
     )
-    .min(1)
-    .max(5),
+    .describe("One to five generated insights, ordered by urgency"),
 });
 
 export type InsightGeneration = z.infer<typeof InsightSchema>;
+
+const MAX_INSIGHTS = 5;
+const MIN_PRIORITY = 1;
+const MAX_PRIORITY = 10;
+
+export function normalizeInsightGeneration(
+  generation: InsightGeneration,
+): InsightGeneration {
+  let insights = generation.insights;
+
+  if (insights.length === 0) {
+    console.warn("[insights] Anthropic returned no insights.");
+  }
+
+  if (insights.length > MAX_INSIGHTS) {
+    console.warn(
+      `[insights] Anthropic returned ${insights.length} insights; truncating to ${MAX_INSIGHTS}.`,
+    );
+    insights = insights.slice(0, MAX_INSIGHTS);
+  }
+
+  return {
+    insights: insights.map((insight, index) => {
+      let priority = insight.priority;
+      if (!Number.isFinite(priority)) {
+        console.warn(
+          `[insights] Anthropic returned non-finite priority for insight ${index}; defaulting to ${MAX_PRIORITY}.`,
+        );
+        priority = MAX_PRIORITY;
+      } else if (priority < MIN_PRIORITY || priority > MAX_PRIORITY) {
+        const clamped = Math.max(
+          MIN_PRIORITY,
+          Math.min(MAX_PRIORITY, priority),
+        );
+        console.warn(
+          `[insights] Anthropic returned priority ${priority} for insight ${index}; clamped to ${clamped}.`,
+        );
+        priority = clamped;
+      }
+
+      return { ...insight, priority };
+    }),
+  };
+}
