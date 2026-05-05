@@ -14,7 +14,9 @@ import { isDestructiveEmailInboxAction } from "@/lib/email-inbox-actions";
 import { cn } from "@/lib/utils";
 
 /** Render URLs in text as clickable links */
-function Linkify({ text }: { text: string }) {
+function Linkify({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+
   const parts = text.split(/(https?:\/\/[^\s]+)/g);
   return (
     <>
