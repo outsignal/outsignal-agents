@@ -11,6 +11,10 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCrawlMarkdown } from "./crawl-cache";
+import {
+  resolveIcpContextForWorkspaceSlug,
+  type IcpContext,
+} from "./resolver";
 
 export interface IcpScoreResult {
   score: number;       // 0-100
@@ -493,17 +497,11 @@ export interface StagedPersonInput {
 export async function scoreStagedPersonIcp(
   input: StagedPersonInput,
   workspaceSlug: string,
+  options?: Pick<ScorePersonIcpOptions, "campaignId" | "icpProfileId" | "icpContext">,
 ): Promise<StagedIcpEvaluationResult> {
-  // 1. Fetch workspace for ICP criteria
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: workspaceSlug },
-  });
-
-  if (!workspace.icpCriteriaPrompt?.trim()) {
-    throw new Error(
-      `No ICP criteria prompt configured for workspace '${workspaceSlug}'.`,
-    );
-  }
+  // 1. Resolve ICP criteria/profile version.
+  const icpContext = await resolveScoringIcpContext(workspaceSlug, options);
+  const systemPrompt = getScoringSystemPrompt(icpContext, workspaceSlug);
 
   // 2. Get company homepage markdown (from cache or crawl)
   const websiteMarkdown = input.companyDomain
@@ -545,7 +543,7 @@ export async function scoreStagedPersonIcp(
     model: anthropic("claude-haiku-4-5-20251001"),
     temperature: 0,
     schema: IcpScoreSchema,
-    system: workspace.icpCriteriaPrompt,
+    system: systemPrompt,
     prompt: scoringPrompt,
   });
 
@@ -568,6 +566,34 @@ export interface ScorePersonIcpOptions {
    * data quality improves. Defaults to true (existing behaviour).
    */
   persistLowConfidence?: boolean;
+  /** Optional campaign profile source for score-context resolution. */
+  campaignId?: string;
+  /** Optional explicit profile override for score-context resolution. */
+  icpProfileId?: string;
+  /** Pre-resolved context for callers that need one consistent version. */
+  icpContext?: IcpContext;
+}
+
+async function resolveScoringIcpContext(
+  workspaceSlug: string,
+  options?: Pick<ScorePersonIcpOptions, "campaignId" | "icpProfileId" | "icpContext">,
+): Promise<IcpContext> {
+  if (options?.icpContext) return options.icpContext;
+  return resolveIcpContextForWorkspaceSlug({
+    workspaceSlug,
+    campaignId: options?.campaignId,
+    icpProfileId: options?.icpProfileId,
+  });
+}
+
+function getScoringSystemPrompt(context: IcpContext, workspaceSlug: string): string {
+  const prompt = context.snapshot?.description?.trim();
+  if (!prompt) {
+    throw new Error(
+      `No ICP criteria prompt configured for workspace '${workspaceSlug}'.`,
+    );
+  }
+  return prompt;
 }
 
 /**
@@ -598,17 +624,9 @@ export async function scorePersonIcp(
     },
   });
 
-  // 2. Fetch the workspace (for icpCriteriaPrompt)
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: workspaceSlug },
-  });
-
-  // 3. Validate ICP criteria prompt is configured
-  if (!workspace.icpCriteriaPrompt?.trim()) {
-    throw new Error(
-      `No ICP criteria prompt configured for workspace '${workspaceSlug}'. Use set_workspace_prompt to configure it first.`
-    );
-  }
+  // 2. Resolve the ICP context (profile version when available, legacy otherwise).
+  const icpContext = await resolveScoringIcpContext(workspaceSlug, options);
+  const systemPrompt = getScoringSystemPrompt(icpContext, workspaceSlug);
 
   // 4. Get company homepage markdown (from cache or Firecrawl)
   const websiteMarkdown = person.companyDomain
@@ -674,7 +692,7 @@ export async function scorePersonIcp(
       model: anthropic("claude-haiku-4-5-20251001"),
       temperature: 0,
       schema: IcpScoreSchema,
-      system: workspace.icpCriteriaPrompt,
+      system: systemPrompt,
       prompt: scoringPrompt,
     });
     result = {
@@ -707,6 +725,7 @@ export async function scorePersonIcp(
         icpReasoning: result.reasoning,
         icpConfidence: result.confidence,
         icpScoredAt: new Date(),
+        icpProfileVersionId: icpContext.versionId,
       },
     });
   }
@@ -834,7 +853,13 @@ function parseCliJsonArray(output: string): unknown {
 export async function scorePersonIcpBatch(
   personIds: string[],
   workspaceSlug: string,
-  options?: { batchSize?: number; forceRecrawl?: boolean },
+  options?: {
+    batchSize?: number;
+    forceRecrawl?: boolean;
+    campaignId?: string;
+    icpProfileId?: string;
+    icpContext?: IcpContext;
+  },
 ): Promise<BatchIcpScoreResult> {
   const { execSync } = await import("child_process");
   const { writeFileSync, unlinkSync } = await import("fs");
@@ -853,16 +878,9 @@ export async function scorePersonIcpBatch(
     return { scored, failed, skipped };
   }
 
-  // 1. Fetch workspace (for icpCriteriaPrompt) — same for all people
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: workspaceSlug },
-  });
-
-  if (!workspace.icpCriteriaPrompt?.trim()) {
-    throw new Error(
-      `No ICP criteria prompt configured for workspace '${workspaceSlug}'. Use set_workspace_prompt to configure it first.`,
-    );
-  }
+  // 1. Resolve ICP criteria/profile version — same for all people.
+  const icpContext = await resolveScoringIcpContext(workspaceSlug, options);
+  const systemPrompt = getScoringSystemPrompt(icpContext, workspaceSlug);
 
   // 2. Fetch all person records with workspace memberships
   const people = await prisma.person.findMany({
@@ -980,7 +998,7 @@ export async function scorePersonIcpBatch(
 
     const fullPrompt = [
       "You are an ICP (Ideal Customer Profile) scoring expert. Score each person below against these criteria:\n",
-      workspace.icpCriteriaPrompt,
+      systemPrompt,
       "\n\nFor each person, return a JSON array where each element has:",
       "- personId: the ID shown for that person",
       "- score: 0-100 ICP fit score",
@@ -1052,6 +1070,7 @@ export async function scorePersonIcpBatch(
               icpReasoning: result.reasoning,
               icpConfidence: result.confidence,
               icpScoredAt: new Date(),
+              icpProfileVersionId: icpContext.versionId,
             },
           });
           scored++;
@@ -1105,7 +1124,12 @@ export interface StagedPersonBatchInput extends StagedPersonInput {
 export async function scoreStagedPersonIcpBatch(
   inputs: StagedPersonBatchInput[],
   workspaceSlug: string,
-  options?: { batchSize?: number },
+  options?: {
+    batchSize?: number;
+    campaignId?: string;
+    icpProfileId?: string;
+    icpContext?: IcpContext;
+  },
 ): Promise<Map<string, StagedIcpEvaluationResult>> {
   const batchSize = options?.batchSize ?? 15;
   const results = new Map<string, StagedIcpEvaluationResult>();
@@ -1114,16 +1138,9 @@ export async function scoreStagedPersonIcpBatch(
     return results;
   }
 
-  // 1. Fetch workspace (for icpCriteriaPrompt) — same for all people
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: workspaceSlug },
-  });
-
-  if (!workspace.icpCriteriaPrompt?.trim()) {
-    throw new Error(
-      `No ICP criteria prompt configured for workspace '${workspaceSlug}'.`,
-    );
-  }
+  // 1. Resolve ICP criteria/profile version — same for all people.
+  const icpContext = await resolveScoringIcpContext(workspaceSlug, options);
+  const systemPrompt = getScoringSystemPrompt(icpContext, workspaceSlug);
 
   // 2. Collect unique domains and prefetch crawl markdown + company records
   const uniqueDomains = [
@@ -1199,7 +1216,7 @@ export async function scoreStagedPersonIcpBatch(
 
     const fullPrompt = [
       "You are an ICP (Ideal Customer Profile) scoring expert. Score each person below against these criteria:\n",
-      workspace.icpCriteriaPrompt,
+      systemPrompt,
       "\n\nFor each person, return a JSON array where each element has:",
       "- personId: the ID shown for that person",
       "- score: 0-100 ICP fit score",
@@ -1218,7 +1235,7 @@ export async function scoreStagedPersonIcpBatch(
         model: anthropic("claude-haiku-4-5-20251001"),
         temperature: 0,
         schema: BatchIcpScoreSchema,
-        system: workspace.icpCriteriaPrompt,
+        system: systemPrompt,
         prompt: fullPrompt,
       });
 

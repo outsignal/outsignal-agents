@@ -15,6 +15,7 @@
 
 import { prisma } from "@/lib/db";
 import { scorePersonIcp } from "@/lib/icp/scorer";
+import { resolveIcpContextForWorkspaceSlug } from "@/lib/icp/resolver";
 import { getListExportReadiness } from "@/lib/export/verification-gate";
 import { getClientForWorkspace } from "@/lib/workspaces";
 import { filterPeopleForChannels } from "@/lib/channels/validation";
@@ -692,20 +693,11 @@ export async function scoreList(
   workspaceSlug: string,
   confirm: boolean = true,
 ): Promise<ScoreListResult> {
-  // Check icpCriteriaPrompt is configured — fail fast before scoring (Pitfall 1)
-  const workspace = await prisma.workspace.findUnique({
-    where: { slug: workspaceSlug },
-    select: { icpCriteriaPrompt: true },
-  });
-
-  if (!workspace) {
-    throw new Error(`Workspace not found: '${workspaceSlug}'`);
-  }
-
-  if (!workspace.icpCriteriaPrompt?.trim()) {
+  const icpContext = await resolveIcpContextForWorkspaceSlug({ workspaceSlug });
+  if (!icpContext.snapshot?.description?.trim()) {
     throw new Error(
       `No ICP criteria prompt configured for workspace '${workspaceSlug}'. ` +
-        `Use the set_workspace_prompt tool to configure it first.`,
+        `Attach an ICP profile or configure the legacy workspace prompt first.`,
     );
   }
 
@@ -757,7 +749,9 @@ export async function scoreList(
   for (let i = 0; i < unscored.length; i += CHUNK_SIZE) {
     const chunk = unscored.slice(i, i + CHUNK_SIZE);
     const chunkResults = await Promise.allSettled(
-      chunk.map((personId) => scorePersonIcp(personId, workspaceSlug, false)),
+      chunk.map((personId) =>
+        scorePersonIcp(personId, workspaceSlug, false, { icpContext }),
+      ),
     );
 
     for (let j = 0; j < chunkResults.length; j++) {

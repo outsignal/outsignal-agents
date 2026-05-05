@@ -180,23 +180,27 @@ export async function POST(req: NextRequest) {
     payload && typeof payload === "object" ? Object.keys(payload as object) : typeof payload,
   );
 
-  // Look up the discovery run to find the workspace
-  const existingRecord = await prisma.discoveredPerson.findFirst({
-    where: { discoveryRunId: runId },
-    select: { workspaceSlug: true },
+  // Look up the discovery run to find the workspace/profile context.
+  const discoveryRun = await prisma.discoveryRun.findUnique({
+    where: { id: runId },
+    select: {
+      icpProfileVersionId: true,
+      workspace: { select: { slug: true } },
+    },
   });
 
-  const workspaceSlug = existingRecord?.workspaceSlug;
+  const workspaceSlug = discoveryRun?.workspace.slug;
   if (!workspaceSlug) {
-    // No existing records for this runId — might be a brand new export.
+    // No run anchor for this runId — might be a brand new export.
     // Store the raw payload for reprocessing. Log and return 200 to avoid retries.
     console.warn(
-      "[aiark-export-webhook] No existing DiscoveredPerson records found for runId:",
+      "[aiark-export-webhook] No DiscoveryRun found for runId:",
       runId,
       "— cannot determine workspace. Raw payload logged above.",
     );
     return NextResponse.json({ ok: true, warning: "runId not found — payload logged" });
   }
+  const icpProfileVersionId = discoveryRun.icpProfileVersionId;
 
   const people = extractPeople(payload);
   console.log(`[aiark-export-webhook] Extracted ${people.length} people from payload for workspace ${workspaceSlug}`);
@@ -229,6 +233,7 @@ export async function POST(req: NextRequest) {
       workspaceSlug: string;
       discoveryRunId: string;
       rawResponse: string | null;
+      icpProfileVersionId: string | null;
     }> = [];
 
     for (const rawPerson of batch) {
@@ -250,6 +255,7 @@ export async function POST(req: NextRequest) {
         discoverySource: "aiark-export",
         workspaceSlug,
         discoveryRunId: runId,
+        icpProfileVersionId,
         rawResponse: JSON.stringify(rawResponseObj),
       });
     }
@@ -260,6 +266,10 @@ export async function POST(req: NextRequest) {
         skipDuplicates: false,
       });
       staged += result.count;
+      await prisma.discoveryRun.update({
+        where: { id: runId },
+        data: { discoveredCount: { increment: result.count } },
+      });
     }
   }
 

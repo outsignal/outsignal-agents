@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { execSync } from "child_process";
+import { randomUUID } from "crypto";
 import * as operations from "@/lib/leads/operations";
 import { searchKnowledgeBase } from "./shared-tools";
 import { runAgent } from "./runner";
@@ -32,6 +33,69 @@ import { expandJobTitles } from "@/lib/discovery/title-expansion";
 import { applyDiscoveryFilters, getUncoveredDomains } from "@/lib/discovery/filters";
 import { stripWwwAll } from "@/lib/discovery/rate-limit";
 import { prisma } from "@/lib/db";
+import {
+  resolveIcpContextForWorkspaceSlug,
+  type IcpContext,
+  type IcpProfileSnapshot,
+} from "@/lib/icp/resolver";
+import { narrowIcpProfileFilters } from "@/lib/icp/filter-narrowing";
+
+type PreparedDiscoveryContext = {
+  runId: string;
+  workspaceId: string;
+  icpContext: IcpContext;
+  discoveryRunContext: {
+    workspaceId: string;
+    icpProfileId: string | null;
+    icpProfileVersionId: string | null;
+    icpProfileSnapshot: IcpProfileSnapshot | null;
+    triggeredBy: string;
+    triggeredVia: string;
+  };
+};
+
+async function prepareDiscoveryContext(
+  args: {
+    workspaceSlug: string;
+    icpProfileId?: string;
+    triggeredVia: string;
+  },
+): Promise<PreparedDiscoveryContext> {
+  const icpContext = await resolveIcpContextForWorkspaceSlug({
+    workspaceSlug: args.workspaceSlug,
+    icpProfileId: args.icpProfileId,
+  });
+  const runId = randomUUID();
+  const discoveryRunContext = {
+    workspaceId: icpContext.workspaceId,
+    icpProfileId: icpContext.profileId,
+    icpProfileVersionId: icpContext.versionId,
+    icpProfileSnapshot: icpContext.snapshot,
+    triggeredBy: "agent",
+    triggeredVia: args.triggeredVia,
+  };
+
+  await prisma.discoveryRun.create({
+    data: {
+      id: runId,
+      workspaceId: icpContext.workspaceId,
+      icpProfileId: icpContext.profileId,
+      icpProfileVersionId: icpContext.versionId,
+      icpProfileSnapshot: icpContext.snapshot
+        ? JSON.parse(JSON.stringify(icpContext.snapshot))
+        : undefined,
+      triggeredBy: "agent",
+      triggeredVia: args.triggeredVia,
+    },
+  });
+
+  return {
+    runId,
+    workspaceId: icpContext.workspaceId,
+    icpContext,
+    discoveryRunContext,
+  };
+}
 
 // --- Leads Agent Tools ---
 
@@ -546,6 +610,10 @@ export const leadsTools = {
       "Apollo discovery is currently disabled. Do not use Apollo for discovery runs until the workspace has a working subscription again.",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
+      icpProfileId: z
+        .string()
+        .optional()
+        .describe("Optional ICP profile to scope discovery filters and scoring"),
       jobTitles: z
         .array(z.string())
         .optional()
@@ -606,6 +674,10 @@ export const leadsTools = {
       "Search Prospeo for people matching ICP filters. Supports 20+ filters including funding, revenue, technologies, departments, NAICS/SIC codes, and years of experience. COSTS 1 CREDIT PER REQUEST. Returns identity data only (no emails).",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
+      icpProfileId: z
+        .string()
+        .optional()
+        .describe("Optional ICP profile to scope discovery filters and scoring"),
       jobTitles: z
         .array(z.string())
         .optional()
@@ -673,9 +745,24 @@ export const leadsTools = {
         .describe("Pagination token from previous search"),
     }),
     execute: async (params) => {
-      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
-      if (params.jobTitles && expandedTitles) {
-        console.log(`[leads] Title expansion (prospeo): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      const discovery = await prepareDiscoveryContext({
+        workspaceSlug: params.workspaceSlug,
+        icpProfileId: params.icpProfileId,
+        triggeredVia: "search-prospeo",
+      });
+      const scopedFilters = narrowIcpProfileFilters(
+        {
+          jobTitles: params.jobTitles,
+          industries: params.industries,
+          locations: params.locations,
+          companySizes: params.companySizes,
+        },
+        discovery.icpContext.snapshot,
+      );
+
+      const expandedTitles = scopedFilters.jobTitles ? expandJobTitles(scopedFilters.jobTitles) : undefined;
+      if (scopedFilters.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (prospeo): ${scopedFilters.jobTitles.length} → ${expandedTitles.length} titles`);
       }
 
       // Pre-search domain coverage check
@@ -692,9 +779,9 @@ export const leadsTools = {
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
-        industries: params.industries,
-        locations: params.locations,
-        companySizes: params.companySizes,
+        industries: scopedFilters.industries,
+        locations: scopedFilters.locations,
+        companySizes: scopedFilters.companySizes,
         companyDomains,
         keywords: params.keywords,
         companyKeywords: params.companyKeywords,
@@ -731,6 +818,9 @@ export const leadsTools = {
         discoverySource: "prospeo",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
+        discoveryRunId: discovery.runId,
+        discoveryRunContext: discovery.discoveryRunContext,
+        icpProfileVersionId: discovery.icpContext.versionId,
         // Prefer per-person raw blobs when the adapter can provide them; fall
         // back to the page blob for older adapters.
         rawResponses: passed.map((person) => rawByPerson.get(person) ?? result.rawResponse),
@@ -762,6 +852,10 @@ export const leadsTools = {
       "AI Ark B2B people search. 15+ filters including title, seniority, industry, location, company size, revenue, funding, technologies, company type, NAICS codes, and company keywords. Different database to Prospeo — use BOTH for maximum coverage. COSTS CREDITS (~$0.003/call). Returns identity data only (no emails).",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
+      icpProfileId: z
+        .string()
+        .optional()
+        .describe("Optional ICP profile to scope discovery filters and scoring"),
       jobTitles: z
         .array(z.string())
         .optional()
@@ -800,9 +894,24 @@ export const leadsTools = {
         .describe("Pagination token"),
     }),
     execute: async (params) => {
-      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
-      if (params.jobTitles && expandedTitles) {
-        console.log(`[leads] Title expansion (aiark): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      const discovery = await prepareDiscoveryContext({
+        workspaceSlug: params.workspaceSlug,
+        icpProfileId: params.icpProfileId,
+        triggeredVia: "search-aiark",
+      });
+      const scopedFilters = narrowIcpProfileFilters(
+        {
+          jobTitles: params.jobTitles,
+          industries: params.industries,
+          locations: params.locations,
+          companySizes: params.companySizes,
+        },
+        discovery.icpContext.snapshot,
+      );
+
+      const expandedTitles = scopedFilters.jobTitles ? expandJobTitles(scopedFilters.jobTitles) : undefined;
+      if (scopedFilters.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (aiark): ${scopedFilters.jobTitles.length} → ${expandedTitles.length} titles`);
       }
 
       // Pre-search domain coverage check
@@ -819,9 +928,9 @@ export const leadsTools = {
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
-        industries: params.industries,
-        locations: params.locations,
-        companySizes: params.companySizes,
+        industries: scopedFilters.industries,
+        locations: scopedFilters.locations,
+        companySizes: scopedFilters.companySizes,
         keywords: params.keywords,
         companyDomains,
         companyKeywords: params.companyKeywords,
@@ -852,6 +961,9 @@ export const leadsTools = {
         discoverySource: "aiark",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
+        discoveryRunId: discovery.runId,
+        discoveryRunContext: discovery.discoveryRunContext,
+        icpProfileVersionId: discovery.icpContext.versionId,
         // rawResponses: parallel array of the same raw response object so the
         // full AI Ark blob (and embedded sourceId) survives staging (BL-027).
         rawResponses: passed.map(() => result.rawResponse),
@@ -883,6 +995,10 @@ export const leadsTools = {
       "Search Apify Leads Finder for people matching ICP filters. 300M+ B2B database, returns VERIFIED EMAILS + phones + LinkedIn in one step (skips enrichment). Supports: job titles, seniority, location, company size, industry, keywords, domains, revenue, funding, departments. ~$2/1K leads. No pagination — returns all results in one batch. Requires Apify paid plan.",
     inputSchema: z.object({
       workspaceSlug: z.string().describe("Workspace running the discovery"),
+      icpProfileId: z
+        .string()
+        .optional()
+        .describe("Optional ICP profile to scope discovery filters and scoring"),
       jobTitles: z
         .array(z.string())
         .optional()
@@ -937,9 +1053,24 @@ export const leadsTools = {
         .describe("Number of leads to fetch (no pagination — all returned in one batch)"),
     }),
     execute: async (params) => {
-      const expandedTitles = params.jobTitles ? expandJobTitles(params.jobTitles) : undefined;
-      if (params.jobTitles && expandedTitles) {
-        console.log(`[leads] Title expansion (leads-finder): ${params.jobTitles.length} → ${expandedTitles.length} titles`);
+      const discovery = await prepareDiscoveryContext({
+        workspaceSlug: params.workspaceSlug,
+        icpProfileId: params.icpProfileId,
+        triggeredVia: "search-leads-finder",
+      });
+      const scopedFilters = narrowIcpProfileFilters(
+        {
+          jobTitles: params.jobTitles,
+          industries: params.industries,
+          locations: params.locations,
+          companySizes: params.companySizes,
+        },
+        discovery.icpContext.snapshot,
+      );
+
+      const expandedTitles = scopedFilters.jobTitles ? expandJobTitles(scopedFilters.jobTitles) : undefined;
+      if (scopedFilters.jobTitles && expandedTitles) {
+        console.log(`[leads] Title expansion (leads-finder): ${scopedFilters.jobTitles.length} → ${expandedTitles.length} titles`);
       }
 
       // Pre-search domain coverage check
@@ -956,9 +1087,9 @@ export const leadsTools = {
       const filters = {
         jobTitles: expandedTitles,
         seniority: params.seniority,
-        industries: params.industries,
-        locations: params.locations,
-        companySizes: params.companySizes,
+        industries: scopedFilters.industries,
+        locations: scopedFilters.locations,
+        companySizes: scopedFilters.companySizes,
         companyDomains,
         companyKeywords: params.companyKeywords,
         departments: params.departments,
@@ -980,6 +1111,9 @@ export const leadsTools = {
         discoverySource: "apify-leads-finder",
         workspaceSlug: params.workspaceSlug,
         searchQuery: JSON.stringify(filters),
+        discoveryRunId: discovery.runId,
+        discoveryRunContext: discovery.discoveryRunContext,
+        icpProfileVersionId: discovery.icpContext.versionId,
         // rawResponses: parallel array of the same raw response object so the
         // full Apify blob survives staging for debugging/audit (BL-027).
         rawResponses: passed.map(() => result.rawResponse),

@@ -25,6 +25,7 @@ import { apolloAdapter } from "@/lib/discovery/adapters/apollo";
 import { stageDiscoveredPeople } from "@/lib/discovery/staging";
 import { deduplicateAndPromote } from "@/lib/discovery/promotion";
 import { scorePersonIcp } from "@/lib/icp/scorer";
+import { resolveIcpContextForWorkspaceSlug } from "@/lib/icp/resolver";
 import { addPeopleToList } from "@/lib/leads/operations";
 import { EmailBisonClient } from "@/lib/emailbison/client";
 import { EMAILBISON_STANDARD_SEQUENCE_CUSTOM_VARIABLES } from "@/lib/emailbison/custom-variable-names";
@@ -344,6 +345,10 @@ async function processSingleCampaign(
   }
 
   // 5. Stage discovered people
+  const icpContext = await resolveIcpContextForWorkspaceSlug({
+    workspaceSlug,
+    campaignId: campaign.id,
+  });
   const stagingResult = await stageDiscoveredPeople({
     people: discoveryResult.people,
     discoverySource: "apollo",
@@ -355,6 +360,15 @@ async function processSingleCampaign(
     }),
     // rawResponses: parallel array of the same raw response object
     rawResponses: discoveryResult.people.map(() => discoveryResult.rawResponse),
+    discoveryRunContext: {
+      workspaceId: icpContext.workspaceId,
+      icpProfileId: icpContext.profileId,
+      icpProfileVersionId: icpContext.versionId,
+      icpProfileSnapshot: icpContext.snapshot,
+      triggeredBy: "signal-campaign",
+      triggeredVia: "signal-campaign",
+    },
+    icpProfileVersionId: icpContext.versionId,
   });
 
   // 6. Dedup and promote to Person table (also enqueues enrichment)
@@ -379,7 +393,10 @@ async function processSingleCampaign(
     if (passingLeads.length >= remainingCapacity) break; // Respect daily cap
 
     try {
-      const scoreResult = await scorePersonIcp(personId, workspaceSlug, false);
+      const scoreResult = await scorePersonIcp(personId, workspaceSlug, false, {
+        campaignId: campaign.id,
+        icpContext,
+      });
       if (scoreResult.score >= campaign.icpScoreThreshold) {
         passingLeads.push({ personId, icpScore: scoreResult.score });
       } else {
