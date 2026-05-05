@@ -44,6 +44,7 @@ import {
   BatchIcpScoreSchema,
   IcpScoreSchema,
   normalizeBatchIcpScoreEntry,
+  normalizeScoreValue,
   scoreStagedPersonIcpBatch,
 } from "../scorer";
 
@@ -143,6 +144,37 @@ describe("scoreStagedPersonIcpBatch", () => {
     });
 
     expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
+  });
+
+  it("rejects NaN batch scores after parsing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(
+      normalizeBatchIcpScoreEntry({
+        personId: "dp_nan",
+        score: Number.NaN,
+        reasoning: "Model malfunction",
+        confidence: "low",
+      }),
+    ).toBeNull();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("returned non-finite score for dp_nan"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("normalizes raw score values defensively", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(normalizeScoreValue(72, "test source", "person_1")).toBe(72);
+    expect(normalizeScoreValue(142, "test source", "person_2")).toBe(100);
+    expect(normalizeScoreValue(-5, "test source", "person_3")).toBe(0);
+    expect(normalizeScoreValue(Number.NaN, "test source", "person_4")).toBeNull();
+    expect(normalizeScoreValue(Number.POSITIVE_INFINITY, "test source", "person_5")).toBeNull();
+
+    expect(warnSpy).toHaveBeenCalledTimes(4);
     warnSpy.mockRestore();
   });
 
