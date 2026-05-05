@@ -137,6 +137,7 @@ model Workspace {
 
   senders               Sender[]
   campaigns             Campaign[]
+  discoveryRuns         DiscoveryRun[]
   exclusionEntries      ExclusionEntry[]
   exclusionEmails       ExclusionEmail[]
   supportConversations  SupportConversation[]
@@ -159,6 +160,7 @@ model IcpProfile {
   defaultForWorkspace Workspace?          @relation("WorkspaceDefaultIcpProfile")
   versions            IcpProfileVersion[]
   campaigns           Campaign[]          @relation("CampaignIcpProfiles")
+  discoveryRuns       DiscoveryRun[]      @relation("DiscoveryRunIcpProfile")
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, active])
@@ -178,7 +180,10 @@ model IcpProfileVersion {
   changeReason  String?
   createdAt     DateTime @default(now())
 
-  profile IcpProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile          IcpProfile          @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  discoveryRuns    DiscoveryRun[]      @relation("DiscoveryRunIcpProfileVersion")
+  discoveredPeople DiscoveredPerson[]  @relation("DiscoveredPersonIcpProfileVersion")
+  leadWorkspaces   PersonWorkspace[]   @relation("LeadWorkspaceIcpProfileVersion")
 
   @@unique([profileId, version])
   @@index([profileId])
@@ -252,13 +257,16 @@ model PersonWorkspace {
   icpReasoning   String?    // 1-3 sentence explanation of score
   icpConfidence  String?    // "high" | "medium" | "low" — data completeness indicator
   icpScoredAt    DateTime?  // When ICP was last scored
+  icpProfileVersionId String?
   createdAt DateTime @default(now())
 
-  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  person            Person             @relation(fields: [personId], references: [id], onDelete: Cascade)
+  icpProfileVersion IcpProfileVersion? @relation("LeadWorkspaceIcpProfileVersion", fields: [icpProfileVersionId], references: [id], onDelete: SetNull)
 
   @@unique([personId, workspace], map: "LeadWorkspace_leadId_workspace_key")
   @@index([workspace])
   @@index([status])
+  @@index([icpProfileVersionId])
   // CRITICAL: raw SQL must use "Lead" / "LeadWorkspace" table names, NOT "Person" / "PersonWorkspace" model names.
   // Bug history: 2026-04-13 LinkedIn planner SQL used "Person" causing 24h outage of LinkedIn deploys.
   @@map("LeadWorkspace")
@@ -341,6 +349,7 @@ model DiscoveredPerson {
   icpScore        Int?      // 0-100 ICP fit score, set before promotion
   icpReasoning    String?   // 1-3 sentence explanation of score
   icpConfidence   String?   // "high" | "medium" | "low"
+  icpProfileVersionId String?
 
   // Batch tracking
   discoveryRunId  String?  // Groups records from the same discovery batch
@@ -349,13 +358,41 @@ model DiscoveredPerson {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  discoveryRun      DiscoveryRun?      @relation(fields: [discoveryRunId], references: [id], onDelete: SetNull)
+  icpProfileVersion IcpProfileVersion? @relation("DiscoveredPersonIcpProfileVersion", fields: [icpProfileVersionId], references: [id], onDelete: SetNull)
+
   @@index([workspaceSlug, status])
   @@index([email])
   @@index([linkedinUrl])
   @@index([discoverySource, sourceId])
   @@index([discoveryRunId])
+  @@index([icpProfileVersionId])
   @@index([personId])
   @@index([workspaceSlug, promotedAt])
+}
+
+model DiscoveryRun {
+  id                  String   @id
+  workspaceId         String
+  icpProfileId        String?
+  icpProfileVersionId String?
+  icpProfileSnapshot  Json?
+  triggeredBy         String?
+  triggeredVia        String?
+  createdAt           DateTime @default(now())
+  completedAt         DateTime?
+  discoveredCount     Int      @default(0)
+  promotedCount       Int      @default(0)
+  rejectedCount       Int      @default(0)
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  icpProfile        IcpProfile?        @relation("DiscoveryRunIcpProfile", fields: [icpProfileId], references: [id], onDelete: SetNull)
+  icpProfileVersion IcpProfileVersion? @relation("DiscoveryRunIcpProfileVersion", fields: [icpProfileVersionId], references: [id], onDelete: SetNull)
+  discoveredPeople  DiscoveredPerson[]
+
+  @@index([workspaceId, createdAt])
+  @@index([icpProfileId])
+  @@index([icpProfileVersionId])
 }
 
 model WebhookEvent {

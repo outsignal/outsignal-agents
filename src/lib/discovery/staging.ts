@@ -13,6 +13,15 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import type { DiscoveredPersonResult } from "./types";
 
+export interface DiscoveryRunContextInput {
+  workspaceId?: string;
+  icpProfileId?: string | null;
+  icpProfileVersionId?: string | null;
+  icpProfileSnapshot?: unknown;
+  triggeredBy?: string | null;
+  triggeredVia?: string | null;
+}
+
 export interface StagingInput {
   /** Array of discovered people from a discovery adapter */
   people: DiscoveredPersonResult[];
@@ -28,6 +37,12 @@ export interface StagingInput {
 
   /** Groups records from the same batch; auto-generated UUID if omitted */
   discoveryRunId?: string;
+
+  /** Run-level ICP context frozen at discovery start for reproducibility. */
+  discoveryRunContext?: DiscoveryRunContextInput;
+
+  /** Profile version used when scoring/staging this row. */
+  icpProfileVersionId?: string | null;
 
   /**
    * Per-person raw API response objects (parallel array to people).
@@ -74,6 +89,44 @@ function recordRichnessScore(person: DiscoveredPersonResult): number {
   }
 
   return score;
+}
+
+async function ensureDiscoveryRun(
+  runId: string,
+  workspaceSlug: string,
+  context?: DiscoveryRunContextInput,
+): Promise<void> {
+  const workspaceId =
+    context?.workspaceId ??
+    (await prisma.workspace.findUniqueOrThrow({
+      where: { slug: workspaceSlug },
+      select: { id: true },
+    })).id;
+
+  await prisma.discoveryRun.upsert({
+    where: { id: runId },
+    create: {
+      id: runId,
+      workspaceId,
+      icpProfileId: context?.icpProfileId ?? null,
+      icpProfileVersionId: context?.icpProfileVersionId ?? null,
+      icpProfileSnapshot:
+        context?.icpProfileSnapshot == null
+          ? undefined
+          : JSON.parse(JSON.stringify(context.icpProfileSnapshot)),
+      triggeredBy: context?.triggeredBy ?? null,
+      triggeredVia: context?.triggeredVia ?? null,
+    },
+    update: {},
+  });
+}
+
+async function incrementDiscoveryRunCount(runId: string, stagedCount: number): Promise<void> {
+  if (stagedCount <= 0) return;
+  await prisma.discoveryRun.update({
+    where: { id: runId },
+    data: { discoveredCount: { increment: stagedCount } },
+  });
 }
 
 /**
@@ -217,6 +270,8 @@ export async function stageDiscoveredPeople(
 ): Promise<StagingResult> {
   const runId = input.discoveryRunId ?? randomUUID();
 
+  await ensureDiscoveryRun(runId, input.workspaceSlug, input.discoveryRunContext);
+
   if (input.people.length === 0) {
     return { staged: 0, duplicatesSkipped: 0, runId };
   }
@@ -262,6 +317,7 @@ export async function stageDiscoveredPeople(
         searchQuery: input.searchQuery ?? null,
         workspaceSlug: input.workspaceSlug,
         discoveryRunId: runId,
+        icpProfileVersionId: input.icpProfileVersionId ?? null,
         rawResponse: rawResponseJson,
       };
     })
@@ -281,6 +337,8 @@ export async function stageDiscoveredPeople(
     data: records,
     skipDuplicates: false,
   });
+
+  await incrementDiscoveryRunCount(runId, result.count);
 
   return { staged: result.count, duplicatesSkipped: dupeIndices.size, runId };
 }

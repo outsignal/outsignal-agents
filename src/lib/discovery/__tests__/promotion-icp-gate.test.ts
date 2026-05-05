@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // --- Prisma mock ---
 const discoveredPersonFindManyMock = vi.fn();
 const discoveredPersonUpdateMock = vi.fn();
+const discoveredPersonCountMock = vi.fn();
 const personFindManyMock = vi.fn();
 const personFindUniqueOrThrowMock = vi.fn();
 const personUpdateMock = vi.fn();
@@ -19,12 +20,15 @@ const companyCreateMock = vi.fn();
 const companyUpdateMock = vi.fn();
 const exclusionEntryFindManyMock = vi.fn();
 const exclusionEmailFindManyMock = vi.fn();
+const discoveryRunFindManyMock = vi.fn();
+const discoveryRunUpdateManyMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     discoveredPerson: {
       findMany: (...args: unknown[]) => discoveredPersonFindManyMock(...args),
       update: (...args: unknown[]) => discoveredPersonUpdateMock(...args),
+      count: (...args: unknown[]) => discoveredPersonCountMock(...args),
     },
     person: {
       findMany: (...args: unknown[]) => personFindManyMock(...args),
@@ -55,6 +59,10 @@ vi.mock("@/lib/db", () => ({
     },
     exclusionEmail: {
       findMany: (...args: unknown[]) => exclusionEmailFindManyMock(...args),
+    },
+    discoveryRun: {
+      findMany: (...args: unknown[]) => discoveryRunFindManyMock(...args),
+      updateMany: (...args: unknown[]) => discoveryRunUpdateManyMock(...args),
     },
   },
 }));
@@ -94,6 +102,8 @@ beforeEach(() => {
   personFindFirstMock.mockResolvedValue(null);
   personWorkspaceUpsertMock.mockResolvedValue({});
   discoveredPersonUpdateMock.mockResolvedValue({});
+  discoveredPersonCountMock.mockResolvedValue(0);
+  discoveryRunUpdateManyMock.mockResolvedValue({ count: 1 });
   enqueueJobMock.mockResolvedValue("job-123");
   prefetchDomainsMock.mockResolvedValue({ cached: 0, crawled: 0, failed: 0 });
   companyFindManyMock.mockResolvedValue([]);
@@ -103,6 +113,7 @@ beforeEach(() => {
   companyUpdateMock.mockResolvedValue({});
   exclusionEntryFindManyMock.mockResolvedValue([]);
   exclusionEmailFindManyMock.mockResolvedValue([]);
+  discoveryRunFindManyMock.mockResolvedValue([]);
   campaignFindUniqueMock.mockResolvedValue(null);
 });
 
@@ -168,6 +179,85 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
       (call: unknown[]) => (call[0] as { data: { icpScore?: number } }).data.icpScore === 75,
     );
     expect(scoreUpdate).toBeDefined();
+  });
+
+  it("scores against the DiscoveryRun ICP snapshot when a run was scoped to an explicit profile", async () => {
+    workspaceFindUniqueOrThrowMock.mockResolvedValue({
+      slug: "test",
+      icpCriteriaPrompt: "Legacy recruitment ICP",
+      icpScoreThreshold: 40,
+    });
+    discoveryRunFindManyMock.mockResolvedValue([
+      {
+        id: "run-transport",
+        icpProfileId: "profile-transport",
+        icpProfileVersionId: "version-transport",
+        icpProfileSnapshot: {
+          profileId: "profile-transport",
+          profileName: "1210 Transport",
+          profileSlug: "transport",
+          versionId: "version-transport",
+          version: 2,
+          description: "Direct-employer transport ICP",
+          targetTitles: ["Transport Manager"],
+          locations: ["Wales"],
+          industries: ["Transport"],
+          companySizes: null,
+          scoringRubric: null,
+        },
+      },
+    ]);
+    discoveredPersonFindManyMock.mockResolvedValue([
+      makeStagedRecord({ id: "dp-transport", discoveryRunId: "run-transport" }),
+    ]);
+    scoreStagedPersonIcpBatchMock.mockResolvedValue(
+      new Map([
+        [
+          "dp-transport",
+          {
+            status: "scored",
+            score: 82,
+            reasoning: "Transport fit",
+            confidence: "high",
+            scoringMethod: "firecrawl+llm",
+          },
+        ],
+      ]),
+    );
+
+    await deduplicateAndPromote("test", ["run-transport"]);
+
+    expect(scoreStagedPersonIcpBatchMock).toHaveBeenCalledWith(
+      expect.any(Array),
+      "test",
+      expect.objectContaining({
+        icpContext: expect.objectContaining({
+          versionId: "version-transport",
+          snapshot: expect.objectContaining({
+            description: "Direct-employer transport ICP",
+          }),
+        }),
+      }),
+    );
+    expect(discoveredPersonUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "dp-transport" },
+        data: expect.objectContaining({
+          icpScore: 82,
+          icpProfileVersionId: "version-transport",
+        }),
+      }),
+    );
+    expect(personWorkspaceUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          icpProfileVersionId: "version-transport",
+        }),
+        update: expect.objectContaining({
+          icpProfileVersionId: "version-transport",
+        }),
+      }),
+    );
   });
 
   it("rejects when score < threshold", async () => {
@@ -341,7 +431,7 @@ describe("deduplicateAndPromote — ICP scoring gate (BL-038)", () => {
       icpCriteriaPrompt: null,
       icpScoreThreshold: null,
     });
-    campaignFindUniqueMock.mockResolvedValue({ channels: "[\"linkedin\"]" });
+    campaignFindUniqueMock.mockResolvedValue({ channels: "[\"linkedin\"]", workspaceSlug: "test" });
     discoveredPersonFindManyMock.mockResolvedValue([makeStagedRecord({ id: "dp-linkedin" })]);
 
     const result = await deduplicateAndPromote("test", ["run-1"], {

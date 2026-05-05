@@ -26,6 +26,12 @@ vi.mock("@/lib/icp/scorer", () => ({
   scorePersonIcp: vi.fn(),
 }));
 
+const resolveIcpContextForWorkspaceSlugMock = vi.fn();
+vi.mock("@/lib/icp/resolver", () => ({
+  resolveIcpContextForWorkspaceSlug: (...args: unknown[]) =>
+    resolveIcpContextForWorkspaceSlugMock(...args),
+}));
+
 vi.mock("@/lib/leads/operations", () => ({
   addPeopleToList: vi.fn(),
 }));
@@ -116,6 +122,21 @@ const baseCampaign = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resolveIcpContextForWorkspaceSlugMock.mockResolvedValue({
+    workspaceId: "ws-lime",
+    source: "legacy",
+    profileId: null,
+    versionId: null,
+    snapshot: {
+      description: "Legacy ICP",
+      targetTitles: null,
+      locations: null,
+      industries: null,
+      companySizes: null,
+      scoringRubric: null,
+    },
+    warnings: [],
+  });
   campaignFindManyMock.mockResolvedValue([baseCampaign]);
   signalCampaignLeadCountMock.mockResolvedValue(0);
   signalEventFindManyMock.mockResolvedValue([

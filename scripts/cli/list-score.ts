@@ -16,6 +16,7 @@ config({ path: ".env.local" });
 import { runWithHarness } from "./_cli-harness";
 import { prisma } from "@/lib/db";
 import { scorePersonIcpBatch } from "@/lib/icp/scorer";
+import { resolveIcpContextForWorkspaceSlug } from "@/lib/icp/resolver";
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
 
 const [, , listId, workspaceSlug] = process.argv;
@@ -24,20 +25,12 @@ runWithHarness("list-score <listId> <workspaceSlug>", async () => {
   if (!listId) throw new Error("Missing required argument: listId");
   if (!workspaceSlug) throw new Error("Missing required argument: workspaceSlug");
 
-  // 1. Validate workspace has ICP criteria
-  const workspace = await prisma.workspace.findUnique({
-    where: { slug: workspaceSlug },
-    select: { icpCriteriaPrompt: true },
-  });
-
-  if (!workspace) {
-    throw new Error(`Workspace not found: '${workspaceSlug}'`);
-  }
-
-  if (!workspace.icpCriteriaPrompt?.trim()) {
+  // 1. Resolve ICP criteria/profile context.
+  const icpContext = await resolveIcpContextForWorkspaceSlug({ workspaceSlug });
+  if (!icpContext.snapshot?.description?.trim()) {
     throw new Error(
       `No ICP criteria prompt configured for workspace '${workspaceSlug}'. ` +
-        `Use the set_workspace_prompt tool to configure it first.`,
+        `Attach an ICP profile or configure the legacy workspace prompt first.`,
     );
   }
 
@@ -103,6 +96,7 @@ runWithHarness("list-score <listId> <workspaceSlug>", async () => {
   );
   const result = await scorePersonIcpBatch(unscored, workspaceSlug, {
     batchSize: 15,
+    icpContext,
   });
 
   console.error(

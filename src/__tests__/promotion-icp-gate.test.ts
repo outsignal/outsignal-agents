@@ -12,6 +12,7 @@ vi.mock("@/lib/db", () => ({
     discoveredPerson: {
       findMany: vi.fn(),
       update: vi.fn(),
+      count: vi.fn(),
     },
     person: {
       findMany: vi.fn(),
@@ -30,6 +31,10 @@ vi.mock("@/lib/db", () => ({
     },
     exclusionEmail: {
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    discoveryRun: {
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -57,11 +62,14 @@ import { scoreStagedPersonIcpBatch } from "@/lib/icp/scorer";
 const mockWorkspace = prisma.workspace.findUniqueOrThrow as ReturnType<typeof vi.fn>;
 const mockFindManyDiscovered = prisma.discoveredPerson.findMany as ReturnType<typeof vi.fn>;
 const mockUpdateDiscovered = prisma.discoveredPerson.update as ReturnType<typeof vi.fn>;
+const mockCountDiscovered = prisma.discoveredPerson.count as ReturnType<typeof vi.fn>;
 const mockFindManyPerson = prisma.person.findMany as ReturnType<typeof vi.fn>;
 const mockUpsertPerson = prisma.person.upsert as ReturnType<typeof vi.fn>;
 const mockUpsertPw = prisma.personWorkspace.upsert as ReturnType<typeof vi.fn>;
 const mockFindManyCompany = prisma.company.findMany as ReturnType<typeof vi.fn>;
 const mockFindUniqueCampaign = prisma.campaign.findUnique as ReturnType<typeof vi.fn>;
+const mockDiscoveryRunFindMany = prisma.discoveryRun.findMany as ReturnType<typeof vi.fn>;
+const mockDiscoveryRunUpdateMany = prisma.discoveryRun.updateMany as ReturnType<typeof vi.fn>;
 const mockScorerBatch = scoreStagedPersonIcpBatch as ReturnType<typeof vi.fn>;
 
 function makeStagedPerson(overrides: Partial<{
@@ -103,6 +111,7 @@ describe("promotion ICP gate", () => {
     vi.clearAllMocks();
     // Default workspace with ICP scoring enabled
     mockWorkspace.mockResolvedValue({
+      id: "ws-1",
       slug: "test-ws",
       icpCriteriaPrompt: "Score B2B SaaS CTOs highly",
       icpScoreThreshold: 40,
@@ -111,6 +120,9 @@ describe("promotion ICP gate", () => {
     mockFindManyPerson.mockResolvedValue([]);
     mockFindManyCompany.mockResolvedValue([]);
     mockFindUniqueCampaign.mockResolvedValue(null);
+    mockCountDiscovered.mockResolvedValue(0);
+    mockDiscoveryRunFindMany.mockResolvedValue([]);
+    mockDiscoveryRunUpdateMany.mockResolvedValue({ count: 1 });
     // Person upsert returns an id
     mockUpsertPerson.mockResolvedValue({ id: "person-1" });
     mockUpsertPw.mockResolvedValue({});
@@ -207,6 +219,7 @@ describe("promotion ICP gate", () => {
   it("does not touch score fields on PersonWorkspace when ICP scoring is disabled", async () => {
     // Workspace without ICP scoring configured
     mockWorkspace.mockResolvedValue({
+      id: "ws-1",
       slug: "test-ws",
       icpCriteriaPrompt: null,
       icpScoreThreshold: null,
@@ -270,11 +283,12 @@ describe("promotion ICP gate", () => {
 
   it("does not enqueue enrichment for linkedin-only campaign promotion", async () => {
     mockWorkspace.mockResolvedValue({
+      id: "ws-1",
       slug: "test-ws",
       icpCriteriaPrompt: null,
       icpScoreThreshold: null,
     });
-    mockFindUniqueCampaign.mockResolvedValue({ channels: "[\"linkedin\"]" });
+    mockFindUniqueCampaign.mockResolvedValue({ channels: "[\"linkedin\"]", workspaceSlug: "test-ws" });
     mockFindManyDiscovered.mockResolvedValue([makeStagedPerson({ id: "dp-linkedin" })]);
 
     const result = await deduplicateAndPromote("test-ws", ["run-1"], {
@@ -287,6 +301,7 @@ describe("promotion ICP gate", () => {
 
   it("copies DiscoveredPerson.sourceId to PersonWorkspace without parsing rawResponse", async () => {
     mockWorkspace.mockResolvedValue({
+      id: "ws-1",
       slug: "test-ws",
       icpCriteriaPrompt: null,
       icpScoreThreshold: null,

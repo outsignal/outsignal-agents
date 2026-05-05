@@ -26,6 +26,11 @@ import type {
 import { prefetchDomains } from "@/lib/icp/crawl-cache";
 import { getExclusionDomains, getExclusionEmails, extractDomain } from "@/lib/exclusions";
 import { getCampaignChannels, getEnrichmentProfile } from "@/lib/discovery/channel-enrichment";
+import {
+  resolveIcpContextForWorkspaceSlug,
+  type IcpContext,
+  type IcpProfileSnapshot,
+} from "@/lib/icp/resolver";
 import { mergeCompanyData, mergePersonData } from "@/lib/enrichment/merge";
 import {
   asAiArkPersonRecord,
@@ -200,6 +205,8 @@ interface StagedRecord {
   sourceId: string | null;
   workspaceSlug: string;
   rawResponse: string | null;
+  discoveryRunId: string | null;
+  icpProfileVersionId: string | null;
 }
 
 /**
@@ -422,6 +429,7 @@ interface PromotionScore {
   icpReasoning: string;
   icpConfidence: "high" | "medium" | "low";
   icpScoredAt: Date;
+  icpProfileVersionId: string | null;
 }
 
 function recordRichnessScore(dp: StagedRecord): number {
@@ -459,6 +467,7 @@ async function ensurePersonWorkspaceLink(
         icpReasoning: score.icpReasoning,
         icpConfidence: score.icpConfidence,
         icpScoredAt: score.icpScoredAt,
+        icpProfileVersionId: score.icpProfileVersionId,
       }
     : {};
 
@@ -625,6 +634,73 @@ async function triggerEnrichmentForPeople(
 /** Default ICP score threshold when workspace has icpCriteriaPrompt but no explicit threshold */
 const DEFAULT_ICP_THRESHOLD = 40;
 
+function isIcpProfileSnapshot(value: unknown): value is IcpProfileSnapshot {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.profileId === "string" &&
+    typeof record.profileName === "string" &&
+    typeof record.profileSlug === "string" &&
+    typeof record.versionId === "string" &&
+    typeof record.version === "number" &&
+    typeof record.description === "string"
+  );
+}
+
+async function resolvePromotionIcpContext(args: {
+  workspaceSlug: string;
+  runIds: string[];
+  campaignId?: string;
+}): Promise<IcpContext> {
+  const runs = await prisma.discoveryRun.findMany({
+    where: { id: { in: args.runIds } },
+    select: {
+      id: true,
+      icpProfileId: true,
+      icpProfileVersionId: true,
+      icpProfileSnapshot: true,
+    },
+  });
+
+  const runsWithSnapshots = runs.filter(
+    (run) => run.icpProfileVersionId && run.icpProfileSnapshot,
+  );
+
+  if (runsWithSnapshots.length > 0) {
+    if (runsWithSnapshots.length !== runs.length) {
+      throw new Error(
+        "Cannot promote a mix of ICP-profile-scoped and legacy discovery runs in one batch.",
+      );
+    }
+
+    const versionIds = new Set(runsWithSnapshots.map((run) => run.icpProfileVersionId));
+    if (versionIds.size > 1) {
+      throw new Error(
+        `Cannot promote discovery runs with different ICP profile versions in one batch: ${[
+          ...versionIds,
+        ].join(", ")}`,
+      );
+    }
+
+    const run = runsWithSnapshots[0];
+    const snapshot = run.icpProfileSnapshot as unknown;
+    if (isIcpProfileSnapshot(snapshot)) {
+      return {
+        source: "explicit",
+        profileId: run.icpProfileId,
+        versionId: run.icpProfileVersionId,
+        snapshot,
+        warnings: [],
+      };
+    }
+  }
+
+  return resolveIcpContextForWorkspaceSlug({
+    workspaceSlug: args.workspaceSlug,
+    campaignId: args.campaignId,
+  });
+}
+
 export async function deduplicateAndPromote(
   workspaceSlug: string,
   runIds: string[],
@@ -634,7 +710,12 @@ export async function deduplicateAndPromote(
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { slug: workspaceSlug },
   });
-  const icpScoringEnabled = !!workspace.icpCriteriaPrompt?.trim();
+  const icpContext = await resolvePromotionIcpContext({
+    workspaceSlug,
+    runIds,
+    campaignId: options?.campaignId,
+  });
+  const icpScoringEnabled = !!icpContext.snapshot?.description?.trim();
   const icpThreshold = workspace.icpScoreThreshold ?? DEFAULT_ICP_THRESHOLD;
   let enrichmentProfile: "full" | "linkedin-only" = "full";
 
@@ -670,6 +751,8 @@ export async function deduplicateAndPromote(
       sourceId: true,
       workspaceSlug: true,
       rawResponse: true,
+      discoveryRunId: true,
+      icpProfileVersionId: true,
     },
   });
 
@@ -884,7 +967,9 @@ export async function deduplicateAndPromote(
         location: dp.location,
       }));
 
-      const batchResults = await scoreStagedPersonIcpBatch(batchInputs, workspaceSlug);
+      const batchResults = await scoreStagedPersonIcpBatch(batchInputs, workspaceSlug, {
+        icpContext,
+      });
       for (const [id, result] of batchResults) {
         scoreMap.set(id, result);
       }
@@ -966,6 +1051,7 @@ export async function deduplicateAndPromote(
               icpScore: null,
               icpReasoning: scoreResult.reasoning,
               icpConfidence: scoreResult.confidence,
+              icpProfileVersionId: icpContext.versionId,
             },
           });
           scoredRejectedCount++;
@@ -979,6 +1065,7 @@ export async function deduplicateAndPromote(
             icpScore: scoreResult.score,
             icpReasoning: scoreResult.reasoning,
             icpConfidence: scoreResult.confidence,
+            icpProfileVersionId: icpContext.versionId,
           },
         });
 
@@ -999,6 +1086,7 @@ export async function deduplicateAndPromote(
           icpReasoning: scoreResult.reasoning,
           icpConfidence: scoreResult.confidence,
           icpScoredAt: now,
+          icpProfileVersionId: icpContext.versionId,
         };
       }
       // If scoreResult is undefined, fail-open: promote without score
@@ -1031,6 +1119,32 @@ export async function deduplicateAndPromote(
       `[promotion] ICP-rejected ${scoredRejectedCount} people below score threshold (${icpThreshold})`,
     );
   }
+
+  await Promise.all(
+    runIds.map(async (runId) => {
+      const [discoveredCount, promotedCount, rejectedCount] = await Promise.all([
+        prisma.discoveredPerson.count({ where: { discoveryRunId: runId } }),
+        prisma.discoveredPerson.count({
+          where: { discoveryRunId: runId, status: "promoted" },
+        }),
+        prisma.discoveredPerson.count({
+          where: {
+            discoveryRunId: runId,
+            status: { in: ["rejected", "scored_rejected", "discarded", "excluded"] },
+          },
+        }),
+      ]);
+      await prisma.discoveryRun.updateMany({
+        where: { id: runId },
+        data: {
+          discoveredCount,
+          promotedCount,
+          rejectedCount,
+          completedAt: now,
+        },
+      });
+    }),
+  );
 
   // Enqueue enrichment for all newly promoted leads
   const enrichmentJobId = await triggerEnrichmentForPeople(

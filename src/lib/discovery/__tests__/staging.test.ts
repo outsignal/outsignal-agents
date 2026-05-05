@@ -6,9 +6,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const createManyMock = vi.fn();
 const findManyMock = vi.fn();
 const findFirstMock = vi.fn();
+const workspaceFindUniqueOrThrowMock = vi.fn();
+const discoveryRunUpsertMock = vi.fn();
+const discoveryRunUpdateMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    workspace: {
+      findUniqueOrThrow: (...args: unknown[]) => workspaceFindUniqueOrThrowMock(...args),
+    },
+    discoveryRun: {
+      upsert: (...args: unknown[]) => discoveryRunUpsertMock(...args),
+      update: (...args: unknown[]) => discoveryRunUpdateMock(...args),
+    },
     discoveredPerson: {
       findMany: (...args: unknown[]) => findManyMock(...args),
       findFirst: (...args: unknown[]) => findFirstMock(...args),
@@ -25,9 +35,62 @@ beforeEach(() => {
   findManyMock.mockResolvedValue([]); // no existing duplicates
   findFirstMock.mockResolvedValue(null);
   createManyMock.mockResolvedValue({ count: 0 });
+  workspaceFindUniqueOrThrowMock.mockResolvedValue({ id: "workspace-id" });
+  discoveryRunUpsertMock.mockResolvedValue({});
+  discoveryRunUpdateMock.mockResolvedValue({});
 });
 
 describe("stageDiscoveredPeople — rawResponse preservation (BL-027)", () => {
+  it("creates a DiscoveryRun and stamps icpProfileVersionId on staged rows", async () => {
+    createManyMock.mockResolvedValueOnce({ count: 1 });
+
+    await stageDiscoveredPeople({
+      people: [
+        {
+          firstName: "Terry",
+          lastName: "Transport",
+          jobTitle: "Founder",
+          company: "Haulage Co",
+          companyDomain: "haulage.example",
+        },
+      ],
+      discoverySource: "prospeo",
+      workspaceSlug: "test-ws",
+      discoveryRunId: "run-1",
+      discoveryRunContext: {
+        workspaceId: "workspace-id",
+        icpProfileId: "profile-1",
+        icpProfileVersionId: "version-1",
+        icpProfileSnapshot: { description: "Transport ICP" },
+        triggeredBy: "agent",
+        triggeredVia: "search-prospeo",
+      },
+      icpProfileVersionId: "version-1",
+    });
+
+    expect(discoveryRunUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run-1" },
+        create: expect.objectContaining({
+          id: "run-1",
+          workspaceId: "workspace-id",
+          icpProfileId: "profile-1",
+          icpProfileVersionId: "version-1",
+          triggeredVia: "search-prospeo",
+        }),
+      }),
+    );
+
+    const data = createManyMock.mock.calls[0][0].data as Array<{
+      icpProfileVersionId: string | null;
+    }>;
+    expect(data[0].icpProfileVersionId).toBe("version-1");
+    expect(discoveryRunUpdateMock).toHaveBeenCalledWith({
+      where: { id: "run-1" },
+      data: { discoveredCount: { increment: 1 } },
+    });
+  });
+
   it("writes sourceId to the dedicated column when person.sourceId is set", async () => {
     const people: DiscoveredPersonResult[] = [
       {
