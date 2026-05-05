@@ -10,9 +10,11 @@
  *
  * Auth: HIGH CONFIDENCE — `X-TOKEN` header confirmed via live API testing.
  *
- * Filter confidence (based on live API testing 2026-03):
+ * Filter confidence (based on live API testing 2026-03, industry taxonomy
+ * re-tested 2026-05-05):
  *   contact.seniority        — HIGH CONFIDENCE, works correctly
- *   account.industry          — HIGH CONFIDENCE, works correctly
+ *   account.industry          — HIGH CONFIDENCE with AI Ark taxonomy values;
+ *                               raw ICP prose values can silently zero results
  *   account.location          — HIGH CONFIDENCE, filters by company HQ
  *   account.employeeSize      — HIGH CONFIDENCE, RANGE type works correctly
  *   account.domain            — HIGH CONFIDENCE, should work (same any/include pattern)
@@ -39,6 +41,58 @@ import {
 const AIARK_PEOPLE_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people";
 const AIARK_PEOPLE_EXPORT_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/people/export";
 const AIARK_COMPANIES_ENDPOINT = "https://api.ai-ark.com/api/developer-portal/v1/companies";
+
+/**
+ * Curated subset of AI Ark's account.industry taxonomy, verified via live API
+ * probes on 2026-05-05. AI Ark accepts taxonomy labels that are closer to the
+ * current LinkedIn industry set than the old slash-separated LinkedIn labels:
+ * e.g. "Information Technology" works, while "Information Technology and
+ * Services" returns zero. Extend this list as new ICP verticals go live.
+ */
+export const AIARK_INDUSTRY_TAXONOMY = [
+  "Information Technology",
+  "Software Development",
+  "Transportation",
+  "Logistics",
+  "Transportation, Logistics, Supply Chain and Storage",
+  "Truck Transportation",
+  "Warehousing",
+  "Warehousing and Storage",
+  "Freight and Package Transportation",
+  "Maritime Transportation",
+  "Airlines and Aviation",
+] as const;
+
+type AiArkIndustry = (typeof AIARK_INDUSTRY_TAXONOMY)[number];
+
+const AIARK_INDUSTRY_ALIASES: Record<string, AiArkIndustry[]> = {
+  "information technology": ["Information Technology"],
+  "information technology and services": ["Information Technology"],
+  it: ["Information Technology"],
+  software: ["Software Development"],
+  "software development": ["Software Development"],
+  transport: ["Transportation", "Truck Transportation"],
+  transportation: ["Transportation"],
+  logistics: ["Logistics", "Transportation, Logistics, Supply Chain and Storage"],
+  haulage: ["Truck Transportation"],
+  "road transport": ["Truck Transportation"],
+  "goods transport": ["Truck Transportation", "Freight and Package Transportation"],
+  trucking: ["Truck Transportation"],
+  freight: ["Freight and Package Transportation"],
+  "freight forwarding": [
+    "Freight and Package Transportation",
+    "Transportation, Logistics, Supply Chain and Storage",
+  ],
+  distribution: ["Logistics", "Transportation, Logistics, Supply Chain and Storage"],
+  warehousing: ["Warehousing and Storage", "Warehousing"],
+  warehouse: ["Warehousing and Storage", "Warehousing"],
+  storage: ["Warehousing and Storage"],
+  "supply chain": ["Transportation, Logistics, Supply Chain and Storage"],
+  "passenger transport": ["Transportation"],
+  "passenger transportation": ["Transportation"],
+  maritime: ["Maritime Transportation"],
+  aviation: ["Airlines and Aviation"],
+};
 
 /**
  * AI Ark adapter rate limits.
@@ -257,6 +311,99 @@ function parseRevenueString(val: string): number {
   return map[val] ?? 0;
 }
 
+function normalizeIndustry(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function includesIndustryToken(normalizedValue: string, token: string): boolean {
+  return new RegExp(`\\b${token}\\b`).test(normalizedValue);
+}
+
+/**
+ * Translate business-friendly ICP industry labels to AI Ark taxonomy values.
+ * Unmapped values are deliberately skipped; the caller omits account.industry
+ * entirely when no values map so the search can still return candidates.
+ */
+export function mapIcpIndustriesToAiArk(icpIndustries: string[]): string[] {
+  const mapped: string[] = [];
+
+  const add = (values: readonly string[]) => {
+    for (const value of values) {
+      if (!mapped.includes(value)) mapped.push(value);
+    }
+  };
+
+  const directMatches = new Map(
+    AIARK_INDUSTRY_TAXONOMY.map((value) => [normalizeIndustry(value), value]),
+  );
+
+  for (const industry of icpIndustries) {
+    const normalized = normalizeIndustry(industry);
+    if (!normalized) continue;
+
+    const alias = AIARK_INDUSTRY_ALIASES[normalized];
+    if (alias) {
+      add(alias);
+      continue;
+    }
+
+    const direct = directMatches.get(normalized);
+    if (direct) {
+      add([direct]);
+      continue;
+    }
+
+    if (includesIndustryToken(normalized, "haulage")) {
+      add(["Truck Transportation"]);
+      continue;
+    }
+    if (includesIndustryToken(normalized, "freight")) {
+      add(["Freight and Package Transportation", "Transportation, Logistics, Supply Chain and Storage"]);
+      continue;
+    }
+    if (includesIndustryToken(normalized, "logistics")) {
+      add(["Logistics", "Transportation, Logistics, Supply Chain and Storage"]);
+      continue;
+    }
+    if (
+      includesIndustryToken(normalized, "warehouse") ||
+      includesIndustryToken(normalized, "warehousing") ||
+      includesIndustryToken(normalized, "storage") ||
+      includesIndustryToken(normalized, "distribution")
+    ) {
+      add(["Warehousing and Storage", "Transportation, Logistics, Supply Chain and Storage"]);
+      continue;
+    }
+    if (
+      includesIndustryToken(normalized, "truck") ||
+      includesIndustryToken(normalized, "trucking") ||
+      includesIndustryToken(normalized, "transport") ||
+      includesIndustryToken(normalized, "transportation")
+    ) {
+      add(["Transportation", "Truck Transportation"]);
+      continue;
+    }
+    if (includesIndustryToken(normalized, "software")) {
+      add(["Software Development"]);
+      continue;
+    }
+    if (includesIndustryToken(normalized, "technology")) {
+      add(["Information Technology"]);
+      continue;
+    }
+
+    console.warn(
+      `[aiark-search] Industry "${industry}" could not be mapped to AI Ark taxonomy; skipping this industry filter value.`,
+    );
+  }
+
+  return mapped;
+}
+
 /**
  * Build the AI Ark request body from DiscoveryFilter.
  *
@@ -293,9 +440,19 @@ function buildRequestBody(
     account.location = { any: { include: filters.locations } };
   }
 
-  // industries → account.industry (WORKS)
+  // industries → account.industry (taxonomy-sensitive)
+  // AI Ark silently returns zero when given natural-language ICP values like
+  // "Haulage"; map to verified AI Ark taxonomy values and omit the filter if
+  // none map.
   if (filters.industries?.length) {
-    account.industry = { any: { include: filters.industries } };
+    const mappedIndustries = mapIcpIndustriesToAiArk(filters.industries);
+    if (mappedIndustries.length > 0) {
+      account.industry = { any: { include: mappedIndustries } };
+    } else {
+      console.warn(
+        `[aiark-search] No ICP industries mapped to AI Ark taxonomy; omitting account.industry filter to avoid zero-result searches.`,
+      );
+    }
   }
 
   // companySizes → account.employeeSize (WORKS)
