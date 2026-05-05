@@ -395,6 +395,26 @@ model DiscoveryRun {
   @@index([icpProfileVersionId])
 }
 
+model DiscoveryRejectionLog {
+  id             String   @id @default(cuid())
+  provider       String
+  workspaceSlug  String
+  discoveryRunId String?
+  icpProfileId   String?
+  campaignId     String?
+  targetListId   String?
+  originalTitle  String?
+  targetTitles   Json?
+  reason         String
+  personName     String?
+  company        String?
+  createdAt      DateTime @default(now())
+
+  @@index([workspaceSlug, provider, createdAt])
+  @@index([discoveryRunId])
+  @@index([reason])
+}
+
 model WebhookEvent {
   id          String   @id @default(cuid())
   workspace   String

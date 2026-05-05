@@ -98,6 +98,119 @@ const CONTENT_ROLE_EXCEPTIONS: RegExp[] = [
   /managing\s+editor/i,
 ];
 
+export type TitleRejectionReason =
+  | "missing_title"
+  | "junk_title"
+  | "out_of_scope_title";
+
+export interface TitleFilterOptions {
+  /** Strict target titles from the resolved ICP/request scope. Empty disables strict title matching. */
+  targetTitles?: string[];
+  /** Future escape hatch for known-good variants; intentionally empty by default. */
+  allowedTitleVariants?: string[];
+}
+
+export interface TitleFilterRejection {
+  person: DiscoveredPersonResult;
+  reason: TitleRejectionReason;
+}
+
+export interface DiscoveryFilterRejectionLogInput {
+  provider: string;
+  workspaceSlug: string;
+  discoveryRunId?: string | null;
+  icpProfileId?: string | null;
+  campaignId?: string | null;
+  targetListId?: string | null;
+  targetTitles?: string[];
+  rejections: TitleFilterRejection[];
+}
+
+function normaliseTitleForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsAtWordBoundary(haystack: string, needle: string): boolean {
+  const pattern = new RegExp(`(^|\\b)${escapeRegExp(needle)}(\\b|$)`, "i");
+  return pattern.test(haystack);
+}
+
+function meaningfulTitleTokens(value: string): string[] {
+  const stopWords = new Set(["and", "of", "the", "for", "to", "in", "at", "&"]);
+  return normaliseTitleForMatch(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0 && !stopWords.has(token));
+}
+
+function titleHasStructuralStopword(value: string): boolean {
+  return /\b(and|of|for|to|in|at|&)\b/i.test(value);
+}
+
+function containsMeaningfulTokensInOrder(title: string, targetTitle: string): boolean {
+  if (!titleHasStructuralStopword(targetTitle)) return false;
+
+  const titleTokens = meaningfulTitleTokens(title);
+  const targetTokens = meaningfulTitleTokens(targetTitle);
+  if (targetTokens.length < 2) return false;
+
+  let cursor = 0;
+  for (const token of titleTokens) {
+    if (token === targetTokens[cursor]) {
+      cursor++;
+      if (cursor === targetTokens.length) return true;
+    }
+  }
+  return false;
+}
+
+function matchesTwoTokenOfReversal(title: string, targetTitle: string): boolean {
+  const titleTokens = meaningfulTitleTokens(title);
+  const targetTokens = meaningfulTitleTokens(targetTitle);
+  if (titleTokens.length !== 2 || targetTokens.length !== 2) return false;
+  if (titleTokens[0] !== targetTokens[1] || titleTokens[1] !== targetTokens[0]) {
+    return false;
+  }
+
+  const reversedPhrase = `${escapeRegExp(targetTokens[1])}\\s+of\\s+${escapeRegExp(targetTokens[0])}`;
+  return new RegExp(`(^|\\b)${reversedPhrase}(\\b|$)`, "i").test(title);
+}
+
+export function titleMatchesTarget(
+  discoveredTitle: string | null | undefined,
+  targetTitles: string[] = [],
+  allowedTitleVariants: string[] = [],
+): boolean {
+  const title = discoveredTitle?.trim();
+  if (!title) return false;
+
+  const candidates = [...targetTitles, ...allowedTitleVariants]
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (candidates.length === 0) return true;
+
+  const normalisedTitle = normaliseTitleForMatch(title);
+  const discoveredTokenCount = meaningfulTitleTokens(normalisedTitle).length;
+
+  return candidates.some((candidate) => {
+    const normalisedCandidate = normaliseTitleForMatch(candidate);
+    return (
+      normalisedTitle === normalisedCandidate ||
+      containsAtWordBoundary(normalisedTitle, normalisedCandidate) ||
+      (discoveredTokenCount >= 2 && containsAtWordBoundary(normalisedCandidate, normalisedTitle)) ||
+      containsMeaningfulTokensInOrder(normalisedTitle, normalisedCandidate) ||
+      matchesTwoTokenOfReversal(normalisedTitle, normalisedCandidate)
+    );
+  });
+}
+
 /**
  * Check if a job title matches any junk title pattern.
  * Returns true if the title should be EXCLUDED.
@@ -129,13 +242,36 @@ function isJunkTitle(title: string): boolean {
  */
 export function filterByTitle(
   people: DiscoveredPersonResult[],
-): { passed: DiscoveredPersonResult[]; filtered: DiscoveredPersonResult[] } {
+  options: TitleFilterOptions = {},
+): {
+  passed: DiscoveredPersonResult[];
+  filtered: DiscoveredPersonResult[];
+  rejections: TitleFilterRejection[];
+} {
   const passed: DiscoveredPersonResult[] = [];
   const filtered: DiscoveredPersonResult[] = [];
+  const rejections: TitleFilterRejection[] = [];
+  const targetTitles = options.targetTitles?.filter((title) => title.trim()) ?? [];
+  const strictTitleMatch = targetTitles.length > 0;
 
   for (const person of people) {
-    if (person.jobTitle && isJunkTitle(person.jobTitle)) {
+    const jobTitle = person.jobTitle?.trim();
+    let reason: TitleRejectionReason | null = null;
+
+    if (strictTitleMatch && !jobTitle) {
+      reason = "missing_title";
+    } else if (jobTitle && isJunkTitle(jobTitle)) {
+      reason = "junk_title";
+    } else if (
+      strictTitleMatch &&
+      !titleMatchesTarget(jobTitle, targetTitles, options.allowedTitleVariants)
+    ) {
+      reason = "out_of_scope_title";
+    }
+
+    if (reason) {
       filtered.push(person);
+      rejections.push({ person, reason });
     } else {
       passed.push(person);
     }
@@ -151,7 +287,29 @@ export function filterByTitle(
     );
   }
 
-  return { passed, filtered };
+  return { passed, filtered, rejections };
+}
+
+export async function logDiscoveryTitleRejections(
+  input: DiscoveryFilterRejectionLogInput,
+): Promise<void> {
+  if (input.rejections.length === 0) return;
+
+  await prisma.discoveryRejectionLog.createMany({
+    data: input.rejections.map(({ person, reason }) => ({
+      provider: input.provider,
+      workspaceSlug: input.workspaceSlug,
+      discoveryRunId: input.discoveryRunId ?? null,
+      icpProfileId: input.icpProfileId ?? null,
+      campaignId: input.campaignId ?? null,
+      targetListId: input.targetListId ?? null,
+      originalTitle: person.jobTitle ?? null,
+      targetTitles: input.targetTitles ?? [],
+      reason,
+      personName: [person.firstName, person.lastName].filter(Boolean).join(" ") || null,
+      company: person.company ?? null,
+    })),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -429,14 +587,16 @@ export function applyDiscoveryFilters(
   people: DiscoveredPersonResult[],
   companyFilterOptions?: CompanyFilterOptions,
   expectedCountries?: string[],
+  titleFilterOptions?: TitleFilterOptions,
 ): {
   passed: DiscoveredPersonResult[];
   titleFiltered: number;
   companyFiltered: number;
   locationFiltered: number;
   totalFiltered: number;
+  titleRejections: TitleFilterRejection[];
 } {
-  const titleResult = filterByTitle(people);
+  const titleResult = filterByTitle(people, titleFilterOptions);
   const companyResult = filterByCompanyType(titleResult.passed, companyFilterOptions);
   const locationResult = filterByLocation(companyResult.passed, expectedCountries);
 
@@ -449,5 +609,6 @@ export function applyDiscoveryFilters(
       titleResult.filtered.length +
       companyResult.filtered.length +
       locationResult.filtered.length,
+    titleRejections: titleResult.rejections,
   };
 }
