@@ -758,6 +758,10 @@ export async function scoreList(
       const outcome = chunkResults[j];
       const personId = chunk[j];
       if (outcome.status === "fulfilled") {
+        if (outcome.value.status === "needs_website") {
+          skipped++;
+          continue;
+        }
         results.push({
           personId,
           score: outcome.value.score,

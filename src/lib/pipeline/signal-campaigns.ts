@@ -397,6 +397,10 @@ async function processSingleCampaign(
         campaignId: campaign.id,
         icpContext,
       });
+      if (scoreResult.status === "needs_website") {
+        console.warn(`[Pipeline] ICP scoring needs website for person ${personId}; skipping until crawl data is available`);
+        continue;
+      }
       if (scoreResult.score >= campaign.icpScoreThreshold) {
         passingLeads.push({ personId, icpScore: scoreResult.score });
       } else {

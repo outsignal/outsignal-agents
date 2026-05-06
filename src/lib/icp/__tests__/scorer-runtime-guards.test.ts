@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const findUniqueOrThrowMock = vi.fn();
+const findManyPersonMock = vi.fn();
 const findUniqueMock = vi.fn();
+const findManyCompanyMock = vi.fn();
+const personUpdateMock = vi.fn();
+const personUpdateManyMock = vi.fn();
 const updateMock = vi.fn();
+const updateManyMock = vi.fn();
 const getCrawlMarkdownMock = vi.fn();
 const generateObjectMock = vi.fn();
 
@@ -10,12 +15,17 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     person: {
       findUniqueOrThrow: (...args: unknown[]) => findUniqueOrThrowMock(...args),
+      findMany: (...args: unknown[]) => findManyPersonMock(...args),
+      update: (...args: unknown[]) => personUpdateMock(...args),
+      updateMany: (...args: unknown[]) => personUpdateManyMock(...args),
     },
     personWorkspace: {
       update: (...args: unknown[]) => updateMock(...args),
+      updateMany: (...args: unknown[]) => updateManyMock(...args),
     },
     company: {
       findUnique: (...args: unknown[]) => findUniqueMock(...args),
+      findMany: (...args: unknown[]) => findManyCompanyMock(...args),
     },
   },
 }));
@@ -32,7 +42,11 @@ vi.mock("@ai-sdk/anthropic", () => ({
   anthropic: vi.fn(() => "mock-model"),
 }));
 
-import { scorePersonIcp, scoreStagedPersonIcp } from "../scorer";
+import {
+  scorePersonIcp,
+  scorePersonIcpBatch,
+  scoreStagedPersonIcp,
+} from "../scorer";
 import type { IcpContext } from "../resolver";
 
 const icpContext: IcpContext = {
@@ -85,6 +99,7 @@ const person = {
   seniority: null,
   enrichmentData: null,
   companyDomain: "analytical.example",
+  lastNeededWebsiteAt: null,
   workspaces: [{ workspace: "test-workspace" }],
 };
 
@@ -92,8 +107,13 @@ describe("ICP scorer runtime guards", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     findUniqueOrThrowMock.mockResolvedValue(person);
+    findManyPersonMock.mockResolvedValue([person]);
     findUniqueMock.mockResolvedValue(null);
+    findManyCompanyMock.mockResolvedValue([]);
+    personUpdateMock.mockResolvedValue({});
+    personUpdateManyMock.mockResolvedValue({ count: 0 });
     updateMock.mockResolvedValue({});
+    updateManyMock.mockResolvedValue({ count: 0 });
     getCrawlMarkdownMock.mockResolvedValue("Analytical Logistics homepage");
   });
 
@@ -190,5 +210,62 @@ describe("ICP scorer runtime guards", () => {
       expect.stringContaining("returned non-finite score for person_1"),
     );
     warnSpy.mockRestore();
+  });
+
+  it("marks persisted single-person scores as needs_website without calling Anthropic", async () => {
+    getCrawlMarkdownMock.mockResolvedValueOnce(null);
+
+    const result = await scorePersonIcp("person_1", "test-workspace", false, {
+      icpContext,
+    });
+
+    expect(result).toEqual({
+      status: "needs_website",
+      reasoning: "NEEDS_WEBSITE: company website content unavailable",
+      confidence: "low",
+      scoringMethod: null,
+      persisted: true,
+    });
+    expect(generateObjectMock).not.toHaveBeenCalled();
+    expect(personUpdateMock).toHaveBeenCalledWith({
+      where: { id: "person_1" },
+      data: { lastNeededWebsiteAt: expect.any(Date) },
+    });
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          icpScore: null,
+          icpReasoning: "NEEDS_WEBSITE: company website content unavailable",
+          icpConfidence: "low",
+        }),
+      }),
+    );
+  });
+
+  it("marks missing-website batch candidates as skipped without invoking Claude", async () => {
+    getCrawlMarkdownMock.mockResolvedValueOnce(null);
+
+    const result = await scorePersonIcpBatch(["person_1"], "test-workspace", {
+      icpContext,
+    });
+
+    expect(result).toEqual({ scored: 0, failed: 0, skipped: 1 });
+    expect(generateObjectMock).not.toHaveBeenCalled();
+    expect(personUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ["person_1"] } },
+      data: { lastNeededWebsiteAt: expect.any(Date) },
+    });
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        personId: { in: ["person_1"] },
+        workspace: "test-workspace",
+      },
+      data: {
+        icpScore: null,
+        icpReasoning: "NEEDS_WEBSITE: company website content unavailable",
+        icpConfidence: "low",
+        icpProfileVersionId: null,
+      },
+    });
   });
 });

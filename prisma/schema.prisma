@@ -221,6 +221,7 @@ model Person {
   education           Json?   // AI Ark: educations
   certifications      Json?   // AI Ark: certifications
   languages           Json?   // AI Ark: languages
+  lastNeededWebsiteAt DateTime? // Last time ICP scoring needed website crawl data before a score could be produced
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -240,6 +241,7 @@ model Person {
   @@index([vertical])
   @@index([companyDomain])
   @@index([linkedinUrl])
+  @@index([lastNeededWebsiteAt])
   // CRITICAL: raw SQL must use "Lead" / "LeadWorkspace" table names, NOT "Person" / "PersonWorkspace" model names.
   // Bug history: 2026-04-13 LinkedIn planner SQL used "Person" causing 24h outage of LinkedIn deploys.
   @@map("Lead")

@@ -19,6 +19,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  isNeedsWebsiteIcpReasoning,
+  isUnscorableIcpReasoning,
+} from "@/lib/icp/status";
 
 export const dynamic = "force-dynamic";
 
@@ -197,6 +201,7 @@ export default async function PersonDetailPage({
         workspaces={person.workspaces.map((pw) => ({
           workspace: pw.workspace,
           icpScore: pw.icpScore,
+          icpReasoning: pw.icpReasoning,
           status: pw.status ?? "new",
         }))}
       />
@@ -403,7 +408,13 @@ export default async function PersonDetailPage({
                             {pw.workspace}
                           </TableCell>
                           <TableCell className="text-xs tabular-nums">
-                            {pw.icpScore !== null ? pw.icpScore : "—"}
+                            {pw.icpScore !== null
+                              ? pw.icpScore
+                              : isUnscorableIcpReasoning(pw.icpReasoning)
+                                ? "UNSCORABLE"
+                                : isNeedsWebsiteIcpReasoning(pw.icpReasoning)
+                                  ? "NEEDS WEBSITE"
+                                  : "—"}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" size="xs">
