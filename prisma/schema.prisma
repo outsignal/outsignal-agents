@@ -148,6 +148,7 @@ model Workspace {
 model IcpProfile {
   id             String   @id @default(cuid())
   workspaceId    String
+  parentProfileId String?
   slug           String
   name           String
   active         Boolean  @default(true)
@@ -161,9 +162,12 @@ model IcpProfile {
   versions            IcpProfileVersion[]
   campaigns           Campaign[]          @relation("CampaignIcpProfiles")
   discoveryRuns       DiscoveryRun[]      @relation("DiscoveryRunIcpProfile")
+  parent              IcpProfile?         @relation("IcpProfileHierarchy", fields: [parentProfileId], references: [id], onDelete: Restrict)
+  children            IcpProfile[]        @relation("IcpProfileHierarchy")
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, active])
+  @@index([parentProfileId])
 }
 
 model IcpProfileVersion {

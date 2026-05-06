@@ -44,6 +44,7 @@ function profile(overrides: Record<string, unknown> = {}) {
   return {
     id: "profile-default",
     workspaceId: "ws-1",
+    parentProfileId: null,
     slug: "default",
     name: "Default",
     active: true,
@@ -66,6 +67,13 @@ function profile(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mockProfilesById(records: Array<ReturnType<typeof profile>>) {
+  const byId = new Map(records.map((record) => [record.id, record]));
+  profileFindUniqueMock.mockImplementation(
+    async (args: { where: { id: string } }) => byId.get(args.where.id) ?? null,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   workspaceFindUniqueOrThrowMock.mockResolvedValue(baseWorkspace);
@@ -86,7 +94,108 @@ describe("resolveIcpContext", () => {
     expect(context.versionId).toBe("version-1");
     expect(context.snapshot?.description).toBe("Profile prompt");
     expect(context.snapshot?.targetTitles).toEqual(["Founder", "CEO"]);
+    expect(context.snapshot?.lineage).toEqual([
+      expect.objectContaining({
+        profileId: "profile-default",
+        versionId: "version-1",
+        role: "leaf",
+      }),
+    ]);
     expect(context.warnings).toEqual([]);
+  });
+
+  it("merges parent and child profiles into a frozen lineage snapshot", async () => {
+    const parent = profile({
+      id: "profile-parent",
+      slug: "universal",
+      name: "Universal",
+      versions: [
+        {
+          id: "version-parent",
+          profileId: "profile-parent",
+          version: 1,
+          description: "Universal weekly payroll criteria",
+          targetTitles: ["Owner", "Operations Manager"],
+          locations: ["UK"],
+          industries: ["Logistics", "Transport"],
+          companySizes: ["5-100"],
+          scoringRubric: {
+            hardExclusions: ["Recruitment agency"],
+            preferredSignals: ["Weekly payroll"],
+            scoreBands: { parent: true },
+          },
+        },
+      ],
+    });
+    const child = profile({
+      id: "profile-child",
+      slug: "transport",
+      name: "Transport",
+      parentProfileId: "profile-parent",
+      versions: [
+        {
+          id: "version-child",
+          profileId: "profile-child",
+          version: 1,
+          description: "Transport vertical criteria",
+          targetTitles: ["Fleet Manager", "Operations Manager"],
+          locations: ["United Kingdom"],
+          industries: ["Logistics"],
+          companySizes: ["50-200"],
+          scoringRubric: {
+            hardExclusions: ["Single-vehicle owner-operator"],
+            negativeSignals: ["Passenger-only transport"],
+            scoreBands: { child: true },
+          },
+        },
+      ],
+    });
+    mockProfilesById([parent, child]);
+
+    const context = await resolveIcpContext({
+      workspaceId: "ws-1",
+      icpProfileId: "profile-child",
+    });
+
+    expect(context.profileId).toBe("profile-child");
+    expect(context.versionId).toBe("version-child");
+    expect(context.snapshot).toMatchObject({
+      profileId: "profile-child",
+      profileSlug: "transport",
+      versionId: "version-child",
+      targetTitles: ["Owner", "Operations Manager", "Fleet Manager"],
+      locations: ["United Kingdom"],
+      industries: ["Logistics"],
+      companySizes: ["50-100"],
+    });
+    expect(context.snapshot?.description).toBe(
+      [
+        "UNIVERSAL CRITERIA:\nUniversal weekly payroll criteria",
+        "VERTICAL CRITERIA:\nTransport vertical criteria",
+      ].join("\n\n"),
+    );
+    expect(context.snapshot?.lineage).toEqual([
+      expect.objectContaining({
+        profileId: "profile-parent",
+        versionId: "version-parent",
+        role: "parent",
+      }),
+      expect.objectContaining({
+        profileId: "profile-child",
+        versionId: "version-child",
+        role: "leaf",
+      }),
+    ]);
+    expect(context.snapshot?.scoringRubric).toMatchObject({
+      hardExclusions: ["Recruitment agency", "Single-vehicle owner-operator"],
+      preferredSignals: ["Weekly payroll"],
+      negativeSignals: ["Passenger-only transport"],
+      scoreBands: { child: true },
+      mergedFrom: [
+        expect.objectContaining({ profileId: "profile-parent" }),
+        expect.objectContaining({ profileId: "profile-child" }),
+      ],
+    });
   });
 
   it("rejects an explicit profile from another workspace at the resolver layer", async () => {
@@ -113,6 +222,104 @@ describe("resolveIcpContext", () => {
     } satisfies Partial<IcpResolverError>);
   });
 
+  it("rejects an explicit profile whose parent belongs to another workspace", async () => {
+    const child = profile({
+      id: "profile-child",
+      parentProfileId: "profile-parent",
+    });
+    const parent = profile({
+      id: "profile-parent",
+      workspaceId: "ws-2",
+      workspace: { slug: "workspace-two" },
+    });
+    mockProfilesById([child, parent]);
+
+    await expect(
+      resolveIcpContext({ workspaceId: "ws-1", icpProfileId: "profile-child" }),
+    ).rejects.toMatchObject({
+      name: "IcpResolverError",
+      code: "EXPLICIT_PROFILE_PARENT_WRONG_WORKSPACE",
+    } satisfies Partial<IcpResolverError>);
+  });
+
+  it("rejects explicit hierarchy cycles", async () => {
+    const child = profile({
+      id: "profile-child",
+      parentProfileId: "profile-parent",
+    });
+    const parent = profile({
+      id: "profile-parent",
+      parentProfileId: "profile-child",
+    });
+    mockProfilesById([child, parent]);
+
+    await expect(
+      resolveIcpContext({ workspaceId: "ws-1", icpProfileId: "profile-child" }),
+    ).rejects.toMatchObject({
+      name: "IcpResolverError",
+      code: "EXPLICIT_PROFILE_HIERARCHY_CYCLE",
+    } satisfies Partial<IcpResolverError>);
+  });
+
+  it("rejects explicit hierarchies deeper than three profiles", async () => {
+    const leaf = profile({ id: "profile-leaf", parentProfileId: "profile-level-2" });
+    const level2 = profile({ id: "profile-level-2", parentProfileId: "profile-level-1" });
+    const level1 = profile({ id: "profile-level-1", parentProfileId: "profile-root" });
+    const root = profile({ id: "profile-root" });
+    mockProfilesById([leaf, level2, level1, root]);
+
+    await expect(
+      resolveIcpContext({ workspaceId: "ws-1", icpProfileId: "profile-leaf" }),
+    ).rejects.toMatchObject({
+      name: "IcpResolverError",
+      code: "EXPLICIT_PROFILE_HIERARCHY_DEPTH_EXCEEDED",
+    } satisfies Partial<IcpResolverError>);
+  });
+
+  it("rejects explicit hierarchies with incompatible intersected scope", async () => {
+    const parent = profile({
+      id: "profile-parent",
+      versions: [
+        {
+          id: "version-parent",
+          profileId: "profile-parent",
+          version: 1,
+          description: "Universal",
+          targetTitles: null,
+          locations: ["United Kingdom"],
+          industries: ["Transport"],
+          companySizes: ["5-100"],
+          scoringRubric: null,
+        },
+      ],
+    });
+    const child = profile({
+      id: "profile-child",
+      parentProfileId: "profile-parent",
+      versions: [
+        {
+          id: "version-child",
+          profileId: "profile-child",
+          version: 1,
+          description: "Recruitment",
+          targetTitles: null,
+          locations: ["United Kingdom"],
+          industries: ["Recruitment"],
+          companySizes: ["5-100"],
+          scoringRubric: null,
+        },
+      ],
+    });
+    mockProfilesById([parent, child]);
+
+    await expect(
+      resolveIcpContext({ workspaceId: "ws-1", icpProfileId: "profile-child" }),
+    ).rejects.toMatchObject({
+      name: "IcpResolverError",
+      code: "EXPLICIT_PROFILE_HIERARCHY_SCOPE_CONFLICT",
+    } satisfies Partial<IcpResolverError>);
+  });
+
   it("falls through from an inactive campaign profile to the workspace default", async () => {
     campaignFindUniqueMock.mockResolvedValue({
       id: "campaign-1",
@@ -131,6 +338,32 @@ describe("resolveIcpContext", () => {
     expect(context.source).toBe("workspaceDefault");
     expect(context.warnings.map((w) => w.code)).toContain("WARN_INACTIVE_CAMPAIGN_PROFILE");
     expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it("alerts and falls back to legacy when the default profile parent is inactive", async () => {
+    const child = profile({
+      id: "profile-default",
+      parentProfileId: "profile-parent",
+    });
+    const parent = profile({
+      id: "profile-parent",
+      active: false,
+    });
+    mockProfilesById([child, parent]);
+
+    const context = await resolveIcpContext({ workspaceId: "ws-1" });
+
+    expect(context.source).toBe("legacy");
+    expect(context.warnings.map((w) => w.code)).toContain(
+      "WARN_PROFILE_PARENT_INACTIVE",
+    );
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        severity: "error",
+        title: expect.stringContaining("WARN_PROFILE_PARENT_INACTIVE"),
+      }),
+    );
   });
 
   it("alerts and falls back to legacy when the default profile is inactive", async () => {
