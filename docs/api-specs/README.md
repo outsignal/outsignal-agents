@@ -1,0 +1,69 @@
+# API Specs
+
+This directory tracks external API contracts used by the platform. The goal is to make official or vendor-supplied documentation the starting point for adapter work, with empirical checks used for verification rather than discovery.
+
+## Status Legend
+
+- `verified`: required sections covered and adapter cross-check complete.
+- `incomplete`: documentation exists, but one or more required sections are missing or not yet verified.
+- `unable-to-fetch`: docs could not be fetched or supplied.
+- `not-started`: placeholder row for a Phase 0 wave that has not run yet.
+
+`doc_confidence` is separate from `verification_status`; see `CONVENTIONS.md`.
+
+## Phase 0 Waves
+
+1. Infrastructure + EmailGuard reference sample.
+2. Discovery + enrichment.
+3. Send + inbox.
+4. LLM + infra.
+5. Banking + comms + DNS + proxy.
+6. Webhook receiver contracts.
+
+## Master Index
+
+| Vendor / Contract | Spec file | Group | Verification status | Doc confidence | Implementation files | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| EmailGuard | `emailguard-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailguard/client.ts` | Phase 0a reference sample |
+| CheapInboxes | `cheapinboxes-api-v1.md` | Send + inbox | incomplete | inferred | n/a | Existing spec needs template migration |
+| AI Ark | `aiark-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/aiark-search.ts`; `src/lib/enrichment/providers/aiark.ts` | High priority |
+| Prospeo | `prospeo-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/prospeo-search.ts`; `src/lib/enrichment/providers/prospeo.ts` | High priority |
+| Apify platform | `apify-platform-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/apify-leads-finder.ts` | Shared Apify platform contract |
+| Apify Leads Finder | `apify-leads-finder-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/apify-leads-finder.ts` | Actor-specific |
+| Apify Google Maps | `apify-google-maps-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/search-google-maps.ts` | Actor-specific |
+| Apify Ecommerce Stores | `apify-ecommerce-stores-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/search-ecommerce.ts` | Actor-specific |
+| Apify BuiltWith | `apify-builtwith-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/check-tech-stack.ts` | Actor-specific |
+| Apify Google Ads | `apify-google-ads-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/check-google-ads.ts` | Actor-specific |
+| Apollo | `apollo-api-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/search-apollo.ts` | Disabled but useful |
+| Serper | `serper-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/search/serper.ts` | Implementation path to confirm |
+| Firecrawl | `firecrawl-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/website/firecrawl.ts` | Implementation path to confirm |
+| FindyMail | `findymail-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/enrichment/providers/findymail.ts` | High priority |
+| Adyntel | `adyntel-api-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/check-google-ads-adyntel.ts` | Implementation path to confirm |
+| BounceBan | `bounceban-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/verification/bounceban.ts` | High priority |
+| Kitt | `kitt-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/verification/kitt.ts` | High priority |
+| LeadMagic | `leadmagic-api-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/batch-verify-all.ts`; `src/app/api/integrations/status/route.ts` | URL/source needs confirmation |
+| MailTester | `mailtester-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/placement/mailtester.ts` | URL/source needs confirmation |
+| EmailBison | `emailbison-api-v1.md` | Send + inbox | not-started | n/a | `src/lib/emailbison/client.ts` | Existing reference outside this directory |
+| Resend | `resend-api-v1.md` | Send + inbox | not-started | n/a | implementation path to confirm | n/a |
+| Anthropic | `anthropic-api-v1.md` | LLM + infra | not-started | n/a | `src/lib/icp/scorer.ts`; normalizer/classifier modules | Focus structured output, prompt caching, batch |
+| OpenAI | `openai-api-v1.md` | LLM + infra | not-started | n/a | implementation path to confirm | n/a |
+| Trigger.dev | `triggerdev-api-v1.md` | LLM + infra | not-started | n/a | `trigger.config.ts`; task files | n/a |
+| Vercel | `vercel-api-v1.md` | LLM + infra | not-started | n/a | deploy tooling | n/a |
+| Railway | `railway-api-v1.md` | LLM + infra | not-started | n/a | deploy tooling; worker deploy | n/a |
+| Starling Bank | `starling-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/cli/starling-reconcile.ts` | n/a |
+| Monzo | `monzo-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/cli/monzo-costs.ts` | n/a |
+| Stripe | `stripe-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `src/app/api/stripe/webhook/route.ts`; billing routes | n/a |
+| Slack | `slack-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | notification modules | Implementation path to confirm |
+| Porkbun | `porkbun-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | domain tooling | Implementation path to confirm |
+| Google Postmaster | `google-postmaster-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/verify-postmaster-domains.ts`; auth routes | n/a |
+| IPRoyal | `iproyal-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `src/app/api/iproyal/*` | n/a |
+| LinkedIn Voyager | `linkedin-voyager-notes.md` | Banking + comms + DNS + proxy | not-started | empirical-only | `worker/src/voyager-client.ts` | Unofficial API; document usage and fragility |
+| EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/webhooks/emailbison/route.ts` | Incoming handler contract |
+| AI Ark webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/webhooks/aiark/export/route.ts` | Incoming handler contract |
+| Clay webhooks | `webhook-clay-v1.md` | Webhook receivers | not-started | n/a | implementation path to confirm | Incoming handler contract |
+| Stripe webhooks | `webhook-stripe-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/stripe/webhook/route.ts` | Incoming handler contract |
+| LinkedIn worker callbacks | `webhook-linkedin-worker-v1.md` | Webhook receivers | not-started | empirical-only | `worker/src/api-client.ts`; LinkedIn API routes | Internal callback contract |
+
+## Source Map
+
+Machine-readable source data lives in `_source-map.json`.
