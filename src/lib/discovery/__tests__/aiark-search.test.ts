@@ -247,6 +247,9 @@ describe("AI Ark search adapter", () => {
     const fetchMock = vi.mocked(fetch);
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
 
+    expect(body.contact.location).toEqual({
+      any: { include: ["United Kingdom"] },
+    });
     expect(body.account.industry).toEqual({
       any: {
         include: [
@@ -283,7 +286,10 @@ describe("AI Ark search adapter", () => {
     const fetchMock = vi.mocked(fetch);
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
 
-    expect(body.account).not.toHaveProperty("industry");
+    expect(body.contact.location).toEqual({
+      any: { include: ["United Kingdom"] },
+    });
+    expect(body.account?.industry).toBeUndefined();
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("omitting account.industry filter"),
     );
