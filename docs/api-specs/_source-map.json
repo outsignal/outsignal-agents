@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-06T13:29:13Z",
+  "updatedAt": "2026-05-06T14:03:44Z",
   "vendors": {
     "emailguard": {
       "specFile": "docs/api-specs/emailguard-api-v1.md",
@@ -32,27 +32,39 @@
     "aiark": {
       "specFile": "docs/api-specs/aiark-api-v1.md",
       "sourceUrls": [
-        "https://api.ai-ark.com"
+        "https://docs.ai-ark.com/",
+        "https://docs.ai-ark.com/docs/authentication",
+        "https://docs.ai-ark.com/reference/company-search-1",
+        "https://docs.ai-ark.com/reference/people-search-api",
+        "https://docs.ai-ark.com/reference/find-emails-webhook"
       ],
       "implementationFiles": [
         "src/lib/discovery/adapters/aiark-search.ts",
         "src/lib/enrichment/providers/aiark.ts",
+        "src/lib/enrichment/providers/aiark-person.ts",
+        "src/lib/enrichment/providers/aiark-source-first.ts",
+        "src/lib/enrichment/providers/aiark-mapping.ts",
+        "src/lib/discovery/aiark-email.ts",
         "src/app/api/webhooks/aiark/export/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "prospeo": {
       "specFile": "docs/api-specs/prospeo-api-v1.md",
       "sourceUrls": [
-        "https://api.prospeo.io"
+        "https://prospeo.io/api-docs/search-person",
+        "https://prospeo.io/api-docs/enrich-person",
+        "https://prospeo.io/api-docs/bulk-enrich-person",
+        "https://prospeo.io/api-docs/rate-limits",
+        "https://prospeo.io/api-docs/filters-documentation"
       ],
       "implementationFiles": [
         "src/lib/discovery/adapters/prospeo-search.ts",
         "src/lib/enrichment/providers/prospeo.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apify-platform": {
       "specFile": "docs/api-specs/apify-platform-v1.md",
@@ -60,113 +72,132 @@
         "https://docs.apify.com/api/v2"
       ],
       "implementationFiles": [
+        "src/lib/apify/client.ts",
         "src/lib/discovery/adapters/apify-leads-finder.ts",
-        "scripts/cli/search-google-maps.ts",
-        "scripts/cli/search-ecommerce.ts",
-        "scripts/cli/check-tech-stack.ts",
-        "scripts/cli/check-google-ads.ts"
+        "src/lib/discovery/adapters/google-maps.ts",
+        "src/lib/discovery/adapters/ecommerce-stores.ts",
+        "src/lib/discovery/adapters/builtwith.ts",
+        "src/lib/discovery/adapters/google-ads.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apify-leads-finder": {
       "specFile": "docs/api-specs/apify-leads-finder-v1.md",
       "sourceUrls": [
-        "https://apify.com"
+        "https://apify.com/code_crafter/leads-finder",
+        "docs/api-specs/apify-platform-v1.md"
       ],
       "implementationFiles": [
         "src/lib/discovery/adapters/apify-leads-finder.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apify-google-maps": {
       "specFile": "docs/api-specs/apify-google-maps-v1.md",
       "sourceUrls": [
-        "https://apify.com"
+        "https://apify.com/compass/crawler-google-places",
+        "docs/api-specs/apify-platform-v1.md"
       ],
       "implementationFiles": [
-        "scripts/cli/search-google-maps.ts"
+        "src/lib/discovery/adapters/google-maps.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apify-ecommerce-stores": {
       "specFile": "docs/api-specs/apify-ecommerce-stores-v1.md",
       "sourceUrls": [
-        "https://apify.com"
+        "https://apify.com/ecommerce_leads/store-leads-14m-e-commerce-leads",
+        "docs/api-specs/apify-platform-v1.md"
       ],
       "implementationFiles": [
-        "scripts/cli/search-ecommerce.ts"
+        "src/lib/discovery/adapters/ecommerce-stores.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apify-builtwith": {
       "specFile": "docs/api-specs/apify-builtwith-v1.md",
       "sourceUrls": [
-        "https://apify.com"
+        "https://apify.com/automation-lab/tech-stack-detector",
+        "docs/api-specs/apify-platform-v1.md"
       ],
       "implementationFiles": [
-        "scripts/cli/check-tech-stack.ts"
+        "src/lib/discovery/adapters/builtwith.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apify-google-ads": {
       "specFile": "docs/api-specs/apify-google-ads-v1.md",
       "sourceUrls": [
-        "https://apify.com"
+        "https://apify.com/lexis-solutions/google-ads-scraper",
+        "docs/api-specs/apify-platform-v1.md"
       ],
       "implementationFiles": [
-        "scripts/cli/check-google-ads.ts"
+        "src/lib/discovery/adapters/google-ads.ts",
+        "scripts/cli/check-google-ads-adyntel.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "apollo": {
       "specFile": "docs/api-specs/apollo-api-v1.md",
       "sourceUrls": [
-        "https://docs.apollo.io"
+        "https://docs.apollo.io/reference/people-search",
+        "https://docs.apollo.io/reference/authentication",
+        "https://docs.apollo.io/reference/rate-limits",
+        "https://docs.apollo.io/reference/status-codes-errors"
       ],
       "implementationFiles": [
-        "scripts/cli/search-apollo.ts"
+        "src/lib/discovery/adapters/apollo.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "serper": {
       "specFile": "docs/api-specs/serper-api-v1.md",
       "sourceUrls": [
-        "https://google.serper.dev"
+        "https://serper.dev/",
+        "https://google.serper.dev/search",
+        "https://google.serper.dev/places"
       ],
       "implementationFiles": [
-        "src/lib/search/serper.ts"
+        "src/lib/discovery/adapters/serper.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "firecrawl": {
       "specFile": "docs/api-specs/firecrawl-api-v1.md",
       "sourceUrls": [
-        "https://firecrawl.dev"
+        "https://docs.firecrawl.dev/introduction",
+        "https://docs.firecrawl.dev/scrape",
+        "https://docs.firecrawl.dev/crawl",
+        "https://docs.firecrawl.dev/search",
+        "https://docs.firecrawl.dev/llms.txt"
       ],
       "implementationFiles": [
-        "src/lib/website/firecrawl.ts"
+        "src/lib/firecrawl/client.ts",
+        "src/lib/enrichment/providers/firecrawl-company.ts",
+        "src/lib/discovery/adapters/firecrawl-directory.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "findymail": {
       "specFile": "docs/api-specs/findymail-api-v1.md",
       "sourceUrls": [
-        "https://app.findymail.com"
+        "https://www.findymail.com/api/",
+        "https://app.findymail.com/api/search/linkedin"
       ],
       "implementationFiles": [
         "src/lib/enrichment/providers/findymail.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "adyntel": {
       "specFile": "docs/api-specs/adyntel-api-v1.md",
@@ -176,19 +207,21 @@
       "implementationFiles": [
         "scripts/cli/check-google-ads-adyntel.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "inferred"
     },
     "bounceban": {
       "specFile": "docs/api-specs/bounceban-api-v1.md",
       "sourceUrls": [
-        "https://api.bounceban.com"
+        "https://bounceban.com/public/doc/api.html",
+        "https://api.bounceban.com",
+        "https://api-waterfall.bounceban.com"
       ],
       "implementationFiles": [
         "src/lib/verification/bounceban.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "inferred"
     },
     "kitt": {
       "specFile": "docs/api-specs/kitt-api-v1.md",
@@ -196,29 +229,39 @@
         "https://api.trykitt.ai"
       ],
       "implementationFiles": [
-        "src/lib/verification/kitt.ts"
+        "src/lib/verification/kitt.ts",
+        "src/lib/enrichment/providers/kitt.ts",
+        "src/lib/discovery/kitt-email.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "inferred"
     },
     "leadmagic": {
       "specFile": "docs/api-specs/leadmagic-api-v1.md",
-      "sourceUrls": [],
+      "sourceUrls": [
+        "https://leadmagic.io/docs",
+        "https://leadmagic.io/docs/v1/reference/introduction",
+        "https://leadmagic.io/docs/v1/reference/email-validation"
+      ],
       "implementationFiles": [
         "scripts/batch-verify-all.ts",
+        "scripts/batch-verify-1210.ts",
         "src/app/api/integrations/status/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "mailtester": {
       "specFile": "docs/api-specs/mailtester-api-v1.md",
-      "sourceUrls": [],
+      "sourceUrls": [
+        "https://mail-tester.com/manager/api-documentation.html",
+        "https://www.mail-tester.com/api"
+      ],
       "implementationFiles": [
         "src/lib/placement/mailtester.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "emailbison": {
       "specFile": "docs/api-specs/emailbison-api-v1.md",

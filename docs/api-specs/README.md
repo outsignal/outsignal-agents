@@ -26,23 +26,23 @@ This directory tracks external API contracts used by the platform. The goal is t
 | --- | --- | --- | --- | --- | --- | --- |
 | EmailGuard | `emailguard-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailguard/client.ts` | Phase 0a reference sample |
 | CheapInboxes | `cheapinboxes-api-v1.md` | Send + inbox | incomplete | inferred | n/a | Existing spec needs template migration |
-| AI Ark | `aiark-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/aiark-search.ts`; `src/lib/enrichment/providers/aiark.ts` | High priority |
-| Prospeo | `prospeo-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/prospeo-search.ts`; `src/lib/enrichment/providers/prospeo.ts` | High priority |
-| Apify platform | `apify-platform-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/apify-leads-finder.ts` | Shared Apify platform contract |
-| Apify Leads Finder | `apify-leads-finder-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/discovery/adapters/apify-leads-finder.ts` | Actor-specific |
-| Apify Google Maps | `apify-google-maps-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/search-google-maps.ts` | Actor-specific |
-| Apify Ecommerce Stores | `apify-ecommerce-stores-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/search-ecommerce.ts` | Actor-specific |
-| Apify BuiltWith | `apify-builtwith-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/check-tech-stack.ts` | Actor-specific |
-| Apify Google Ads | `apify-google-ads-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/check-google-ads.ts` | Actor-specific |
-| Apollo | `apollo-api-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/search-apollo.ts` | Disabled but useful |
-| Serper | `serper-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/search/serper.ts` | Implementation path to confirm |
-| Firecrawl | `firecrawl-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/website/firecrawl.ts` | Implementation path to confirm |
-| FindyMail | `findymail-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/enrichment/providers/findymail.ts` | High priority |
-| Adyntel | `adyntel-api-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/cli/check-google-ads-adyntel.ts` | Implementation path to confirm |
-| BounceBan | `bounceban-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/verification/bounceban.ts` | High priority |
-| Kitt | `kitt-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/verification/kitt.ts` | High priority |
-| LeadMagic | `leadmagic-api-v1.md` | Discovery + enrichment | not-started | n/a | `scripts/batch-verify-all.ts`; `src/app/api/integrations/status/route.ts` | URL/source needs confirmation |
-| MailTester | `mailtester-api-v1.md` | Discovery + enrichment | not-started | n/a | `src/lib/placement/mailtester.ts` | URL/source needs confirmation |
+| AI Ark | `aiark-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/aiark-search.ts`; `src/lib/enrichment/providers/aiark.ts`; `src/app/api/webhooks/aiark/export/route.ts` | Needs people/export schema + full industry taxonomy |
+| Prospeo | `prospeo-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/prospeo-search.ts`; `src/lib/enrichment/providers/prospeo.ts` | Needs enum/location export |
+| Apify platform | `apify-platform-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/apify/client.ts` | Shared Apify platform contract |
+| Apify Leads Finder | `apify-leads-finder-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/apify-leads-finder.ts` | Actor-specific schema needed |
+| Apify Google Maps | `apify-google-maps-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/google-maps.ts` | Actor-specific schema needed |
+| Apify Ecommerce Stores | `apify-ecommerce-stores-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/ecommerce-stores.ts` | Actor-specific schema needed |
+| Apify BuiltWith | `apify-builtwith-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/builtwith.ts` | Actor-specific schema needed |
+| Apify Google Ads | `apify-google-ads-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/google-ads.ts`; `scripts/cli/check-google-ads-adyntel.ts` | Actor-specific schema needed |
+| Apollo | `apollo-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/apollo.ts` | Disabled in code |
+| Serper | `serper-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/serper.ts` | Needs full API reference |
+| Firecrawl | `firecrawl-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/firecrawl/client.ts`; `src/lib/enrichment/providers/firecrawl-company.ts` | Needs v2 extract audit |
+| FindyMail | `findymail-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/enrichment/providers/findymail.ts` | Needs authenticated endpoint docs |
+| Adyntel | `adyntel-api-v1.md` | Discovery + enrichment | incomplete | inferred | `scripts/cli/check-google-ads-adyntel.ts` | No official docs captured; credentials hygiene issue |
+| BounceBan | `bounceban-api-v1.md` | Discovery + enrichment | incomplete | inferred | `src/lib/verification/bounceban.ts` | JS-rendered docs; waterfall host unconfirmed |
+| Kitt | `kitt-api-v1.md` | Discovery + enrichment | incomplete | inferred | `src/lib/verification/kitt.ts`; `src/lib/enrichment/providers/kitt.ts`; `src/lib/discovery/kitt-email.ts` | Official docs needed |
+| LeadMagic | `leadmagic-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `scripts/batch-verify-all.ts`; `scripts/batch-verify-1210.ts`; `src/app/api/integrations/status/route.ts` | Current/old docs differ |
+| MailTester | `mailtester-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/placement/mailtester.ts` | Paid-account key/id flow needs confirmation |
 | EmailBison | `emailbison-api-v1.md` | Send + inbox | not-started | n/a | `src/lib/emailbison/client.ts` | Existing reference outside this directory |
 | Resend | `resend-api-v1.md` | Send + inbox | not-started | n/a | implementation path to confirm | n/a |
 | Anthropic | `anthropic-api-v1.md` | LLM + infra | not-started | n/a | `src/lib/icp/scorer.ts`; normalizer/classifier modules | Focus structured output, prompt caching, batch |
