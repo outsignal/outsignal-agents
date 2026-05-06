@@ -50,14 +50,14 @@ This directory tracks external API contracts used by the platform. The goal is t
 | Trigger.dev | `triggerdev-api-v1.md` | LLM + infra | incomplete | official-partial | `trigger.config.ts`; task files | Needs management API schemas and retry/DAG audit |
 | Vercel | `vercel-api-v1.md` | LLM + infra | verified | official-full | deploy tooling; `src/app/api/integrations/status/route.ts` | Current deploy/status usage verified |
 | Railway | `railway-api-v1.md` | LLM + infra | incomplete | official-partial | deploy tooling; worker deploy | Needs CLI JSON/token behavior confirmation |
-| Starling Bank | `starling-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/cli/starling-reconcile.ts` | n/a |
-| Monzo | `monzo-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/cli/monzo-costs.ts` | n/a |
-| Stripe | `stripe-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `src/app/api/stripe/webhook/route.ts`; billing routes | n/a |
-| Slack | `slack-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | notification modules | Implementation path to confirm |
-| Porkbun | `porkbun-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | domain tooling | Implementation path to confirm |
-| Google Postmaster | `google-postmaster-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/verify-postmaster-domains.ts`; auth routes | n/a |
-| IPRoyal | `iproyal-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `src/app/api/iproyal/*` | n/a |
-| LinkedIn Voyager | `linkedin-voyager-notes.md` | Banking + comms + DNS + proxy | not-started | empirical-only | `worker/src/voyager-client.ts` | Unofficial API; document usage and fragility |
+| Starling Bank | `starling-api-v1.md` | Banking + comms + DNS + proxy | incomplete | official-partial | `src/lib/starling/client.ts`; `scripts/cli/starling-reconcile.ts` | Official portal JS-gated; user-fill needed |
+| Monzo | `monzo-api-v1.md` | Banking + comms + DNS + proxy | verified | official-full | `src/lib/monzo/client.ts`; `scripts/cli/monzo-costs.ts` | Current cost-tracking usage verified |
+| Stripe | `stripe-api-v1.md` | Banking + comms + DNS + proxy | verified | official-full | `src/lib/stripe.ts`; `src/app/api/stripe/checkout/route.ts`; `src/app/api/stripe/webhook/route.ts` | Checkout API verified; webhook contract follows in Wave 5 |
+| Slack | `slack-api-v1.md` | Banking + comms + DNS + proxy | verified | official-full | `src/lib/slack.ts`; notification modules | Current notification/channel usage verified |
+| Porkbun | `porkbun-api-v1.md` | Banking + comms + DNS + proxy | incomplete | official-partial | `scripts/verify-postmaster-domains.ts`; `src/app/api/domains/suggestions/route.ts` | Beta API; endpoint/TTL mismatch candidates |
+| Google Postmaster | `google-postmaster-api-v1.md` | Banking + comms + DNS + proxy | verified | official-full | `src/lib/postmaster/client.ts`; `src/lib/postmaster/sync.ts`; `scripts/verify-postmaster-domains.ts` | Current traffic sync usage verified |
+| IPRoyal | `iproyal-api-v1.md` | Banking + comms + DNS + proxy | incomplete | official-partial | `src/lib/iproyal/client.ts`; `src/app/api/iproyal/*` | Proxy response variants need empirical samples |
+| LinkedIn Voyager | `linkedin-voyager-notes.md` | Banking + comms + DNS + proxy | incomplete | empirical-only | `worker/src/voyager-client.ts`; `worker/src/worker.ts` | Unofficial internal API; empirical-only and drift-prone |
 | EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/webhooks/emailbison/route.ts` | Incoming handler contract |
 | AI Ark webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/webhooks/aiark/export/route.ts` | Incoming handler contract |
 | Clay webhooks | `webhook-clay-v1.md` | Webhook receivers | not-started | n/a | implementation path to confirm | Incoming handler contract |
