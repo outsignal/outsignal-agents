@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-06T14:45:57Z",
+  "updatedAt": "2026-05-06T15:09:09Z",
   "vendors": {
     "emailguard": {
       "specFile": "docs/api-specs/emailguard-api-v1.md",
@@ -423,83 +423,135 @@
     "starling": {
       "specFile": "docs/api-specs/starling-api-v1.md",
       "sourceUrls": [
-        "https://api.starlingbank.com"
+        "https://developer.starlingbank.com/docs",
+        "https://api.starlingbank.com/api/v2",
+        "https://starlingbank.github.io/starling-developer-sdk/examples/authorization",
+        "https://starlingbank.github.io/starling-developer-sdk/docs/1.0.2/index.html"
       ],
       "implementationFiles": [
+        "src/lib/starling/client.ts",
+        "src/lib/starling/reconcile.ts",
         "scripts/cli/starling-reconcile.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "monzo": {
       "specFile": "docs/api-specs/monzo-api-v1.md",
       "sourceUrls": [
-        "https://api.monzo.com"
+        "https://docs.monzo.com/"
       ],
       "implementationFiles": [
+        "src/lib/monzo/client.ts",
+        "src/lib/monzo/costs.ts",
         "scripts/cli/monzo-costs.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "stripe": {
       "specFile": "docs/api-specs/stripe-api-v1.md",
       "sourceUrls": [
-        "https://docs.stripe.com"
+        "https://docs.stripe.com/api",
+        "https://docs.stripe.com/api/authentication",
+        "https://docs.stripe.com/api/checkout/sessions/create",
+        "https://docs.stripe.com/api/errors",
+        "https://docs.stripe.com/rate-limits",
+        "https://docs.stripe.com/webhooks/signature"
       ],
       "implementationFiles": [
+        "src/lib/stripe.ts",
+        "src/lib/validations/stripe.ts",
+        "src/app/api/stripe/checkout/route.ts",
         "src/app/api/stripe/webhook/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "slack": {
       "specFile": "docs/api-specs/slack-api-v1.md",
       "sourceUrls": [
-        "https://api.slack.com"
+        "https://docs.slack.dev/reference/methods/chat.postMessage/",
+        "https://docs.slack.dev/reference/methods/conversations.create/",
+        "https://docs.slack.dev/reference/methods/conversations.invite/",
+        "https://docs.slack.dev/reference/methods/conversations.inviteShared/",
+        "https://docs.slack.dev/reference/methods/users.lookupByEmail/",
+        "https://api.slack.com/web"
       ],
-      "implementationFiles": [],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "implementationFiles": [
+        "src/lib/slack.ts",
+        "src/lib/notifications.ts",
+        "src/lib/notification-guard.ts",
+        "src/lib/postmaster/alerts.ts",
+        "trigger.config.ts"
+      ],
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "porkbun": {
       "specFile": "docs/api-specs/porkbun-api-v1.md",
       "sourceUrls": [
         "https://porkbun.com/api/json/v3/documentation"
       ],
-      "implementationFiles": [],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "implementationFiles": [
+        "scripts/verify-postmaster-domains.ts",
+        "src/app/api/domains/suggestions/route.ts"
+      ],
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "google-postmaster": {
       "specFile": "docs/api-specs/google-postmaster-api-v1.md",
       "sourceUrls": [
-        "https://developers.google.com/gmail/postmaster"
+        "https://developers.google.com/gmail/postmaster/reference/rest",
+        "https://developers.google.com/gmail/postmaster/reference/rest/v1/domains/list",
+        "https://developers.google.com/gmail/postmaster/reference/rest/v1/domains/get",
+        "https://developers.google.com/gmail/postmaster/reference/rest/v1/domains.trafficStats/list",
+        "https://developers.google.com/gmail/postmaster/reference/rest/v1/domains.trafficStats/get"
       ],
       "implementationFiles": [
+        "src/lib/postmaster/client.ts",
+        "src/lib/postmaster/sync.ts",
+        "src/lib/postmaster/alerts.ts",
         "scripts/verify-postmaster-domains.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "iproyal": {
       "specFile": "docs/api-specs/iproyal-api-v1.md",
       "sourceUrls": [
-        "https://apid.iproyal.com"
+        "https://docs.iproyal.com/proxies/isp/api/products",
+        "https://docs.iproyal.com/proxies/isp/api/orders",
+        "https://docs.iproyal.com/proxies/isp/api/proxies",
+        "https://docs.iproyal.com/proxies/isp/api/user"
       ],
       "implementationFiles": [
-        "src/app/api/iproyal"
+        "src/lib/iproyal/client.ts",
+        "src/app/api/iproyal/status/route.ts",
+        "src/app/api/iproyal/provision/route.ts",
+        "src/lib/linkedin/actions.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "linkedin-voyager": {
       "specFile": "docs/api-specs/linkedin-voyager-notes.md",
-      "sourceUrls": [],
-      "implementationFiles": [
-        "worker/src/voyager-client.ts"
+      "sourceUrls": [
+        "worker/src/voyager-client.ts",
+        "worker/src/worker.ts",
+        "worker/src/session-server.ts",
+        "docs/briefs/2026-04-17-linkedin-worker-critical-bugs.md",
+        "docs/designs/linkedin-pull-model-v1.md"
       ],
-      "verificationStatus": "not-started",
+      "implementationFiles": [
+        "worker/src/voyager-client.ts",
+        "worker/src/worker.ts",
+        "worker/src/session-server.ts",
+        "worker/src/keepalive.ts",
+        "src/app/api/linkedin"
+      ],
+      "verificationStatus": "incomplete",
       "docConfidence": "empirical-only"
     },
     "webhook-emailbison": {
