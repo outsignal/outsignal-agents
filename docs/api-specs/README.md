@@ -45,11 +45,11 @@ This directory tracks external API contracts used by the platform. The goal is t
 | MailTester | `mailtester-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/placement/mailtester.ts` | Paid-account key/id flow needs confirmation |
 | EmailBison | `emailbison-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailbison/client.ts` | Core send infra; full dedicated reference/user fill needed |
 | Resend | `resend-api-v1.md` | Send + inbox | verified | official-full | `src/lib/resend.ts` | Current outbound notification send path verified |
-| Anthropic | `anthropic-api-v1.md` | LLM + infra | not-started | n/a | `src/lib/icp/scorer.ts`; normalizer/classifier modules | Focus structured output, prompt caching, batch |
-| OpenAI | `openai-api-v1.md` | LLM + infra | not-started | n/a | implementation path to confirm | n/a |
-| Trigger.dev | `triggerdev-api-v1.md` | LLM + infra | not-started | n/a | `trigger.config.ts`; task files | n/a |
-| Vercel | `vercel-api-v1.md` | LLM + infra | not-started | n/a | deploy tooling | n/a |
-| Railway | `railway-api-v1.md` | LLM + infra | not-started | n/a | deploy tooling; worker deploy | n/a |
+| Anthropic | `anthropic-api-v1.md` | LLM + infra | incomplete | official-partial | `src/lib/icp/scorer.ts`; normalizer/classifier modules | Needs AI SDK prompt-cache/storage/batch audit |
+| OpenAI | `openai-api-v1.md` | LLM + infra | verified | official-full | `src/lib/knowledge/embeddings.ts` | Current embeddings use verified; low Phase 1 priority |
+| Trigger.dev | `triggerdev-api-v1.md` | LLM + infra | incomplete | official-partial | `trigger.config.ts`; task files | Needs management API schemas and retry/DAG audit |
+| Vercel | `vercel-api-v1.md` | LLM + infra | verified | official-full | deploy tooling; `src/app/api/integrations/status/route.ts` | Current deploy/status usage verified |
+| Railway | `railway-api-v1.md` | LLM + infra | incomplete | official-partial | deploy tooling; worker deploy | Needs CLI JSON/token behavior confirmation |
 | Starling Bank | `starling-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/cli/starling-reconcile.ts` | n/a |
 | Monzo | `monzo-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `scripts/cli/monzo-costs.ts` | n/a |
 | Stripe | `stripe-api-v1.md` | Banking + comms + DNS + proxy | not-started | n/a | `src/app/api/stripe/webhook/route.ts`; billing routes | n/a |

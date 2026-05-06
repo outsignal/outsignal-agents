@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-06T14:30:48Z",
+  "updatedAt": "2026-05-06T14:45:57Z",
   "vendors": {
     "emailguard": {
       "specFile": "docs/api-specs/emailguard-api-v1.md",
@@ -311,60 +311,114 @@
     "anthropic": {
       "specFile": "docs/api-specs/anthropic-api-v1.md",
       "sourceUrls": [
-        "https://docs.anthropic.com"
+        "https://docs.anthropic.com/en/api/messages",
+        "https://docs.anthropic.com/en/api/creating-message-batches",
+        "https://docs.anthropic.com/en/api/retrieving-message-batches",
+        "https://docs.anthropic.com/en/api/retrieving-message-batch-results",
+        "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+        "https://docs.anthropic.com/en/docs/build-with-claude/batch-processing",
+        "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/implement-tool-use",
+        "https://docs.anthropic.com/en/docs/test-and-evaluate/strengthen-guardrails/increase-consistency"
       ],
       "implementationFiles": [
         "src/lib/icp/scorer.ts",
+        "src/lib/icp/extract-criteria.ts",
         "src/lib/normalizer/company.ts",
         "src/lib/normalizer/job-title.ts",
+        "src/lib/normalizer/industry.ts",
         "src/lib/classification/classify-reply.ts",
-        "src/lib/insights/types.ts"
+        "src/lib/insights/generate.ts",
+        "src/lib/ooo/extract-ooo.ts",
+        "src/lib/reply-analysis.ts",
+        "src/lib/analytics/body-elements.ts",
+        "src/lib/analytics/strategy-detect.ts",
+        "src/lib/agents/runner.ts",
+        "src/app/api/chat/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "openai": {
       "specFile": "docs/api-specs/openai-api-v1.md",
       "sourceUrls": [
-        "https://platform.openai.com/docs"
+        "https://platform.openai.com/docs/guides/embeddings",
+        "https://platform.openai.com/docs/api-reference/embeddings",
+        "https://platform.openai.com/docs/models/text-embedding-3-small",
+        "https://platform.openai.com/docs/api-reference/responses"
       ],
-      "implementationFiles": [],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "implementationFiles": [
+        "src/lib/knowledge/embeddings.ts",
+        "src/lib/knowledge/store.ts"
+      ],
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "triggerdev": {
       "specFile": "docs/api-specs/triggerdev-api-v1.md",
       "sourceUrls": [
-        "https://trigger.dev/docs"
+        "https://trigger.dev/docs",
+        "https://trigger.dev/docs/tasks-overview",
+        "https://trigger.dev/docs/triggering",
+        "https://trigger.dev/docs/queue-concurrency",
+        "https://trigger.dev/docs/errors-retrying",
+        "https://trigger.dev/docs/wait",
+        "https://trigger.dev/docs/management/tasks/batch-trigger",
+        "https://trigger.dev/docs/management/errors-and-retries",
+        "docs/briefs/2026-04-21-trigger-stale-deploy-incident.md"
       ],
       "implementationFiles": [
-        "trigger.config.ts"
+        "trigger.config.ts",
+        "trigger/queues.ts",
+        "trigger/process-reply.ts",
+        "trigger/campaign-deploy.ts",
+        "trigger/generate-suggestion.ts",
+        "trigger/enrichment-processor.ts",
+        "trigger/weekly-analysis.ts",
+        "src/app/api/background-tasks/route.ts",
+        "src/app/api/integrations/status/route.ts",
+        "scripts/preflight/check-deploy-auth.sh"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "vercel": {
       "specFile": "docs/api-specs/vercel-api-v1.md",
       "sourceUrls": [
-        "https://vercel.com/docs/api"
+        "https://vercel.com/api",
+        "https://vercel.com/docs/rest-api/reference/endpoints/deployments/list-deployments",
+        "https://vercel.com/docs/rest-api/reference/endpoints/deployments/create-a-new-deployment",
+        "https://vercel.com/docs/rest-api/reference/endpoints/deployments/get-deployment-events",
+        "https://vercel.com/docs/rest-api/reference/endpoints/logs/get-logs-for-a-deployment",
+        "https://vercel.com/docs/rest-api/reference/endpoints/projects/create-one-or-more-environment-variables",
+        "https://vercel.com/docs/rest-api/errors",
+        "https://vercel.com/docs/cli/deploy",
+        "https://vercel.com/docs/cli/env"
       ],
       "implementationFiles": [
-        "scripts/preflight/check-deploy-auth.sh"
+        "vercel.json",
+        "scripts/preflight/check-deploy-auth.sh",
+        "scripts/dev-cli/deploy-status.ts",
+        "src/app/api/integrations/status/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "railway": {
       "specFile": "docs/api-specs/railway-api-v1.md",
       "sourceUrls": [
-        "https://docs.railway.com"
+        "https://docs.railway.com/integrations/api",
+        "https://docs.railway.com/guides/manage-deployments",
+        "https://docs.railway.com/guides/manage-variables",
+        "https://docs.railway.com/guides/manage-environments"
       ],
       "implementationFiles": [
+        "worker/railway.toml",
+        "worker-signals/railway.toml",
         "scripts/preflight/check-deploy-auth.sh",
-        "worker/railway.toml"
+        "src/app/api/integrations/status/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "starling": {
       "specFile": "docs/api-specs/starling-api-v1.md",
