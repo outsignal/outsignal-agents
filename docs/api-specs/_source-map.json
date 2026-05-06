@@ -279,7 +279,11 @@
         "https://docs.emailbison.com/master-inbox/responding-to-messages",
         "https://docs.emailbison.com/master-inbox/attaching-leads-to-untracked-replies",
         "https://docs.emailbison.com/tags/attaching-tags",
-        "docs/emailbison-dedi-api-reference.md"
+        "docs/emailbison-dedi-api-reference.md",
+        "docs/api-specs/_vendor-source/emailbison/_README.md",
+        "docs/api-specs/_vendor-source/emailbison/openapi-2026-05-06.json",
+        "docs/api-specs/_vendor-source/emailbison/openapi-2026-05-06.yaml",
+        "docs/api-specs/_vendor-source/emailbison/postman-collection-2026-05-06.json"
       ],
       "implementationFiles": [
         "src/lib/emailbison/client.ts",
@@ -288,8 +292,8 @@
         "src/lib/campaigns/deploy.ts",
         "src/lib/campaigns/emailbison-reconcile.ts"
       ],
-      "verificationStatus": "incomplete",
-      "docConfidence": "official-partial"
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "resend": {
       "specFile": "docs/api-specs/resend-api-v1.md",
@@ -560,6 +564,7 @@
         "https://docs.emailbison.com/webhooks/overview",
         "https://docs.emailbison.com/webhooks/when-are-webhooks-triggered",
         "https://docs.emailbison.com/llms.txt",
+        "docs/api-specs/_vendor-source/emailbison/_README.md",
         "src/app/api/webhooks/emailbison/route.ts"
       ],
       "implementationFiles": [

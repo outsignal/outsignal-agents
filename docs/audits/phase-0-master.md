@@ -27,8 +27,8 @@ This file is the canonical Phase 0 entry point. It consolidates the five wave re
 
 | Status | Count | Percent |
 | --- | ---: | ---: |
-| verified | 8 | 18.6% |
-| incomplete | 34 | 79.1% |
+| verified | 9 | 20.9% |
+| incomplete | 33 | 76.7% |
 | unable-to-fetch | 1 | 2.3% |
 | total | 43 | 100.0% |
 
@@ -36,14 +36,14 @@ This file is the canonical Phase 0 entry point. It consolidates the five wave re
 
 | Doc confidence | Count | Percent |
 | --- | ---: | ---: |
-| official-full | 8 | 18.6% |
-| official-partial | 26 | 60.5% |
+| official-full | 9 | 20.9% |
+| official-partial | 25 | 58.1% |
 | internal-paste | 1 | 2.3% |
 | empirical-only | 3 | 7.0% |
 | inferred | 5 | 11.6% |
 | total | 43 | 100.0% |
 
-Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 contracts (18.6%) are currently verified end to end for current usage.
+Official docs of some kind were captured for 34 of 43 contracts (79.1%). Nine contracts (20.9%) are currently verified end to end for current usage.
 
 ## Cumulative Verification Matrix
 
@@ -66,7 +66,7 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 | Kitt | `docs/api-specs/kitt-api-v1.md` | incomplete | inferred | yes-with-warning | No official docs captured. |
 | LeadMagic | `docs/api-specs/leadmagic-api-v1.md` | incomplete | official-partial | yes-with-warning | Current docs and old docs differ on credits/statuses. |
 | MailTester | `docs/api-specs/mailtester-api-v1.md` | incomplete | official-partial | yes-with-warning | Paid-account key/id flow confirmation needed. |
-| EmailBison | `docs/api-specs/emailbison-api-v1.md` | incomplete | official-partial | yes-with-warning | Full dedicated API reference/export still needed. |
+| EmailBison | `docs/api-specs/emailbison-api-v1.md` | verified | official-full | yes | None for current API documentation; authenticated OpenAPI/Postman export is committed. |
 | EmailGuard | `docs/api-specs/emailguard-api-v1.md` | incomplete | official-partial | yes-with-warning | Official API reference is JS-rendered/basic-fetch empty. |
 | CheapInboxes | `docs/api-specs/cheapinboxes-api-v1.md` | incomplete | internal-paste | yes-with-warning | No public API reference found. |
 | Resend | `docs/api-specs/resend-api-v1.md` | verified | official-full | yes | None for current outbound email-send usage. |
@@ -83,7 +83,7 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 | Google Postmaster | `docs/api-specs/google-postmaster-api-v1.md` | verified | official-full | yes | Date resource format should still be empirically confirmed. |
 | IPRoyal | `docs/api-specs/iproyal-api-v1.md` | incomplete | official-partial | yes-with-warning | Rate limits and proxy/order response variants need samples. |
 | LinkedIn Voyager | `docs/api-specs/linkedin-voyager-notes.md` | incomplete | empirical-only | yes-with-warning | Unofficial API; shapes are empirical and drift-prone. |
-| EmailBison webhooks | `docs/api-specs/webhook-emailbison-v1.md` | incomplete | official-partial | yes-with-warning | Vendor signing and full payload docs missing. |
+| EmailBison webhooks | `docs/api-specs/webhook-emailbison-v1.md` | incomplete | official-partial | yes-with-warning | Vendor confirmed no signing support; receiver still needs URL-secret fail-closed mitigation. |
 | AI Ark export webhooks | `docs/api-specs/webhook-aiark-export-v1.md` | incomplete | official-partial | yes-with-warning | Export payload schema missing; receiver unauthenticated. |
 | Stripe webhooks | `docs/api-specs/webhook-stripe-v1.md` | verified | official-full | yes | None for current checkout event. |
 | LinkedIn worker callbacks | `docs/api-specs/webhook-linkedin-worker-v1.md` | incomplete | empirical-only | yes-with-warning | Internal empirical contract; no replay protection. |
@@ -95,12 +95,14 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 
 ## Phase 1 Work Queue
 
+EmailBison-specific capability candidates from the authenticated 2026-05-06 OpenAPI/Postman export are broken out in `docs/audits/emailbison-capability-backlog-2026-05-06.md`.
+
 ### P0 Security
 
-1. EmailBison webhook signing fail-open
+1. EmailBison webhook URL-secret plus fail-closed receiver validation
    - Source: Wave 5.
-   - Problem: `src/app/api/webhooks/emailbison/route.ts` mutates lead/reply state and accepts unsigned requests because vendor signing is not documented.
-   - Next step: confirm vendor signing support; otherwise add shared secret query/header or IP allowlist and fail closed.
+   - Problem: `src/app/api/webhooks/emailbison/route.ts` mutates lead/reply state and accepts unsigned requests. Vendor support confirmed EmailBison does not provide webhook signing.
+   - Next step: register webhook URLs with a secret query parameter via EmailBison webhook management and make the receiver fail closed when the secret is absent or wrong.
 
 2. AI Ark export receiver auth
    - Source: Wave 5.
@@ -116,24 +118,19 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 
 ### P1
 
-4. EmailBison base URL discrepancy
-   - Source: Wave 2.
-   - Problem: public examples use `https://dedi.emailbison.com/api`, while the client uses `https://app.outsignal.ai/api`.
-   - Next step: make base URL explicit per environment/client and document tenant-specific hosts.
-
-5. LinkedIn worker callback replay protection
+4. LinkedIn worker callback replay protection
    - Source: Wave 5.
    - Problem: callbacks use shared bearer auth but no timestamp/nonce replay protection.
    - Next step: consider timestamped HMAC if these endpoints remain internet-exposed.
 
 ### P2
 
-6. Stripe idempotency on checkout
+5. Stripe idempotency on checkout
    - Source: Wave 4 and Wave 5.
    - Problem: Checkout creation and webhook processing do not store idempotency/event ids.
    - Next step: add idempotency by proposal ID and event-id dedupe if duplicate checkout sessions or notifications appear.
 
-7. Per-vendor capability audits
+6. Per-vendor capability audits
    - Source: all waves.
    - Problem: most specs are incomplete but now good enough to frame Phase 1 audits with confidence warnings.
    - Next step: work vendor-by-vendor from highest operational value: AI Ark, EmailBison, Anthropic, Prospeo, EmailGuard, Trigger.dev, then lower-risk infra/finance.
@@ -152,9 +149,8 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 | high | Anthropic | Wave 3 | Structured output depends on AI SDK schema conversion. | Keep serialization tests and consider forced tool output for critical schemas. |
 | high | BounceBan | Wave 1 | Single verification uses `api-waterfall.bounceban.com`, while public docs point to `api.bounceban.com`. | Confirm canonical host and failover/SLA. |
 | high | CheapInboxes | Wave 2 | Credential and TOTP endpoints would expose live mailbox secrets if used. | Require security review before implementing any CheapInboxes adapter. |
-| high | EmailBison | Wave 2 | Public examples use `https://dedi.emailbison.com/api`, while our client hardcodes `https://app.outsignal.ai/api`. | Make base URL explicit per environment/client and document tenant-specific hosts. |
 | high | EmailBison | Wave 2 | Docs recommend workspace-scoped `api-user` keys; super-admin keys follow user workspace switching. | Audit token storage and ensure client-specific workspaces cannot drift. |
-| high | EmailBison webhooks | Wave 5 | Receiver mutates lead/reply state and accepts unsigned requests when vendor signature is absent. | Confirm vendor signing support; otherwise add shared secret query/header or IP allowlist and fail closed. |
+| high | EmailBison webhooks | Wave 5 | Receiver mutates lead/reply state and accepts unsigned requests; vendor confirmed no signing support. | Add URL-secret query parameter validation and fail closed; optionally add IP allowlisting if stable EmailBison egress ranges are published. |
 | high | EmailBison webhooks | Wave 5 | Webhook events could drive sender health/account lifecycle, but account and warmup events are only stored as generic events today. | After signing is solved, map sender lifecycle and warmup-disabled events to sender health alerts. |
 | high | FindyMail | Wave 1 | Request field `linkedin_url` is still inferred from code comments. | Confirm field name and response shape from official docs. |
 | high | Firecrawl | Wave 1 | Code still uses SDK `extract`, while docs reviewed emphasize v2 scrape/crawl/search/parse. | Audit extract support or migrate to current structured extraction path. |
@@ -225,8 +221,8 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 
 ### EmailBison
 
-- Full API reference export or dashboard paste covering response schemas, exact error payloads, rate limits, sequence v1.1 behavior, sender bulk upload endpoint naming, and version/deprecation policy.
-- Dashboard sample payloads for configured webhook events; confirmation whether signing/static secrets/IP allowlists exist; retry behavior.
+- No remaining outbound API documentation fill required after the 2026-05-06 authenticated OpenAPI/Postman export.
+- Future empirical fill only: redacted live webhook/test-event payload samples after URL-secret receiver validation ships, plus observed retry behavior if EmailBison exposes it in dashboard logs.
 
 ### EmailGuard
 
@@ -276,13 +272,13 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Only 8 
 ## Cross-Wave Findings
 
 1. Verification is now honest but shallow for most vendors.
-   - Phase 0 converted many undocumented assumptions into explicit incomplete specs. That is progress, but 79.1% of contracts still need fill or empirical samples before deep adapter changes should be considered low-risk.
+   - Phase 0 converted many undocumented assumptions into explicit incomplete specs. That is progress, but 76.7% of contracts still need fill or empirical samples before deep adapter changes should be considered low-risk.
 
 2. JavaScript-rendered or auth-gated portals are the main blocker.
    - EmailGuard, BounceBan, Starling, and some vendor dashboards cannot be fully captured by basic fetch. Manual paste or authenticated exports are required.
 
 3. Receiver security has more urgent risk than outbound adapter polish.
-   - Wave 5 surfaced two P0 issues: EmailBison fail-open unsigned webhooks and unauthenticated AI Ark export intake.
+   - Wave 5 surfaced two P0 issues: EmailBison URL-secret fail-closed validation and unauthenticated AI Ark export intake.
 
 4. Exact enum/filter semantics are the recurring discovery failure mode.
    - AI Ark industry taxonomy, Prospeo locations/enums, Apify actor schemas, Porkbun endpoints, and Google Postmaster date formats all show that "close enough" request shapes silently fail or degrade.

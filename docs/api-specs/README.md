@@ -15,6 +15,8 @@ This directory tracks external API contracts used by the platform. The goal is t
 
 The consolidated Phase 0 entry point is [`docs/audits/phase-0-master.md`](../audits/phase-0-master.md). It rolls up every wave into one verification matrix, capability-gap table, user-fill backlog, Phase 1 work queue, and coverage summary.
 
+EmailBison's authenticated 2026-05-06 source-fill backlog lives at [`docs/audits/emailbison-capability-backlog-2026-05-06.md`](../audits/emailbison-capability-backlog-2026-05-06.md).
+
 ## Phase 0 Waves
 
 1. Infrastructure + EmailGuard reference sample.
@@ -47,7 +49,7 @@ The consolidated Phase 0 entry point is [`docs/audits/phase-0-master.md`](../aud
 | Kitt | `kitt-api-v1.md` | Discovery + enrichment | incomplete | inferred | `src/lib/verification/kitt.ts`; `src/lib/enrichment/providers/kitt.ts`; `src/lib/discovery/kitt-email.ts` | Official docs needed |
 | LeadMagic | `leadmagic-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `scripts/batch-verify-all.ts`; `scripts/batch-verify-1210.ts`; `src/app/api/integrations/status/route.ts` | Current/old docs differ |
 | MailTester | `mailtester-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/placement/mailtester.ts` | Paid-account key/id flow needs confirmation |
-| EmailBison | `emailbison-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailbison/client.ts` | Core send infra; full dedicated reference/user fill needed |
+| EmailBison | `emailbison-api-v1.md` | Send + inbox | verified | official-full | `src/lib/emailbison/client.ts` | Authenticated OpenAPI/Postman export captured; capability backlog added |
 | Resend | `resend-api-v1.md` | Send + inbox | verified | official-full | `src/lib/resend.ts` | Current outbound notification send path verified |
 | Anthropic | `anthropic-api-v1.md` | LLM + infra | incomplete | official-partial | `src/lib/icp/scorer.ts`; normalizer/classifier modules | Needs AI SDK prompt-cache/storage/batch audit |
 | OpenAI | `openai-api-v1.md` | LLM + infra | verified | official-full | `src/lib/knowledge/embeddings.ts` | Current embeddings use verified; low Phase 1 priority |
@@ -62,7 +64,7 @@ The consolidated Phase 0 entry point is [`docs/audits/phase-0-master.md`](../aud
 | Google Postmaster | `google-postmaster-api-v1.md` | Banking + comms + DNS + proxy | verified | official-full | `src/lib/postmaster/client.ts`; `src/lib/postmaster/sync.ts`; `scripts/verify-postmaster-domains.ts` | Current traffic sync usage verified |
 | IPRoyal | `iproyal-api-v1.md` | Banking + comms + DNS + proxy | incomplete | official-partial | `src/lib/iproyal/client.ts`; `src/app/api/iproyal/*` | Proxy response variants need empirical samples |
 | LinkedIn Voyager | `linkedin-voyager-notes.md` | Banking + comms + DNS + proxy | incomplete | empirical-only | `worker/src/voyager-client.ts`; `worker/src/worker.ts` | Unofficial internal API; empirical-only and drift-prone |
-| EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/emailbison/route.ts` | Receiver exists; accepts unsigned requests because vendor signing is not documented |
+| EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/emailbison/route.ts` | Vendor confirmed no signing support; receiver needs URL-secret fail-closed mitigation |
 | AI Ark export webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/aiark/export/route.ts` | Receiver exists; no auth/signature and payload schema needs user-fill |
 | Stripe webhooks | `webhook-stripe-v1.md` | Webhook receivers | verified | official-full | `src/app/api/stripe/webhook/route.ts` | Raw-body Stripe signature verification implemented |
 | LinkedIn worker callbacks | `webhook-linkedin-worker-v1.md` | Webhook receivers | incomplete | empirical-only | `worker/src/api-client.ts`; LinkedIn API routes | Internal worker callback contract with shared-secret auth |

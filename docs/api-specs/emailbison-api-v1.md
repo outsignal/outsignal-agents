@@ -14,11 +14,15 @@ source_urls:
   - https://docs.emailbison.com/master-inbox/attaching-leads-to-untracked-replies
   - https://docs.emailbison.com/tags/attaching-tags
   - docs/emailbison-dedi-api-reference.md
+  - docs/api-specs/_vendor-source/emailbison/_README.md
+  - docs/api-specs/_vendor-source/emailbison/openapi-2026-05-06.json
+  - docs/api-specs/_vendor-source/emailbison/openapi-2026-05-06.yaml
+  - docs/api-specs/_vendor-source/emailbison/postman-collection-2026-05-06.json
 fetched: 2026-05-06T14:30:48Z
 fetched_by: codex
-fetch_method: WebFetch public docs + existing repo reference
-verification_status: incomplete
-doc_confidence: official-partial
+fetch_method: WebFetch public docs + authenticated dashboard OpenAPI/Postman export
+verification_status: verified
+doc_confidence: official-full
 sections_covered:
   - auth
   - endpoints
@@ -27,10 +31,11 @@ sections_covered:
   - rate_limits
   - webhooks
   - sdks
-sections_missing:
   - errors
   - breaking_changes
-verification_notes: Public EmailBison workflow docs are fetchable and confirm auth, pagination, campaign setup, sender-email concepts, reply actions, and tag attachment. The full dedicated API reference is represented by docs/emailbison-dedi-api-reference.md and still needs dashboard/export confirmation for exact response schemas, error payloads, and version history. EmailBison webhook receiver payloads are intentionally deferred to Wave 5.
+sections_missing: []
+verification_notes: Authenticated EmailBison dashboard export from 2026-05-06 confirms the OpenAPI 3.0.3 server URL, endpoint surface, request/response schemas, webhook management endpoints, and webhook event enum. Vendor support confirmed EmailBison does not provide webhook signing; use URL-secret receiver validation as the pragmatic mitigation. Redacted production webhook payloads remain deferred to audit files.
+last_user_fill: 2026-05-06
 last_reviewed_against_adapter: 2026-05-06T14:30:48Z
 our_implementation_files:
   - src/lib/emailbison/client.ts
@@ -46,23 +51,20 @@ redaction_policy: no tokens, no secrets, no names, no emails, no phone numbers, 
 
 ## Verification Summary
 
-- Verification status: `incomplete`
-- Documentation confidence: `official-partial`
-- Phase 1 audit may proceed: `yes-with-confidence-warning`
-- Current blockers:
-  - Exact error payload schema is not present in fetched public docs.
-  - Full response schemas for many dedicated-instance endpoints still rely on `docs/emailbison-dedi-api-reference.md`.
-  - Breaking-change and version-history policy is not confirmed.
-  - Webhook receiver payloads are deferred to Wave 5 by design.
+- Verification status: `verified`
+- Documentation confidence: `official-full`
+- Phase 1 audit may proceed: `yes`
+- Current blockers: none for outbound API documentation.
 
-EmailBison is our broadest send/inbox integration. This spec intentionally records more than our current adapter calls: sender management, sequences and variants, campaign schedules, reply handling, blacklist operations, workspace stats, custom variables, tags, and webhook management are all API surface worth auditing in Phase 1.
+EmailBison is our broadest send/inbox integration. The authenticated dashboard export confirms 132 OpenAPI paths, including sender management, sequences and variants, campaign schedules, reply handling, blacklist operations, workspace stats, custom variables, tags, webhook management, warmup controls, headless UI tokens, reply templates, and bulk lead/sender operations. This spec summarizes the operationally relevant surface and keeps the full source bundle in `docs/api-specs/_vendor-source/emailbison/`.
 
 ## Authentication
 
-Base URLs:
+Canonical base URL:
 
-- Public docs examples use `https://dedi.emailbison.com/api`.
-- Our current client uses `https://app.outsignal.ai/api`.
+- `https://app.outsignal.ai`
+
+The authenticated OpenAPI export lists `https://app.outsignal.ai` as the server URL. The old `https://dedi.emailbison.com/api` examples apply to non-tenant EmailBison customers and are not a mismatch for Outsignal. Our current adapter is correct to use `https://app.outsignal.ai/api`.
 
 EmailBison authenticates requests with bearer API tokens:
 
@@ -81,7 +83,7 @@ The docs recommend `api-user` tokens because workspace scoping is simpler and mo
 
 ## Rate Limits
 
-The local client comments document a limit of 3,000 requests per minute, equivalent to 50 requests per second. This limit was not found in the fetched public docs and should be confirmed from the dedicated API reference or dashboard.
+The local client comments document a limit of 3,000 requests per minute, equivalent to 50 requests per second. The OpenAPI export documents endpoint contracts but does not publish a separate quota table; keep the local retry/backoff behavior and confirm account-specific quotas with EmailBison before any high-volume bulk migration.
 
 Our adapter applies:
 
@@ -92,6 +94,17 @@ Our adapter applies:
 - page size assumption: 15 records per page, matching EmailBison pagination docs
 
 ## Endpoints
+
+The raw OpenAPI export contains the complete endpoint inventory. High-value surfaces confirmed by the export include:
+
+- webhook management: `GET/POST /api/webhook-url`, `PUT /api/webhook-url/{id}`, `DELETE /api/webhook-url/{webhook_url_id}`, sample/test/event-type helpers
+- bulk leads: `POST /api/leads/multiple`, `POST /api/leads/create-or-update/multiple`, `PATCH /api/leads/bulk-update-status`, `DELETE /api/leads/bulk`, `POST /api/leads/bulk/csv`
+- bulk senders: `POST /api/sender-emails/bulk`, `PATCH /api/sender-emails/signatures/bulk`, `PATCH /api/sender-emails/daily-limits/bulk`, `POST /api/sender-emails/bulk-check-missing-mx-records`
+- campaign sequencing: legacy and `v1.1` sequence-step paths, variant activate/deactivate endpoint, and campaign schedule templates
+- inbox operations: reply state updates, forward/reply endpoints, reply templates, and campaign follow-up attachment
+- workspace operations: master inbox settings, workspace stats, workspace chart stats, user/token management, and headless UI token generation
+
+Existing operational wire constraint: `sequence_steps[].wait_in_days` minimum is `1`. The export examples also use `1` or higher. Keep this constraint until the v1.1 sequence PUT endpoint is empirically retested.
 
 ### GET /campaigns
 
@@ -236,7 +249,7 @@ Our adapter applies:
 | sequence_steps | array | yes | n/a | n/a | Array of sequence-step objects. |
 | sequence_steps[].email_subject | string | yes | n/a | n/a | Supports workspace custom variables. |
 | sequence_steps[].email_body | string | yes | n/a | n/a | Supports workspace custom variables. |
-| sequence_steps[].wait_in_days | integer | yes | n/a | non-negative integer | Days before next step. |
+| sequence_steps[].wait_in_days | integer | yes | n/a | minimum `1` | Days before next step. Keep `1+`; `0` is not a valid wire value. |
 | sequence_steps[].order | integer | yes | n/a | positive integer | Step ordering. |
 | sequence_steps[].thread_reply | boolean | yes | n/a | true, false | Whether step replies in thread. |
 | sequence_steps[].variant | boolean or null | no | null | true, false | A/B variant flag. |
@@ -562,9 +575,42 @@ Our adapter applies:
 
 ## Webhooks
 
-EmailBison supports webhooks for events including campaign email sent, manual email sent, contact first emailed, contact replied, contact interested, and other inbox/campaign events. Public docs also describe test-event sending from the UI/API.
+EmailBison supports webhook management through the API and dashboard. The authenticated export confirms webhook URL CRUD endpoints plus helpers for sample payloads, event-type discovery, and test events.
 
-Wave 2 scope note: do not treat this section as the receiver contract. The full incoming webhook payload schema, signature validation, replay behavior, and our receiver route belong in `docs/api-specs/webhook-emailbison-v1.md` during Wave 5.
+Vendor UI event enum captured on 2026-05-06:
+
+- `email_sent`
+- `manual_email_sent`
+- `lead_first_contacted`
+- `lead_replied`
+- `lead_interested`
+- `lead_unsubscribed`
+- `email_opened`
+- `email_bounced`
+- `untracked_reply_received`
+- `email_account_added`
+- `email_account_removed`
+- `email_account_disconnected`
+- `email_account_reconnected`
+- `tag_attached`
+- `tag_removed`
+- `warmup_disabled_causing_bounces`
+- `warmup_disabled_receiving_bounces`
+
+The inbound receiver contract lives in `docs/api-specs/webhook-emailbison-v1.md`. Redacted production payload samples should live in `docs/audits/emailbison-webhook-empirical-2026-05-06.md`, not inline in this spec.
+
+## Webhook Security
+
+Vendor support response on 2026-05-06 when asked whether EmailBison supports webhook signing secrets:
+
+> **"no. and most webhook senders don't have them. If you're worried about security, you can always just scope your listeners to only accept webhooks from your bison url"**
+
+Implications for our receiver:
+
+- EmailBison does not provide HMAC signatures or signing secrets.
+- The Phase 1 mitigation is a URL-secret query parameter on the webhook URL registered via `POST /api/webhook-url`, with the receiver failing closed when the secret is absent or wrong.
+- IP allowlisting may be useful if EmailBison publishes stable egress ranges, but URL-secret validation is the immediate pragmatic fix.
+- Current fail-open behavior remains a P0 security follow-up until the receiver validates the URL secret.
 
 ## SDKs / Official Clients
 
@@ -572,7 +618,7 @@ No official SDK was identified in the fetched docs. Public examples include cURL
 
 ## Breaking Changes / Version History
 
-Not confirmed. The API has both legacy and `v1.1` campaign/sequence/workspace paths, so Phase 1 should verify deprecation status and whether old sequence endpoints are still supported.
+The OpenAPI export is versioned as `1.0.0` and includes both legacy and `v1.1` campaign/sequence/workspace paths. Some legacy sequence endpoints are explicitly described as deprecated in the export while the `v1.1` sequence-step paths remain supported. EmailBison does not publish a separate changelog in the exported bundle; treat future dashboard exports as the source for drift detection.
 
 ## Our Current Implementation
 
@@ -618,9 +664,10 @@ Local behavior:
 
 | Severity | Area | Spec says | Adapter does | Phase 1 recommendation |
 | --- | --- | --- | --- | --- |
-| high | Base URL | Public examples use `https://dedi.emailbison.com/api`. | Client hardcodes `https://app.outsignal.ai/api`. | Make base URL explicit per environment/client and document tenant-specific dedicated hosts. |
 | high | Token scope | Docs recommend workspace-scoped `api-user` tokens. | Client accepts one token env var; workspace-scope assumptions are implicit. | Audit token storage and workspace switching to prevent super-admin token bleed. |
+| high | Webhook receiver auth | Vendor confirms no webhook signing support. | Receiver must use URL-secret validation because signatures are unavailable. | Add URL-secret query param validation and fail closed. |
 | medium | Sequence variants | Docs expose `variant` and `variant_from_step`. | Adapter supports variants defensively but does not expose higher-level A/B testing strategy. | Decide whether campaign tooling should support variant authoring and reporting. |
+| medium | Sequence v1.1 update | Export documents `PUT /api/campaigns/v1.1/sequence-steps/{sequence_id}`. | Prior empirical run saw 500s on this path. | Retest before relying on v1.1 sequence updates at scale. |
 | medium | Schedule templates | Docs support schedule template reuse. | Adapter creates/updates schedules directly. | Consider templates to standardize client campaign windows. |
 | medium | Sender bulk upload | Docs expose bulk custom SMTP upload. | Not implemented. | Evaluate for sender onboarding automation. |
 | medium | Native reply classification | API/UI supports interested and automated reply flags. | We maintain our own inbox automation/classifier flows. | Audit whether EmailBison native classification rules can reduce duplicate logic. |
@@ -633,14 +680,36 @@ Local behavior:
 Do not commit production payloads inline in this spec. Use synthesized examples above.
 
 - Audit file: `docs/audits/emailbison-empirical-2026-05-06.md`
+- Webhook audit file: `docs/audits/emailbison-webhook-empirical-2026-05-06.md`
 - Production samples checked: `0`
 - Undocumented fields observed: `pending`
 - Documented fields never observed: `pending`
+
+Synthesized webhook example shape:
+
+```json
+{
+  "event": "lead_replied",
+  "lead": {
+    "id": 123,
+    "email": "lead@example.com"
+  },
+  "campaign": {
+    "id": 456
+  },
+  "workspace": {
+    "id": 789
+  }
+}
+```
+
+The real empirical audit should replace this with redacted payload samples from EmailBison's test-event sender or production webhook logs.
 
 ## Known Limitations / Quirks
 
 - Workspace scoping is central: API keys are always scoped to one workspace, and sender emails can only exist in one workspace at a time.
 - EmailBison smart scheduling sends on a randomized pattern within the campaign schedule.
-- Public workflow docs supplement, rather than replace, the full API reference.
-- Some endpoint names differ between public prose and local reference comments (`sender-emails/imap-smtp` vs `sender-emails/bulk`); these require Phase 1 confirmation.
-- Current docs do not establish exact error payloads or stable versioning guarantees.
+- The OpenAPI export is the canonical source bundle; public workflow docs supplement it with setup prose and operational examples.
+- Both `POST /api/sender-emails/imap-smtp` and `POST /api/sender-emails/bulk` are documented. Treat them as separate single/bulk surfaces, not a naming mismatch.
+- Webhooks are intentionally unsigned by the vendor. Our receiver must add URL-secret validation locally.
+- `PUT /api/campaigns/v1.1/sequence-steps/{sequence_id}` is documented but needs empirical retest before we rely on it because Wave 2 saw 500 errors.
