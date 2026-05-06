@@ -15,7 +15,7 @@
  *   contact.seniority        — HIGH CONFIDENCE, works correctly
  *   account.industry          — HIGH CONFIDENCE with AI Ark taxonomy values;
  *                               raw ICP prose values can silently zero results
- *   account.location          — HIGH CONFIDENCE, filters by company HQ
+ *   contact.location          — HIGH CONFIDENCE, filters by person location
  *   account.employeeSize      — HIGH CONFIDENCE, RANGE type works correctly
  *   account.domain            — HIGH CONFIDENCE, should work (same any/include pattern)
  *   contact.experience.current.title — HIGH CONFIDENCE, works with {mode,content} format
@@ -297,9 +297,9 @@ function buildRequestBody(
     contact.seniority = { any: { include: filters.seniority } };
   }
 
-  // locations → account.location (WORKS — filters by company HQ)
+  // locations → contact.location (WORKS — filters by person location)
   if (filters.locations?.length) {
-    account.location = { any: { include: filters.locations } };
+    contact.location = { any: { include: filters.locations } };
   }
 
   // industries → account.industry (taxonomy-sensitive)
