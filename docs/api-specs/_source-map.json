@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-06T16:32:00Z",
+  "updatedAt": "2026-05-06T20:26:46Z",
   "vendors": {
     "emailguard": {
       "specFile": "docs/api-specs/emailguard-api-v1.md",
@@ -34,11 +34,27 @@
     "aiark": {
       "specFile": "docs/api-specs/aiark-api-v1.md",
       "sourceUrls": [
-        "https://docs.ai-ark.com/",
-        "https://docs.ai-ark.com/docs/authentication",
-        "https://docs.ai-ark.com/reference/company-search-1",
-        "https://docs.ai-ark.com/reference/people-search-api",
-        "https://docs.ai-ark.com/reference/find-emails-webhook"
+        "https://docs.ai-ark.com/docs/authentication.md",
+        "https://docs.ai-ark.com/docs/rate-limits.md",
+        "https://docs.ai-ark.com/docs/mcp.md",
+        "https://docs.ai-ark.com/reference/company-search-1.md",
+        "https://docs.ai-ark.com/reference/people-search-1.md",
+        "https://docs.ai-ark.com/reference/people-reverse-lookup.md",
+        "https://docs.ai-ark.com/reference/people-mobile-phone-finder.md",
+        "https://docs.ai-ark.com/reference/people-analysis.md",
+        "https://docs.ai-ark.com/reference/people-export-single.md",
+        "https://docs.ai-ark.com/reference/people-export-with-email.md",
+        "https://docs.ai-ark.com/reference/export-people-results-by-track-id.md",
+        "https://docs.ai-ark.com/reference/get-export-people-statistics-by-track-id.md",
+        "https://docs.ai-ark.com/reference/resend-export-people-webhook-1.md",
+        "https://docs.ai-ark.com/reference/people-email-finder-by-track-id.md",
+        "https://docs.ai-ark.com/reference/get-email-finder-statistics-by-track-id.md",
+        "https://docs.ai-ark.com/reference/get-email-finder-results-by-track-id.md",
+        "https://docs.ai-ark.com/reference/resend-email-finder-webhook-1.md",
+        "https://docs.ai-ark.com/reference/fetch-credit.md",
+        "https://docs.ai-ark.com/reference/export-people-webhook.md",
+        "https://docs.ai-ark.com/reference/find-emails-webhook.md",
+        "https://docs.ai-ark.com/reference/mcp.md"
       ],
       "implementationFiles": [
         "src/lib/discovery/adapters/aiark-search.ts",
@@ -49,8 +65,8 @@
         "src/lib/discovery/aiark-email.ts",
         "src/app/api/webhooks/aiark/export/route.ts"
       ],
-      "verificationStatus": "incomplete",
-      "docConfidence": "official-partial"
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "prospeo": {
       "specFile": "docs/api-specs/prospeo-api-v1.md",
@@ -576,16 +592,21 @@
     "webhook-aiark-export": {
       "specFile": "docs/api-specs/webhook-aiark-export-v1.md",
       "sourceUrls": [
-        "https://docs.ai-ark.com/reference/export-people-webhook",
-        "https://docs.ai-ark.com/reference/find-emails-webhook",
-        "https://docs.ai-ark.com/reference/resend-email-finder-webhook-1",
+        "https://docs.ai-ark.com/reference/export-people-webhook.md",
+        "https://docs.ai-ark.com/reference/find-emails-webhook.md",
+        "https://docs.ai-ark.com/reference/export-people-results-by-track-id.md",
+        "https://docs.ai-ark.com/reference/get-export-people-statistics-by-track-id.md",
+        "https://docs.ai-ark.com/reference/resend-export-people-webhook-1.md",
+        "https://docs.ai-ark.com/reference/get-email-finder-results-by-track-id.md",
+        "https://docs.ai-ark.com/reference/get-email-finder-statistics-by-track-id.md",
+        "https://docs.ai-ark.com/reference/resend-email-finder-webhook-1.md",
         "src/app/api/webhooks/aiark/export/route.ts"
       ],
       "implementationFiles": [
         "src/app/api/webhooks/aiark/export/route.ts"
       ],
-      "verificationStatus": "incomplete",
-      "docConfidence": "official-partial"
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "webhook-stripe": {
       "specFile": "docs/api-specs/webhook-stripe-v1.md",

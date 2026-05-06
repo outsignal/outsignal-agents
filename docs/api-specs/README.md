@@ -17,6 +17,8 @@ The consolidated Phase 0 entry point is [`docs/audits/phase-0-master.md`](../aud
 
 EmailBison's authenticated 2026-05-06 source-fill backlog lives at [`docs/audits/emailbison-capability-backlog-2026-05-06.md`](../audits/emailbison-capability-backlog-2026-05-06.md).
 
+AI Ark's authenticated/official 2026-05-06 source-fill backlog lives at [`docs/audits/aiark-capability-backlog-2026-05-06.md`](../audits/aiark-capability-backlog-2026-05-06.md).
+
 ## Phase 0 Waves
 
 1. Infrastructure + EmailGuard reference sample.
@@ -32,7 +34,7 @@ EmailBison's authenticated 2026-05-06 source-fill backlog lives at [`docs/audits
 | --- | --- | --- | --- | --- | --- | --- |
 | EmailGuard | `emailguard-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailguard/client.ts` | Wave 2 refreshed; official portal/manual paste still needed |
 | CheapInboxes | `cheapinboxes-api-v1.md` | Send + inbox | incomplete | internal-paste | n/a | Template migrated; vendor/dashboard API docs needed |
-| AI Ark | `aiark-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/aiark-search.ts`; `src/lib/enrichment/providers/aiark.ts`; `src/app/api/webhooks/aiark/export/route.ts` | Needs people/export schema + full industry taxonomy |
+| AI Ark | `aiark-api-v1.md` | Discovery + enrichment | verified | official-full | `src/lib/discovery/adapters/aiark-search.ts`; `src/lib/enrichment/providers/aiark.ts`; `src/app/api/webhooks/aiark/export/route.ts` | Official endpoint docs verified; capability backlog added |
 | Prospeo | `prospeo-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/prospeo-search.ts`; `src/lib/enrichment/providers/prospeo.ts` | Needs enum/location export |
 | Apify platform | `apify-platform-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/apify/client.ts` | Shared Apify platform contract |
 | Apify Leads Finder | `apify-leads-finder-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/apify-leads-finder.ts` | Actor-specific schema needed |
@@ -65,7 +67,7 @@ EmailBison's authenticated 2026-05-06 source-fill backlog lives at [`docs/audits
 | IPRoyal | `iproyal-api-v1.md` | Banking + comms + DNS + proxy | incomplete | official-partial | `src/lib/iproyal/client.ts`; `src/app/api/iproyal/*` | Proxy response variants need empirical samples |
 | LinkedIn Voyager | `linkedin-voyager-notes.md` | Banking + comms + DNS + proxy | incomplete | empirical-only | `worker/src/voyager-client.ts`; `worker/src/worker.ts` | Unofficial internal API; empirical-only and drift-prone |
 | EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/emailbison/route.ts` | Vendor confirmed no signing support; receiver needs URL-secret fail-closed mitigation |
-| AI Ark export webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/aiark/export/route.ts` | Receiver exists; no auth/signature and payload schema needs user-fill |
+| AI Ark export webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | verified | official-full | `src/app/api/webhooks/aiark/export/route.ts` | Payload docs verified; receiver still needs URL-secret or polling decision |
 | Stripe webhooks | `webhook-stripe-v1.md` | Webhook receivers | verified | official-full | `src/app/api/stripe/webhook/route.ts` | Raw-body Stripe signature verification implemented |
 | LinkedIn worker callbacks | `webhook-linkedin-worker-v1.md` | Webhook receivers | incomplete | empirical-only | `worker/src/api-client.ts`; LinkedIn API routes | Internal worker callback contract with shared-secret auth |
 | EmailGuard webhooks | `webhook-emailguard-v1.md` | Webhook receivers | incomplete | official-partial | n/a | No receiver found; vendor/portal webhook details need user-fill |
