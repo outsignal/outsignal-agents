@@ -58,11 +58,15 @@ This directory tracks external API contracts used by the platform. The goal is t
 | Google Postmaster | `google-postmaster-api-v1.md` | Banking + comms + DNS + proxy | verified | official-full | `src/lib/postmaster/client.ts`; `src/lib/postmaster/sync.ts`; `scripts/verify-postmaster-domains.ts` | Current traffic sync usage verified |
 | IPRoyal | `iproyal-api-v1.md` | Banking + comms + DNS + proxy | incomplete | official-partial | `src/lib/iproyal/client.ts`; `src/app/api/iproyal/*` | Proxy response variants need empirical samples |
 | LinkedIn Voyager | `linkedin-voyager-notes.md` | Banking + comms + DNS + proxy | incomplete | empirical-only | `worker/src/voyager-client.ts`; `worker/src/worker.ts` | Unofficial internal API; empirical-only and drift-prone |
-| EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/webhooks/emailbison/route.ts` | Incoming handler contract |
-| AI Ark webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/webhooks/aiark/export/route.ts` | Incoming handler contract |
-| Clay webhooks | `webhook-clay-v1.md` | Webhook receivers | not-started | n/a | implementation path to confirm | Incoming handler contract |
-| Stripe webhooks | `webhook-stripe-v1.md` | Webhook receivers | not-started | n/a | `src/app/api/stripe/webhook/route.ts` | Incoming handler contract |
-| LinkedIn worker callbacks | `webhook-linkedin-worker-v1.md` | Webhook receivers | not-started | empirical-only | `worker/src/api-client.ts`; LinkedIn API routes | Internal callback contract |
+| EmailBison webhooks | `webhook-emailbison-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/emailbison/route.ts` | Receiver exists; accepts unsigned requests because vendor signing is not documented |
+| AI Ark export webhooks | `webhook-aiark-export-v1.md` | Webhook receivers | incomplete | official-partial | `src/app/api/webhooks/aiark/export/route.ts` | Receiver exists; no auth/signature and payload schema needs user-fill |
+| Stripe webhooks | `webhook-stripe-v1.md` | Webhook receivers | verified | official-full | `src/app/api/stripe/webhook/route.ts` | Raw-body Stripe signature verification implemented |
+| LinkedIn worker callbacks | `webhook-linkedin-worker-v1.md` | Webhook receivers | incomplete | empirical-only | `worker/src/api-client.ts`; LinkedIn API routes | Internal worker callback contract with shared-secret auth |
+| EmailGuard webhooks | `webhook-emailguard-v1.md` | Webhook receivers | incomplete | official-partial | n/a | No receiver found; vendor/portal webhook details need user-fill |
+| Clay webhooks | `webhook-clay-v1.md` | Webhook receivers | incomplete | empirical-only | `scripts/import-clay-csvs.ts` | No receiver found; repo evidence points to historical CSV imports |
+| Trigger.dev event hooks | `webhook-triggerdev-v1.md` | Webhook receivers | incomplete | official-partial | n/a | No Trigger.dev-to-app callback receiver found |
+| BounceBan webhooks | `webhook-bounceban-v1.md` | Webhook receivers | incomplete | inferred | n/a | No receiver found; current verification path is API calls |
+| Lead Forensics webhooks | `webhook-lead-forensics-v1.md` | Webhook receivers | unable-to-fetch | inferred | n/a | No receiver or official webhook payload docs found |
 
 ## Source Map
 
