@@ -27,8 +27,8 @@ This file is the canonical Phase 0 entry point. It consolidates the five wave re
 
 | Status | Count | Percent |
 | --- | ---: | ---: |
-| verified | 9 | 20.9% |
-| incomplete | 33 | 76.7% |
+| verified | 11 | 25.6% |
+| incomplete | 31 | 72.1% |
 | unable-to-fetch | 1 | 2.3% |
 | total | 43 | 100.0% |
 
@@ -36,20 +36,20 @@ This file is the canonical Phase 0 entry point. It consolidates the five wave re
 
 | Doc confidence | Count | Percent |
 | --- | ---: | ---: |
-| official-full | 9 | 20.9% |
-| official-partial | 25 | 58.1% |
+| official-full | 11 | 25.6% |
+| official-partial | 23 | 53.5% |
 | internal-paste | 1 | 2.3% |
 | empirical-only | 3 | 7.0% |
 | inferred | 5 | 11.6% |
 | total | 43 | 100.0% |
 
-Official docs of some kind were captured for 34 of 43 contracts (79.1%). Nine contracts (20.9%) are currently verified end to end for current usage.
+Official docs of some kind were captured for 34 of 43 contracts (79.1%). Eleven contracts (25.6%) are currently verified end to end for current usage.
 
 ## Cumulative Verification Matrix
 
 | Vendor / Contract | Spec path | Verification status | Doc confidence | Phase 1 readiness | Main blocker |
 | --- | --- | --- | --- | --- | --- |
-| AI Ark | `docs/api-specs/aiark-api-v1.md` | incomplete | official-partial | yes-with-warning | People/export webhook schemas and full industry taxonomy missing. |
+| AI Ark | `docs/api-specs/aiark-api-v1.md` | verified | official-full | yes | None for current API documentation; official endpoint docs and source-fill are captured. |
 | Prospeo | `docs/api-specs/prospeo-api-v1.md` | incomplete | official-partial | yes-with-warning | Full enum/location export and empirical raw responses needed. |
 | Apify platform | `docs/api-specs/apify-platform-v1.md` | incomplete | official-partial | yes-with-warning | Actor schemas live separately from platform docs. |
 | Apify Leads Finder | `docs/api-specs/apify-leads-finder-v1.md` | incomplete | official-partial | yes-with-warning | Actor input schema export needed. |
@@ -84,7 +84,7 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Nine co
 | IPRoyal | `docs/api-specs/iproyal-api-v1.md` | incomplete | official-partial | yes-with-warning | Rate limits and proxy/order response variants need samples. |
 | LinkedIn Voyager | `docs/api-specs/linkedin-voyager-notes.md` | incomplete | empirical-only | yes-with-warning | Unofficial API; shapes are empirical and drift-prone. |
 | EmailBison webhooks | `docs/api-specs/webhook-emailbison-v1.md` | incomplete | official-partial | yes-with-warning | Vendor confirmed no signing support; receiver still needs URL-secret fail-closed mitigation. |
-| AI Ark export webhooks | `docs/api-specs/webhook-aiark-export-v1.md` | incomplete | official-partial | yes-with-warning | Export payload schema missing; receiver unauthenticated. |
+| AI Ark export webhooks | `docs/api-specs/webhook-aiark-export-v1.md` | verified | official-full | yes-with-security-warning | Payload docs verified; receiver remains unauthenticated unless URL-secret validation or polling is chosen. |
 | Stripe webhooks | `docs/api-specs/webhook-stripe-v1.md` | verified | official-full | yes | None for current checkout event. |
 | LinkedIn worker callbacks | `docs/api-specs/webhook-linkedin-worker-v1.md` | incomplete | empirical-only | yes-with-warning | Internal empirical contract; no replay protection. |
 | EmailGuard webhooks | `docs/api-specs/webhook-emailguard-v1.md` | incomplete | official-partial | no-until-product-need-confirmed | No receiver; webhook docs/user-fill needed. |
@@ -97,6 +97,8 @@ Official docs of some kind were captured for 34 of 43 contracts (79.1%). Nine co
 
 EmailBison-specific capability candidates from the authenticated 2026-05-06 OpenAPI/Postman export are broken out in `docs/audits/emailbison-capability-backlog-2026-05-06.md`.
 
+AI Ark-specific capability candidates from the 2026-05-06 official developer-portal source fill are broken out in `docs/audits/aiark-capability-backlog-2026-05-06.md`.
+
 ### P0 Security
 
 1. EmailBison webhook URL-secret plus fail-closed receiver validation
@@ -104,17 +106,18 @@ EmailBison-specific capability candidates from the authenticated 2026-05-06 Open
    - Problem: `src/app/api/webhooks/emailbison/route.ts` mutates lead/reply state and accepts unsigned requests. Vendor support confirmed EmailBison does not provide webhook signing.
    - Next step: register webhook URLs with a secret query parameter via EmailBison webhook management and make the receiver fail closed when the secret is absent or wrong.
 
-2. AI Ark export receiver auth
-   - Source: Wave 5.
-   - Problem: `src/app/api/webhooks/aiark/export/route.ts` stages discovered people without auth/signature, gated only by `runId`.
-   - Next step: add shared secret or signed callback before scaling export usage.
+2. AI Ark export receiver auth or polling migration
+   - Source: Wave 5 plus AI Ark source-fill update.
+   - Problem: `src/app/api/webhooks/aiark/export/route.ts` stages discovered people without auth/signature, gated only by `runId`. AI Ark docs do not publish webhook signing, but they do document polling alternatives via `/inquiries` and `/statistics`.
+   - Next step: choose either URL-secret plus fail-closed receiver validation, or stop accepting callbacks and poll export/email-finder completion instead.
 
 ### P0 Time
 
-3. AI Ark `contact.location` fix plus multi-workspace sweep
+3. AI Ark multi-workspace sweep
    - Source: Wave 1 plus follow-on AI Ark work.
    - Problem: AI Ark search remains time-sensitive because the 30,000-credit allowance expires on 2026-05-11.
-   - Next step: fix the contact/location contract gap, then run the multi-workspace sweep against documented taxonomy behavior.
+   - Status: `contact.location` fix is DONE in PR #49.
+   - Next step: run the multi-workspace sweep against documented taxonomy behavior and the verified person-location filter.
 
 ### P1
 
@@ -140,10 +143,10 @@ EmailBison-specific capability candidates from the authenticated 2026-05-06 Open
 | Severity | Vendor / Contract | Source | Finding | Phase 1 recommendation |
 | --- | --- | --- | --- | --- |
 | high | Adyntel | Wave 1 | Maintenance script contains credentials inline. | Move to env vars before any expanded use. |
-| high | AI Ark | Wave 1 | Industry filter depends on unpublished taxonomy; raw ICP prose previously caused zero-result searches. | Obtain full enum list and add contract tests against accepted taxonomy. |
-| high | AI Ark | Wave 1 | People-search keyword fields are unstable per adapter history. | Verify endpoint-specific keyword filters before reusing. |
-| high | AI Ark export webhooks | Wave 5 | Receiver stages discovered people without auth/signature, gated only by `runId`. | Add shared secret or signed callback before relying on export webhooks. |
-| high | AI Ark export webhooks | Wave 5 | Export webhooks could deliver verified emails, but no contract tests exist because payload schema is unknown. | Add vendor payload fixtures and schema tests before scaling export flow. |
+| high | AI Ark | Wave 1 + source-fill | Official industry enum is now captured; local ICP-to-industry aliases still need contract tests before the broad sweep. | Add contract tests against documented industry values and keep raw ICP prose out of `account.industries`. |
+| high | AI Ark | Wave 1 + source-fill | People-search keyword fields are documented, but prior adapter testing found some keyword paths unstable. | Verify endpoint-specific keyword fields and filter modes before reusing them in production discovery. |
+| high | AI Ark export webhooks | Wave 5 + source-fill | Receiver stages discovered people without auth/signature, gated only by `runId`; vendor docs do not publish signing. | Choose URL-secret plus fail-closed validation or migrate export completion to polling via `/inquiries` and `/statistics`. |
+| high | AI Ark export webhooks | Wave 5 + source-fill | Export and email-finder payload schemas are now documented, but local receiver lacks idempotency for duplicate retries. | Add synthesized fixtures, parser tests, and dedupe by `trackId` + person/email id before scaling export flow. |
 | high | Anthropic | Wave 3 | Message Batches could reduce cost for offline ICP scoring/backfills. | Prototype batch scoring with `custom_id` mapping before suspect-score backfill. |
 | high | Anthropic | Wave 3 | Prompt caching is not used on repeated system/profile prompts. | Verify AI SDK support and add cache markers to stable scorer/classifier contexts. |
 | high | Anthropic | Wave 3 | Structured output depends on AI SDK schema conversion. | Keep serialization tests and consider forced tool output for critical schemas. |
@@ -183,8 +186,9 @@ EmailBison-specific capability candidates from the authenticated 2026-05-06 Open
 
 ### AI Ark
 
-- Full people-search schema, export request schema, export webhook payloads, accepted industry taxonomy or enum endpoint.
-- Real export webhook payload sample, signing/auth docs if any, retry behavior.
+- No remaining official documentation fill required after the 2026-05-06 developer-portal source fill.
+- Future empirical fill only: redacted export/email-finder payload samples after URL-secret receiver validation ships or polling is selected.
+- Optional vendor follow-up: ask whether AI Ark has a more stable machine-readable enum endpoint for industries/filter values and whether webhook signing is planned.
 
 ### Prospeo
 
@@ -272,16 +276,16 @@ EmailBison-specific capability candidates from the authenticated 2026-05-06 Open
 ## Cross-Wave Findings
 
 1. Verification is now honest but shallow for most vendors.
-   - Phase 0 converted many undocumented assumptions into explicit incomplete specs. That is progress, but 76.7% of contracts still need fill or empirical samples before deep adapter changes should be considered low-risk.
+   - Phase 0 converted many undocumented assumptions into explicit incomplete specs. That is progress, but 72.1% of contracts still need fill or empirical samples before deep adapter changes should be considered low-risk.
 
 2. JavaScript-rendered or auth-gated portals are the main blocker.
    - EmailGuard, BounceBan, Starling, and some vendor dashboards cannot be fully captured by basic fetch. Manual paste or authenticated exports are required.
 
 3. Receiver security has more urgent risk than outbound adapter polish.
-   - Wave 5 surfaced two P0 issues: EmailBison URL-secret fail-closed validation and unauthenticated AI Ark export intake.
+   - Wave 5 surfaced two P0 issues: EmailBison URL-secret fail-closed validation and unauthenticated AI Ark export intake. AI Ark now has a documented polling alternative if we prefer to remove callback intake.
 
 4. Exact enum/filter semantics are the recurring discovery failure mode.
-   - AI Ark industry taxonomy, Prospeo locations/enums, Apify actor schemas, Porkbun endpoints, and Google Postmaster date formats all show that "close enough" request shapes silently fail or degrade.
+   - Prospeo locations/enums, Apify actor schemas, Porkbun endpoints, Google Postmaster date formats, and AI Ark local alias-to-enum mapping all show that "close enough" request shapes silently fail or degrade.
 
 5. Internal/empirical contracts need first-class tests.
    - LinkedIn Voyager and LinkedIn worker callbacks cannot be made official, so the replacement for official docs is stricter local schemas, redacted samples, and drift alarms.
@@ -290,7 +294,7 @@ EmailBison-specific capability candidates from the authenticated 2026-05-06 Open
    - Clay, Lead Forensics, EmailGuard webhooks, BounceBan webhooks, and Trigger.dev event hooks do not have inbound receivers today. Phase 1 should confirm product need before building anything.
 
 7. Cost-saving features are concentrated in Anthropic and AI Ark.
-   - Anthropic prompt caching/batches and AI Ark taxonomy/export fixes are the highest leverage improvements after security, because they directly affect backfills, scoring, and the expiring AI Ark credit window.
+   - Anthropic prompt caching/batches and AI Ark export/filter usage are the highest leverage improvements after security, because they directly affect backfills, scoring, and the expiring AI Ark credit window.
 
 ## Phase 0 Closeout
 
