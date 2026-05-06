@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-06T15:09:09Z",
+  "updatedAt": "2026-05-06T16:32:00Z",
   "vendors": {
     "emailguard": {
       "specFile": "docs/api-specs/emailguard-api-v1.md",
@@ -557,58 +557,129 @@
     "webhook-emailbison": {
       "specFile": "docs/api-specs/webhook-emailbison-v1.md",
       "sourceUrls": [
-        "docs/api-specs/emailbison-api-v1.md",
+        "https://docs.emailbison.com/webhooks/overview",
+        "https://docs.emailbison.com/webhooks/when-are-webhooks-triggered",
+        "https://docs.emailbison.com/llms.txt",
         "src/app/api/webhooks/emailbison/route.ts"
       ],
       "implementationFiles": [
         "src/app/api/webhooks/emailbison/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "webhook-aiark-export": {
       "specFile": "docs/api-specs/webhook-aiark-export-v1.md",
       "sourceUrls": [
-        "docs/api-specs/aiark-api-v1.md",
+        "https://docs.ai-ark.com/reference/export-people-webhook",
+        "https://docs.ai-ark.com/reference/find-emails-webhook",
+        "https://docs.ai-ark.com/reference/resend-email-finder-webhook-1",
         "src/app/api/webhooks/aiark/export/route.ts"
       ],
       "implementationFiles": [
         "src/app/api/webhooks/aiark/export/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
-    },
-    "webhook-clay": {
-      "specFile": "docs/api-specs/webhook-clay-v1.md",
-      "sourceUrls": [
-        "src/app/api/webhooks"
-      ],
-      "implementationFiles": [],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "webhook-stripe": {
       "specFile": "docs/api-specs/webhook-stripe-v1.md",
       "sourceUrls": [
-        "docs/api-specs/stripe-api-v1.md",
+        "https://docs.stripe.com/webhooks",
+        "https://docs.stripe.com/webhooks/signature",
+        "https://docs.stripe.com/api/events/object",
+        "https://docs.stripe.com/api/checkout/sessions/object",
         "src/app/api/stripe/webhook/route.ts"
       ],
       "implementationFiles": [
         "src/app/api/stripe/webhook/route.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "webhook-linkedin-worker": {
       "specFile": "docs/api-specs/webhook-linkedin-worker-v1.md",
       "sourceUrls": [
-        "worker/src/api-client.ts"
+        "worker/src/api-client.ts",
+        "src/lib/linkedin/auth.ts",
+        "src/app/api/linkedin/actions/[id]/complete/route.ts",
+        "src/app/api/linkedin/actions/[id]/fail/route.ts",
+        "src/app/api/linkedin/sync/push/route.ts"
       ],
       "implementationFiles": [
-        "worker/src/api-client.ts"
+        "worker/src/api-client.ts",
+        "src/lib/linkedin/auth.ts",
+        "src/app/api/linkedin"
       ],
-      "verificationStatus": "not-started",
+      "verificationStatus": "incomplete",
       "docConfidence": "empirical-only"
+    },
+    "webhook-emailguard": {
+      "specFile": "docs/api-specs/webhook-emailguard-v1.md",
+      "sourceUrls": [
+        "https://emailguard.io/developers",
+        "docs/api-specs/emailguard-api-v1.md",
+        "src/app/api/webhooks"
+      ],
+      "implementationFiles": [],
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
+    },
+    "webhook-clay": {
+      "specFile": "docs/api-specs/webhook-clay-v1.md",
+      "sourceUrls": [
+        "https://university.clay.com/docs/webhook-integration-docs",
+        "scripts/import-clay-csvs.ts",
+        "src/app/api/webhooks"
+      ],
+      "implementationFiles": [
+        "scripts/import-clay-csvs.ts"
+      ],
+      "verificationStatus": "incomplete",
+      "docConfidence": "empirical-only"
+    },
+    "webhook-triggerdev": {
+      "specFile": "docs/api-specs/webhook-triggerdev-v1.md",
+      "sourceUrls": [
+        "https://trigger.dev/docs/guides/frameworks/webhooks-guides-overview",
+        "https://trigger.dev/docs/triggering",
+        "docs/api-specs/triggerdev-api-v1.md",
+        "src/app/api/webhooks"
+      ],
+      "implementationFiles": [
+        "trigger.config.ts",
+        "trigger/process-reply.ts",
+        "src/app/api/webhooks/emailbison/route.ts",
+        "src/app/api/background-tasks/route.ts"
+      ],
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
+    },
+    "webhook-bounceban": {
+      "specFile": "docs/api-specs/webhook-bounceban-v1.md",
+      "sourceUrls": [
+        "https://bounceban.com/public/doc/api.html",
+        "docs/api-specs/bounceban-api-v1.md",
+        "src/lib/verification/bounceban.ts",
+        "src/app/api/webhooks"
+      ],
+      "implementationFiles": [
+        "src/lib/verification/bounceban.ts"
+      ],
+      "verificationStatus": "incomplete",
+      "docConfidence": "inferred"
+    },
+    "webhook-lead-forensics": {
+      "specFile": "docs/api-specs/webhook-lead-forensics-v1.md",
+      "sourceUrls": [
+        "https://leadforensics-api.readme.io/reference/getvisit",
+        "https://leadforensicssupport.zendesk.com/hc/en-us/articles/28593629187858-Visitor-List-Overview",
+        "https://leadforensicssupport.zendesk.com/hc/en-us/articles/208305235-What-are-the-different-types-of-trigger-reports",
+        "src/app/api/webhooks"
+      ],
+      "implementationFiles": [],
+      "verificationStatus": "unable-to-fetch",
+      "docConfidence": "inferred"
     }
   }
 }
