@@ -24,8 +24,8 @@ This directory tracks external API contracts used by the platform. The goal is t
 
 | Vendor / Contract | Spec file | Group | Verification status | Doc confidence | Implementation files | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| EmailGuard | `emailguard-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailguard/client.ts` | Phase 0a reference sample |
-| CheapInboxes | `cheapinboxes-api-v1.md` | Send + inbox | incomplete | inferred | n/a | Existing spec needs template migration |
+| EmailGuard | `emailguard-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailguard/client.ts` | Wave 2 refreshed; official portal/manual paste still needed |
+| CheapInboxes | `cheapinboxes-api-v1.md` | Send + inbox | incomplete | internal-paste | n/a | Template migrated; vendor/dashboard API docs needed |
 | AI Ark | `aiark-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/aiark-search.ts`; `src/lib/enrichment/providers/aiark.ts`; `src/app/api/webhooks/aiark/export/route.ts` | Needs people/export schema + full industry taxonomy |
 | Prospeo | `prospeo-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/discovery/adapters/prospeo-search.ts`; `src/lib/enrichment/providers/prospeo.ts` | Needs enum/location export |
 | Apify platform | `apify-platform-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/apify/client.ts` | Shared Apify platform contract |
@@ -43,8 +43,8 @@ This directory tracks external API contracts used by the platform. The goal is t
 | Kitt | `kitt-api-v1.md` | Discovery + enrichment | incomplete | inferred | `src/lib/verification/kitt.ts`; `src/lib/enrichment/providers/kitt.ts`; `src/lib/discovery/kitt-email.ts` | Official docs needed |
 | LeadMagic | `leadmagic-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `scripts/batch-verify-all.ts`; `scripts/batch-verify-1210.ts`; `src/app/api/integrations/status/route.ts` | Current/old docs differ |
 | MailTester | `mailtester-api-v1.md` | Discovery + enrichment | incomplete | official-partial | `src/lib/placement/mailtester.ts` | Paid-account key/id flow needs confirmation |
-| EmailBison | `emailbison-api-v1.md` | Send + inbox | not-started | n/a | `src/lib/emailbison/client.ts` | Existing reference outside this directory |
-| Resend | `resend-api-v1.md` | Send + inbox | not-started | n/a | implementation path to confirm | n/a |
+| EmailBison | `emailbison-api-v1.md` | Send + inbox | incomplete | official-partial | `src/lib/emailbison/client.ts` | Core send infra; full dedicated reference/user fill needed |
+| Resend | `resend-api-v1.md` | Send + inbox | verified | official-full | `src/lib/resend.ts` | Current outbound notification send path verified |
 | Anthropic | `anthropic-api-v1.md` | LLM + infra | not-started | n/a | `src/lib/icp/scorer.ts`; normalizer/classifier modules | Focus structured output, prompt caching, batch |
 | OpenAI | `openai-api-v1.md` | LLM + infra | not-started | n/a | implementation path to confirm | n/a |
 | Trigger.dev | `triggerdev-api-v1.md` | LLM + infra | not-started | n/a | `trigger.config.ts`; task files | n/a |

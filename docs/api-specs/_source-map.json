@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-06T14:03:44Z",
+  "updatedAt": "2026-05-06T14:30:48Z",
   "vendors": {
     "emailguard": {
       "specFile": "docs/api-specs/emailguard-api-v1.md",
       "sourceUrls": [
         "https://emailguard.io/developers",
-        "https://app.emailguard.io/api/reference"
+        "https://app.emailguard.io/api/reference",
+        "docs/emailguard-api-reference.md"
       ],
       "implementationFiles": [
         "src/lib/emailguard/client.ts",
@@ -23,11 +24,12 @@
     "cheapinboxes": {
       "specFile": "docs/api-specs/cheapinboxes-api-v1.md",
       "sourceUrls": [
-        "https://cheapinboxes.com"
+        "https://www.cheapinboxes.com/",
+        "docs/api-specs/cheapinboxes-api-v1.md"
       ],
       "implementationFiles": [],
       "verificationStatus": "incomplete",
-      "docConfidence": "inferred"
+      "docConfidence": "internal-paste"
     },
     "aiark": {
       "specFile": "docs/api-specs/aiark-api-v1.md",
@@ -266,24 +268,45 @@
     "emailbison": {
       "specFile": "docs/api-specs/emailbison-api-v1.md",
       "sourceUrls": [
-        "https://dedi.emailbison.com",
-        "https://app.outsignal.ai"
+        "https://docs.emailbison.com/get-started/introduction",
+        "https://docs.emailbison.com/get-started/authentication",
+        "https://docs.emailbison.com/get-started/pagination",
+        "https://docs.emailbison.com/campaigns/creating-campaigns",
+        "https://docs.emailbison.com/campaigns/overview",
+        "https://docs.emailbison.com/email-accounts/overview",
+        "https://docs.emailbison.com/email-accounts/adding-accounts",
+        "https://docs.emailbison.com/master-inbox/fetching-replies",
+        "https://docs.emailbison.com/master-inbox/responding-to-messages",
+        "https://docs.emailbison.com/master-inbox/attaching-leads-to-untracked-replies",
+        "https://docs.emailbison.com/tags/attaching-tags",
+        "docs/emailbison-dedi-api-reference.md"
       ],
       "implementationFiles": [
         "src/lib/emailbison/client.ts",
-        "src/app/api/webhooks/emailbison/route.ts"
+        "src/lib/emailbison/types.ts",
+        "src/lib/emailbison/sync-senders.ts",
+        "src/lib/campaigns/deploy.ts",
+        "src/lib/campaigns/emailbison-reconcile.ts"
       ],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "verificationStatus": "incomplete",
+      "docConfidence": "official-partial"
     },
     "resend": {
       "specFile": "docs/api-specs/resend-api-v1.md",
       "sourceUrls": [
-        "https://resend.com/docs"
+        "https://resend.com/docs/api-reference/emails/send-email",
+        "https://resend.com/docs/api-reference/emails/send-batch-emails",
+        "https://resend.com/docs/api-reference/emails/list-emails",
+        "https://resend.com/docs/api-reference/emails/retrieve-email",
+        "https://resend.com/docs/api-reference/rate-limit",
+        "https://resend.com/docs/api-reference/errors",
+        "https://resend.com/docs/send-with-nodejs"
       ],
-      "implementationFiles": [],
-      "verificationStatus": "not-started",
-      "docConfidence": null
+      "implementationFiles": [
+        "src/lib/resend.ts"
+      ],
+      "verificationStatus": "verified",
+      "docConfidence": "official-full"
     },
     "anthropic": {
       "specFile": "docs/api-specs/anthropic-api-v1.md",
