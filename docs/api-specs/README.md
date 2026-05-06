@@ -11,6 +11,10 @@ This directory tracks external API contracts used by the platform. The goal is t
 
 `doc_confidence` is separate from `verification_status`; see `CONVENTIONS.md`.
 
+## Canonical Phase 0 Audit
+
+The consolidated Phase 0 entry point is [`docs/audits/phase-0-master.md`](../audits/phase-0-master.md). It rolls up every wave into one verification matrix, capability-gap table, user-fill backlog, Phase 1 work queue, and coverage summary.
+
 ## Phase 0 Waves
 
 1. Infrastructure + EmailGuard reference sample.
