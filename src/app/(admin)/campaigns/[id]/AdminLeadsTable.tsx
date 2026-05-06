@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/table";
 import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  isNeedsWebsiteIcpReasoning,
+  isUnscorableIcpReasoning,
+} from "@/lib/icp/status";
 
 interface LeadSample {
   personId: string;
@@ -22,6 +26,8 @@ interface LeadSample {
   location: string | null;
   linkedinUrl: string | null;
   icpScore: number | null;
+  icpReasoning: string | null;
+  lastNeededWebsiteAt: Date | string | null;
 }
 
 interface AdminLeadsTableProps {
@@ -44,8 +50,30 @@ function formatLocation(location: string): string {
   return parts.slice(0, 2).join(", ");
 }
 
-function IcpBadge({ score }: { score: number | null }) {
+function IcpBadge({
+  score,
+  reasoning,
+  lastNeededWebsiteAt,
+}: {
+  score: number | null;
+  reasoning: string | null;
+  lastNeededWebsiteAt: Date | string | null;
+}) {
   if (score === null) {
+    if (isUnscorableIcpReasoning(reasoning)) {
+      return (
+        <span className="inline-flex items-center justify-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+          UNSCORABLE
+        </span>
+      );
+    }
+    if (isNeedsWebsiteIcpReasoning(reasoning) || lastNeededWebsiteAt) {
+      return (
+        <span className="inline-flex items-center justify-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">
+          NEEDS WEBSITE
+        </span>
+      );
+    }
     return <span className="text-muted-foreground text-sm">&mdash;</span>;
   }
   const isGreen = score >= 70;
@@ -174,7 +202,11 @@ export function AdminLeadsTable({ leads, totalCount }: AdminLeadsTableProps) {
                   )}
                 </TableCell>
                 <TableCell className="py-3.5 text-right pr-4">
-                  <IcpBadge score={lead.icpScore} />
+                  <IcpBadge
+                    score={lead.icpScore}
+                    reasoning={lead.icpReasoning}
+                    lastNeededWebsiteAt={lead.lastNeededWebsiteAt}
+                  />
                 </TableCell>
               </TableRow>
             ))}

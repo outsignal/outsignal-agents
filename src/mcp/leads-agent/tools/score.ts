@@ -34,6 +34,21 @@ export function registerScoreTools(server: McpServer): void {
       try {
         const result = await scorePersonIcp(person_id, workspace, force_recrawl);
 
+        if (result.status === "needs_website") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  "ICP status: NEEDS_WEBSITE",
+                  `Reasoning: ${result.reasoning}`,
+                  "No score was stored. Website crawl data is required before ICP scoring can run.",
+                ].join("\n"),
+              },
+            ],
+          };
+        }
+
         const text = [
           `ICP Score: ${result.score}/100`,
           `Confidence: ${result.confidence}`,

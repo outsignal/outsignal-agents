@@ -1,11 +1,16 @@
 import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  isNeedsWebsiteIcpReasoning,
+  isUnscorableIcpReasoning,
+} from "@/lib/icp/status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface WorkspaceScore {
   workspace: string;
   icpScore: number | null;
+  icpReasoning: string | null;
   status: string;
 }
 
@@ -167,17 +172,42 @@ export function PersonHeader({
       {workspaces.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
           <span className="text-xs text-muted-foreground mr-0.5">ICP:</span>
-          {workspaces.map((ws) =>
-            ws.icpScore !== null ? (
-              <span
-                key={ws.workspace}
-                className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${icpScoreClass(ws.icpScore)}`}
-              >
-                {ws.workspace}: {ws.icpScore}
-              </span>
-            ) : null
-          )}
-          {workspaces.every((ws) => ws.icpScore === null) && (
+          {workspaces.map((ws) => {
+            if (ws.icpScore !== null) {
+              return (
+                <span
+                  key={ws.workspace}
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${icpScoreClass(ws.icpScore)}`}
+                >
+                  {ws.workspace}: {ws.icpScore}
+                </span>
+              );
+            }
+            if (isUnscorableIcpReasoning(ws.icpReasoning)) {
+              return (
+                <span
+                  key={ws.workspace}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full border border-red-200 bg-red-50 text-xs font-medium text-red-700"
+                >
+                  {ws.workspace}: Unscorable
+                </span>
+              );
+            }
+            if (isNeedsWebsiteIcpReasoning(ws.icpReasoning)) {
+              return (
+                <span
+                  key={ws.workspace}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full border border-sky-200 bg-sky-50 text-xs font-medium text-sky-700"
+                >
+                  {ws.workspace}: Needs website
+                </span>
+              );
+            }
+            return null;
+          })}
+          {workspaces.every(
+            (ws) => ws.icpScore === null && !ws.icpReasoning?.trim(),
+          ) && (
             <span className="text-xs text-muted-foreground italic">
               Not scored
             </span>

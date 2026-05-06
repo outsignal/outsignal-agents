@@ -1285,6 +1285,8 @@ export interface LeadSample {
   location: string | null;
   linkedinUrl: string | null;
   icpScore: number | null;
+  icpReasoning: string | null;
+  lastNeededWebsiteAt: Date | null;
 }
 
 /**
@@ -1311,7 +1313,7 @@ export async function getCampaignLeadSample(
           include: {
             workspaces: {
               where: { workspace: workspaceSlug },
-              select: { icpScore: true },
+              select: { icpScore: true, icpReasoning: true },
             },
           },
         },
@@ -1330,6 +1332,8 @@ export async function getCampaignLeadSample(
       location: m.person.location,
       linkedinUrl: m.person.linkedinUrl,
       icpScore: m.person.workspaces[0]?.icpScore ?? null,
+      icpReasoning: m.person.workspaces[0]?.icpReasoning ?? null,
+      lastNeededWebsiteAt: m.person.lastNeededWebsiteAt,
     }))
     .sort((a, b) => (b.icpScore ?? -1) - (a.icpScore ?? -1))
     .slice(0, limit);

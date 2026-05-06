@@ -15,17 +15,19 @@ import {
   resolveIcpContextForWorkspaceSlug,
   type IcpContext,
 } from "./resolver";
+import {
+  ICP_NEEDS_WEBSITE_REASON,
+  ICP_NEEDS_WEBSITE_STATUS,
+  ICP_SCORING_METHOD,
+} from "./status";
+
+export { ICP_NEEDS_WEBSITE_STATUS, ICP_SCORING_METHOD } from "./status";
 
 export interface IcpScoreResult {
   score: number;       // 0-100
   reasoning: string;   // 1-3 sentences
   confidence: "high" | "medium" | "low";
 }
-
-export const ICP_SCORING_METHOD = "firecrawl+llm";
-export const ICP_NEEDS_WEBSITE_STATUS = "needs_website";
-const ICP_NEEDS_WEBSITE_REASON =
-  "NEEDS_WEBSITE: company website content unavailable";
 
 export interface NeedsWebsiteIcpResult {
   status: typeof ICP_NEEDS_WEBSITE_STATUS;
@@ -34,14 +36,28 @@ export interface NeedsWebsiteIcpResult {
   scoringMethod: null;
 }
 
+export interface PersistedNeedsWebsiteIcpResult extends NeedsWebsiteIcpResult {
+  persisted: true;
+}
+
 export interface ScoredStagedIcpResult extends IcpScoreResult {
   status: "scored";
   scoringMethod: typeof ICP_SCORING_METHOD;
 }
 
+export interface PersistedScoredIcpResult extends IcpScoreResult {
+  status: "scored";
+  scoringMethod: typeof ICP_SCORING_METHOD;
+  persisted: boolean;
+}
+
 export type StagedIcpEvaluationResult =
   | ScoredStagedIcpResult
   | NeedsWebsiteIcpResult;
+
+export type PersonIcpEvaluationResult =
+  | PersistedScoredIcpResult
+  | PersistedNeedsWebsiteIcpResult;
 
 export const IcpScoreSchema = z.object({
   score: z.number().describe("ICP fit score from 0 to 100"),
@@ -126,6 +142,80 @@ function createNeedsWebsiteResult(): NeedsWebsiteIcpResult {
     confidence: "low",
     scoringMethod: null,
   };
+}
+
+async function markPersonNeedsWebsite(params: {
+  personId: string;
+  workspaceSlug: string;
+  icpProfileVersionId: string | null;
+}): Promise<PersistedNeedsWebsiteIcpResult> {
+  const now = new Date();
+
+  await Promise.all([
+    prisma.person.update({
+      where: { id: params.personId },
+      data: { lastNeededWebsiteAt: now },
+    }),
+    prisma.personWorkspace.update({
+      where: {
+        personId_workspace: {
+          personId: params.personId,
+          workspace: params.workspaceSlug,
+        },
+      },
+      data: {
+        icpScore: null,
+        icpReasoning: ICP_NEEDS_WEBSITE_REASON,
+        icpConfidence: "low",
+        icpProfileVersionId: params.icpProfileVersionId,
+      },
+    }),
+  ]);
+
+  return { ...createNeedsWebsiteResult(), persisted: true };
+}
+
+async function markPeopleNeedWebsite(params: {
+  personIds: string[];
+  workspaceSlug: string;
+  icpProfileVersionId: string | null;
+}): Promise<void> {
+  if (params.personIds.length === 0) return;
+
+  const now = new Date();
+  await Promise.all([
+    prisma.person.updateMany({
+      where: { id: { in: params.personIds } },
+      data: { lastNeededWebsiteAt: now },
+    }),
+    prisma.personWorkspace.updateMany({
+      where: {
+        personId: { in: params.personIds },
+        workspace: params.workspaceSlug,
+      },
+      data: {
+        icpScore: null,
+        icpReasoning: ICP_NEEDS_WEBSITE_REASON,
+        icpConfidence: "low",
+        icpProfileVersionId: params.icpProfileVersionId,
+      },
+    }),
+  ]);
+}
+
+async function clearPersonNeedsWebsite(personId: string): Promise<void> {
+  await prisma.person.update({
+    where: { id: personId },
+    data: { lastNeededWebsiteAt: null },
+  });
+}
+
+async function clearPeopleNeedWebsite(personIds: string[]): Promise<void> {
+  if (personIds.length === 0) return;
+  await prisma.person.updateMany({
+    where: { id: { in: personIds } },
+    data: { lastNeededWebsiteAt: null },
+  });
 }
 
 interface PromptPersonInput {
@@ -683,7 +773,7 @@ export async function scorePersonIcp(
   workspaceSlug: string,
   forceRecrawl?: boolean,
   options?: ScorePersonIcpOptions,
-): Promise<IcpScoreResult & { persisted: boolean }> {
+): Promise<PersonIcpEvaluationResult> {
   const persistLowConfidence = options?.persistLowConfidence ?? true;
   const effectiveForceRecrawl = options?.forceRecrawl ?? forceRecrawl ?? false;
   // 1. Fetch the person with their workspace membership
@@ -705,9 +795,11 @@ export async function scorePersonIcp(
     ? await getCrawlMarkdown(person.companyDomain, effectiveForceRecrawl)
     : null;
   if (!hasWebsiteMarkdown(websiteMarkdown)) {
-    throw new Error(
-      `NEEDS_WEBSITE: company website content unavailable for person ${personId}`,
-    );
+    return markPersonNeedsWebsite({
+      personId,
+      workspaceSlug,
+      icpProfileVersionId: icpContext.versionId,
+    });
   }
 
   // 5. Fetch company record for enrichment data (headcount, industry, etc.)
@@ -810,8 +902,17 @@ export async function scorePersonIcp(
     });
   }
 
+  if (person.lastNeededWebsiteAt) {
+    await clearPersonNeedsWebsite(personId);
+  }
+
   // 9. Return the result with persistence flag
-  return { ...result, persisted: shouldPersist };
+  return {
+    status: "scored",
+    scoringMethod: ICP_SCORING_METHOD,
+    ...result,
+    persisted: shouldPersist,
+  };
 }
 
 /**
@@ -1010,12 +1111,26 @@ export async function scorePersonIcpBatch(
   });
   const companyMap = new Map(companies.map((c) => [c.domain, c]));
 
+  const needsWebsiteIds: string[] = [];
   const scoreableIds = validIds.filter((id) => {
     const person = personMap.get(id)!;
-    if (!person.companyDomain) return false;
-    return hasWebsiteMarkdown(websiteMap.get(person.companyDomain) ?? null);
+    if (!person.companyDomain) {
+      needsWebsiteIds.push(id);
+      return false;
+    }
+    if (!hasWebsiteMarkdown(websiteMap.get(person.companyDomain) ?? null)) {
+      needsWebsiteIds.push(id);
+      return false;
+    }
+    return true;
   });
-  skipped += validIds.length - scoreableIds.length;
+  skipped += needsWebsiteIds.length;
+  await markPeopleNeedWebsite({
+    personIds: needsWebsiteIds,
+    workspaceSlug,
+    icpProfileVersionId: icpContext.versionId,
+  });
+  await clearPeopleNeedWebsite(scoreableIds);
 
   // 4. Chunk into batches and process via Claude Code CLI
   for (let i = 0; i < scoreableIds.length; i += batchSize) {
