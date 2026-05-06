@@ -4,9 +4,10 @@ slug: emailguard
 source_urls:
   - https://emailguard.io/developers
   - https://app.emailguard.io/api/reference
-fetched: 2026-05-06T13:29:13Z
+  - docs/emailguard-api-reference.md
+fetched: 2026-05-06T14:30:48Z
 fetched_by: codex
-fetch_method: WebFetch public index + existing repo reference
+fetch_method: WebFetch public index + existing repo reference refresh
 verification_status: incomplete
 doc_confidence: official-partial
 sections_covered:
@@ -20,8 +21,8 @@ sections_missing:
   - response_schemas
   - errors
   - breaking_changes
-verification_notes: Public developer index fetched. Full API reference at app.emailguard.io/api/reference is JS-rendered/empty via basic fetch, so this sample uses the public index plus existing repo references. Response schemas, exact error payloads, rate limits, and version history still need official confirmation or manual paste.
-last_reviewed_against_adapter: 2026-05-06T13:29:13Z
+verification_notes: Public developer index fetched. Full API reference at app.emailguard.io/api/reference is JS-rendered/empty via basic fetch, so this sample uses the public index plus existing repo references. Wave 2 refreshed the local reference and confirmed it documents request bodies for the six GET-with-body lookup/report endpoints currently used by the adapter, but official portal confirmation is still required. Response schemas, exact error payloads, rate limits, and version history still need official confirmation or manual paste.
+last_reviewed_against_adapter: 2026-05-06T14:30:48Z
 our_implementation_files:
   - src/lib/emailguard/client.ts
   - src/lib/emailguard/types.ts
@@ -46,6 +47,8 @@ redaction_policy: no tokens, no secrets, no names, no emails, no phone numbers, 
   - Exact response schemas, error response schemas, rate limits, and breaking-change/version history are not fully confirmed.
 
 The public developer page identifies these API areas: authentication, account management, workspaces, domains, email accounts, contact verification, blacklist checks, DMARC reports, email authentication, content spam check, hosted domain redirect, and spam filter tests. Existing repo references provide endpoint-level detail for the current integration.
+
+Wave 2 refresh note: `docs/emailguard-api-reference.md` explicitly documents request bodies for the SPF/DKIM/DMARC lookup endpoints and the DMARC report insight/source/failure endpoints even though they are `GET` requests. That lowers the likelihood that the adapter is simply wrong, but does not upgrade this spec to `verified` because the official portal remains unavailable to basic fetch.
 
 ## Authentication
 
@@ -189,7 +192,7 @@ Our adapter applies a local throttle of 500ms between requests in `src/lib/email
 }
 ```
 
-Important mismatch candidate: our adapter sends a JSON body with a `GET` request. That is unusual HTTP behavior and needs official confirmation from the full API reference.
+Local reference confirmation: `docs/emailguard-api-reference.md` documents a request body for this `GET` endpoint. This remains an official-portal verification item because the public API reference is JS-rendered/empty via basic fetch.
 
 ### GET /email-authentication/dkim-lookup
 
@@ -204,7 +207,7 @@ Important mismatch candidate: our adapter sends a JSON body with a `GET` request
 }
 ```
 
-Important mismatch candidate: our adapter sends a JSON body with a `GET` request. Phase 1 should verify whether EmailGuard expects query params instead.
+Local reference confirmation: `docs/emailguard-api-reference.md` documents a request body for this `GET` endpoint. Phase 1 should still confirm against the official portal/manual paste.
 
 ### GET /email-authentication/dmarc-lookup
 
@@ -218,7 +221,7 @@ Important mismatch candidate: our adapter sends a JSON body with a `GET` request
 }
 ```
 
-Important mismatch candidate: our adapter sends a JSON body with a `GET` request. Phase 1 should verify whether EmailGuard expects query params instead.
+Local reference confirmation: `docs/emailguard-api-reference.md` documents a request body for this `GET` endpoint. Phase 1 should still confirm against the official portal/manual paste.
 
 ### GET /blacklist-checks/domains
 
@@ -297,19 +300,19 @@ Known gotcha: the existing local spec says Domain Reputation costs 4 credits per
 }
 ```
 
-Important mismatch candidate: our adapter sends this JSON body with a `GET` request when dates are provided. Phase 1 should verify whether this should be query params.
+Local reference confirmation: `docs/emailguard-api-reference.md` documents a request body for this `GET` endpoint when dates are provided. Phase 1 should still confirm against the official portal/manual paste.
 
 ### GET /dmarc-reports/domains/{uuid}/dmarc-sources
 
 - Purpose: fetch source-level DMARC alignment data.
 - Used by our code: yes.
-- Same GET-body mismatch candidate as insights.
+- Same locally documented GET-body shape as insights; official portal/manual paste still needed.
 
 ### GET /dmarc-reports/domains/{uuid}/dmarc-failures
 
 - Purpose: fetch DMARC failure detail.
 - Used by our code: yes.
-- Same GET-body mismatch candidate as insights.
+- Same locally documented GET-body shape as insights; official portal/manual paste still needed.
 
 ### POST /content-spam-check
 
@@ -518,7 +521,7 @@ Local behavior:
 
 | Severity | Area | Spec says | Adapter does | Phase 1 recommendation |
 | --- | --- | --- | --- | --- |
-| medium | GET request bodies | Full reference unavailable; conventional REST APIs usually use query params for GET filters | Sends JSON bodies for SPF/DKIM/DMARC lookups and DMARC report date ranges | Confirm from full API reference or manual paste. If docs say query params, patch adapter. |
+| medium | GET request bodies | Local reference documents request bodies for six GET endpoints; official portal still unavailable | Sends JSON bodies for SPF/DKIM/DMARC lookups and DMARC report date ranges | Confirm from official portal/manual paste. If official docs differ, patch adapter. If confirmed, document as intentional vendor quirk. |
 | medium | Contact verification | Public developer index says contact verification exists, but client comment says current OpenAPI may not include these routes | Calls `/contact-verification` routes from list verification API | Verify route names, response shape, and whether download/result endpoints are available. |
 | low | Pagination | Only `listDomains` auto-paginates | Other list endpoints return first page only | Verify whether other list endpoints paginate and update adapter if needed. |
 | low | Rate limits | Not captured | Local 500ms throttle | Replace inferred throttle with documented limits when fetched. |
@@ -529,7 +532,7 @@ Local behavior:
 Production payloads are not committed inline in this spec. Use synthesized examples above.
 
 - Audit file: `docs/audits/emailguard-empirical-2026-05-06.md`
-- Production samples checked in this Phase 0a sample: 0
+- Production samples checked in this Wave 2 refresh: 0
 - Planned redacted sample targets:
   - `GET /domains`
   - `POST /content-spam-check`
@@ -551,6 +554,6 @@ Synthesized sample shape for future audit rows:
 ## Known Limitations / Quirks
 
 - Full reference is JS-rendered from `https://app.emailguard.io/api/reference` and was not available to basic fetch in Phase 0a.
-- Several adapter methods use JSON bodies with GET requests; this may be correct for EmailGuard, but needs official confirmation.
+- Six adapter methods use JSON bodies with GET requests. The local reference supports this shape, but official portal/manual paste confirmation is still needed.
 - Spamhaus Domain Reputation may cost 4 credits per check according to the existing local reference; verify before broad automated use.
 - Workspace scoping matters. The public developer index lists workspace APIs, and the current client includes workspace reads but does not switch workspaces.
